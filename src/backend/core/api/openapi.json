@@ -1345,6 +1345,492 @@
                 }
             }
         },
+        "/api/v1.0/labels/": {
+            "get": {
+                "operationId": "labels_list",
+                "description": "\n        List all labels accessible to the user in a hierarchical structure.\n        \n        The response returns labels in a tree structure where:\n        - Labels are ordered alphabetically by name\n        - Each label includes its children (sub-labels)\n        - The hierarchy is determined by the label's name (e.g., \"Inbox/Important\" is a child of \"Inbox\")\n        \n        You can filter labels by mailbox using the mailbox_id query parameter.\n        ",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "mailbox_id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "\n                Filter labels by mailbox ID. If not provided, returns labels from all accessible mailboxes.\n                "
+                    },
+                    {
+                        "name": "page",
+                        "required": false,
+                        "in": "query",
+                        "description": "A page number within the paginated result set.",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "tags": [
+                    "labels"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "count",
+                                        "results"
+                                    ],
+                                    "properties": {
+                                        "count": {
+                                            "type": "integer",
+                                            "example": 123
+                                        },
+                                        "next": {
+                                            "type": "string",
+                                            "nullable": true,
+                                            "format": "uri",
+                                            "example": "http://api.example.org/accounts/?page=4"
+                                        },
+                                        "previous": {
+                                            "type": "string",
+                                            "nullable": true,
+                                            "format": "uri",
+                                            "example": "http://api.example.org/accounts/?page=2"
+                                        },
+                                        "results": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "id": {
+                                                            "type": "string",
+                                                            "format": "uuid"
+                                                        },
+                                                        "name": {
+                                                            "type": "string",
+                                                            "description": "Full name of the label (e.g., 'Inbox/Important')"
+                                                        },
+                                                        "slug": {
+                                                            "type": "string",
+                                                            "description": "URL-friendly version of the name"
+                                                        },
+                                                        "color": {
+                                                            "type": "string",
+                                                            "description": "Color code for the label"
+                                                        },
+                                                        "display_name": {
+                                                            "type": "string",
+                                                            "description": "Base name of the label (last part of the path)"
+                                                        },
+                                                        "children": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "$ref": "#/components/schemas/Label"
+                                                            },
+                                                            "description": "Child labels, ordered alphabetically by name"
+                                                        }
+                                                    },
+                                                    "required": [
+                                                        "id",
+                                                        "name",
+                                                        "slug",
+                                                        "color",
+                                                        "display_name",
+                                                        "children"
+                                                    ]
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "description": "List of labels in hierarchical structure"
+                    },
+                    "400": {
+                        "description": "Invalid mailbox_id parameter"
+                    },
+                    "403": {
+                        "description": "User does not have access to the specified mailbox"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "labels_create",
+                "description": "View and manage labels",
+                "tags": [
+                    "labels"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LabelRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LabelRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "id": {
+                                                "type": "string",
+                                                "format": "uuid"
+                                            },
+                                            "name": {
+                                                "type": "string",
+                                                "description": "Full name of the label (e.g., 'Inbox/Important')"
+                                            },
+                                            "slug": {
+                                                "type": "string",
+                                                "description": "URL-friendly version of the name"
+                                            },
+                                            "color": {
+                                                "type": "string",
+                                                "description": "Color code for the label"
+                                            },
+                                            "display_name": {
+                                                "type": "string",
+                                                "description": "Base name of the label (last part of the path)"
+                                            },
+                                            "parent_name": {
+                                                "type": "string",
+                                                "description": "Name of the parent label, or null for root labels",
+                                                "nullable": true
+                                            },
+                                            "depth": {
+                                                "type": "integer",
+                                                "description": "Depth in the hierarchy (0 for root labels,\n                                  1 for direct children, etc.)",
+                                                "minimum": 0
+                                            },
+                                            "children": {
+                                                "type": "array",
+                                                "items": {
+                                                    "$ref": "#/components/schemas/Label"
+                                                },
+                                                "description": "Child labels, ordered alphabetically by name"
+                                            }
+                                        },
+                                        "required": [
+                                            "id",
+                                            "name",
+                                            "slug",
+                                            "color",
+                                            "display_name",
+                                            "parent_name",
+                                            "depth",
+                                            "children"
+                                        ]
+                                    }
+                                }
+                            }
+                        },
+                        "description": "Created labels in hierarchical structure"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "detail": "Validation error"
+                                }
+                            }
+                        },
+                        "description": "Invalid input data"
+                    }
+                }
+            }
+        },
+        "/api/v1.0/labels/{id}/": {
+            "put": {
+                "operationId": "labels_update",
+                "description": "View and manage labels",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "labels"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LabelRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LabelRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Label"
+                                }
+                            }
+                        },
+                        "description": "Label updated successfully"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "detail": "Validation error"
+                                }
+                            }
+                        },
+                        "description": "Invalid input data"
+                    }
+                }
+            },
+            "patch": {
+                "operationId": "labels_partial_update",
+                "description": "View and manage labels",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "labels"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedLabelRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedLabelRequest"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Label"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "labels_destroy",
+                "description": "View and manage labels",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "labels"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No response body"
+                    }
+                }
+            }
+        },
+        "/api/v1.0/labels/{id}/add-threads/": {
+            "post": {
+                "operationId": "labels_add_threads_create",
+                "description": "View and manage labels",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "labels"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "thread_ids": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "description": "List of thread IDs to add to this label"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Label"
+                                }
+                            }
+                        },
+                        "description": "Threads added to label successfully"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "detail": "Validation error"
+                                }
+                            }
+                        },
+                        "description": "Invalid input data"
+                    }
+                }
+            }
+        },
+        "/api/v1.0/labels/{id}/remove-threads/": {
+            "post": {
+                "operationId": "labels_remove_threads_create",
+                "description": "View and manage labels",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "labels"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "thread_ids": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "description": "List of thread IDs to remove from this label"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Label"
+                                }
+                            }
+                        },
+                        "description": "Threads removed from label successfully"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "detail": "Validation error"
+                                }
+                            }
+                        },
+                        "description": "Invalid input data"
+                    }
+                }
+            }
+        },
         "/api/v1.0/mailboxes/": {
             "get": {
                 "operationId": "mailboxes_list",
@@ -3211,6 +3697,88 @@
                     "username"
                 ]
             },
+            "Label": {
+                "type": "object",
+                "description": "Serializer for Label model.",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true,
+                        "description": "primary key for the record as UUID"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the label/folder (can use slashes for hierarchy, e.g. 'Work/Projects')",
+                        "maxLength": 255
+                    },
+                    "slug": {
+                        "type": "string",
+                        "readOnly": true,
+                        "description": "URL-friendly version of the name",
+                        "pattern": "^[-a-zA-Z0-9_]+$"
+                    },
+                    "color": {
+                        "type": "string",
+                        "description": "Color of the label in hex format (e.g. #FF0000)",
+                        "maxLength": 7
+                    },
+                    "mailbox": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Mailbox that owns this label"
+                    },
+                    "threads": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "Threads that have this label"
+                    }
+                },
+                "required": [
+                    "id",
+                    "mailbox",
+                    "name",
+                    "slug"
+                ]
+            },
+            "LabelRequest": {
+                "type": "object",
+                "description": "Serializer for Label model.",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Name of the label/folder (can use slashes for hierarchy, e.g. 'Work/Projects')",
+                        "maxLength": 255
+                    },
+                    "color": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Color of the label in hex format (e.g. #FF0000)",
+                        "maxLength": 7
+                    },
+                    "mailbox": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Mailbox that owns this label"
+                    },
+                    "threads": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "Threads that have this label"
+                    }
+                },
+                "required": [
+                    "mailbox",
+                    "name"
+                ]
+            },
             "MailDomainAdmin": {
                 "type": "object",
                 "description": "Serialize MailDomain basic information for admin listing.",
@@ -3848,6 +4416,37 @@
                         "items": {
                             "$ref": "#/components/schemas/Thread"
                         }
+                    }
+                }
+            },
+            "PatchedLabelRequest": {
+                "type": "object",
+                "description": "Serializer for Label model.",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Name of the label/folder (can use slashes for hierarchy, e.g. 'Work/Projects')",
+                        "maxLength": 255
+                    },
+                    "color": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Color of the label in hex format (e.g. #FF0000)",
+                        "maxLength": 7
+                    },
+                    "mailbox": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Mailbox that owns this label"
+                    },
+                    "threads": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "Threads that have this label"
                     }
                 }
             },
