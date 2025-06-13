@@ -27,7 +27,8 @@
       },
       "home": {
         "title": "Simple and intuitive messaging",
-        "subtitle": "Send and receive your messages in an instant."
+        "subtitle": "Send and receive your messages in an instant.",
+        "loginMessage": "Start sending mails"
       },
       "folders": {
         "inbox": "Inbox",
@@ -254,7 +255,8 @@
       },
       "home": {
         "title": "Une messagerie simple et intuitive",
-        "subtitle": "Envoyez et recevez vos messages en un instant."
+        "subtitle": "Envoyez et recevez vos messages en un instant.",
+        "loginMessage": "Commencer à envoyer des messages",
       },
       "folders": {
         "inbox": "Boîte de réception",
