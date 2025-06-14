@@ -44,8 +44,13 @@ class ImportService:
 
         try:
             file_content = file.read()
+            content_type = file.content_type
 
-            if file.name.endswith(".mbox"):
+            # Check MIME type for MBOX
+            if content_type == "application/mbox" or (
+                content_type in ("application/octet-stream", "text/plain")
+                and file.name.lower().endswith(("mbox", ".mbox"))
+            ):
                 # Process MBOX file asynchronously
                 task = process_mbox_file_task.delay(file_content, str(recipient.id))
                 response_data = {"task_id": task.id, "type": "mbox"}
@@ -56,7 +61,11 @@ class ImportService:
                         "This may take a while. You can check the status in the Celery task monitor.",
                     )
                 return True, response_data
-            elif file.name.endswith(".eml"):
+            # Check MIME type for EML
+            elif content_type == "message/rfc822" or (
+                content_type == "application/octet-stream"
+                and file.name.lower().endswith(".eml")
+            ):
                 # Process EML file asynchronously
                 task = process_eml_file_task.delay(file_content, str(recipient.id))
                 response_data = {"task_id": task.id, "type": "eml"}
@@ -69,7 +78,11 @@ class ImportService:
                 return True, response_data
             else:
                 return False, {
-                    "detail": "Invalid file format. Only EML and MBOX files are supported."
+                    "detail": (
+                        "Invalid file format. Only EML (message/rfc822) and MBOX "
+                        "(application/mbox or text/plain) files are supported. "
+                        "Detected content type: {content_type}"
+                    ).format(content_type=content_type)
                 }
         except Exception as e:
             logger.exception("Error processing file: %s", e)

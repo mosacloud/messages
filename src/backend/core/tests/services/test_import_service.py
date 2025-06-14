@@ -66,9 +66,15 @@ def eml_file():
 
 
 @pytest.fixture
-def mbox_file():
+def mbox_file_path():
+    """Get test mbox file path from test data."""
+    return "core/tests/resources/messages.mbox"
+
+
+@pytest.fixture
+def mbox_file(mbox_file_path):
     """Get test mbox file from test data."""
-    with open("core/tests/resources/messages.mbox", "rb") as f:
+    with open(mbox_file_path, "rb") as f:
         return SimpleUploadedFile(
             "test.mbox", f.read(), content_type="application/mbox"
         )
@@ -383,7 +389,76 @@ def test_import_file_invalid_file(admin_user, mailbox, mock_request):
         assert success is False
         assert "detail" in response_data
         assert (
-            "Invalid file format. Only EML and MBOX files are supported."
+            "Invalid file format. Only EML (message/rfc822) and MBOX "
+            "(application/mbox or text/plain) files are supported."
+            in response_data["detail"]
+        )
+        assert Message.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_import_file_text_plain_mime_type(
+    admin_user, mailbox, mock_request, mbox_file_path
+):
+    """Test import of MBOX file with text/plain MIME type."""
+    # Read the mbox file content
+    with open(mbox_file_path, "rb") as f:
+        mbox_content = f.read()
+
+    # Create a file with text/plain MIME type
+    mbox_file = SimpleUploadedFile(
+        "test.mbox",
+        mbox_content,
+        content_type="text/plain",
+    )
+
+    with patch("core.tasks.process_mbox_file_task.delay") as mock_task:
+        mock_task.return_value.id = "fake-task-id"
+        success, response_data = ImportService.import_file(
+            file=mbox_file,
+            recipient=mailbox,
+            user=admin_user,
+            request=mock_request,
+        )
+
+        assert success is True
+        assert response_data["type"] == "mbox"
+        assert response_data["task_id"] == "fake-task-id"
+        mock_task.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_import_file_text_plain_wrong_extension(
+    admin_user, mailbox, mock_request, mbox_file_path
+):
+    """Test import of file with text/plain MIME type but wrong extension."""
+    # Read the mbox file content
+    with open(mbox_file_path, "rb") as f:
+        mbox_content = f.read()
+
+    # Create a file with text/plain MIME type but wrong extension
+    invalid_file = SimpleUploadedFile(
+        "test.txt",  # Wrong extension
+        mbox_content,
+        content_type="text/plain",
+    )
+
+    with patch("core.tasks.process_mbox_file_task.delay") as mock_task:
+        # The task should not be called for invalid files
+        mock_task.assert_not_called()
+
+        success, response_data = ImportService.import_file(
+            file=invalid_file,
+            recipient=mailbox,
+            user=admin_user,
+            request=mock_request,
+        )
+
+        assert success is False
+        assert "detail" in response_data
+        assert (
+            "Invalid file format. Only EML (message/rfc822) and MBOX "
+            "(application/mbox or text/plain) files are supported."
             in response_data["detail"]
         )
         assert Message.objects.count() == 0

@@ -3221,12 +3221,12 @@
             },
             "ImportFileRequest": {
                 "type": "object",
-                "description": "Serializer for importing EML or MBOX files via API.",
+                "description": "Serializer for importing email files.",
                 "properties": {
                     "import_file": {
                         "type": "string",
                         "format": "binary",
-                        "description": "Select an EML or MBOX file to import"
+                        "description": "Email file to import (EML or MBOX format). Files without extensions (like 'mbox') are supported."
                     },
                     "recipient": {
                         "type": "string",

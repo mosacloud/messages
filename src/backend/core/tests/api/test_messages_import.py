@@ -160,13 +160,14 @@ def test_import_file_no_access(api_client, domain, eml_file_path):
     assert "access" in response.data["detail"]
 
 
-def test_import_wrong_file_format(api_client, user, mailbox, mbox_file_path):
+def test_import_wrong_file_format(api_client, user, mailbox):
     """Test import of wrong file format."""
     # add access to mailbox
     mailbox.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
-    # Create a text file with wrong format
+
+    # Create an invalid file (not EML or MBOX)
     wrong_file = SimpleUploadedFile(
-        "test.txt", b"This is not an email file", content_type="text/plain"
+        "test.pdf", b"Invalid file content", content_type="application/pdf"
     )
     response = api_client.post(
         IMPORT_FILE_URL,
@@ -174,10 +175,65 @@ def test_import_wrong_file_format(api_client, user, mailbox, mbox_file_path):
         format="multipart",
     )
     assert response.status_code == 400
-    assert (
-        "File must be either an EML (.eml) or MBOX (.mbox)"
-        in response.content.decode("utf-8")
+    response_data = response.json()
+    assert "import_file" in response_data
+    assert len(response_data["import_file"]) == 1
+    assert "Invalid file type" in response_data["import_file"][0]
+
+
+def test_import_text_plain_wrong_extension(api_client, user, mailbox, mbox_file_path):
+    """Test import of file with text/plain MIME type but wrong extension."""
+    # add access to mailbox
+    mailbox.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
+
+    # Read the mbox file content
+    with open(mbox_file_path, "rb") as f:
+        mbox_content = f.read()
+
+    # Create a file with text/plain MIME type but wrong extension
+    wrong_file = SimpleUploadedFile(
+        "test.txt",  # Wrong extension
+        mbox_content,
+        content_type="text/plain",
     )
+    response = api_client.post(
+        IMPORT_FILE_URL,
+        {"import_file": wrong_file, "recipient": str(mailbox.id)},
+        format="multipart",
+    )
+    assert response.status_code == 403
+    response_data = response.json()
+    assert "Invalid file" in response_data["detail"]
+
+
+def test_import_text_plain_mime_type(api_client, user, mailbox, mbox_file_path):
+    """Test import of MBOX file with text/plain MIME type."""
+    # add access to mailbox
+    mailbox.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
+
+    # Read the mbox file content
+    with open(mbox_file_path, "rb") as f:
+        mbox_content = f.read()
+
+    # Create a file with text/plain MIME type
+    mbox_file = SimpleUploadedFile(
+        "test.mbox",
+        mbox_content,
+        content_type="text/plain",
+    )
+
+    with patch("core.tasks.process_mbox_file_task.delay") as mock_task:
+        mock_task.return_value.id = "fake-task-id"
+        response = api_client.post(
+            IMPORT_FILE_URL,
+            {"import_file": mbox_file, "recipient": str(mailbox.id)},
+            format="multipart",
+        )
+
+        assert response.status_code == 202
+        assert response.data["type"] == "mbox"
+        assert response.data["task_id"] == "fake-task-id"
+        mock_task.assert_called_once()
 
 
 def test_import_imap_task(api_client, user, mailbox):
@@ -279,3 +335,52 @@ def test_import_imap_no_access(api_client, domain):
     response = api_client.post(IMPORT_IMAP_URL, data, format="json")
     assert response.status_code == 403
     assert "access" in response.data["detail"]
+
+
+def test_import_mbox_file_no_extension(api_client, user, mailbox, mbox_file_path):
+    """Test import of MBOX file without extension."""
+    # add access to mailbox
+    mailbox.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
+
+    # Read the mbox file content
+    with open(mbox_file_path, "rb") as f:
+        mbox_content = f.read()
+
+    # Create a file named "mbox" without extension
+    mbox_file = SimpleUploadedFile(
+        "mbox",  # filename without extension
+        mbox_content,
+        content_type="text/plain",
+    )
+
+    response = api_client.post(
+        IMPORT_FILE_URL,
+        {"import_file": mbox_file, "recipient": str(mailbox.id)},
+        format="multipart",
+    )
+
+    assert response.status_code == 202
+    assert response.data["type"] == "mbox"
+    # Verify messages were created
+    assert Message.objects.count() == 3
+    messages = Message.objects.order_by("created_at")
+
+    # Check thread for each message
+    assert messages[0].thread is not None
+    assert messages[1].thread is not None
+    assert messages[2].thread is not None
+    assert messages[2].thread.messages.count() == 2
+    assert messages[1].thread == messages[2].thread
+
+    # Check messages
+    assert messages[0].subject == "Mon mail avec joli pj"
+    assert messages[0].attachments.count() == 1
+
+    assert messages[1].subject == "Je t'envoie encore un message..."
+    body1 = messages[1].get_parsed_field("textBody")[0]["content"]
+    assert "Lorem ipsum dolor sit amet" in body1
+
+    assert messages[2].subject == "Re: Je t'envoie encore un message..."
+    body2 = messages[2].get_parsed_field("textBody")[0]["content"]
+    assert "Yes !" in body2
+    assert "Lorem ipsum dolor sit amet" in body2
