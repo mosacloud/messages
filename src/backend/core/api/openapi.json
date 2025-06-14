@@ -2907,6 +2907,15 @@
                     },
                     {
                         "in": "query",
+                        "name": "label_id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "Filter threads by label ID."
+                    },
+                    {
+                        "in": "query",
                         "name": "mailbox_id",
                         "schema": {
                             "type": "string",
@@ -3361,6 +3370,15 @@
                             "type": "integer"
                         },
                         "description": "Filter threads with unread messages (1=true, 0=false)."
+                    },
+                    {
+                        "in": "query",
+                        "name": "label_id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "Filter threads by label ID."
                     },
                     {
                         "in": "query",

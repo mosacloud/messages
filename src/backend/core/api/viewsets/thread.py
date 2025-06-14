@@ -35,6 +35,7 @@ class ThreadViewSet(
         """Restrict results to threads accessible by the current user."""
         user = self.request.user
         mailbox_id = self.request.GET.get("mailbox_id")
+        label_slug = self.request.GET.get("label_slug")
 
         # Base queryset: Threads the user has access to via ThreadAccess
         queryset = models.Thread.objects.filter(
@@ -53,7 +54,20 @@ class ThreadViewSet(
                 queryset = mailbox.threads_viewer
             except models.Mailbox.DoesNotExist as e:
                 raise drf.exceptions.PermissionDenied(
-                    "You do not have access to this mailbox context."
+                    "You do not have access to this mailbox."
+                ) from e
+
+        if label_slug:
+            # Filter threads by label slug, ensuring user has access to the label's mailbox
+            try:
+                label = models.Label.objects.get(
+                    slug=label_slug,
+                    mailbox__accesses__user=user,
+                )
+                queryset = queryset.filter(labels=label)
+            except models.Label.DoesNotExist as e:
+                raise drf.exceptions.PermissionDenied(
+                    "You do not have access to this label."
                 ) from e
 
         # Apply boolean filters (has_unread, etc.)
@@ -86,6 +100,12 @@ class ThreadViewSet(
                 type=OpenApiTypes.UUID,
                 location=OpenApiParameter.QUERY,
                 description="Filter threads by mailbox ID.",
+            ),
+            OpenApiParameter(
+                name="label_slug",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Filter threads by label slug.",
             ),
             OpenApiParameter(
                 name="search",
@@ -219,6 +239,12 @@ class ThreadViewSet(
                 type=OpenApiTypes.UUID,
                 location=OpenApiParameter.QUERY,
                 description="Filter threads by mailbox ID.",
+            ),
+            OpenApiParameter(
+                name="label_slug",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description="Filter threads by label slug.",
             ),
             OpenApiParameter(
                 name="search",
