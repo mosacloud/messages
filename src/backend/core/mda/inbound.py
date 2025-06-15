@@ -163,7 +163,7 @@ def find_thread_for_inbound_message(
     return None  # potential_parents.first().thread
 
 
-def deliver_inbound_message(
+def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-statements
     recipient_email: str,
     parsed_email: Dict[str, Any],
     raw_data: bytes,
@@ -185,9 +185,70 @@ def deliver_inbound_message(
         logger.warning("Invalid recipient address: %s", recipient_email)
         return False
 
-    # --- 2. Find or Create Thread --- #
+    # --- 2. Check for Duplicate Message --- #
+    mime_id = parsed_email.get("messageId", parsed_email.get("message_id"))
+    if mime_id:
+        # Remove angle brackets if present
+        if mime_id.startswith("<") and mime_id.endswith(">"):
+            mime_id = mime_id[1:-1]
+
+        # Check if a message with this MIME ID already exists in this mailbox
+        existing_message = models.Message.objects.filter(
+            mime_id=mime_id, thread__accesses__mailbox=mailbox
+        ).first()
+
+        if existing_message:
+            logger.info(
+                "Skipping duplicate message %s (MIME ID: %s) in mailbox %s",
+                existing_message.id,
+                mime_id,
+                mailbox.id,
+            )
+            return True  # Return success since we handled the duplicate gracefully
+
+    # --- 3. Find or Create Thread --- #
     try:
+        # thread = None
+        # if is_import:
+        #     # During import, try to find an existing thread that contains messages
+        #     # with the same subject or referenced message IDs
+        #     subject = parsed_email.get("subject", "")
+        #     in_reply_to = parsed_email.get("in_reply_to")
+        #     references = parsed_email.get("headers", {}).get("references", "")
+
+        #     # First try to find a thread by message IDs
+        #     if in_reply_to or references:
+        #         thread = models.Thread.objects.filter(
+        #             messages__mime_id__in=[in_reply_to] if in_reply_to else [],
+        #             accesses__mailbox=mailbox,
+        #         ).first()
+        #         if not thread and references:
+        #             # Extract message IDs from references
+        #             ref_ids = MESSAGE_ID_RE.findall(references)
+        #             if ref_ids:
+        #                 thread = models.Thread.objects.filter(
+        #                     messages__mime_id__in=ref_ids,
+        #                     accesses__mailbox=mailbox,
+        #                 ).first()
+
+        #     # If no thread found by message IDs, try by subject
+        #     if not thread and subject:
+        #         # Look for threads with similar subjects
+        #         canonical_subject = re.sub(
+        #             r"^((re|fwd|fw|rep|tr|rép)\s*:\s+)+",
+        #             "",
+        #             subject.lower(),
+        #             flags=re.IGNORECASE,
+        #         ).strip()
+        #         thread = models.Thread.objects.filter(
+        #             subject__iregex=rf"^(re|fwd|fw|rep|tr|rép)\s*:\s*{re.escape(canonical_subject)}$",
+        #             accesses__mailbox=mailbox,
+        #         ).first()
+
+        # # If no thread found or not an import, use normal thread finding logic
+        # if not thread:
         thread = find_thread_for_inbound_message(parsed_email, mailbox)
+
         if not thread:
             snippet = ""
             if text_body := parsed_email.get("textBody"):
@@ -224,7 +285,7 @@ def deliver_inbound_message(
         )
         return False
 
-    # --- 3. Get or Create Sender Contact --- #
+    # --- 4. Get or Create Sender Contact --- #
     logger.warning(parsed_email)
     sender_info = parsed_email.get("from", {})
     sender_email = sender_info.get("email")
@@ -289,29 +350,8 @@ def deliver_inbound_message(
         )
         return False
 
-    # --- 4. Create Message --- #
+    # --- 5. Create Message --- #
     try:
-        # Check for duplicate message using MIME ID
-        mime_id = parsed_email.get("messageId", parsed_email.get("message_id"))
-        if mime_id:
-            # Remove angle brackets if present
-            if mime_id.startswith("<") and mime_id.endswith(">"):
-                mime_id = mime_id[1:-1]
-
-            # Check if a message with this MIME ID already exists in this mailbox
-            existing_message = models.Message.objects.filter(
-                mime_id=mime_id, thread__accesses__mailbox=mailbox
-            ).first()
-
-            if existing_message:
-                logger.info(
-                    "Skipping duplicate message %s (MIME ID: %s) in mailbox %s",
-                    existing_message.id,
-                    mime_id,
-                    mailbox.id,
-                )
-                return True  # Return success since we handled the duplicate gracefully
-
         # Can we get a parent message for reference?
         # TODO: validate this doesn't create security issues
         parent_message = None
@@ -352,7 +392,7 @@ def deliver_inbound_message(
         )
         return False
 
-    # --- 5. Create Recipient Contacts and Links --- #
+    # --- 6. Create Recipient Contacts and Links --- #
     recipient_types_to_process = [
         (models.MessageRecipientTypeChoices.TO, parsed_email.get("to", [])),
         (models.MessageRecipientTypeChoices.CC, parsed_email.get("cc", [])),
@@ -417,11 +457,11 @@ def deliver_inbound_message(
                 )
                 # Log and continue
 
-    # --- 6. Process Attachments if present --- #
+    # --- 7. Process Attachments if present --- #
     if parsed_email.get("attachments"):
         _process_attachments(message, parsed_email["attachments"], mailbox)
 
-    # --- 7. Final Updates --- #
+    # --- 8. Final Updates --- #
     try:
         # Update snippet using the new message's body if possible
         # (This assumes the subject was used for the initial snippet if body was empty)

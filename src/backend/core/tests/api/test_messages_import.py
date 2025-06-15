@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 
 from core import factories
 from core.enums import MailboxRoleChoices
-from core.models import Mailbox, MailDomain, Message
+from core.models import Mailbox, MailDomain, Message, Thread
 from core.tasks import process_eml_file_task, process_mbox_file_task
 
 pytestmark = pytest.mark.django_db
@@ -397,6 +397,7 @@ def test_import_duplicate_eml_file(api_client, user, mailbox, eml_file_path):
         file_content = f.read()
 
     assert Message.objects.count() == 0
+    assert Thread.objects.count() == 0
 
     # First import
     with patch("core.tasks.process_eml_file_task.delay") as mock_task:
@@ -421,6 +422,7 @@ def test_import_duplicate_eml_file(api_client, user, mailbox, eml_file_path):
         assert task_result["result"]["failure_count"] == 0
         # Verify a new message was created
         assert Message.objects.count() == 1
+        assert Thread.objects.count() == 1
 
     # Second import of the same file
     with patch("core.tasks.process_eml_file_task.delay") as mock_task:
@@ -446,6 +448,7 @@ def test_import_duplicate_eml_file(api_client, user, mailbox, eml_file_path):
 
         # Verify no new message was created
         assert Message.objects.count() == 1
+        assert Thread.objects.count() == 1
 
 
 def test_import_duplicate_mbox_file(api_client, user, mailbox, mbox_file_path):
@@ -458,6 +461,7 @@ def test_import_duplicate_mbox_file(api_client, user, mailbox, mbox_file_path):
         file_content = f.read()
 
     assert Message.objects.count() == 0
+    assert Thread.objects.count() == 0
 
     # First import
     with patch("core.tasks.process_mbox_file_task.delay") as mock_task:
@@ -485,6 +489,7 @@ def test_import_duplicate_mbox_file(api_client, user, mailbox, mbox_file_path):
 
             # Verify messages were created
             assert Message.objects.count() == 3
+            assert Thread.objects.count() == 2
 
     # Second import of the same file
     with patch("core.tasks.process_mbox_file_task.delay") as mock_task:
@@ -512,6 +517,7 @@ def test_import_duplicate_mbox_file(api_client, user, mailbox, mbox_file_path):
 
             # Verify no new messages were created
             assert Message.objects.count() == 3
+            assert Thread.objects.count() == 2
 
 
 def test_import_eml_same_message_different_mailboxes(api_client, user, eml_file_path):
@@ -667,6 +673,10 @@ def test_import_mbox_same_message_different_mailboxes(api_client, user, mbox_fil
 def test_import_duplicate_imap_messages(api_client, user, mailbox):
     """Test import of duplicate IMAP messages."""
     mailbox.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
+
+    assert Message.objects.count() == 0
+    assert Thread.objects.count() == 0
+
     # Mock IMAP connection and responses
     with patch("imaplib.IMAP4_SSL") as mock_imap:
         mock_imap_instance = mock_imap.return_value
@@ -700,6 +710,7 @@ Test message body"""
         assert response.status_code == 202
         assert response.data["type"] == "imap"
         assert Message.objects.count() == 1
+        assert Thread.objects.count() == 1
 
         # Second import of same message
         response = api_client.post(IMPORT_IMAP_URL, data, format="json")
@@ -708,6 +719,7 @@ Test message body"""
 
         # Verify no duplicate messages were created
         assert Message.objects.count() == 1
+        assert Thread.objects.count() == 1
         message = Message.objects.first()
         assert message.subject == "Test Message"
         assert message.sender.email == "sender@example.com"
@@ -780,3 +792,163 @@ Test message body"""
         assert (
             Message.objects.filter(thread__accesses__mailbox=mailbox2).count() == 1
         ), "Message not found in second mailbox"
+
+
+# def test_import_mbox_multiple_times_threading(api_client, user, mailbox, mbox_file_path):
+#     """Test that importing the same MBOX file multiple times maintains proper threading."""
+#     # Add access to mailbox
+#     mailbox.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
+
+#     # Read file content once
+#     with open(mbox_file_path, "rb") as f:
+#         file_content = f.read()
+
+#     assert Message.objects.count() == 0
+#     assert Thread.objects.count() == 0
+
+#     # First import
+#     with patch("core.tasks.process_mbox_file_task.delay") as mock_task:
+#         mock_task.return_value.id = "fake-task-id-1"
+#         with open(mbox_file_path, "rb") as f:
+#             response = api_client.post(
+#                 IMPORT_FILE_URL,
+#                 {"import_file": f, "recipient": str(mailbox.id)},
+#                 format="multipart",
+#             )
+#             assert response.status_code == 202
+#             assert response.data["type"] == "mbox"
+#             mock_task.assert_called_once()
+
+#             # Run the task synchronously for testing with a task_id
+#             task_result = process_mbox_file_task.apply(
+#                 kwargs={"file_content": file_content, "recipient_id": str(mailbox.id)},
+#                 task_id="fake-task-id-1",
+#             ).get()
+#             assert task_result["status"] == "SUCCESS"
+#             assert task_result["result"]["success_count"] == 3
+#             assert task_result["result"]["failure_count"] == 0
+
+#             # Verify messages and threads were created
+#             assert Message.objects.count() == 3
+#             initial_thread_count = Thread.objects.count()
+#             assert initial_thread_count == 2  # One thread for the message with attachment, one for the conversation
+
+#             # Get initial thread IDs and message relationships
+#             messages = Message.objects.order_by("created_at")
+#             initial_thread_ids = {msg.thread.id for msg in messages}
+#             initial_parent_relationships = {
+#                 msg.mime_id: msg.parent.mime_id if msg.parent else None
+#                 for msg in messages
+#                 if msg.parent
+#             }
+
+#             # Verify specific threading relationships from the test MBOX file
+#             # First message (with attachment) should be in its own thread
+#             assert messages[0].thread != messages[1].thread
+#             # Second and third messages (original and reply) should be in the same thread
+#             assert messages[1].thread == messages[2].thread
+#             # Third message should be a reply to the second
+#             assert messages[2].parent == messages[1]
+#             # Verify thread message counts
+#             assert messages[0].thread.messages.count() == 1
+#             assert messages[1].thread.messages.count() == 2
+
+#     # Second import of the same file
+#     with patch("core.tasks.process_mbox_file_task.delay") as mock_task:
+#         mock_task.return_value.id = "fake-task-id-2"
+#         with open(mbox_file_path, "rb") as f:
+#             response = api_client.post(
+#                 IMPORT_FILE_URL,
+#                 {"import_file": f, "recipient": str(mailbox.id)},
+#                 format="multipart",
+#             )
+#             assert response.status_code == 202
+#             assert response.data["type"] == "mbox"
+#             mock_task.assert_called_once()
+
+#             # Run the task synchronously for testing with a task_id
+#             task_result = process_mbox_file_task.apply(
+#                 kwargs={"file_content": file_content, "recipient_id": str(mailbox.id)},
+#                 task_id="fake-task-id-2",
+#             ).get()
+#             assert task_result["status"] == "SUCCESS"
+#             assert task_result["result"]["success_count"] == 3  # Still counts as success
+#             assert task_result["result"]["failure_count"] == 0
+
+#             # Verify no new messages or threads were created
+#             assert Message.objects.count() == 3
+#             assert Thread.objects.count() == initial_thread_count
+
+#             # Verify thread IDs and parent relationships are unchanged
+#             messages = Message.objects.order_by("created_at")
+#             current_thread_ids = {msg.thread.id for msg in messages}
+#             assert current_thread_ids == initial_thread_ids
+
+#             current_parent_relationships = {
+#                 msg.mime_id: msg.parent.mime_id if msg.parent else None
+#                 for msg in messages
+#                 if msg.parent
+#             }
+#             assert current_parent_relationships == initial_parent_relationships
+
+#             # Verify specific threading relationships are still maintained
+#             # First message (with attachment) should still be in its own thread
+#             assert messages[0].thread != messages[1].thread
+#             # Second and third messages (original and reply) should still be in the same thread
+#             assert messages[1].thread == messages[2].thread
+#             # Third message should still be a reply to the second
+#             assert messages[2].parent == messages[1]
+#             # Verify thread message counts are unchanged
+#             assert messages[0].thread.messages.count() == 1
+#             assert messages[1].thread.messages.count() == 2
+
+#     # Third import with a new message that should thread with existing ones
+#     new_message_content = b"""From: sender@example.com
+# To: recipient@example.com
+# Subject: Re: Je t'envoie encore un message...
+# Message-ID: <new-reply@example.com>
+# In-Reply-To: <original@example.com>
+# References: <original@example.com>
+# Date: Mon, 26 May 2025 20:19:00 +0000
+
+# This is another reply to the same thread."""
+
+#     with patch("core.tasks.process_mbox_file_task.delay") as mock_task:
+#         mock_task.return_value.id = "fake-task-id-3"
+#         # Create a new MBOX file with just the new message
+#         new_mbox_content = b"From \n" + new_message_content + b"\n\n"
+#         new_mbox_file = SimpleUploadedFile(
+#             "new_messages.mbox",
+#             new_mbox_content,
+#             content_type="text/plain",
+#         )
+#         response = api_client.post(
+#             IMPORT_FILE_URL,
+#             {"import_file": new_mbox_file, "recipient": str(mailbox.id)},
+#             format="multipart",
+#         )
+#         assert response.status_code == 202
+#         assert response.data["type"] == "mbox"
+#         mock_task.assert_called_once()
+
+#         # Run the task synchronously for testing with a task_id
+#         task_result = process_mbox_file_task.apply(
+#             kwargs={"file_content": new_mbox_content, "recipient_id": str(mailbox.id)},
+#             task_id="fake-task-id-3",
+#         ).get()
+#         assert task_result["status"] == "SUCCESS"
+#         assert task_result["result"]["success_count"] == 1
+#         assert task_result["result"]["failure_count"] == 0
+
+#         # Verify the new message was added to the existing thread
+#         assert Message.objects.count() == 4
+#         assert Thread.objects.count() == initial_thread_count  # No new threads
+
+#         # Get all messages ordered by creation
+#         messages = Message.objects.order_by("created_at")
+#         new_message = messages.last()
+
+#         # Verify the new message was added to the correct thread
+#         assert new_message.thread == messages[1].thread  # Should be in the conversation thread
+#         assert new_message.parent == messages[1]  # Should be a reply to the original message
+#         assert messages[1].thread.messages.count() == 3  # Thread should now have 3 messages
