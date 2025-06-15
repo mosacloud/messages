@@ -291,6 +291,27 @@ def deliver_inbound_message(
 
     # --- 4. Create Message --- #
     try:
+        # Check for duplicate message using MIME ID
+        mime_id = parsed_email.get("messageId", parsed_email.get("message_id"))
+        if mime_id:
+            # Remove angle brackets if present
+            if mime_id.startswith("<") and mime_id.endswith(">"):
+                mime_id = mime_id[1:-1]
+
+            # Check if a message with this MIME ID already exists in this mailbox
+            existing_message = models.Message.objects.filter(
+                mime_id=mime_id, thread__accesses__mailbox=mailbox
+            ).first()
+
+            if existing_message:
+                logger.info(
+                    "Skipping duplicate message %s (MIME ID: %s) in mailbox %s",
+                    existing_message.id,
+                    mime_id,
+                    mailbox.id,
+                )
+                return True  # Return success since we handled the duplicate gracefully
+
         # Can we get a parent message for reference?
         # TODO: validate this doesn't create security issues
         parent_message = None

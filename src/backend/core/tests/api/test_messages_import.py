@@ -12,6 +12,7 @@ from rest_framework.test import APIClient
 from core import factories
 from core.enums import MailboxRoleChoices
 from core.models import Mailbox, MailDomain, Message
+from core.tasks import process_eml_file_task, process_mbox_file_task
 
 pytestmark = pytest.mark.django_db
 
@@ -384,3 +385,398 @@ def test_import_mbox_file_no_extension(api_client, user, mailbox, mbox_file_path
     body2 = messages[2].get_parsed_field("textBody")[0]["content"]
     assert "Yes !" in body2
     assert "Lorem ipsum dolor sit amet" in body2
+
+
+def test_import_duplicate_eml_file(api_client, user, mailbox, eml_file_path):
+    """Test that importing the same EML file twice only creates one message."""
+    # Add access to mailbox
+    mailbox.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
+
+    # Read file content once
+    with open(eml_file_path, "rb") as f:
+        file_content = f.read()
+
+    assert Message.objects.count() == 0
+
+    # First import
+    with patch("core.tasks.process_eml_file_task.delay") as mock_task:
+        mock_task.return_value.id = "fake-task-id-1"
+        with open(eml_file_path, "rb") as eml_file:
+            response = api_client.post(
+                IMPORT_FILE_URL,
+                {"import_file": eml_file, "recipient": str(mailbox.id)},
+                format="multipart",
+            )
+        assert response.status_code == 202
+        assert response.data["type"] == "eml"
+        mock_task.assert_called_once()
+
+        # Run the task synchronously for testing with a task_id
+        task_result = process_eml_file_task.apply(
+            kwargs={"file_content": file_content, "recipient_id": str(mailbox.id)},
+            task_id="fake-task-id-1",
+        ).get()
+        assert task_result["status"] == "SUCCESS"
+        assert task_result["result"]["success_count"] == 1
+        assert task_result["result"]["failure_count"] == 0
+        # Verify a new message was created
+        assert Message.objects.count() == 1
+
+    # Second import of the same file
+    with patch("core.tasks.process_eml_file_task.delay") as mock_task:
+        mock_task.return_value.id = "fake-task-id-2"
+        with open(eml_file_path, "rb") as eml_file:
+            response = api_client.post(
+                IMPORT_FILE_URL,
+                {"import_file": eml_file, "recipient": str(mailbox.id)},
+                format="multipart",
+            )
+        assert response.status_code == 202
+        assert response.data["type"] == "eml"
+        mock_task.assert_called_once()
+
+        # Run the task synchronously for testing with a task_id
+        task_result = process_eml_file_task.apply(
+            kwargs={"file_content": file_content, "recipient_id": str(mailbox.id)},
+            task_id="fake-task-id-2",
+        ).get()
+        assert task_result["status"] == "SUCCESS"
+        assert task_result["result"]["success_count"] == 1  # Still counts as success
+        assert task_result["result"]["failure_count"] == 0
+
+        # Verify no new message was created
+        assert Message.objects.count() == 1
+
+
+def test_import_duplicate_mbox_file(api_client, user, mailbox, mbox_file_path):
+    """Test that importing the same MBOX file twice only creates each message once."""
+    # Add access to mailbox
+    mailbox.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
+
+    # Read file content once
+    with open(mbox_file_path, "rb") as f:
+        file_content = f.read()
+
+    assert Message.objects.count() == 0
+
+    # First import
+    with patch("core.tasks.process_mbox_file_task.delay") as mock_task:
+        mock_task.return_value.id = "fake-task-id-1"
+        with open(mbox_file_path, "rb") as f:
+            response = api_client.post(
+                IMPORT_FILE_URL,
+                {"import_file": f, "recipient": str(mailbox.id)},
+                format="multipart",
+            )
+            assert response.status_code == 202
+            assert response.data["type"] == "mbox"
+            mock_task.assert_called_once()
+
+            # Run the task synchronously for testing with a task_id
+            task_result = process_mbox_file_task.apply(
+                kwargs={"file_content": file_content, "recipient_id": str(mailbox.id)},
+                task_id="fake-task-id-1",
+            ).get()
+            assert task_result["status"] == "SUCCESS"
+            assert (
+                task_result["result"]["success_count"] == 3
+            )  # Three messages in test file
+            assert task_result["result"]["failure_count"] == 0
+
+            # Verify messages were created
+            assert Message.objects.count() == 3
+
+    # Second import of the same file
+    with patch("core.tasks.process_mbox_file_task.delay") as mock_task:
+        mock_task.return_value.id = "fake-task-id-2"
+        with open(mbox_file_path, "rb") as f:
+            response = api_client.post(
+                IMPORT_FILE_URL,
+                {"import_file": f, "recipient": str(mailbox.id)},
+                format="multipart",
+            )
+            assert response.status_code == 202
+            assert response.data["type"] == "mbox"
+            mock_task.assert_called_once()
+
+            # Run the task synchronously for testing with a task_id
+            task_result = process_mbox_file_task.apply(
+                kwargs={"file_content": file_content, "recipient_id": str(mailbox.id)},
+                task_id="fake-task-id-2",
+            ).get()
+            assert task_result["status"] == "SUCCESS"
+            assert (
+                task_result["result"]["success_count"] == 3
+            )  # Still counts as success
+            assert task_result["result"]["failure_count"] == 0
+
+            # Verify no new messages were created
+            assert Message.objects.count() == 3
+
+
+def test_import_eml_same_message_different_mailboxes(api_client, user, eml_file_path):
+    """Test that the same message can be imported into different mailboxes."""
+    # Create two mailboxes
+    mailbox1 = factories.MailboxFactory()
+    mailbox2 = factories.MailboxFactory()
+
+    # Add access to both mailboxes
+    mailbox1.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
+    mailbox2.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
+
+    # Read file content once
+    with open(eml_file_path, "rb") as f:
+        file_content = f.read()
+
+    assert Message.objects.count() == 0
+
+    # Import to first mailbox
+    with patch("core.tasks.process_eml_file_task.delay") as mock_task:
+        mock_task.return_value.id = "fake-task-id-1"
+        with open(eml_file_path, "rb") as eml_file:
+            response = api_client.post(
+                IMPORT_FILE_URL,
+                {"import_file": eml_file, "recipient": str(mailbox1.id)},
+                format="multipart",
+            )
+            assert response.status_code == 202
+            assert response.data["type"] == "eml"
+            mock_task.assert_called_once()
+
+            # Run the task synchronously for testing with a task_id
+            task_result = process_eml_file_task.apply(
+                kwargs={"file_content": file_content, "recipient_id": str(mailbox1.id)},
+                task_id="fake-task-id-1",
+            ).get()
+            assert task_result["status"] == "SUCCESS"
+            assert task_result["result"]["success_count"] == 1
+            assert task_result["result"]["failure_count"] == 0
+
+            # Verify a new message was created
+            assert Message.objects.count() == 1
+
+    # Import to second mailbox
+    with patch("core.tasks.process_eml_file_task.delay") as mock_task:
+        mock_task.return_value.id = "fake-task-id-2"
+        with open(eml_file_path, "rb") as eml_file:
+            response = api_client.post(
+                IMPORT_FILE_URL,
+                {"import_file": eml_file, "recipient": str(mailbox2.id)},
+                format="multipart",
+            )
+            assert response.status_code == 202
+            assert response.data["type"] == "eml"
+            mock_task.assert_called_once()
+
+            # Run the task synchronously for testing with a task_id
+            task_result = process_eml_file_task.apply(
+                kwargs={"file_content": file_content, "recipient_id": str(mailbox2.id)},
+                task_id="fake-task-id-2",
+            ).get()
+            assert task_result["status"] == "SUCCESS"
+            assert task_result["result"]["success_count"] == 1
+            assert task_result["result"]["failure_count"] == 0
+
+            # Verify only one new message was created
+            assert Message.objects.count() == 2
+
+            # Verify both mailboxes have the message
+            assert (
+                Message.objects.filter(thread__accesses__mailbox=mailbox1).count() == 1
+            ), "Message not found in first mailbox"
+            assert (
+                Message.objects.filter(thread__accesses__mailbox=mailbox2).count() == 1
+            ), "Message not found in second mailbox"
+
+
+def test_import_mbox_same_message_different_mailboxes(api_client, user, mbox_file_path):
+    """Test that the same message can be imported into different mailboxes."""
+    # Create two mailboxes
+    mailbox1 = factories.MailboxFactory()
+    mailbox2 = factories.MailboxFactory()
+
+    # Add access to both mailboxes
+    mailbox1.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
+    mailbox2.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
+
+    # Read file content once
+    with open(mbox_file_path, "rb") as f:
+        file_content = f.read()
+
+    assert Message.objects.count() == 0
+
+    # Import to first mailbox
+    with patch("core.tasks.process_mbox_file_task.delay") as mock_task:
+        mock_task.return_value.id = "fake-task-id-1"
+        with open(mbox_file_path, "rb") as f:
+            response = api_client.post(
+                IMPORT_FILE_URL,
+                {"import_file": f, "recipient": str(mailbox1.id)},
+                format="multipart",
+            )
+            assert response.status_code == 202
+            assert response.data["type"] == "mbox"
+            mock_task.assert_called_once()
+
+            # Run the task synchronously for testing with a task_id
+            task_result = process_mbox_file_task.apply(
+                kwargs={"file_content": file_content, "recipient_id": str(mailbox1.id)},
+                task_id="fake-task-id-1",
+            ).get()
+            assert task_result["status"] == "SUCCESS"
+            assert task_result["result"]["success_count"] == 3
+            assert task_result["result"]["failure_count"] == 0
+
+            # Verify messages were created
+            assert Message.objects.count() == 3
+
+    # Import to second mailbox
+    with patch("core.tasks.process_mbox_file_task.delay") as mock_task:
+        mock_task.return_value.id = "fake-task-id-2"
+        with open(mbox_file_path, "rb") as f:
+            response = api_client.post(
+                IMPORT_FILE_URL,
+                {"import_file": f, "recipient": str(mailbox2.id)},
+                format="multipart",
+            )
+            assert response.status_code == 202
+            assert response.data["type"] == "mbox"
+            mock_task.assert_called_once()
+
+            # Run the task synchronously for testing with a task_id
+            task_result = process_mbox_file_task.apply(
+                kwargs={"file_content": file_content, "recipient_id": str(mailbox2.id)},
+                task_id="fake-task-id-2",
+            ).get()
+            assert task_result["status"] == "SUCCESS"
+            assert task_result["result"]["success_count"] == 3
+            assert task_result["result"]["failure_count"] == 0
+
+            # Verify no new messages were created
+            assert Message.objects.count() == 6
+
+            # Verify both mailboxes have the message
+            assert (
+                Message.objects.filter(thread__accesses__mailbox=mailbox1).count() == 3
+            ), "Message not found in first mailbox"
+            assert (
+                Message.objects.filter(thread__accesses__mailbox=mailbox2).count() == 3
+            ), "Message not found in second mailbox"
+
+
+def test_import_duplicate_imap_messages(api_client, user, mailbox):
+    """Test import of duplicate IMAP messages."""
+    mailbox.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
+    # Mock IMAP connection and responses
+    with patch("imaplib.IMAP4_SSL") as mock_imap:
+        mock_imap_instance = mock_imap.return_value
+        mock_imap_instance.select.return_value = ("OK", [b"1"])
+        mock_imap_instance.search.return_value = ("OK", [b"1"])
+
+        # Mock message with Message-ID header
+        message = b"""From: sender@example.com
+To: recipient@example.com
+Subject: Test Message
+Message-ID: <test123@example.com>
+Date: Mon, 26 May 2025 10:00:00 +0000
+
+Test message body"""
+
+        mock_imap_instance.fetch.return_value = ("OK", [(b"1", message)])
+
+        data = {
+            "recipient": str(mailbox.id),
+            "imap_server": "imap.example.com",
+            "imap_port": 993,
+            "username": "test@example.com",
+            "password": "password123",
+            "use_ssl": True,
+            "folder": "INBOX",
+            "max_messages": 0,
+        }
+
+        # First import
+        response = api_client.post(IMPORT_IMAP_URL, data, format="json")
+        assert response.status_code == 202
+        assert response.data["type"] == "imap"
+        assert Message.objects.count() == 1
+
+        # Second import of same message
+        response = api_client.post(IMPORT_IMAP_URL, data, format="json")
+        assert response.status_code == 202
+        assert response.data["type"] == "imap"
+
+        # Verify no duplicate messages were created
+        assert Message.objects.count() == 1
+        message = Message.objects.first()
+        assert message.subject == "Test Message"
+        assert message.sender.email == "sender@example.com"
+        assert message.recipients.get().contact.email == "recipient@example.com"
+        assert message.sent_at == message.thread.messaged_at
+        assert message.sent_at == datetime.datetime(
+            2025, 5, 26, 10, 0, 0, tzinfo=datetime.timezone.utc
+        )
+
+
+def test_import_duplicate_imap_messages_different_mailboxes(api_client, user, mailbox):
+    """Test import of duplicate IMAP messages."""
+    mailbox.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
+    mailbox2 = factories.MailboxFactory()
+    mailbox2.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
+    # Mock IMAP connection and responses
+    with patch("imaplib.IMAP4_SSL") as mock_imap:
+        mock_imap_instance = mock_imap.return_value
+        mock_imap_instance.select.return_value = ("OK", [b"1"])
+        mock_imap_instance.search.return_value = ("OK", [b"1"])
+        # Mock message with Message-ID header
+        message = b"""From: sender@example.com
+To: recipient@example.com
+Subject: Test Message
+Message-ID: <test123@example.com>
+Date: Mon, 26 May 2025 10:00:00 +0000
+
+Test message body"""
+
+        mock_imap_instance.fetch.return_value = ("OK", [(b"1", message)])
+
+        data = {
+            "recipient": str(mailbox.id),
+            "imap_server": "imap.example.com",
+            "imap_port": 993,
+            "username": "test@example.com",
+            "password": "password123",
+            "use_ssl": True,
+            "folder": "INBOX",
+            "max_messages": 0,
+        }
+
+        # First import
+        response = api_client.post(IMPORT_IMAP_URL, data, format="json")
+        assert response.status_code == 202
+        assert response.data["type"] == "imap"
+        assert Message.objects.count() == 1
+
+        # Second import of same message
+        data["recipient"] = str(mailbox2.id)
+        response = api_client.post(IMPORT_IMAP_URL, data, format="json")
+        assert response.status_code == 202
+        assert response.data["type"] == "imap"
+
+        # Verify no duplicate messages were created
+        assert Message.objects.count() == 2
+        message = Message.objects.first()
+        assert message.subject == "Test Message"
+        assert message.sender.email == "sender@example.com"
+        assert message.recipients.get().contact.email == "recipient@example.com"
+        assert message.sent_at == message.thread.messaged_at
+        assert message.sent_at == datetime.datetime(
+            2025, 5, 26, 10, 0, 0, tzinfo=datetime.timezone.utc
+        )
+
+        # Verify both mailboxes have the message
+        assert Message.objects.filter(thread__accesses__mailbox=mailbox).count() == 1, (
+            "Message not found in first mailbox"
+        )
+        assert (
+            Message.objects.filter(thread__accesses__mailbox=mailbox2).count() == 1
+        ), "Message not found in second mailbox"
