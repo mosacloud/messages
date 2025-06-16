@@ -364,7 +364,6 @@ class Base(Configuration):
     )
 
     AUTH_USER_MODEL = "core.User"
-    INVITATION_VALIDITY_DURATION = 604800  # 7 days, in seconds
 
     # CORS
     CORS_ALLOW_CREDENTIALS = True
@@ -490,6 +489,25 @@ class Base(Configuration):
 
     ALLOW_LOGOUT_GET_METHOD = values.BooleanValue(
         default=True, environ_name="ALLOW_LOGOUT_GET_METHOD", environ_prefix=None
+    )
+
+    IDENTITY_PROVIDER = values.Value(
+        "keycloak", environ_name="IDENTITY_PROVIDER", environ_prefix=None
+    )
+
+    KEYCLOAK_REALM = values.Value(
+        "messages", environ_name="KEYCLOAK_REALM", environ_prefix=None
+    )
+    KEYCLOAK_URL = values.Value(
+        "http://keycloak:8083", environ_name="KEYCLOAK_URL", environ_prefix=None
+    )
+    KEYCLOAK_CLIENT_ID = values.Value(
+        "rest-api", environ_name="KEYCLOAK_CLIENT_ID", environ_prefix=None
+    )
+    KEYCLOAK_CLIENT_SECRET = values.Value(
+        "ServiceAccountClientSecretForDev",
+        environ_name="KEYCLOAK_CLIENT_SECRET",
+        environ_prefix=None,
     )
 
     # Logging
@@ -665,6 +683,8 @@ class Test(Base):
         "django.contrib.auth.hashers.MD5PasswordHasher",
     ]
     USE_SWAGGER = True
+
+    IDENTITY_PROVIDER = None
 
     CELERY_TASK_ALWAYS_EAGER = values.BooleanValue(True)
 
