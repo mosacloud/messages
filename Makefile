@@ -84,30 +84,26 @@ bootstrap: \
 	build \
 	migrate \
 	collectstatic \
-	# back-i18n-compile \
-	frontend-install-frozen
+	frontend-install-frozen \
+	# back-i18n-compile
 .PHONY: bootstrap
 
 # -- Docker/compose
-build: cache ?= --no-cache
 build: ## build the project containers
-	@$(MAKE) build-backend cache=$(cache)
-	@$(MAKE) build-frontend-dev cache=$(cache)
+	@$(MAKE) build-backend
+	@$(MAKE) build-frontend-dev
 .PHONY: build
 
-build-backend: cache ?=
 build-backend: ## build the backend-dev container
-	@$(COMPOSE) build backend-dev $(cache)
+	@$(COMPOSE) build backend-dev
 .PHONY: build-backend
 
-build-frontend-dev: cache ?=
 build-frontend-dev: ## build the frontend container
-	@$(COMPOSE) build frontend-dev $(cache)
+	@$(COMPOSE) build frontend-dev
 .PHONY: build-frontend-dev
 
-build-frontend: cache ?=
 build-frontend: ## build the frontend container
-	@$(COMPOSE) build frontend $(cache)
+	@$(COMPOSE) build frontend
 .PHONY: build-frontend
 
 down: ## stop and remove containers, networks, images, and volumes
