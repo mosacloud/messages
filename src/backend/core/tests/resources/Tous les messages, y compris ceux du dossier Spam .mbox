@@ -1,0 +1,2173 @@
+From 1835348176232932837@xxx Thu Jun 19 09:13:37 +0000 2025
+X-GM-THRID: 1835348176232932837
+X-Gmail-Labels: =?UTF-8?Q?Bo=C3=AEte_de_r=C3=A9ception,Non_lus,?=
+ =?UTF-8?Q?Petite_enfance/Centre_loisir?=
+Delivered-To: jean.testeur2024@gmail.com
+Received: by 2002:a05:6214:2025:b0:6fa:baa3:e5c6 with SMTP id 5csp165886qvf;
+        Thu, 19 Jun 2025 02:13:37 -0700 (PDT)
+X-Received: by 2002:a17:907:1c0c:b0:ad8:9811:c0c2 with SMTP id a640c23a62f3a-adfad53e17fmr1964826466b.61.1750324417272;
+        Thu, 19 Jun 2025 02:13:37 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1750324417; cv=none;
+        d=google.com; s=arc-20240605;
+        b=a8sgW6/BLn3xq6Nl8kRqHVffU4+WB1XaqP2jSIL7Gvww4/s3U5Is9P/Npy2ZE3JFpH
+         NTEv+uoKdfw9jpD2ky/0YPsdGzgfJyzXwXclyDjmabYAFKKU+88G82G/WPyJ+UiJNaOC
+         WGuHGV8czTuIdc3uMK51H5KP1sSzXpx09HKP4UEvFHSpfxuVwjKTTbAZShKXcyeWCDyJ
+         7MyeGrrOeoOQYiw6aAvIXRCd5l+I/RC1pUuUlQIGAZWDFVkU6KgAgTaz3q2c1mXblV+s
+         9cQkPhSz/o3SBr0U9UCidg3T1poJwfggt/nJFvgDo/5WZBIP8FBELV8J0nM/fl+El6fk
+         Hjxg==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:subject:message-id:date:from:mime-version:dkim-signature;
+        bh=owqGtqou2KpauWml/8xWo+PcrzkaBb6wKcx6OFDyY9s=;
+        fh=2kZ02oqgupZh3+ZYlm2LJuid/rgQknBd0YCgFxVbMXg=;
+        b=Cf7Ox4Xb4V9wk5cUePEir/uNpm0udw/COB2DqoFRgRsTDjXkhX0vFhPWa1i/uo+WzN
+         5Nz0R3oAtUegg1jTWpqze5DXb1tsnjFJhLuiBjg1gvySYKmQVKjPgVUGMP7DCa8SYSOy
+         91UMTfZzY8hN32obP0KxZsq3zxf785nWfW6jT5GVjAhVJjznrQKhnmUPcxANhvUqtGsm
+         LmIY+X1Z2FcqZtmCBkoO0EHXFmxF1nRC6FLmbcNlAA5ei8n6GCJCRnPI3hSKXkB/wxSk
+         kYXK8OG5Hti27aHICYVB57IkskhY7Z1xQRcpB+UjVTM2Btsc1EOgxneqTZdXVAfVJ0/a
+         htRw==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=CIoECeNg;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+Return-Path: <julietesteuse24@gmail.com>
+Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])
+        by mx.google.com with SMTPS id a640c23a62f3a-ae040537484sor39415066b.6.2025.06.19.02.13.37
+        for <jean.testeur2024@gmail.com>
+        (Google Transport Security);
+        Thu, 19 Jun 2025 02:13:37 -0700 (PDT)
+Received-SPF: pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=CIoECeNg;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20230601; t=1750324417; x=1750929217; dara=google.com;
+        h=to:subject:message-id:date:from:mime-version:from:to:cc:subject
+         :date:message-id:reply-to;
+        bh=owqGtqou2KpauWml/8xWo+PcrzkaBb6wKcx6OFDyY9s=;
+        b=CIoECeNgC1fcH/wC5BqYg6uZQiOxmX+klAKMijx2ZENwkIPrJMQmtkF5Kts7ZCvFYN
+         jOKj1p57umbVl/mSj5HlvHJ0n47cnGO+V1ZYzI8T+MU32jXSyS0j12wyEbHjkFXEzg6N
+         vr8uSUkARESX/fU3KQSBTbm4kmaUlnd3qBDfjg4o+JXNzxuQow6R3HyuBVpwLghG2W1u
+         TbJ5KvXzL39yp0AwzOups1Xk0W3kswoYK//ne4VuGr3Xb+3/cC3cCnlkuVic7oVLv57d
+         +nAoVu6tWti16HVKYgQgZ+KzGzH5PsE7YHnzZvuEwkrL4qEEBlbrO38eV0C/jkSPCrWv
+         gNfg==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1750324417; x=1750929217;
+        h=to:subject:message-id:date:from:mime-version:x-gm-message-state
+         :from:to:cc:subject:date:message-id:reply-to;
+        bh=owqGtqou2KpauWml/8xWo+PcrzkaBb6wKcx6OFDyY9s=;
+        b=uvPIpMN05e/a/b8wgx+TmwEHYh4cwtqbd0kX80eNZAfHwKHFXiIu3SyQrrhqAwZcLD
+         NO4V5UW8p8bKUT4E8AnfoSxexKSKZL40034YudjCJ3+F8sr8y0at7ou+v9hyEp2hJFLR
+         5Efy12DyfA/bLGyCE2yCMWqhg3VrGx/VVk2Lb/oT/TJPCiHqRO9HhJJl+Pj/YU2Mdlmd
+         BRnApgGQgNkfSS0XgwVWCxLSxQ1aC9hZCh5F0u8Grfwd6P3f48T6l6Qj23KQTxN6cutf
+         mczmM7DKsqBmLA1eXhT2ZlEOaX2vOTRWj9Fscfd6MCyvLSYhgQGmsXethROIMYM6Lzyw
+         Mk2Q==
+X-Gm-Message-State: AOJu0YzOObdF9MLanxzZgej/CtuszKaksjiPiLVfYDmXTLmQkOBxR+bN
+	tXbvrdbzVjIALkD1vcx4X32bxCXgKg7zEvajMUaT2O6dbd6aYVoH4klBvaMjGdHvVHNgp8iUqR/
+	fbui2EvLkNbiqUgPO1WpPICetk5Zd1OykpkRh
+X-Gm-Gg: ASbGnctbcECgq0HVcQ3qhvzOtt14RBNI0pT7qy/RXy/AvA9N1yLE0SCctfF2hl8eaAS
+	q8Q5xTMDdWmzmX9aynQ4xqQIWmjLEPWFglyQU1LOSQSeF8DjwyBbaC12WwHNKze5FRSJjhGUIS2
+	4k63NClIBcKHUjn+yxExoRwlSTDKkmcWjZptHLdjJbaCHuxQAJes7zADG4eEfeQ5+EK9rbSiRvM
+	eCf
+X-Google-Smtp-Source: AGHT+IF9NiPVPdpO3F7kaERJs30Sepg/eWwknrqI5Gwowwtzpc+V4utkUgl0DekBd+giZwoLDgBKKXf+rBbAFQXxtRY=
+X-Received: by 2002:a17:906:6a18:b0:ad8:9a3b:b274 with SMTP id
+ a640c23a62f3a-adfad4f4b80mr1940010366b.52.1750324416611; Thu, 19 Jun 2025
+ 02:13:36 -0700 (PDT)
+MIME-Version: 1.0
+From: "julie.testeuse Julie Testeuse" <julietesteuse24@gmail.com>
+Date: Thu, 19 Jun 2025 11:13:25 +0200
+X-Gm-Features: AX0GCFtZG-skSPdCZjDg-UsL-Ji_lJ1MOMzhftIFmsBUMI8PBXbDrKj7D-pVTSE
+Message-ID: <CAO3HoF2b7n-ds4bso+Zy=dGvv_HX1chALP5qfazqaObGut+inA@mail.gmail.com>
+Subject: =?UTF-8?Q?Inscription_d=E2=80=99un_enfant_au_centre_de_loisirs?=
+To: jean.testeur2024@gmail.com
+Content-Type: multipart/alternative; boundary="0000000000001808df0637e92931"
+
+--0000000000001808df0637e92931
+Content-Type: text/plain; charset="UTF-8"
+
+Pellentesque tempor tellus non neque tincidunt elementum. In nec placerat
+nulla. Vivamus pretium dictum eros eu ultrices. Nam porta nisl et turpis
+semper, eu dapibus enim bibendum. Donec consectetur elit vitae tellus
+venenatis, id lacinia tellus convallis. Duis sit amet felis fringilla massa
+ornare hendrerit. Maecenas efficitur sem at quam tempor volutpat. Nulla
+urna mi, dignissim id malesuada fringilla, sodales a lacus. Nulla malesuada
+arcu eu nulla faucibus, non eleifend dolor hendrerit. Sed vestibulum
+dignissim neque eget efficitur. Donec maximus aliquet commodo.
+
+--0000000000001808df0637e92931
+Content-Type: text/html; charset="UTF-8"
+
+<div dir="ltr"><p>
+Pellentesque tempor tellus non neque tincidunt elementum. In nec 
+placerat nulla. Vivamus pretium dictum eros eu ultrices. Nam porta nisl 
+et turpis semper, eu dapibus enim bibendum. Donec consectetur elit vitae
+ tellus venenatis, id lacinia tellus convallis. Duis sit amet felis 
+fringilla massa ornare hendrerit. Maecenas efficitur sem at quam tempor 
+volutpat. Nulla urna mi, dignissim id malesuada fringilla, sodales a 
+lacus. Nulla malesuada arcu eu nulla faucibus, non eleifend dolor 
+hendrerit. Sed vestibulum dignissim neque eget efficitur. Donec maximus 
+aliquet commodo.
+</p><br></div>
+
+--0000000000001808df0637e92931--
+
+From 1835347559440785914@xxx Thu Jun 19 09:03:49 +0000 2025
+X-GM-THRID: 1835347559440785914
+X-Gmail-Labels: =?UTF-8?Q?Bo=C3=AEte_de_r=C3=A9ception,Non_lus,Conseil_municipal?=
+Delivered-To: jean.testeur2024@gmail.com
+Received: by 2002:a05:6214:2025:b0:6fa:baa3:e5c6 with SMTP id 5csp161113qvf;
+        Thu, 19 Jun 2025 02:03:49 -0700 (PDT)
+X-Received: by 2002:a05:6402:27c8:b0:607:ec18:9410 with SMTP id 4fb4d7f45d1cf-608d08901damr19395008a12.3.1750323828879;
+        Thu, 19 Jun 2025 02:03:48 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1750323828; cv=none;
+        d=google.com; s=arc-20240605;
+        b=Jj1YeH2SsIJQPVTXYUmWpoe14IcGxVv6ROJF2drFUmBHJKCP+oppUmsClTzNCj09Jn
+         DOVL4Pemz7PlnaHYiR56wU2VA0c/Qs/3HIY0yxr0o7dYXzuWSKsKTgIKYDdJ5sjdUOsp
+         wCiGnBCAB9CvUhA/0Ybv/7QKCpTfQqKL0fU2ur1gnW4H1ei8mApMO9hnwgDT6ClJ5c5d
+         JJb19c8GwgHGI3BDzcM2YmatCqQ08l6t/h5Kfc95GcYlyIlyHjvgAKDhGb2SF/suEW0n
+         Eqv7L0lWj24ke3HnS0teKEzGbLa4dE/fgvt/UGPcFz/FmCorhaTCvdmoB7x+Qi4cn1n8
+         PWSA==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:subject:message-id:date:from:mime-version:dkim-signature;
+        bh=ed+TywPX1QLwKX1UAv3h3qGDxjG7FvUEdLtZ5yyq9fY=;
+        fh=2kZ02oqgupZh3+ZYlm2LJuid/rgQknBd0YCgFxVbMXg=;
+        b=cJ798n9XQEYkBHsNUCJQ7uG93rWnNDYV9U0tJ6Vc/ahpmhfpKiA8EltHqGyPxQIkIG
+         Ho7myC/IR+gnVyyKvmxm6c6zZQAMZFj0llO9LnnA0xT3uwpFMlNBxjhq7nj7N6+LNmkQ
+         rgaErZ219A/DltxpiQBwTrjQEf7/B/teEKAxpxdt5vn6DgCOOtZCCTRUaUmaPm23x0D9
+         RlZZ6+G/3E991BRNC4kfyFq4fMaqkuBCxu84GNSz/alvWomgVEkjN7w/KtXIiDQc/HNd
+         GF02rne2MLI5VETIqIG21ewiGOnkX2ULfiWKSaZ0JJ/+EUSq2TQmkwdl/kTXum+b3x3/
+         oMvg==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=JSVeS+FC;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+Return-Path: <julietesteuse24@gmail.com>
+Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])
+        by mx.google.com with SMTPS id 4fb4d7f45d1cf-609eb7e7b33sor336699a12.3.2025.06.19.02.03.48
+        for <jean.testeur2024@gmail.com>
+        (Google Transport Security);
+        Thu, 19 Jun 2025 02:03:48 -0700 (PDT)
+Received-SPF: pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=JSVeS+FC;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20230601; t=1750323828; x=1750928628; dara=google.com;
+        h=to:subject:message-id:date:from:mime-version:from:to:cc:subject
+         :date:message-id:reply-to;
+        bh=ed+TywPX1QLwKX1UAv3h3qGDxjG7FvUEdLtZ5yyq9fY=;
+        b=JSVeS+FCzHQgE5azenyBaaRfDbveU8wj4TRxhZ9ODfJxb4P62hhQEh27vsN5KI28Ip
+         zJEBw2lbnLQDRsMQHh7/vI9DiboXP7kKW//XYMq8Xk8lThxATS9a/qaAtxWLbEaCr+Od
+         60faHgXxuoDnpFCoJ+lKikYF0/VJvPZdCSNqsNs4eS4QHnyek65ybpxHkDAQCxF8K4+d
+         6ETKmOPDfri6Vs9sXZdxo9anVZMrhmRIiWG9Wq2ot+gUTbgXF9R8gbszP8Bhn3UclWGS
+         HWxmZOHAC8eliQMP/onVG3yObSCVkRHYfhAqiVHGbbu9Dma5Cn1M48uFdHo4VukTa85c
+         4AiA==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1750323828; x=1750928628;
+        h=to:subject:message-id:date:from:mime-version:x-gm-message-state
+         :from:to:cc:subject:date:message-id:reply-to;
+        bh=ed+TywPX1QLwKX1UAv3h3qGDxjG7FvUEdLtZ5yyq9fY=;
+        b=KNOqOhWbWezt346qSln1kjmPazMTryvj/5iIfvFcDiC871JeWxHjwLmD+cK2UxCaz9
+         A2NArghdMVPRuYvAZoTEaSvUycHgkwavIDtH8MRyf466HAcjpzUF4ikEc5pvB7fhh2P/
+         zDdoBr+59BWvgGeyZAbdBE7az2HR3WTJHqGb/Asx62LMgZxhiWNgcwEoQATOPAtB0Erx
+         G21q8aeYQjTJI2qmEvm5Ol28mVRJB706wv+3zCJcrMM1APlZk9nWzZ7v5YvmUjD8zEHy
+         L0Boca6lXtQx8GuppE5TyyiA3Yn8nT9KEVjJ/29mndD4f6SsDOrsUsiPmidfaIE7OZfC
+         eIPA==
+X-Gm-Message-State: AOJu0YySdJ7KP3ekyeDypOh7WhfIuqGwqEj4pB/7XTPCtgJPDBKH0NFG
+	W9Gbts2kkgGcFnMBUAZKoBhfTheiKbB78POomLcgd9oOX+oQ38xSSiPjj1GGccSec9m9zeamGOB
+	6v5lUNzHyATOmBVtYjzpaYtHn5Tgdyaxe8gkC
+X-Gm-Gg: ASbGncvjiA32R/j0LPSeuFcQ7PLhQTqmdOp0NOz+brPwu59k9pptYfUB/lVqJBO1a1H
+	n6p+o98gu8rpzIafkj35XgMW6WFEauv9qEmc4NiIJ8kGUJHHEkwS9JYsfZrsZP2z4L/BP5SZO/e
+	WyXaF5QvMc1XQ/68/+HqV+LzWz2XHgBN/rEoggq5RUlt45DeLPi8SNyhdzzR50do7oLp0ablv36
+	+k5
+X-Google-Smtp-Source: AGHT+IEX3VZjwIeNAhmpssAeQ3Bn/HEhGj21Wl85Vufpkd4rfGj2DOEedyVs+P6NuMEi+UpPwQ0XshZH1zfExE+u5ds=
+X-Received: by 2002:a05:6402:27c8:b0:606:a77b:cca3 with SMTP id
+ 4fb4d7f45d1cf-608d08908ccmr19381592a12.7.1750323828242; Thu, 19 Jun 2025
+ 02:03:48 -0700 (PDT)
+MIME-Version: 1.0
+From: "julie.testeuse Julie Testeuse" <julietesteuse24@gmail.com>
+Date: Thu, 19 Jun 2025 11:03:37 +0200
+X-Gm-Features: AX0GCFtN2kFL32CEvkvf6mWsjXfbrZGrZsOa1IX4p5BwSjQtjGdnKhB3U1VFG8E
+Message-ID: <CAO3HoF3VDun9WxB1c6XVL=QW35pGWF+A-g0M-vmeXSsTLFaEuA@mail.gmail.com>
+Subject: Convocation au conseil municipal du 25 juin
+To: jean.testeur2024@gmail.com
+Content-Type: multipart/alternative; boundary="000000000000065aa20637e906fe"
+
+--000000000000065aa20637e906fe
+Content-Type: text/plain; charset="UTF-8"
+
+Proin condimentum, nulla ac accumsan aliquet, magna turpis aliquam elit,
+sed ornare massa leo eu arcu. Vestibulum a commodo justo, vehicula
+fermentum orci. Nullam id velit vel lacus vehicula ullamcorper in ac odio.
+Aliquam non justo vitae dui pretium vestibulum. Class aptent taciti
+sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos.
+Integer augue nibh, ultrices sed est sed, lacinia venenatis turpis. Aliquam
+ligula sapien, imperdiet eget nisl sit amet, viverra commodo nunc. Fusce
+ultricies, turpis sed mattis lobortis, velit ipsum tempus arcu, nec
+condimentum nisi elit non risus. Proin fermentum enim sit amet massa tempus
+malesuada. Pellentesque vel tincidunt nisl. Morbi quis efficitur quam, at
+bibendum nunc. Nam tincidunt ultricies velit eget varius. In eleifend elit
+vitae velit viverra tempus. Donec cursus felis tortor, eu elementum purus
+cursus at. Nam laoreet a urna et sollicitudin. Nunc ac nibh fermentum,
+sodales sapien at, pulvinar nisi.
+
+--000000000000065aa20637e906fe
+Content-Type: text/html; charset="UTF-8"
+
+<div dir="ltr">Proin condimentum, nulla ac accumsan aliquet, magna turpis aliquam elit,
+ sed ornare massa leo eu arcu. Vestibulum a commodo justo, vehicula 
+fermentum orci. Nullam id velit vel lacus vehicula ullamcorper in ac 
+odio. Aliquam non justo vitae dui pretium vestibulum. Class aptent 
+taciti sociosqu ad litora torquent per conubia nostra, per inceptos 
+himenaeos. Integer augue nibh, ultrices sed est sed, lacinia venenatis 
+turpis. Aliquam ligula sapien, imperdiet eget nisl sit amet, viverra 
+commodo nunc. Fusce ultricies, turpis sed mattis lobortis, velit ipsum 
+tempus arcu, nec condimentum nisi elit non risus. Proin fermentum enim 
+sit amet massa tempus malesuada. Pellentesque vel tincidunt nisl. Morbi 
+quis efficitur quam, at bibendum nunc. Nam tincidunt ultricies velit 
+eget varius. In eleifend elit vitae velit viverra tempus. Donec cursus 
+felis tortor, eu elementum purus cursus at. Nam laoreet a urna et 
+sollicitudin. Nunc ac nibh fermentum, sodales sapien at, pulvinar nisi.
+<br></div>
+
+--000000000000065aa20637e906fe--
+
+From 1835348160193986006@xxx Thu Jun 19 09:13:22 +0000 2025
+X-GM-THRID: 1835348160193986006
+X-Gmail-Labels: =?UTF-8?Q?Bo=C3=AEte_de_r=C3=A9ception,Non_lus,Petite_enfance/Cantine?=
+Delivered-To: jean.testeur2024@gmail.com
+Received: by 2002:a05:6214:2025:b0:6fa:baa3:e5c6 with SMTP id 5csp165774qvf;
+        Thu, 19 Jun 2025 02:13:21 -0700 (PDT)
+X-Received: by 2002:a05:6402:2549:b0:606:ebd5:9444 with SMTP id 4fb4d7f45d1cf-608d08367a9mr17714900a12.2.1750324401778;
+        Thu, 19 Jun 2025 02:13:21 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1750324401; cv=none;
+        d=google.com; s=arc-20240605;
+        b=MaOxH6KxcVSlMPRu/aJD8hF580Jm7ecHChmVyJWaD7fvH9Q3O4I7b01PqriiPKZAgW
+         Pk6idVruvLrtnLcdnKFxUuaLAoQl3vc/ReIa62MqRQOFbjF5D6gr5jhPjs2GMhTtwlo7
+         rPz9kU9F5xyUV2igwBOzU9d6HVMXSC1XkYZWN8cS5H7KaJ5Ry/B1vKX15NueJ0X1S58z
+         S1ifTbwr3yoTy0yoq7ZLdyLdegUqpYZ5xtElPbJI9GbedaTCqqy0SqCoGRza+5zXxIAF
+         Z9ecsdMvCXhZtTKqUqKx9DjMEdTaZnHGSY8CjcHUhdMNrf1Qpjc6AURP/kSQKOwdi3Hq
+         dakw==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:subject:message-id:date:from:mime-version:dkim-signature;
+        bh=OrjIX1AhlfRKMQZ6xrxPOy7I94oJx8naTBfplMkVDhk=;
+        fh=2kZ02oqgupZh3+ZYlm2LJuid/rgQknBd0YCgFxVbMXg=;
+        b=CwfbyisAT1lK/b78hdMxllqspWbx66CneOX6SFfaVL41hFYHQPxk21mjn8oQrQFpdj
+         kdF8ZZt2XX8wGTd1q9CPk8bgRa5YPkuzNCqOlXVsr+/F/W5xTq6bPFYBwbjzg+fzAf0Z
+         MJgJNtuR3yVRtV+kTOh2Xa7kjDIZTwTWKkTYsIeb4KeTt/ftmyZY02BFGSQ4I9KfTt7Q
+         ZqqKXXB25uLv/BM+m6ta0upWtD1hygfHtIhlITqEgWcqBNvHzUwDhN67ctjba8s2vI9d
+         nq4uAl+V/3TO94KcmEubzRM8ypRoQf+a+GhHZn4KlNueK9U/GK2XCX6MA483y8u3jJjX
+         QS0g==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=GOtvkEvc;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+Return-Path: <julietesteuse24@gmail.com>
+Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])
+        by mx.google.com with SMTPS id 4fb4d7f45d1cf-609b8de801fsor1749922a12.4.2025.06.19.02.13.21
+        for <jean.testeur2024@gmail.com>
+        (Google Transport Security);
+        Thu, 19 Jun 2025 02:13:21 -0700 (PDT)
+Received-SPF: pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=GOtvkEvc;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20230601; t=1750324401; x=1750929201; dara=google.com;
+        h=to:subject:message-id:date:from:mime-version:from:to:cc:subject
+         :date:message-id:reply-to;
+        bh=OrjIX1AhlfRKMQZ6xrxPOy7I94oJx8naTBfplMkVDhk=;
+        b=GOtvkEvcplG/DwfqjDkCtPEjEEw7MuiZlflmh7EJmPiWnKSCyV2sixPHGupKvuN4Lm
+         Liw/1Ud+B/Wgu8QnzkYQkXIqqKnDkOBP2ekqnGmLE/s4+C1XIJDJYDF684YLE0b9TOTi
+         d/mrj3IjL53npepmsHGxVoDecINVkdv9L1tKniYQadozcWbZhMIntVttdoNVEMUVDkxO
+         OL96PuFyQcGE83YzRV2N5uy7itnfMK0vXqa73Ob+tgTKQ9O5IaNKh4ggC3K+TT3jucCn
+         Ihsgzoe3wPsGOW825qXCbheL4fGFA7ll9E8zFZsIMexf5rWlWk01F0yDfZR8aW7KXwNz
+         dR9A==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1750324401; x=1750929201;
+        h=to:subject:message-id:date:from:mime-version:x-gm-message-state
+         :from:to:cc:subject:date:message-id:reply-to;
+        bh=OrjIX1AhlfRKMQZ6xrxPOy7I94oJx8naTBfplMkVDhk=;
+        b=F+qo7YX+R5F3qhto+etWUMVIo7cfAMSX7fkT0JLFS99uHTAaj7tdiPQCqI2BKbR7kS
+         /Yrmo5Zt8ttmmTezFqwCs9oXh9s+F2mjUEXDhecbeRfG++oqLy21e2A8yt9xQxkgYJPp
+         hrhmaLB+R1+zFonVFx+APehhCwhswA8LyKmeu7xIdUQ5PxOrVRWqRZpePnLxGNsIkeAK
+         x3q4PAvpZQ5s2n+tr+fo5JLg1EJzDS38YQyf7tGI+TPa2w5+Lckock9WB7aZYYTuSFqx
+         3rfnrW1lol5xQ0a5Ozw+bREbOhFYk5wTQ9VNdRIe9eZC9rAsUT9/9Q3ehUThPdEeNk6N
+         8I+w==
+X-Gm-Message-State: AOJu0YyjCA14+aEYho8KnwERV0a3u9hfrKmdnQxjsOG9s4i76kFaAXPs
+	8hvBwAnORrfJKc22moqwMg8G2/ajantONpge8Bkw7YdurpnbDNcgmiOl4y7xa5BhVmj7Ia0HJZm
+	d923dQUlyf3PAVW5f+MFaOdxLHz0Gb875ZRs4
+X-Gm-Gg: ASbGnctTEB3Zg70iSnO4++sUL8gvfoId2gFSEq4jtKzzE1si3RkUxCiUrwa7gMmpM1T
+	Awh0WVRpQk+pICbh9zytJmglu68zTCaMRN90EBml0UHTMgtJNuxXQht2XV0CDJbsM0YF14YXVLL
+	5Lif9eewX/TahxPQfqAGB/qVUm7kTuPnFqBNda7ESgbRrmK+cQkSWultpuLyqZ5/nfQ/v38e/UW
+	dDI
+X-Google-Smtp-Source: AGHT+IErHaIv8nlP+q2k7QeEGNkdovwvJaXt/rJoiRJ2skw982nMzDEP2rm1f5Zs/piijqmBbxS6imrS9zzQvYKijBo=
+X-Received: by 2002:a05:6402:90d:b0:606:c8fa:d059 with SMTP id
+ 4fb4d7f45d1cf-608d086ac8emr17703489a12.14.1750324401153; Thu, 19 Jun 2025
+ 02:13:21 -0700 (PDT)
+MIME-Version: 1.0
+From: "julie.testeuse Julie Testeuse" <julietesteuse24@gmail.com>
+Date: Thu, 19 Jun 2025 11:13:10 +0200
+X-Gm-Features: AX0GCFtHko4Mip37sDJvFYKmsVFroJPIp4npIlJDjisRiwXfAYGxOUWJQ0rGeCA
+Message-ID: <CAO3HoF2Qq_2m812e-odi_j+goRdz1Moj98nmYPseyVt2vc8iCg@mail.gmail.com>
+Subject: =?UTF-8?Q?Inscription_d=E2=80=99un_enfant_=C3=A0_la_cantine_scolaire?=
+To: jean.testeur2024@gmail.com
+Content-Type: multipart/alternative; boundary="0000000000002c2ba50637e928fc"
+
+--0000000000002c2ba50637e928fc
+Content-Type: text/plain; charset="UTF-8"
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam sodales massa
+non sapien viverra, nec lobortis nulla pharetra. Cras scelerisque metus vel
+erat malesuada semper. Donec sed tristique tortor. In vestibulum massa et
+sapien imperdiet suscipit. Pellentesque sed nunc nisi. Nam feugiat euismod
+orci, vitae tristique purus condimentum nec. Ut porttitor sem in mattis
+rutrum. Curabitur pharetra in risus quis maximus. Nunc a accumsan velit.
+Suspendisse accumsan maximus malesuada. Pellentesque habitant morbi
+tristique senectus et netus et malesuada fames ac turpis egestas. Nulla
+convallis velit id rhoncus lacinia. Pellentesque non ante vitae libero
+ultricies condimentum non vel libero. Pellentesque volutpat iaculis nisl in
+aliquet. Fusce dictum arcu elementum tellus euismod, id varius nulla
+faucibus.
+
+Proin condimentum, nulla ac accumsan aliquet, magna turpis aliquam elit,
+sed ornare massa leo eu arcu. Vestibulum a commodo justo, vehicula
+fermentum orci. Nullam id velit vel lacus vehicula ullamcorper in ac odio.
+Aliquam non justo vitae dui pretium vestibulum. Class aptent taciti
+sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos.
+Integer augue nibh, ultrices sed est sed, lacinia venenatis turpis. Aliquam
+ligula sapien, imperdiet eget nisl sit amet, viverra commodo nunc. Fusce
+ultricies, turpis sed mattis lobortis, velit ipsum tempus arcu, nec
+condimentum nisi elit non risus. Proin fermentum enim sit amet massa tempus
+malesuada. Pellentesque vel tincidunt nisl. Morbi quis efficitur quam, at
+bibendum nunc. Nam tincidunt ultricies velit eget varius. In eleifend elit
+vitae velit viverra tempus. Donec cursus felis tortor, eu elementum purus
+cursus at. Nam laoreet a urna et sollicitudin. Nunc ac nibh fermentum,
+sodales sapien at, pulvinar nisi.
+
+--0000000000002c2ba50637e928fc
+Content-Type: text/html; charset="UTF-8"
+
+<div dir="ltr"><p>
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam sodales 
+massa non sapien viverra, nec lobortis nulla pharetra. Cras scelerisque 
+metus vel erat malesuada semper. Donec sed tristique tortor. In 
+vestibulum massa et sapien imperdiet suscipit. Pellentesque sed nunc 
+nisi. Nam feugiat euismod orci, vitae tristique purus condimentum nec. 
+Ut porttitor sem in mattis rutrum. Curabitur pharetra in risus quis 
+maximus. Nunc a accumsan velit. Suspendisse accumsan maximus malesuada. 
+Pellentesque habitant morbi tristique senectus et netus et malesuada 
+fames ac turpis egestas. Nulla convallis velit id rhoncus lacinia. 
+Pellentesque non ante vitae libero ultricies condimentum non vel libero.
+ Pellentesque volutpat iaculis nisl in aliquet. Fusce dictum arcu 
+elementum tellus euismod, id varius nulla faucibus.
+</p>
+<p>
+Proin condimentum, nulla ac accumsan aliquet, magna turpis aliquam elit,
+ sed ornare massa leo eu arcu. Vestibulum a commodo justo, vehicula 
+fermentum orci. Nullam id velit vel lacus vehicula ullamcorper in ac 
+odio. Aliquam non justo vitae dui pretium vestibulum. Class aptent 
+taciti sociosqu ad litora torquent per conubia nostra, per inceptos 
+himenaeos. Integer augue nibh, ultrices sed est sed, lacinia venenatis 
+turpis. Aliquam ligula sapien, imperdiet eget nisl sit amet, viverra 
+commodo nunc. Fusce ultricies, turpis sed mattis lobortis, velit ipsum 
+tempus arcu, nec condimentum nisi elit non risus. Proin fermentum enim 
+sit amet massa tempus malesuada. Pellentesque vel tincidunt nisl. Morbi 
+quis efficitur quam, at bibendum nunc. Nam tincidunt ultricies velit 
+eget varius. In eleifend elit vitae velit viverra tempus. Donec cursus 
+felis tortor, eu elementum purus cursus at. Nam laoreet a urna et 
+sollicitudin. Nunc ac nibh fermentum, sodales sapien at, pulvinar nisi.
+</p><br></div>
+
+--0000000000002c2ba50637e928fc--
+
+From 1835348943033464572@xxx Thu Jun 19 09:25:48 +0000 2025
+X-GM-THRID: 1835348926369736371
+X-Gmail-Labels: Brouillons
+MIME-Version: 1.0
+Date: Thu, 19 Jun 2025 11:25:48 +0200
+Message-ID: <CAKo5_uYTwCV2cRawUbOB0ch2nD07m_VVRDN_OMwkbQDmuKTFhQ@mail.gmail.com>
+Subject: Ceci est en brouillon...
+From: Jean Dupont <jean.testeur2024@gmail.com>
+Content-Type: multipart/alternative; boundary="000000000000b836f40637e954c5"
+
+--000000000000b836f40637e954c5
+Content-Type: text/plain; charset="UTF-8"
+
+Cras vitae imperdiet erat. Nam eget tellus vitae mi ullamcorper pharetra. 
+Vivamus sit amet metus pharetra, pellentesque nibh ac, mattis lacus. Mauris 
+placerat sodales iaculis. Duis placerat odio diam, sit amet venenatis est 
+euismod id. Donec ut purus enim. Suspendisse in ligula iaculis, pretium 
+sapien et, feugiat justo.
+
+--000000000000b836f40637e954c5
+Content-Type: text/html; charset="UTF-8"
+
+<div dir="ltr">Cras vitae imperdiet erat. Nam eget tellus vitae mi ullamcorper 
+pharetra. Vivamus sit amet metus pharetra, pellentesque nibh ac, mattis 
+lacus. Mauris placerat sodales iaculis. Duis placerat odio diam, sit 
+amet venenatis est euismod id. Donec ut purus enim. Suspendisse in 
+ligula iaculis, pretium sapien et, feugiat justo.</div>
+
+--000000000000b836f40637e954c5--
+
+From 1835347858339387366@xxx Thu Jun 19 09:08:34 +0000 2025
+X-GM-THRID: 1835347858339387366
+X-Gmail-Labels: =?UTF-8?Q?Bo=C3=AEte_de_r=C3=A9ception,Non_lus,Conseil_municipal?=
+Delivered-To: jean.testeur2024@gmail.com
+Received: by 2002:a05:6214:2025:b0:6fa:baa3:e5c6 with SMTP id 5csp163551qvf;
+        Thu, 19 Jun 2025 02:08:34 -0700 (PDT)
+X-Received: by 2002:a05:6402:26d2:b0:607:ec38:8c34 with SMTP id 4fb4d7f45d1cf-608d09998fbmr17292844a12.21.1750324114304;
+        Thu, 19 Jun 2025 02:08:34 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1750324114; cv=none;
+        d=google.com; s=arc-20240605;
+        b=cytBUADrwTNv0WHAkJPxsnqRzwohG2/Oc1OHefID0yrYt+Ae3LrU9UfnDMTVTdxjYG
+         b4RnexWnPgA8Kv6fu0thWphCuYFumir8Hm2NhymfCkOzHLzWQtGlpQ5ZkZhEkXP6Hp3v
+         h/OLUQXULSFdR9dTv9yJVwL/wK0lydh6hlf0u39kyMGiGYQq2ZyHU50/1EtwUe4vJDiZ
+         /saOb8pwkPv8UwpSoGyIHAc1TpEsHTx7EjY5exCV+tjvh5f49aPX0xLcXQ4Jk/2fBPnX
+         cFEaeXrOVhQywhR+vtNeJkaicq8lAochaFR0Se7w2leF6BZ83pwQeGRRrajb07hHaxQ0
+         Rjyw==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:subject:message-id:date:from:mime-version:dkim-signature;
+        bh=5Mw5KwKRW8WMBUC0pO+wZ9iIo+nKLhZRisqOzCFVuWo=;
+        fh=2kZ02oqgupZh3+ZYlm2LJuid/rgQknBd0YCgFxVbMXg=;
+        b=Ffki2oaAzSLaPYA2ZLf0cFcPCY88IZne1KNZdJ4crFH9PIcbf5O7DhvFuFvNTzFX/W
+         fz+30UKKvM8D1A4hz89Laz/xr/MwjRKee0S3b+im7EM3sAeXak44fik7U2WZ8h1IMlUM
+         JToeF6SAciUgl31+J8BnZPU3iVK2P2LhNN86KL1EioNyr/7r+96KI7RSEXCfkhjGLPmw
+         22VHNVpYeQE1fywP846wVMhUKaoFhfJ6Vzf5zoBwKHWGBCu5BMI5Vg+F5fliMp2zj872
+         rMh5Yc7lqVBcLOTQ0aR1SnXWV8z/2qZq3exKkB2vlJ2uby9liqIH+XNCL71Nfs+Vwj9y
+         ca8A==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=HUJc2uQv;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+Return-Path: <julietesteuse24@gmail.com>
+Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])
+        by mx.google.com with SMTPS id 4fb4d7f45d1cf-609eb4ef0absor381048a12.2.2025.06.19.02.08.34
+        for <jean.testeur2024@gmail.com>
+        (Google Transport Security);
+        Thu, 19 Jun 2025 02:08:34 -0700 (PDT)
+Received-SPF: pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=HUJc2uQv;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20230601; t=1750324114; x=1750928914; dara=google.com;
+        h=to:subject:message-id:date:from:mime-version:from:to:cc:subject
+         :date:message-id:reply-to;
+        bh=5Mw5KwKRW8WMBUC0pO+wZ9iIo+nKLhZRisqOzCFVuWo=;
+        b=HUJc2uQvG5fqsr6GAl2UYwZrjgK1GNpSq8l749A358PHXMnJAuNabXa3pvQI6Y459T
+         cACcYfBxzqx2Lfn5Gv5HQL2+mKZ4J4bxcgKV4+EtTxz9iiJybUXfivHU4t+LuU2k1qj5
+         20RhEJqROUgmiZcgsXbHvJ4Up5+S/tR0vw7WaS4NQwKX0tYIeClDsLel28BOI0m1k0a6
+         7TOGY5Bcwh7oTQY8+/VRnYadvWd2B2fufv45W1Eyu2wTYYXks7cycuoMT8PPfDX/7KJU
+         o4AXge+c8VGicxgh0z0xE5sTHGRLoo0LHOkq6NnheegjIGdS3xlvO9K1HWmsTVs3iinv
+         GH7Q==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1750324114; x=1750928914;
+        h=to:subject:message-id:date:from:mime-version:x-gm-message-state
+         :from:to:cc:subject:date:message-id:reply-to;
+        bh=5Mw5KwKRW8WMBUC0pO+wZ9iIo+nKLhZRisqOzCFVuWo=;
+        b=DiD2sfkUfv7pt+OOqWFgxVHgQ0rFy0kG5A+MmPZYFbglNgsFYO0fOjdoBOe3imU/Cp
+         yJw5eH9lepd6O2wpxaYsZNRE1Mqyv5wW8MK9fWQjwYPVTGlhf5HcqDxNCXcNXS+MvlcW
+         6xEujCW+ehXt18P6QoVaa6/DndnxdZj6ISLRHDRZNmqsHfb5Z9BDEgJx/0JfqJ8QJKHJ
+         fznpsleuwEa24ZwYzToTZhxVlh71EUbKpOiJTVVAEhq8No4UwI53QzunJNI7uDBmaF9p
+         Fed73zVdQmGwcJGb02rn/INFoRFsWZOiEap/D/0A2Y9NaapoQTyJrnsCdsXTkWJwHrZ+
+         VymQ==
+X-Gm-Message-State: AOJu0Yz4lk1OV7uDJnkyDSDzriifc314ygEQCeuzdJsCGRIhJ00WTHNw
+	jp81ws0VatlALcorXJJEvk0rAASU4ib8HCG/WJuxaffIaDOhmCbix1li6bXM7pKqvJ08ZJ+xos8
+	VbAsp5ezcNad+063a/P4EqLtL1yZ1XurQa5Ro
+X-Gm-Gg: ASbGncte0AUWeMwSZi4B931prDzgpH+V/no7gAaYyuurQEsxv92Uh7fFd/qUfTMcmAV
+	OKDDQJq/6NUpQkWHtB9xMjbkqphmSphTfPfmQStbaUzzLyuTag48aG9QQYAh7u0k8SvfGJQkFVA
+	8bR8Wa+qKi1zhh2yfEujoS/8K2RAumal9vwQ+YGryXb/+Pw/OjGunkJvU2qERmbKw3ZInOz6tQd
+	DQQ
+X-Google-Smtp-Source: AGHT+IHh4V7uYpc3VmFqnZPkZgi9MOFSuQOEEdKVc60/6oQbdps57M1SrQfWp1JVWEYM8zSUETEfc/Ct7+4ApnNBBl0=
+X-Received: by 2002:a05:6402:90d:b0:604:abcd:b177 with SMTP id
+ 4fb4d7f45d1cf-608d09d8ea6mr18580211a12.30.1750324113758; Thu, 19 Jun 2025
+ 02:08:33 -0700 (PDT)
+MIME-Version: 1.0
+From: "julie.testeuse Julie Testeuse" <julietesteuse24@gmail.com>
+Date: Thu, 19 Jun 2025 11:08:23 +0200
+X-Gm-Features: AX0GCFseCDNGuY4cft65TYbfzqzlUPZ-aRdLtibjdRCV5V5xRW-tMXNpWTPZcG8
+Message-ID: <CAO3HoF3b6uvc7Gb0R3_b=qg-t=EoJWC7AuSQmxJAP-ZfwOy3mg@mail.gmail.com>
+Subject: Envoi du compte rendu du conseil municipal
+To: jean.testeur2024@gmail.com
+Content-Type: multipart/alternative; boundary="0000000000000adf8f0637e917a7"
+
+--0000000000000adf8f0637e917a7
+Content-Type: text/plain; charset="UTF-8"
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam sodales massa
+non sapien viverra, nec lobortis nulla pharetra. Cras scelerisque metus vel
+erat malesuada semper. Donec sed tristique tortor. In vestibulum massa et
+sapien imperdiet suscipit. Pellentesque sed nunc nisi. Nam feugiat euismod
+orci, vitae tristique purus condimentum nec. Ut porttitor sem in mattis
+rutrum. Curabitur pharetra in risus quis maximus. Nunc a accumsan velit.
+Suspendisse accumsan maximus malesuada. Pellentesque habitant morbi
+tristique senectus et netus et malesuada fames ac turpis egestas. Nulla
+convallis velit id rhoncus lacinia. Pellentesque non ante vitae libero
+ultricies condimentum non vel libero. Pellentesque volutpat iaculis nisl in
+aliquet. Fusce dictum arcu elementum tellus euismod, id varius nulla
+faucibus.
+
+Proin condimentum, nulla ac accumsan aliquet, magna turpis aliquam elit,
+sed ornare massa leo eu arcu. Vestibulum a commodo justo, vehicula
+fermentum orci. Nullam id velit vel lacus vehicula ullamcorper in ac odio.
+Aliquam non justo vitae dui pretium vestibulum. Class aptent taciti
+sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos.
+Integer augue nibh, ultrices sed est sed, lacinia venenatis turpis. Aliquam
+ligula sapien, imperdiet eget nisl sit amet, viverra commodo nunc. Fusce
+ultricies, turpis sed mattis lobortis, velit ipsum tempus arcu, nec
+condimentum nisi elit non risus. Proin fermentum enim sit amet massa tempus
+malesuada. Pellentesque vel tincidunt nisl. Morbi quis efficitur quam, at
+bibendum nunc. Nam tincidunt ultricies velit eget varius. In eleifend elit
+vitae velit viverra tempus. Donec cursus felis tortor, eu elementum purus
+cursus at. Nam laoreet a urna et sollicitudin. Nunc ac nibh fermentum,
+sodales sapien at, pulvinar nisi.
+
+--0000000000000adf8f0637e917a7
+Content-Type: text/html; charset="UTF-8"
+
+<div dir="ltr"><p>
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam sodales 
+massa non sapien viverra, nec lobortis nulla pharetra. Cras scelerisque 
+metus vel erat malesuada semper. Donec sed tristique tortor. In 
+vestibulum massa et sapien imperdiet suscipit. Pellentesque sed nunc 
+nisi. Nam feugiat euismod orci, vitae tristique purus condimentum nec. 
+Ut porttitor sem in mattis rutrum. Curabitur pharetra in risus quis 
+maximus. Nunc a accumsan velit. Suspendisse accumsan maximus malesuada. 
+Pellentesque habitant morbi tristique senectus et netus et malesuada 
+fames ac turpis egestas. Nulla convallis velit id rhoncus lacinia. 
+Pellentesque non ante vitae libero ultricies condimentum non vel libero.
+ Pellentesque volutpat iaculis nisl in aliquet. Fusce dictum arcu 
+elementum tellus euismod, id varius nulla faucibus.
+</p>
+<p>
+Proin condimentum, nulla ac accumsan aliquet, magna turpis aliquam elit,
+ sed ornare massa leo eu arcu. Vestibulum a commodo justo, vehicula 
+fermentum orci. Nullam id velit vel lacus vehicula ullamcorper in ac 
+odio. Aliquam non justo vitae dui pretium vestibulum. Class aptent 
+taciti sociosqu ad litora torquent per conubia nostra, per inceptos 
+himenaeos. Integer augue nibh, ultrices sed est sed, lacinia venenatis 
+turpis. Aliquam ligula sapien, imperdiet eget nisl sit amet, viverra 
+commodo nunc. Fusce ultricies, turpis sed mattis lobortis, velit ipsum 
+tempus arcu, nec condimentum nisi elit non risus. Proin fermentum enim 
+sit amet massa tempus malesuada. Pellentesque vel tincidunt nisl. Morbi 
+quis efficitur quam, at bibendum nunc. Nam tincidunt ultricies velit 
+eget varius. In eleifend elit vitae velit viverra tempus. Donec cursus 
+felis tortor, eu elementum purus cursus at. Nam laoreet a urna et 
+sollicitudin. Nunc ac nibh fermentum, sodales sapien at, pulvinar nisi.
+</p><br></div>
+
+--0000000000000adf8f0637e917a7--
+
+From 1833215398752581980@xxx Mon May 26 20:14:02 +0000 2025
+X-GM-THRID: 1833215398752581980
+X-Gmail-Labels: Corbeille,Ouvert
+Delivered-To: jean.testeur2024@gmail.com
+Received: by 2002:a05:6022:73a2:b0:70:dff8:2c7c with SMTP id bl34csp5498424lab;
+        Mon, 26 May 2025 13:14:02 -0700 (PDT)
+X-Received: by 2002:a05:6102:3f49:b0:4df:9635:210d with SMTP id ada2fe7eead31-4e42418db0cmr8521541137.23.1748290442137;
+        Mon, 26 May 2025 13:14:02 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1748290442; cv=none;
+        d=google.com; s=arc-20240605;
+        b=HQAUjeo0yt8u/TleCvZlNf0AMwnID1MguMY1H4DJYzck0ZlWVhyxyt+/u0i4uCf/08
+         IqRpStfhPEgVjfdIffClVquTDGnqdgTI88QrYksVlHV6XDuV6+vEUDH/uo8w5pBbfkPY
+         HpgJJD1bpiIxxysLa0w2K9CaP9oNiy2QmOqmunICZ3fNenBME5MtyroyZthDTcS3FfLH
+         KnSiBNx2wFW/9CynYaWPBTSSkpIjHW/828hjQzoyEOYVi91kHICpShH0VLmU7EQwmOBI
+         XJoMinQMGUn3/YxSFc4v4fgfu4rAMIrPOP+Da1hk7pGdc62DDQ4QXdmnkIDFwNlUzUjF
+         9NBQ==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:subject:message-id:date:from:mime-version:dkim-signature;
+        bh=YVKUD8AVsYlz7wIyN7YRdjrcFGgEyzozNB0COZFLK/E=;
+        fh=2kZ02oqgupZh3+ZYlm2LJuid/rgQknBd0YCgFxVbMXg=;
+        b=juaeZg2vcQEsQV8CaN9MYN0VI2vGJly4U5Rl6ydUaed65/SO9fX9N3yWRWaPeuzG5j
+         O+e1aYaowLPtee52xk4cZJ5lQtOK7ynn+I2SFEf4FBfIvFx6i1h0+gyVAkNExlkNj/cN
+         Ry6wPJSO7PCCe3xg+Rbid55SrBOt12DvqTJYLSBUdbZHQhUHh9KHEaJhKpLtp7D8P05m
+         3AZgfQHLN/XSSkf5RaSqZwnKo1M0qNebgNhBvZuJQtmOC+n73566CvYJcYOobJNLHAlU
+         oX1Awl1hcJyq7oHW+9SaC7b5H7gdTIAvyASZZobpMrD0HZWT0JU9MpL5rHjH/UGpMNNP
+         /CoA==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=OcynD1f0;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+Return-Path: <julietesteuse24@gmail.com>
+Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])
+        by mx.google.com with SMTPS id ada2fe7eead31-4dfa667e91asor9431310137.4.2025.05.26.13.13.58
+        for <jean.testeur2024@gmail.com>
+        (Google Transport Security);
+        Mon, 26 May 2025 13:14:02 -0700 (PDT)
+Received-SPF: pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=OcynD1f0;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20230601; t=1748290438; x=1748895238; dara=google.com;
+        h=to:subject:message-id:date:from:mime-version:from:to:cc:subject
+         :date:message-id:reply-to;
+        bh=YVKUD8AVsYlz7wIyN7YRdjrcFGgEyzozNB0COZFLK/E=;
+        b=OcynD1f0sB8EPg/mVoJsGRUrFMQ/jUQrHLHWORMp4CqpvrH9vJhEwQLbiKlWezS53x
+         InCYIVwouKI5VqaDb5Gt0+n6o95IDP8qY3tPQdeUKEgEUG+JaigsaygfViICgMJ8288n
+         2O3n+IEZmBeOX4PAvBbL8Mq/f++FPR81jbbqawphA2w2j1mn5ZGkeQG+HrKbhGbHBCxw
+         UlaYt3TlmH400UfbJgG9QXg4Xnhzg2w+qiLEb0/bnchCjBalbb/AYlE2fm3OxvOpUvzI
+         U5oLPwDc8XH4tOOOYV71Vw+fpVfhGNbB13WeUM6dLCO1lr64WQbb2MNZ3hdxVaFXk1XD
+         zuZw==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1748290438; x=1748895238;
+        h=to:subject:message-id:date:from:mime-version:x-gm-message-state
+         :from:to:cc:subject:date:message-id:reply-to;
+        bh=YVKUD8AVsYlz7wIyN7YRdjrcFGgEyzozNB0COZFLK/E=;
+        b=aBYcLeD4M8cvlkM2kZHV3NBH9eqrwNHV+Um/y6AlsoSIVdVJ2+A2LdaQlCAXPF1dTK
+         cTC1v3wUqDMKgzOAj3YZJyGkLMvc/MktnH5Q031OkzamvyLvdoCpgIBThVgFECcamNfD
+         DFHh9PLgXJMjFXcYaIW8zKvqP7ojWDFJrZieMnBD8G56eFxacqma6dSr2nkNMihUmkh2
+         WU//6kXSIRpxU574UDaZ2d3hbrcTScTBvnoqbn1+99J8PC42YAsaNsAE6zZVqqb3V2q7
+         R5fqpuVTH6vn1Xuf/Z0cmFQZ8hgij4JrhgU9Mmp+d5H7fG/a4yRZbk7alRxcVNJ5ursu
+         cdIA==
+X-Gm-Message-State: AOJu0Yzz6s+P3NLR9qF8fKOhEysLyB5X3vjYEjpd6ekkiHeiqix4buQg
+	7gX3Ky49OvyJJXDYLPR4VtVn0slQf73kgUuM9P8LfwY/Xp9+vq1mHZlIk7c2G9T8u0EQKCS+jh4
+	MaF5qKBgZ0aq5WJ8wu/DZe1q2smL0PPiAE7w0sU19uw==
+X-Gm-Gg: ASbGncvFw7RBut+LkIexXi0CNx2r/H705nYQOJ2ArVKqPKDssXP+M+o4h+rbZJceBw5
+	WIJuzTt+038iJj6QJXQC76gw0VqDWgm4f/xF2mBA21G/Ylqb74CHvH16wqaDsumdD0yzgRWcY+9
+	MI6v3spKb5CAEZpIyIdHULPDkkaiR6BtS//BBIUaw59nhodOKIhCofylWmZEdsWb7IQA==
+X-Google-Smtp-Source: AGHT+IEqE9eCUfjyvI7SuoOl9J2sqELNR52uzDnkNG1e2iRT3ZqrO3l0r89KssCngv3RIrHvp77Hi/i+s0E1Bhj6OhE=
+X-Received: by 2002:a05:6102:3ca6:b0:4c1:9b88:5c30 with SMTP id
+ ada2fe7eead31-4e424160a7fmr8652972137.19.1748290438134; Mon, 26 May 2025
+ 13:13:58 -0700 (PDT)
+MIME-Version: 1.0
+From: "julie.testeuse Julie Testeuse" <julietesteuse24@gmail.com>
+Date: Mon, 26 May 2025 22:13:44 +0200
+X-Gm-Features: AX0GCFseeK4dt2fcU9VJxBSK4EPTTA8B5yK7SxAhfTm5BVq1F8vrA_lzCBVUayU
+Message-ID: <CAO3HoF12fTOw3QP_XN-NU_Xs91cFuxbc0dh5Ki7oa0vCYP-ErQ@mail.gmail.com>
+Subject: Mon mail avec joli pj
+To: jean.testeur2024@gmail.com
+Content-Type: multipart/mixed; boundary="00000000000087a30506360f9669"
+
+--00000000000087a30506360f9669
+Content-Type: multipart/alternative; boundary="00000000000087a30406360f9667"
+
+--00000000000087a30406360f9667
+Content-Type: text/plain; charset="UTF-8"
+
+
+
+--00000000000087a30406360f9667
+Content-Type: text/html; charset="UTF-8"
+
+<div dir="ltr"><br></div>
+
+--00000000000087a30406360f9667--
+--00000000000087a30506360f9669
+Content-Type: image/jpeg; name="sardine.jpg"
+Content-Disposition: attachment; filename="sardine.jpg"
+Content-Transfer-Encoding: base64
+Content-ID: <f_mb5iz69t0>
+X-Attachment-Id: f_mb5iz69t0
+
+/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBwgHBgkIBwgKCgkLDRYPDQwMDRsUFRAWIB0iIiAd
+Hx8kKDQsJCYxJx8fLT0tMTU3Ojo6Iys/RD84QzQ5OjcBCgoKDQwNGg8PGjclHyU3Nzc3Nzc3Nzc3
+Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3N//AABEIAJQAzgMBIgACEQED
+EQH/xAAcAAEAAQUBAQAAAAAAAAAAAAAABgIDBAUHAQj/xABCEAABAwIEBAMEBwYCCwAAAAABAAID
+BBEFEiExBhNBUSJxkTJhgaEHFCMzscHRFUJSU2PhNHIWJDVEVHSCk7LC8P/EABkBAQADAQEAAAAA
+AAAAAAAAAAABAgMEBf/EACIRAQEAAgICAgIDAAAAAAAAAAABAhEDIRIxIkGBsRNCUf/aAAwDAQAC
+EQMRAD8A7iiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiI
+CIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAiIgIiICIiAi8zLUcQ4/T4HR/WJY3z3fkDIiL3sTrfb
+ZRbJ2mTfUbi6tTTxQNzTSNjbe13m2qi2EfSFgGI1P1OSpNFV9IqtuS/k72T5XuuS8f8AHUvEWPxt
+wyZ8WGUT7QkjSV4PtkdjsPcVW5fHcTMbvVfQzJGvaHMIcDsRqCqlyDgvjCWBjWhuaLeWBzrlp7t7
+b3XU8NxCnxCmbPSyZ2He4sWnsR0Kpx8sz6+1s+O4sxERbMxERAREQEREBWnzxMlbE+RjZH+y0nU+
+SurCxTDabE6V0FXHnadiDZzD3B6FBmouaDiDGeCcRFBj7n4lhLz9lVkWmjHZ1vat6roOH19LiNIy
+qo52SwvGjmn8eyiUZSJdFIIiICIrFZPHTwOkleGMBALj7zYfNRbJN0i+vCo9NxNFBJkfTVD9bfZt
+v8bHX0utpDXMmpRUQ2mZbxBh1b8O/uWePNhl6q1xsY2PtnfTxNpp5IHl988Z10B6dfJcL42ir+Hq
+p1VzJXF85zZnXEpOviF/P8l32qdHUUzJYnh7A4PBHUKHca4bHW072zRNex5b7QuAQbg9+nzVOXf4
+WwcsrqSm4lwxtRRua2eIXfEQCRpctWhoaIte7NcACzr6e7b4qR1GD1FLPh81BW0dCyOLJXcxwBa6
+5JeW3u4O0tZbCkqKOueGztZT10sJdlcPvAdj8vmuW53CfHufp1STK7rXU0T4pPA8taDcEG2mo9F0
+D6OpMSkxLwWNKxp5zthbp8b/AJqHy0D4X2Lbakjw6Hy9F1zgc4eMCiZQOJcz78P9sP63/L3Jwycm
+ezmvjjpIRsvUCL0nCIiICIiAiIgIiINRxFgVLjlA+mqgdvC4Wu310XI45MX4HxKQRuMLbkcuQeB4
+776g+d/eu3TzRwRukme1jGi5c7QBcy+kTGKGuhiZLSieMEhkkbtW+/ofgsOeyTe2mEtukt4V4voc
+fgAb9jUADNGTof8AKeoUkBXzbg87aGeaVkkuXm2aG9R0K6Fg30hz3DK4NALt8uwVcOa/2TnhN9Oo
+oo3QcT01a77KeI3As06FbQ4iGtGeNwv1Gq1/kn2z02C12NUb6+iNMwNIebPzdtfzssqmqWVEeZh9
+xHZXt1NmPJjr6pLcbuIHgOE4tDPPFibSYInnklwJJF9wddOvdZ+IUUjJ/rNBK6Ge3tNt4vMdR5qU
+TPbGPEDlOhIGy0WKTRU8jeZJkYRdpJ0IXLeHHjmsWvnlnd1rKHGX0spZiDOSyfSQD2QT+8O3vC2k
+skc8To6loykEX3HyUMxbiFlSXUsNI+okccrMjevTVZ+DMxympDLVxRFjCLRsOdwHXbt21VMM8r00
+ywk7YWO4PSYe2OaQxzszatdqWt+ChVZgkNbOJoMvPLmsisb5MxNj6lTfEqB+ISNkbycti8MYfaPU
+3HZVx4W2kqHTTxRCLKHGbmgAG+9jvpqs7e+l56RCjqMTo5KWgrBzzJIIXPe3I6Mk2BPQt96nvDWF
+Yrg+Msmmg5NO5rm1DnSNy5eh33BUJqMeOJ8TmWOVkGFUkmaZxdYTlp09+rgOttFuajioVrxK6V7i
+7Zz9L+Tf7LbDhx6zZZcuWvF1tjgWgt1FrgqpRLhXiNtTkpKp7c5+6dff3KWLtl253qIikEREBF5d
+LoPVr8YxWlwmlNRW1EMLBexlkyg+XdZ5K1Fbw7gtfWisrsMpqmoGgkmZmI8roILWcRV3EVSYKZkc
+9ORbJSxPc7zu4aegWTBwXitewMq3xU0O45n2jx8AQPmuhwRRU8YjgiZHGNmsaAPQK5mWOXBjld5d
+rzOz0hdF9GmB0zS6R1RNN/ML7W8gNFG8f4KrcOkfPDGamhaLvdF95bW92+mo9Aurl4Cp5jT1V7x4
+2aV3fbg0DGU8jTTVGRpP3cmo9eik2HcTTUDclXmLdhmN+vdZ30qcO0ceEPxXC6ANxIyNHMi8II65
+hsb2t8VB8OxOmmw001UHQzReHI8W9Fz5zLC/7Gk8bHU6Cspa88yGUseLG7XEEdVuBLVMDftgdLi4
+vdcVosSEEn2U2W3s9bHX8yugcP8AEoqmCGR7DLl0L3AX12v3srTVVSOoZPWEZqmeO3SJ5aPl+qx4
+cChje95zylwt9o4u/FZVPUwzR20a8HUX2V8Pu7Jm2Fx71PhL7TMrPSqmpI4xZjRbyVcxbTQOe1oJ
+A8LW91QCWgOz6HdUVM8cEZe57bDUk7K+pJ0rd1FuIMGjxjDJhLJNRzutI2ogJZlc3UEgGx+K5jxZ
+Wz1JElRXOlexg513Bsdhp4B16qdcV8cUNNRVMdO5sj3NLR1BP6LidXO+eRrDJowhzXB12g+4LKY/
+Jfy6bN0z8Real7Wl/R1rNawbC3S3VV0tVJPOYqAmpqibFwF2jsB/Eb7DZa10b5sO5bZg4iS8wvYm
+50J9w0+PwUy4ao20GCmaIHnzOIDm6Fg2sD/Gfdtt71orti0uCtpqxjayqqavGpHAgwykCB3RosdX
+X7WAX0FgDaluEUja2oFTOIxmlabh/vv181zHgXAoKnEJYKxksUroTYx2by2bFt+jiN7agLrcELKe
+GOGFgZHG0Na0dANlfFWriIiugREQWge6ofJbZXsqpLAeiDDfUPGwVk1jh3We6FpGysPpx2CDG/aF
+u68/abet1ddTA/uhW30QcNgoFJxGM9VQMSibu4KzU4aSwln4rQ11PNFfRyDf1+JUs9DNE54F2+eo
+1UFkdS1dhLh0Dh3DP0Spqi3M14Oo6q/gcIqKaKRtjcarPJMUwYZRbswyJ2m1zr6rMgwwWYf2NFGD
+1bUC/wCC3EcDY2A5dVfP+GYdLkpE1gw0jh4RSyM9wqP7q82B5y3bO0g/z/7rP/3uMdLKmAnnylSh
+ifV7WcBKQD1lKplphM3LJE6Rp/ddIdVlyf4Zv+ZezC08XkiNtLJw9h81y7CIHHfxZVjv4boQ3wYD
+SEebf0UlgvzJh2CoYT9Re7rfdBGY8Aw/mXfgdG2w/hDvyWVT4dQUMhlo8OghkJJLgw9e3b4LdUrS
+Qe6SQgg6BNDM4apmcuSps0OccoDW2sFvVgYNFyaFjTuST81nq8BERSCIiAiIg8svC26qRBRy9V4Y
+wriILRjViSlY/wBtgKzEsg0dVw7Q1N88Nr72WgZwXi2HSSHB8ajML3F3IrKfOG3N7BzSDZTuyWUa
+EOFFxOxuWSnwiYDcsmkZ+LSsoU1fyw11A0EdG1AI+YCk1ghAPRR4wR0x1vNa/wCo3t/WaqWsrGyO
+P1F3i/rNUjyN7Lzlt7J4iOcqrLMpon6H+c1XHx1Ti131N9wLfeN/Vb/lt7L3I3sniI+2KrDn2o3+
+L+q39VRyazlFn1F3/dapHkb2TKOyaEUMGOZrQUVE1neWocT6Bv5rMpcOxKR7TWTU7Wg6thjNz8XF
+SCw7BLKdAxoa0NA0C9RFIIiICIiAixMJkfLhdFJI4ue+BjnOPUlo1WWgIiICIiAiLw7IPUWsON0Q
+qBE6QtBuA8jwlwJFvPQq2eIsPDnB0j2saCeY5hym2TY/9bUG3Rax2NUd/BI5/iDfCwnd2W/ldW5c
+foI4+ZzszA9rXEAjLmIAJv3vp3QbdFhVGJ0tO8sllyuba4ynS4Jt6AnyCpgxaiqM/KmvkbmcS0jT
+vr5j1QZ6LU1eO0lNVPpvtJJY2lzmxWNgBc9eg1PmLXOitycRUkbpGPZO2SPNdhaL6AHv1uLf2Qbp
+Fpf9IqYCN0sU8bZRGYy/J4s50Fs19NSb9Ad17QcQ0tbPDDHHUNdL7OdoA799dO17aXtcINyiIgIi
+ICIiAiIgwsF/2PQ/8tH/AOIWaiICIiAiIgLx2osiIMF+HUby7PTscScxJ1JNrb+RKp/ZlDywBTMA
+tpYkW0A/9R6BEQXJaCke4ZoGmwJG+mub8VQMLoA0f6pFruLb21F+9unZEQVSYbRyNzSQNebfvEnb
+/wCt5abK7BSU8JDoYWRkNyAtFrN00+Q9ERB5PQ0lQbzU8bydLlutuysuwnD/APhI9Tf47fIbduiI
+guMoaVsRjFPHy9PDl002XtPRUtMGmCFjC3QW6A2/QeiIgy0REBERAREQEREH/9k=
+--00000000000087a30506360f9669--
+
+From 1835348228049823049@xxx Thu Jun 19 09:14:26 +0000 2025
+X-GM-THRID: 1835348228049823049
+X-Gmail-Labels: =?UTF-8?Q?Bo=C3=AEte_de_r=C3=A9ception,Non_lus,Petite_enfance/=C3=89cole?=
+Delivered-To: jean.testeur2024@gmail.com
+Received: by 2002:a05:6214:2025:b0:6fa:baa3:e5c6 with SMTP id 5csp166166qvf;
+        Thu, 19 Jun 2025 02:14:27 -0700 (PDT)
+X-Received: by 2002:a05:6402:2686:b0:607:eda0:1697 with SMTP id 4fb4d7f45d1cf-608d0861cb0mr19652219a12.10.1750324467063;
+        Thu, 19 Jun 2025 02:14:27 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1750324467; cv=none;
+        d=google.com; s=arc-20240605;
+        b=kO30+bcEfOJwY0WKMxWr4TJ3oM6uc+7bjodqKA4sY9BOzi+OX29ocygeXylGOhDmWd
+         qMU5uPoVjcF7RAEcD/DOC2IW/3go3yogGbGP0XU2BNrypqvenIOMbfJc9T317ffycS/n
+         t2l7PQ1M/jbfOcokcvtJjaxTXmUjU4kEJX2vxPK2jhDmw32czdAPHaDQd0Ll/bAfIPwu
+         NwqgzTWYgaZhGKJ90NnyvSlB/wvUmcOwiSLQM0P7YYmgHJwjpt/jFm3400d6aZCKP0tB
+         0JJquJ659R7ZJqE09zvhD9SYyHGW4VR+GBF+T9ZjZKNhyiLoooyDka+6aqIqsquWVzIN
+         VXsg==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:subject:message-id:date:from:mime-version:dkim-signature;
+        bh=phh181FAwX+W54xmElFK99ZyWNUx6ht9O1oLWbY2/vA=;
+        fh=2kZ02oqgupZh3+ZYlm2LJuid/rgQknBd0YCgFxVbMXg=;
+        b=ZXEGOYiXf2FKtECpwPQFM+WCB9qrQRrPRqsy4UWqZo2b1cfN0H2Yqe0D5Qp2tMgQE8
+         cSYBbr/o5PwyJJgN8o1Mb6DWnQX+SZN8WU7HQqnU41mFeFXOwl1aZBj8hgkmuj87MJBu
+         5on6/DdK0pYrtvqKfKf2bf1PSnSunlsZd4WZDB2iiw1xTxIBotvOTA6QgkLx1RmBR+EM
+         6TkFy+MtTTfuv+7Gb1fJnTS3jE47iY8+3gt2bXJt0OMsnD+9EEfkLT8/tebjMMWMHJeS
+         5renvs6+4Sno6rO1zp+HMEf8hX4NzReoJnpuBt0VVotrBz96DgcqCNiX4a908XhGk7h+
+         basA==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=R6cLc6Qb;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+Return-Path: <julietesteuse24@gmail.com>
+Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])
+        by mx.google.com with SMTPS id 4fb4d7f45d1cf-609b9e79736sor1686220a12.11.2025.06.19.02.14.26
+        for <jean.testeur2024@gmail.com>
+        (Google Transport Security);
+        Thu, 19 Jun 2025 02:14:27 -0700 (PDT)
+Received-SPF: pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=R6cLc6Qb;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20230601; t=1750324466; x=1750929266; dara=google.com;
+        h=to:subject:message-id:date:from:mime-version:from:to:cc:subject
+         :date:message-id:reply-to;
+        bh=phh181FAwX+W54xmElFK99ZyWNUx6ht9O1oLWbY2/vA=;
+        b=R6cLc6QbAvoQDofd9yJh1o+vxLBVI8DQKYgxpCMOaJBbkk2dhzuD96Lxil2jY2vL7U
+         ytpND3GX4AQn1t6SPs+3bTVlpNms5lu5GwXauY59/MlZgan40QOnoG9wA5eQJd7V7gJ6
+         MYKkFLhozgav8Ho6bqFH+xN7pWidNUfSfRJZ6rGVLcNJJrk+kekqsvoohnh1AKTsL29D
+         GCsKgd2+PE5yf5aX6zdGzNyoX3XA7FAz9n81RkZ5kYK4IciySErK0MfhQPs/sPsGryis
+         Zr0+wRAuf5pLxgco0xYmWhrdj6Wrzck8CDSk3QlmGt1Gpyr0u4mSy6LTU3Hro9yZsviY
+         PF3g==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1750324466; x=1750929266;
+        h=to:subject:message-id:date:from:mime-version:x-gm-message-state
+         :from:to:cc:subject:date:message-id:reply-to;
+        bh=phh181FAwX+W54xmElFK99ZyWNUx6ht9O1oLWbY2/vA=;
+        b=pk8z9jPH8qsP3LN14RJ+TJNCYwtAhhIv64lHWGJ8QC9tuBkv6WNKBoD8xD+6mnhtPC
+         nEEBhr0BED+QzxSX8I2rBf9kr0L9py0KHL+dr6bL6qT72pBORwk4dcUlQ74Tb4nEK0NI
+         v+Z6JhpifAA55JDtbJgddqsVk5IRXSLhRHMIWDoi0hfikifj7W424NZUWMYxV0ShkANg
+         xBvNzekP9Zejcr2fEzdqrOURpmO54rqCEUXWrX4vTu8WP9hhwaNegEIsOn18RZ7wp96b
+         OoXUrBi8KxMCISZlwsfDFv9FpyUV0lmLMcuIAy+/Dj42mh9hGeahRkOqVLIBijOzeY+A
+         9NUw==
+X-Gm-Message-State: AOJu0YzEBVh8ePQd2WnCT2vcRstJ0tAFNj2ksLWKBmozDXuQRA03vnm0
+	8FnAovBp0bFmeeDJOC4vS7FGobM+LC6w31DPMj4P5caWlM+cs3iamcrzBrO1GSWTnFcA7f9Qp4/
+	ipJdGXCGWyiFZQ19MqBqWK2CYtnXgs0dl1Ack
+X-Gm-Gg: ASbGncuHzFeIgvuWWKkGvWELdh9xhPf+d+L5i4MPkI8KpINn+vX29PuZ8ZhRjh74L4+
+	UMqPIXLXv4Zmd4RWbUqMBeT7U//JIslJaboILR1StNp8FaJUsLsDGetEgiywPrZqyVt8EudQ7aO
+	SRFGovLja38d7hUmT9fJAWDtsjojBKtHBlF05EkUr3cbByWqBIkKWz24KhOQo5NHkUk8leQ39i5
+	UBQ
+X-Google-Smtp-Source: AGHT+IGDelu0WBl5CbcrEkyewE3JDIZKkv3odhMgV1upkUpO4rxFinlaSyxiaK+yk1eX1qyn/hgSk4gOsx39NtqtZFE=
+X-Received: by 2002:a05:6402:44dc:b0:609:a4af:aee with SMTP id
+ 4fb4d7f45d1cf-609a4af1339mr7535834a12.15.1750324466048; Thu, 19 Jun 2025
+ 02:14:26 -0700 (PDT)
+MIME-Version: 1.0
+From: "julie.testeuse Julie Testeuse" <julietesteuse24@gmail.com>
+Date: Thu, 19 Jun 2025 11:14:14 +0200
+X-Gm-Features: AX0GCFuTih9XiQhXl1IH6_yrFfZ2EnvtBEaEWVluSapV9oJRE47-rY6RTjRrKzs
+Message-ID: <CAO3HoF0-GkXMZXdRH+WYHADC+0MkGuoKjzzCq=ncYQ68x1Z09A@mail.gmail.com>
+Subject: Demande de subvention pour une sortie scolaire
+To: jean.testeur2024@gmail.com
+Content-Type: multipart/alternative; boundary="0000000000000a7af20637e92cd6"
+
+--0000000000000a7af20637e92cd6
+Content-Type: text/plain; charset="UTF-8"
+
+Aenean ex ex, aliquam non tincidunt et, tincidunt nec augue. Suspendisse
+porta euismod augue eget sagittis. Mauris faucibus ipsum et lacus
+hendrerit, ac eleifend orci vulputate. Pellentesque habitant morbi
+tristique senectus et netus et malesuada fames ac turpis egestas. Cras
+rhoncus turpis iaculis, bibendum velit at, bibendum ex. Phasellus a gravida
+felis. Aliquam vestibulum tellus felis, non faucibus leo porta in.
+
+--0000000000000a7af20637e92cd6
+Content-Type: text/html; charset="UTF-8"
+
+<div dir="ltr">Aenean ex ex, aliquam non tincidunt et, tincidunt nec augue. Suspendisse
+ porta euismod augue eget sagittis. Mauris faucibus ipsum et lacus 
+hendrerit, ac eleifend orci vulputate. Pellentesque habitant morbi 
+tristique senectus et netus et malesuada fames ac turpis egestas. Cras 
+rhoncus turpis iaculis, bibendum velit at, bibendum ex. Phasellus a 
+gravida felis. Aliquam vestibulum tellus felis, non faucibus leo porta 
+in.
+<br></div>
+
+--0000000000000a7af20637e92cd6--
+
+From 1835349081988972632@xxx Thu Jun 19 09:28:01 +0000 2025
+X-GM-THRID: 1835349081988972632
+X-Gmail-Labels: =?UTF-8?Q?Messages_archiv=C3=A9s,Ouvert,Conseil_municipal?=
+Delivered-To: jean.testeur2024@gmail.com
+Received: by 2002:a05:6214:2025:b0:6fa:baa3:e5c6 with SMTP id 5csp171283qvf;
+        Thu, 19 Jun 2025 02:28:01 -0700 (PDT)
+X-Received: by 2002:a05:6402:270a:b0:607:4500:2841 with SMTP id 4fb4d7f45d1cf-608d09cf6aemr19320383a12.25.1750325281243;
+        Thu, 19 Jun 2025 02:28:01 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1750325281; cv=none;
+        d=google.com; s=arc-20240605;
+        b=L399MKBA+to4rKySXmZNjVJylheowhpWSHth3Xj3cc+LPEDQ8uiLfasxp/UAPFHge6
+         ZSPYHBnwC1s+7KlyJQj/SYvA37+BmLej88dYIrjoWL/QSdc1IH1CISd8ONdhkgI4Z0Uz
+         /g7GY4jm/s3rkPFPYjetja4O8b12rGKHcS4IBVwLzliX915a5fDDPcrtyRp1SwuDHBiR
+         YU1synugjMu3MK5sxq5YscUun7fbFpqUIVBH2xTBTEc0h5Yx4VWTiDVF7pojbzD9fZ1W
+         7Y0hCHgaktG9K9ClnIrjfmAhxzPBOfqlEA8W9kHEfu7ECnPxfqqYeUfdTM+pHMIWP0+C
+         u+rw==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:subject:message-id:date:from:mime-version:dkim-signature;
+        bh=zb907ITdcEqegeVesIgqe6GLzLq8N0sM80fN9DKSH/4=;
+        fh=2kZ02oqgupZh3+ZYlm2LJuid/rgQknBd0YCgFxVbMXg=;
+        b=eWIgpohSEqNut1z/y+/78WhCOfUL0B7VHMFKp5MZDm2zC+K870MWCpv9WSOpRQ7IUS
+         B+W1kDCMmgo3lQtzIy/HPpYu6plXkXtbDiRUcZ9GtBh0sYXW3mdZHrUuiqxivn/Ee3Ep
+         kwrUO5mY8tmbq7FveuXHO9HAtpMH+iLJMnA+x+ru9Z04c+GNJB2JFdtYBfP7cjPCNtUd
+         Lde6waFBuv3aT4sGnOQtrIc7DAqmpRjPev8PL7fNv5YceKyOoJIXGET1nwujrbvgEI3J
+         stYbVMeQnziL5bc74JhI71y8Sqb6yuXQLvlgymUoBJZJe4P2Gw5OTlo7XPm4cWfYiEPV
+         7ZHA==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=LFsN+i2z;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+Return-Path: <julietesteuse24@gmail.com>
+Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])
+        by mx.google.com with SMTPS id 4fb4d7f45d1cf-609b9d32027sor1779398a12.5.2025.06.19.02.28.01
+        for <jean.testeur2024@gmail.com>
+        (Google Transport Security);
+        Thu, 19 Jun 2025 02:28:01 -0700 (PDT)
+Received-SPF: pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=LFsN+i2z;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20230601; t=1750325281; x=1750930081; dara=google.com;
+        h=to:subject:message-id:date:from:mime-version:from:to:cc:subject
+         :date:message-id:reply-to;
+        bh=zb907ITdcEqegeVesIgqe6GLzLq8N0sM80fN9DKSH/4=;
+        b=LFsN+i2zGWHbBAP//NCdISuZncNBi2epVsW1MNojPoBCvTaXuLHRKu+KKQ+Da22kfR
+         6GcMgOH6QrjjJDy6fw/sQ7e5TbBUfNyS6/wQqI+mbqmFQobcZVPbet3FfSwVyxPMXXRc
+         INd8kwmMFvPhFivfEOkMq07qhsIt+kgjYcjL5QKIt4CXIX4MFpvNpiIqHjdLLTxfE7uF
+         /MnnfQerX7jglXkf1AvGD1n5KrTcGfVmmsTMToLf/SiL2b8Qm71Ulise6yKKV29ZNNfm
+         oXUrppbohZwDh0c935ykdmRpbTxgRmQgFJY8wjrKT9tPjfbaFMGthpR9xv8cUqd3CIRH
+         r4UA==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1750325281; x=1750930081;
+        h=to:subject:message-id:date:from:mime-version:x-gm-message-state
+         :from:to:cc:subject:date:message-id:reply-to;
+        bh=zb907ITdcEqegeVesIgqe6GLzLq8N0sM80fN9DKSH/4=;
+        b=Dt0nJpBigbfplYuZpRpHRguIXaJCYPqUnX/a6Qp3vg5BEXftwjhJp89hZAUQLavm1U
+         96FXQdbllp+oxEKAGmeS4GhX0+gOVkPuV28BBllOmhiVmBHEvGQTMPOLLVgIig4Yb8Fq
+         dEDSeLDa5Av2iNS9xUap80Fv3bDo5typ863fNS9Nw2/Z921YHWBe+sfgxA8U8dceVgV4
+         +TLDVTWv29Mp5akJ2jUb2YppvAIDpQXoVUboe5B1AYQl8Ahy5O4nzYMOnppZR98t3+1U
+         QrnelZ4gfvycytltANLqh2jyvbFMNbQZjhEPd5DPptUuQJWDA97ZsumAeu3c9b/skbOE
+         dcvg==
+X-Gm-Message-State: AOJu0YyVFajQyuBpb6wZJ6wdh5fpS3zu0b4vPcJN5583kDe4bBiTtZC5
+	yUhT46kB70N632alm9b8vg/vhQSn/Ss9MWxuIpk3CLaUMXd9DzzjH68sTmiokS7/d6kBUQZkm5B
+	A/FWxO65zhC4oJEi96OOiAELDidId9kdvgIE1
+X-Gm-Gg: ASbGncusnNLnLilJ5L3Uvr8Pdg1K0s+QQyM5T/jyroL93sYjzYjV5Ifu2g+mYO5yQb/
+	12u7/Z4++z4KkqSr46dZwm7c8fwYGHNWbnonxs2fzi1ogcwA2n6Eyo+S//EoF4lcGvBJ097YnJx
+	2R5IfQUDcxSNaLPJpN5OVG8vlk6LZrEalVd5e50+5745CyXYk1R4HJua6+EyVwPkS8LjmGjL+Al
+	/Xf
+X-Google-Smtp-Source: AGHT+IHfpx6ftcn78C41LdL88N2ayl3RH+ul56S13/qrs7WKtZP07jQ7/kvTZS4Fktajm802n26W1Y63Fsza+F7rqZU=
+X-Received: by 2002:a05:6402:510f:b0:608:1357:d1f7 with SMTP id
+ 4fb4d7f45d1cf-608d09aad72mr19938891a12.22.1750325280667; Thu, 19 Jun 2025
+ 02:28:00 -0700 (PDT)
+MIME-Version: 1.0
+From: "julie.testeuse Julie Testeuse" <julietesteuse24@gmail.com>
+Date: Thu, 19 Jun 2025 11:27:49 +0200
+X-Gm-Features: AX0GCFtbVZ13imHKGUCQx_8BflbZbU6VhQKQaDhPe_jKR2m_fIkPJElSog4IyPo
+Message-ID: <CAO3HoF1NCkBK45dEfTHKyem_VUox1fEPLuOqnviYOzN-50BTDQ@mail.gmail.com>
+Subject: =?UTF-8?Q?Proposition_d=E2=80=99ordre_du_jour_pour_la_prochaine_r=C3=A9u?=
+	=?UTF-8?Q?nion?=
+To: jean.testeur2024@gmail.com
+Content-Type: multipart/alternative; boundary="000000000000987b150637e95ccf"
+
+--000000000000987b150637e95ccf
+Content-Type: text/plain; charset="UTF-8"
+
+Fingilla tortor. Proin et cursus tortor, ut tempor eros. Aliquam et lacus
+nibh. Nulla id erat finibus, consequat dolor ac, egestas lorem. Sed
+aliquam, arcu sit amet dignissim venenatis, enim nibh blandit eros, sed
+ultrices nibh quam vitae arcu. Fusce luctus cursus leo, fermentum ornare
+velit fermentum ut. Nulla condimentum laoreet eros, hendrerit ullamcorper
+elit tempus id. Morbi ipsum ante, rutrum vel lobortis
+
+--000000000000987b150637e95ccf
+Content-Type: text/html; charset="UTF-8"
+
+<div dir="ltr">Fingilla tortor. Proin et cursus tortor, ut tempor eros. Aliquam et 
+lacus nibh. Nulla id erat finibus, consequat dolor ac, egestas lorem. 
+Sed aliquam, arcu sit amet dignissim venenatis, enim nibh blandit eros, 
+sed ultrices nibh quam vitae arcu. Fusce luctus cursus leo, fermentum 
+ornare velit fermentum ut. Nulla condimentum laoreet eros, hendrerit 
+ullamcorper elit tempus id. Morbi ipsum ante, rutrum vel lobortis <br></div>
+
+--000000000000987b150637e95ccf--
+
+From 1835348196551952498@xxx Thu Jun 19 09:13:56 +0000 2025
+X-GM-THRID: 1835348196551952498
+X-Gmail-Labels: =?UTF-8?Q?Bo=C3=AEte_de_r=C3=A9ception,Ouvert,F?=
+ =?UTF-8?Q?avoris,Petite_enfance/=C3=89cole?=
+Delivered-To: jean.testeur2024@gmail.com
+Received: by 2002:a05:6214:2025:b0:6fa:baa3:e5c6 with SMTP id 5csp165993qvf;
+        Thu, 19 Jun 2025 02:13:56 -0700 (PDT)
+X-Received: by 2002:a17:907:2d26:b0:ad2:4b33:ae70 with SMTP id a640c23a62f3a-adfad43868bmr2157245666b.31.1750324436536;
+        Thu, 19 Jun 2025 02:13:56 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1750324436; cv=none;
+        d=google.com; s=arc-20240605;
+        b=G75wlOGC3xSAWDIeDUHcOPiBi/5fQGYFbDWff6eYU869kexsYEaiSObZO+meKAyz0b
+         k089g7Ps0kvjN/amYEnoSK3Z1OwP1sMy11ZOQqo+5n59tA/f2V+4OoH3zSkl5c4CVdJH
+         tgYpEY7WzT/+QVcbVVsIChv7veHdAY7r/xLqkDRM+rWWKyJZ/Nn1FfuarY1aijkj1RZR
+         4qoyYEVqxdVxVUBhq4gXr7TUyS8Nl89LalQ+S+Ll14eueA+OTy6smydIvMyyTH0aToGv
+         RzjA525+XleBhXwXbRCAXYfk6c7X1N/OhF7LU4xXvYuUljXvgw+Fiof12g0Mo27/nr+B
+         rcng==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:subject:message-id:date:from:mime-version:dkim-signature;
+        bh=qHmyph0PJRBLFSIQzFXl5EATaGl6w82PkcUbjy2JxcM=;
+        fh=2kZ02oqgupZh3+ZYlm2LJuid/rgQknBd0YCgFxVbMXg=;
+        b=FmSSTltxeBz0gBWJxD0oVK0Og7T9QJv5NtHnO3GudXQYkoVTmX1I3QPtkqnJo8OkvV
+         v6P3nd+3Yb2xbBzUoS0hAYr0zN0yeDJ4q8M5L8OVvMWlHIIQaeLz3UggEjM83XIIk8Hk
+         0YxUdI/VyuYWnyng/tllKl/2ncoit1RJBAjPL5mg4WEGHxkfncyb0UQ/+SuW9z69zeFb
+         JQS96bTqtPVSUSFtrxMf2xVMP3am5Sod8nlV1OgoSGwr2nQhw6lTgVrVAT5J2bMUhBQj
+         wz8YdXoJxofFRS90aM+XWus7XHX9zW1tMdKIvmiSX0M5qkA6rO9YH8nzoVvGorxvmwRn
+         22/g==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=B+aRQ8YI;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+Return-Path: <julietesteuse24@gmail.com>
+Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])
+        by mx.google.com with SMTPS id a640c23a62f3a-ae041808da5sor45481066b.17.2025.06.19.02.13.56
+        for <jean.testeur2024@gmail.com>
+        (Google Transport Security);
+        Thu, 19 Jun 2025 02:13:56 -0700 (PDT)
+Received-SPF: pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=B+aRQ8YI;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20230601; t=1750324436; x=1750929236; dara=google.com;
+        h=to:subject:message-id:date:from:mime-version:from:to:cc:subject
+         :date:message-id:reply-to;
+        bh=qHmyph0PJRBLFSIQzFXl5EATaGl6w82PkcUbjy2JxcM=;
+        b=B+aRQ8YIEKN9ZzVzhV/5kAQ9c5AR3DaMdJKwHxBadBrpAyFUmbHR/uOFrQuKWE8iiO
+         qXV1AyVOFOyq/GFrm6osbl6H+4LHFFvYXvlpzr1C6UMXfrgYXLXFGU8U9G/2nBho5OcU
+         f+8HLg5EXYJfyUz7sSNv7H86j5oX/4M7u+4D5Hiy0yRM423NlPqM45QF5Ww/fPVbKbe3
+         fsF4pjJ9M/Trety7DfiAbbQkHXbSGc9KVS34WclgG7HSPK5J9DLgNBg1RVtOLylCSrFE
+         lSba6fqRaXRaZSNQ2lL6uO8xRmjAhkMEsXmAmO6O63VbRjx1fIucYVHsCv4gfaW5qGnc
+         7mPA==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1750324436; x=1750929236;
+        h=to:subject:message-id:date:from:mime-version:x-gm-message-state
+         :from:to:cc:subject:date:message-id:reply-to;
+        bh=qHmyph0PJRBLFSIQzFXl5EATaGl6w82PkcUbjy2JxcM=;
+        b=xFOWN9rEdrlrXNiIdzq9M5lL4wBpMwICoFcSuI9F63uhlR7oCh3EqoZAM8MLosoNoG
+         QIafVARZI2GVIT4qSyakFtlYAXTzHeReptVHmCg21CyJNZwDDH6oU2Lbkg9pLBv9I9PG
+         YKUpPP5yw5jNawIXnTExszxumDc0OUCK7qmrQPpAKIaisdjprn3Bi7pXNsrr2OiNiwtC
+         KT6NK6FBOMUCst3TKtWcvtVtbm9Aq+DPRJ3TilarObNydEFDaHSYnRfWy6frLrnLwrRX
+         qSeZOEOCBh64xj50todd1H1CLLspGkZiqRCIspudLF0J0rITaJ4kq3Ae7cAbboO5SNx/
+         OEpQ==
+X-Gm-Message-State: AOJu0Yzpd/sDgzbm0fuZMNKnMiqoaCTDILRSTUqtwhVJiNEBGmBlphma
+	ZN9UzDUrnXTi0f898zq7R+aW/RLLE7cwUofUDvhg23m21XW9T90U3iSqh539x8KURUJ22hyrn03
+	gl4e88xYo7Qp+WfAzmytjylYIO+qBESrPed3k
+X-Gm-Gg: ASbGncsmY2Wcnf4sR9+iFX3aySxn7tdfejmyyQhgv3xyeCd7D3waTyh4ljkGGSC9WBc
+	p17GLjH6TWNfaMYqdpFjK5pryysMpotvIF2xwEe9DzmgvhBAm9HaUqpOrIm6Pbjdf+gwKae1twa
+	39GIygMbAqcc9oER6fXQ/6smIf1+aQxcRnxe1WadJ71OS9mcyDBsPVhb/QkrJAfE2T7Es4rbw3s
+	YhQ
+X-Google-Smtp-Source: AGHT+IGPvz+yyJpI3GEFnWD+6dkFKsfz8yCOjkuWo43YvyTnbQWhiA0Jyd1N08iZI/rdctcBuXBJTKMygJHXxSixU2I=
+X-Received: by 2002:a05:6402:26c7:b0:604:5659:8ca7 with SMTP id
+ 4fb4d7f45d1cf-608d09482c1mr18245223a12.19.1750324435963; Thu, 19 Jun 2025
+ 02:13:55 -0700 (PDT)
+MIME-Version: 1.0
+From: "julie.testeuse Julie Testeuse" <julietesteuse24@gmail.com>
+Date: Thu, 19 Jun 2025 11:13:45 +0200
+X-Gm-Features: AX0GCFvq0udEt4P_NRXlGQeTdpOH3jQWX3ibu98ojG2zW-vRExE3LclugouCHrQ
+Message-ID: <CAO3HoF3FixrZ_9xU5sLTtgJAsuqm7ENWtnV4h_VwZ5gga1C90Q@mail.gmail.com>
+Subject: =?UTF-8?Q?Signalement_d=E2=80=99un_probl=C3=A8me_dans_une_=C3=A9cole_municip?=
+	=?UTF-8?Q?ale?=
+To: jean.testeur2024@gmail.com
+Content-Type: multipart/alternative; boundary="0000000000003f54700637e92a30"
+
+--0000000000003f54700637e92a30
+Content-Type: text/plain; charset="UTF-8"
+
+Pellentesque et pellentesque nisi. Vestibulum lectus est, luctus vel ex in,
+viverra iaculis dui. Fusce egestas posuere orci quis laoreet. Integer
+convallis varius pharetra. Vestibulum eu condimentum ipsum, ut aliquam ex.
+Suspendisse nec consequat libero. Vestibulum tempor urna sed eros mattis,
+id scelerisque ex gravida. Mauris pellentesque felis nec mollis efficitur.
+Sed ornare mauris pulvinar pretium malesuada. Morbi fringilla, ligula vitae
+auctor lacinia, libero dui blandit augue, fermentum elementum dui neque
+elementum nisi. Suspendisse justo neque, venenatis a ullamcorper sed,
+semper nec magna. Sed gravida lectus tortor, id bibendum mauris
+sollicitudin a.
+
+--0000000000003f54700637e92a30
+Content-Type: text/html; charset="UTF-8"
+
+<div dir="ltr"><p>
+Pellentesque et pellentesque nisi. Vestibulum lectus est, luctus vel ex 
+in, viverra iaculis dui. Fusce egestas posuere orci quis laoreet. 
+Integer convallis varius pharetra. Vestibulum eu condimentum ipsum, ut 
+aliquam ex. Suspendisse nec consequat libero. Vestibulum tempor urna sed
+ eros mattis, id scelerisque ex gravida. Mauris pellentesque felis nec 
+mollis efficitur. Sed ornare mauris pulvinar pretium malesuada. Morbi 
+fringilla, ligula vitae auctor lacinia, libero dui blandit augue, 
+fermentum elementum dui neque elementum nisi. Suspendisse justo neque, 
+venenatis a ullamcorper sed, semper nec magna. Sed gravida lectus 
+tortor, id bibendum mauris sollicitudin a.
+</p><br></div>
+
+--0000000000003f54700637e92a30--
+
+From 1835348417077104493@xxx Thu Jun 19 09:17:27 +0000 2025
+X-GM-THRID: 1835347814056649517
+X-Gmail-Labels: =?UTF-8?Q?Messages_envoy=C3=A9s?=
+MIME-Version: 1.0
+Date: Thu, 19 Jun 2025 11:17:27 +0200
+References: <CAO3HoF3y=g7XQ1rgOJB_Z_qm187-7gNVCV8FG4uVnRk332RBKg@mail.gmail.com>
+In-Reply-To: <CAO3HoF3y=g7XQ1rgOJB_Z_qm187-7gNVCV8FG4uVnRk332RBKg@mail.gmail.com>
+Message-ID: <CAKo5_ua_sKXMo-7ZNQfg08SmVuhVGHJTQ-pZ1Piphd+Ync60XQ@mail.gmail.com>
+Subject: =?UTF-8?Q?Re=3A_Inscription_d=E2=80=99un_enfant_au_centre_de_loisirs?=
+From: Jean Dupont <jean.testeur2024@gmail.com>
+To: "julie.testeuse Julie Testeuse" <julietesteuse24@gmail.com>
+Content-Type: multipart/alternative; boundary="000000000000d702790637e936d4"
+
+--000000000000d702790637e936d4
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+Bonjour,
+C'est fait.
+Cordialement
+
+On Thu, Jun 19, 2025 at 11:07=E2=80=AFAM julie.testeuse Julie Testeuse <
+julietesteuse24@gmail.com> wrote:
+
+> Duis eget mattis turpis. Proin vitae aliquam lacus, eget euismod augue.
+> Maecenas sit amet malesuada justo. In hendrerit turpis ut lectus sodales
+> mattis. Etiam tincidunt egestas odio id malesuada. Praesent porttitor est
+> nunc, vel suscipit eros vehicula eu. Sed mattis posuere massa. Lorem ipsu=
+m
+> dolor sit amet, consectetur adipiscing elit. Suspendisse a consequat
+> libero, sollicitudin congue ex. Ut ac urna laoreet, convallis nibh at,
+> commodo purus. Interdum et malesuada fames ac ante ipsum primis in
+> faucibus.
+>
+> Pellentesque et pellentesque nisi. Vestibulum lectus est, luctus vel ex
+> in, viverra iaculis dui. Fusce egestas posuere orci quis laoreet. Integer
+> convallis varius pharetra. Vestibulum eu condimentum ipsum, ut aliquam ex=
+.
+> Suspendisse nec consequat libero. Vestibulum tempor urna sed eros mattis,
+> id scelerisque ex gravida. Mauris pellentesque felis nec mollis efficitur=
+.
+> Sed ornare mauris pulvinar pretium malesuada. Morbi fringilla, ligula vit=
+ae
+> auctor lacinia, libero dui blandit augue, fermentum elementum dui neque
+> elementum nisi. Suspendisse justo neque, venenatis a ullamcorper sed,
+> semper nec magna. Sed gravida lectus tortor, id bibendum mauris
+> sollicitudin a.
+>
+>
+
+--000000000000d702790637e936d4
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+<div dir=3D"ltr"><div>Bonjour,=C2=A0</div><div>C&#39;est fait.</div><div>Co=
+rdialement</div></div><br><div class=3D"gmail_quote gmail_quote_container">=
+<div dir=3D"ltr" class=3D"gmail_attr">On Thu, Jun 19, 2025 at 11:07=E2=80=
+=AFAM julie.testeuse Julie Testeuse &lt;<a href=3D"mailto:julietesteuse24@g=
+mail.com">julietesteuse24@gmail.com</a>&gt; wrote:<br></div><blockquote cla=
+ss=3D"gmail_quote" style=3D"margin:0px 0px 0px 0.8ex;border-left:1px solid =
+rgb(204,204,204);padding-left:1ex"><div dir=3D"ltr"><p>
+Duis eget mattis turpis. Proin vitae aliquam lacus, eget euismod augue.=20
+Maecenas sit amet malesuada justo. In hendrerit turpis ut lectus sodales
+ mattis. Etiam tincidunt egestas odio id malesuada. Praesent porttitor=20
+est nunc, vel suscipit eros vehicula eu. Sed mattis posuere massa. Lorem
+ ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse a=20
+consequat libero, sollicitudin congue ex. Ut ac urna laoreet, convallis=20
+nibh at, commodo purus. Interdum et malesuada fames ac ante ipsum primis
+ in faucibus.
+</p>
+<p>
+Pellentesque et pellentesque nisi. Vestibulum lectus est, luctus vel ex=20
+in, viverra iaculis dui. Fusce egestas posuere orci quis laoreet.=20
+Integer convallis varius pharetra. Vestibulum eu condimentum ipsum, ut=20
+aliquam ex. Suspendisse nec consequat libero. Vestibulum tempor urna sed
+ eros mattis, id scelerisque ex gravida. Mauris pellentesque felis nec=20
+mollis efficitur. Sed ornare mauris pulvinar pretium malesuada. Morbi=20
+fringilla, ligula vitae auctor lacinia, libero dui blandit augue,=20
+fermentum elementum dui neque elementum nisi. Suspendisse justo neque,=20
+venenatis a ullamcorper sed, semper nec magna. Sed gravida lectus=20
+tortor, id bibendum mauris sollicitudin a.
+</p><br></div>
+</blockquote></div>
+
+--000000000000d702790637e936d4--
+
+From 1835347814056649517@xxx Thu Jun 19 09:07:51 +0000 2025
+X-GM-THRID: 1835347814056649517
+X-Gmail-Labels: =?UTF-8?Q?Bo=C3=AEte_de_r=C3=A9ception,Ouvert,P?=
+ =?UTF-8?Q?etite_enfance/Centre_loisir?=
+Delivered-To: jean.testeur2024@gmail.com
+Received: by 2002:a05:6214:2025:b0:6fa:baa3:e5c6 with SMTP id 5csp163220qvf;
+        Thu, 19 Jun 2025 02:07:52 -0700 (PDT)
+X-Received: by 2002:a17:907:d598:b0:ade:328a:95d2 with SMTP id a640c23a62f3a-ae034f30ec8mr257822666b.0.1750324072258;
+        Thu, 19 Jun 2025 02:07:52 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1750324072; cv=none;
+        d=google.com; s=arc-20240605;
+        b=GcGkBNrSGJzITcOpH4IU5Nx+Vtc5JOqswDiVw5hHrpjuiuqCM2YHZGwctIP87szJ4t
+         +cZJ/EAvVXjLYeR6JZqA1oM6Puj6xwkwQx2bMvkRPiAUfh1FnXC7XasYHOU1Y3mObkxx
+         hrPRXebsZZB4NblJ2GRwiTOjhd1TY74cix3jkWL6qcEzOWH/DJwAZlCO+U1v5Frc9d8Z
+         uAhF1HKaBiM7V/oUVmwn5K1rWFRzlzeWeAwexPeDoPyb2G31EpNrDVzNDNRbt7fZjdEg
+         OxE3YWvBG79aAYBPW0QY2DXsWxDp+bEqjXOC4eA8+eHNsvLiirIIuTmXSjUqll5WNgr1
+         cSoA==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:subject:message-id:date:from:mime-version:dkim-signature;
+        bh=PuA1Jq866Ncu65ed3peifbolEEIma4NwmYUi79OmyzU=;
+        fh=2kZ02oqgupZh3+ZYlm2LJuid/rgQknBd0YCgFxVbMXg=;
+        b=jsQJlxHCYWs0yuCM5NIxMCOxXxQYbAMmi8FMA2Zk3UqTYwGn/n9t669s6Kjm3QVDRv
+         Vo/NQjMy3oIz9dCt98LjQEvXYN4sF/VJMva90ptPpQhsKxRBsHylgxEI6PYsS8BAseu1
+         4F55vQ0zMKuXhBL+Y8buGFvd2rziaynAhlTzyhuyqVklkucKy4Fvft/5LkG0zIhKGd/a
+         XisnZFmTRECQSLLx0J19scX5ANxuvN6mKCqlm7NytCiXwRL//ME3jXPngJ5Y+rSaURse
+         7SutYdA+mAZLXknMXQMML1I9fG2UKgy6xeuf0Z0GRLN0s4hkFLCxrBfM4sDqiXm+XtEH
+         1ERA==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=Ccsk5VT0;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+Return-Path: <julietesteuse24@gmail.com>
+Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])
+        by mx.google.com with SMTPS id a640c23a62f3a-ae034c2f95bsor74278766b.7.2025.06.19.02.07.52
+        for <jean.testeur2024@gmail.com>
+        (Google Transport Security);
+        Thu, 19 Jun 2025 02:07:52 -0700 (PDT)
+Received-SPF: pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=Ccsk5VT0;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20230601; t=1750324072; x=1750928872; dara=google.com;
+        h=to:subject:message-id:date:from:mime-version:from:to:cc:subject
+         :date:message-id:reply-to;
+        bh=PuA1Jq866Ncu65ed3peifbolEEIma4NwmYUi79OmyzU=;
+        b=Ccsk5VT0H6MiBtyybQgx4oJnVfCK8C3/bLxNaAmfhaig02h6MNX7x8iEgLWvkcxhmc
+         Z/gMz31ssFDFaNWHFbRDbjRgTkhPmCBJ5JbUjzpv0JJB0jmj96agQxnmGPKzWbbZDD35
+         InmDxCoytoQGDq3L6S74c+GM6Rf/fdLySChh1n4edyiv2pLpeFXy3Jk8Z4a4K2r/pqXQ
+         iEVotU84PwmgeSnnFV/YVzM+1WCuhwp5lT9sfotNZUDjvwM0tKHp9CokG1RxBrtdOwr8
+         S3hJdEN81rIjPbU+p+lx2dhl6kq72Yd8ug0iVPDxUMruiPt6RbIZYQVTaquBPtb276a7
+         mJKg==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1750324072; x=1750928872;
+        h=to:subject:message-id:date:from:mime-version:x-gm-message-state
+         :from:to:cc:subject:date:message-id:reply-to;
+        bh=PuA1Jq866Ncu65ed3peifbolEEIma4NwmYUi79OmyzU=;
+        b=dxw2+scmK3KISZ+8SXoF3g6PsUvFoNoSflCf2kit36XI4PcegC1I8FlKEmvq8uvvha
+         FLGOy12TkfZ6hDLuXJMLZW5vGWq6et5Sjzflho3Nlsae03F8r/FnywUoPcNHG54/qea2
+         5VnESwKp80yIfdyodz0v0YhLPrBzRO4RnxEV9B6IejboMyQZMf3kr1csAGfB1jGerU37
+         g4fsZMDUHR4fy6iT/9aCN7wLD4eF2Y3dIKXLbx/RENCZs55vxlOpqejF7r9InAV58CBX
+         81KlaNb7CU/4XlZPrx3/BoH57wuXwruBFWT7kjfMcHD44e5HoOdSt1yln72TQQIiy4dz
+         ULZw==
+X-Gm-Message-State: AOJu0Yxgsu71y2dgYFUbbGSZudm0sU/6j5Vn5s+UOREaVk10CUsDhoBy
+	MLgrbcomhb9tjegFtKmY/VKKNnULkeW6djBPaNx05SULn3OpDN7wsWQ6OMAp4TTNM0jnUgy3yZr
+	fO8IOP4vkDOF4Uvf3guR1q3W7ue1KZGR/TzlD
+X-Gm-Gg: ASbGnctrqjgW7n1mh6udvUzbWfqXvFneKx+3UiztGlU2zQMAd6Zf/6NwXT1qgQekIej
+	bALn+jNYqmnbtcOsX/UZ88SDfH4PrhzRb8BCHpoJXoxDSq6ai+vR2yVt5z+3gJ4377pnlv0oBmU
+	VyMXxhPtPi7/7VivkYIc0WEZnkCsU9KPsSQZJ9hblMrcZnqJAcqKlSo2AXfTyiue9sB8H7M2No+
+	knt
+X-Google-Smtp-Source: AGHT+IH9yiQ3t/WwqNLcoIorLFSh9II2WFDW9xwe7qEbXXMVhPvE4xB6bmJJqBN/Fr3wBwhUE6vsNjgLOaP58RTfE70=
+X-Received: by 2002:a17:907:3c96:b0:ad8:e448:6c64 with SMTP id
+ a640c23a62f3a-ae035509294mr236700166b.24.1750324071593; Thu, 19 Jun 2025
+ 02:07:51 -0700 (PDT)
+MIME-Version: 1.0
+From: "julie.testeuse Julie Testeuse" <julietesteuse24@gmail.com>
+Date: Thu, 19 Jun 2025 11:07:40 +0200
+X-Gm-Features: AX0GCFtP7BsdTRW-yGrcgpcTV6g4AJU_YqgN0Ix9DJ0JjSc1FQjP4UL48LHnvuU
+Message-ID: <CAO3HoF3y=g7XQ1rgOJB_Z_qm187-7gNVCV8FG4uVnRk332RBKg@mail.gmail.com>
+Subject: =?UTF-8?Q?Inscription_d=E2=80=99un_enfant_au_centre_de_loisirs?=
+To: jean.testeur2024@gmail.com
+Content-Type: multipart/alternative; boundary="000000000000877c000637e91451"
+
+--000000000000877c000637e91451
+Content-Type: text/plain; charset="UTF-8"
+
+Duis eget mattis turpis. Proin vitae aliquam lacus, eget euismod augue.
+Maecenas sit amet malesuada justo. In hendrerit turpis ut lectus sodales
+mattis. Etiam tincidunt egestas odio id malesuada. Praesent porttitor est
+nunc, vel suscipit eros vehicula eu. Sed mattis posuere massa. Lorem ipsum
+dolor sit amet, consectetur adipiscing elit. Suspendisse a consequat
+libero, sollicitudin congue ex. Ut ac urna laoreet, convallis nibh at,
+commodo purus. Interdum et malesuada fames ac ante ipsum primis in
+faucibus.
+
+Pellentesque et pellentesque nisi. Vestibulum lectus est, luctus vel ex in,
+viverra iaculis dui. Fusce egestas posuere orci quis laoreet. Integer
+convallis varius pharetra. Vestibulum eu condimentum ipsum, ut aliquam ex.
+Suspendisse nec consequat libero. Vestibulum tempor urna sed eros mattis,
+id scelerisque ex gravida. Mauris pellentesque felis nec mollis efficitur.
+Sed ornare mauris pulvinar pretium malesuada. Morbi fringilla, ligula vitae
+auctor lacinia, libero dui blandit augue, fermentum elementum dui neque
+elementum nisi. Suspendisse justo neque, venenatis a ullamcorper sed,
+semper nec magna. Sed gravida lectus tortor, id bibendum mauris
+sollicitudin a.
+
+--000000000000877c000637e91451
+Content-Type: text/html; charset="UTF-8"
+
+<div dir="ltr"><p>
+Duis eget mattis turpis. Proin vitae aliquam lacus, eget euismod augue. 
+Maecenas sit amet malesuada justo. In hendrerit turpis ut lectus sodales
+ mattis. Etiam tincidunt egestas odio id malesuada. Praesent porttitor 
+est nunc, vel suscipit eros vehicula eu. Sed mattis posuere massa. Lorem
+ ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse a 
+consequat libero, sollicitudin congue ex. Ut ac urna laoreet, convallis 
+nibh at, commodo purus. Interdum et malesuada fames ac ante ipsum primis
+ in faucibus.
+</p>
+<p>
+Pellentesque et pellentesque nisi. Vestibulum lectus est, luctus vel ex 
+in, viverra iaculis dui. Fusce egestas posuere orci quis laoreet. 
+Integer convallis varius pharetra. Vestibulum eu condimentum ipsum, ut 
+aliquam ex. Suspendisse nec consequat libero. Vestibulum tempor urna sed
+ eros mattis, id scelerisque ex gravida. Mauris pellentesque felis nec 
+mollis efficitur. Sed ornare mauris pulvinar pretium malesuada. Morbi 
+fringilla, ligula vitae auctor lacinia, libero dui blandit augue, 
+fermentum elementum dui neque elementum nisi. Suspendisse justo neque, 
+venenatis a ullamcorper sed, semper nec magna. Sed gravida lectus 
+tortor, id bibendum mauris sollicitudin a.
+</p><br></div>
+
+--000000000000877c000637e91451--
+
+From 1835347745834128226@xxx Thu Jun 19 09:06:46 +0000 2025
+X-GM-THRID: 1835347745834128226
+X-Gmail-Labels: =?UTF-8?Q?Bo=C3=AEte_de_r=C3=A9ception,Non_lus,?=
+ =?UTF-8?Q?Petite_enfance/Centre_loisir?=
+Delivered-To: jean.testeur2024@gmail.com
+Received: by 2002:a05:6214:2025:b0:6fa:baa3:e5c6 with SMTP id 5csp162685qvf;
+        Thu, 19 Jun 2025 02:06:46 -0700 (PDT)
+X-Received: by 2002:a17:906:fe44:b0:ade:3b84:8f04 with SMTP id a640c23a62f3a-adfad437ae6mr1867927766b.21.1750324006437;
+        Thu, 19 Jun 2025 02:06:46 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1750324006; cv=none;
+        d=google.com; s=arc-20240605;
+        b=Y2E7s20t8ZCxVTCY5XZxRIUYJ5bKqng4s6A+8sDtdtGV//4mhVALCseuezDGTLOMFZ
+         BQagwAAJtWrlXGxz17HsL4OLJTGp9xNoavgdLZYfy0NYFVKW7W9DTFC+hwGkRp/W9WwD
+         3qtEm9q4QYIXPPnjLW28cklVu0CAJGhrjAuodLA2Y7EkTY6WcAqm6yxMbCckQjVbiInD
+         mL7dhn9Hh8NXenXVs/8azd907LIv17bGwMTbeXvFvCIOEWT4MPejL17E3dAyccRxT3qr
+         cqhx4w5SqtZ92mEXWfoHopR2vvstCwHowMLb7EpHLasL7EztLSoRxFXj9TEgzBM1v4ql
+         o+EA==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:subject:message-id:date:from:mime-version:dkim-signature;
+        bh=FVeXmHPmy8XRYhKXPAXgGO80pdYRBG9rc2YcReApvSc=;
+        fh=2kZ02oqgupZh3+ZYlm2LJuid/rgQknBd0YCgFxVbMXg=;
+        b=LZsJHEljtXlHhsybMkMrEzWT+l7pwFWiYb0S2yCYWXHJ8iNFhR/NMgNOY6BZZAWAuV
+         tf1ACvQ9zgy4yZrk9EQDX1RUFLaCRp8TgAHC1bAZ2nTUBHuVeE4zzhmz/q5GYN37UwBJ
+         5H9Ajdn+SYdfPWvZdTQWAzgNjc/gxyAxOImemGfpSX+CUzDMs39kXQ+Hzzm2gNTUWfV8
+         B0YA90raEEkxph0P4A5KBC+wk8m3RoA2JHW1JCT2CuRd+HIERr9BHoGOC+6Y2VAyLnTG
+         VqhQ3BnNtlKUkhZwwUZIDG0QFHUbsRofToa7VCRu1CsUH5ynavbCJrnFLgfgYwIAQhVM
+         Nzdg==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=ZiXflRhu;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+Return-Path: <julietesteuse24@gmail.com>
+Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])
+        by mx.google.com with SMTPS id a640c23a62f3a-ae016ce6425sor202562566b.4.2025.06.19.02.06.46
+        for <jean.testeur2024@gmail.com>
+        (Google Transport Security);
+        Thu, 19 Jun 2025 02:06:46 -0700 (PDT)
+Received-SPF: pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b=ZiXflRhu;
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20230601; t=1750324006; x=1750928806; dara=google.com;
+        h=to:subject:message-id:date:from:mime-version:from:to:cc:subject
+         :date:message-id:reply-to;
+        bh=FVeXmHPmy8XRYhKXPAXgGO80pdYRBG9rc2YcReApvSc=;
+        b=ZiXflRhuw+zF9e2Wx/p1HXhRf0WOjymIapYL57KwiDiIah00WWiiHTQ+9FCWvLxCPk
+         dhkhJoPbIYwdCYbh4fBdd+JkV+znjMWXQQYgauCRaeD68kCNvy/JvcOeyJ1nP8J85Llj
+         KvVgU3qGeHIzYz5NGfL3vEnnXEUw24bvC7UQhyzb3I6gVSXu9R76Wce/SDlQ7TH1PqV8
+         yWSWDgpYkqO4zbBjPd8CiZvIzcpqoXCF4Edd394lxx5hLK+MpxpQ1aH4JcI5pRsdf4CA
+         lqi9FfXx5ZJIKG7be8s+674wvoD2nYm841wB9aziUvUT1Duz2vYArGpIS/X/BQL/KczQ
+         KUFA==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1750324006; x=1750928806;
+        h=to:subject:message-id:date:from:mime-version:x-gm-message-state
+         :from:to:cc:subject:date:message-id:reply-to;
+        bh=FVeXmHPmy8XRYhKXPAXgGO80pdYRBG9rc2YcReApvSc=;
+        b=SgOjpEj+M5yJRXp3VNrh4i1W7ff57gjm724UJ8DAnom6uLIQTg241rZB1sJd56Lezv
+         HJLvMpDZ+LXF+zspsfKIqKp5izA2bToytBLB7u+xR/64n2polaPnfU9YbudjobB66HvT
+         qeL8UHT7rYeWy2n1Kkeu+ctD/EKy+cQuw5IQVEXwj7DFm2cMKroU42tdcTviSl0F9h7q
+         cll0hrQ6QtJkzaQJrF1gX63wVDr30MzalC2yMcdyJCTrpdi3PQ1g8Nm+LHQXiqrGQBMJ
+         Zp7Kat00Xn9vRJ5JWm6kREyTJRJ2EsusNYdY4qxwslHctdCDK5hOLYXQdpiG0YBlgvGH
+         1bgA==
+X-Gm-Message-State: AOJu0Yw9Ws9xsBdeYtq/7iE+1lHLY7lXgie1s5jnxCoEUnIqysihjcE+
+	UykbXcjfDeYxiM76Qek03ICr5ey8sj0rd+acuKfQqX3OJ8bSzTyysBT1lxJoLWcuz5sOK3+tMTI
+	rr+4coQJjo7b0xgtrEY6i4NAlu4JwMWbBrnJW
+X-Gm-Gg: ASbGncvknm4S1log0IgP3K3flxNYGr0aKiLtkyGxeE3LG8sxNyGaGvRlwFBGk1RqUKB
+	W1UP8484HJChfocFl7wKHZur82obIiOelknpcs2WIAbhW2JYsYTd6CWMIZxltb6WgxT5BNtf2dk
+	ResIRzhfx8Pukd6aiUcba59Vcr1c7tV9gfnqXx5TBWgKeLRQB8QntDit4o8DSfhtpd5WO99PUaj
+	AZg
+X-Google-Smtp-Source: AGHT+IELPZGerrtriwxrBQz3BV80K7VzFzGLV01aXwn/zlRvPpILUjwAHjd0YPC5OtSIdqD7mqei7NgpzF8hV5KPMPU=
+X-Received: by 2002:a05:6402:50d2:b0:607:6057:9006 with SMTP id
+ 4fb4d7f45d1cf-608d08f7a70mr18751847a12.8.1750324005860; Thu, 19 Jun 2025
+ 02:06:45 -0700 (PDT)
+MIME-Version: 1.0
+From: "julie.testeuse Julie Testeuse" <julietesteuse24@gmail.com>
+Date: Thu, 19 Jun 2025 11:06:35 +0200
+X-Gm-Features: AX0GCFuQ7BiX0ihSpWbcwFK4F_JfDvXaJoid43Z1zaVOiSzM-nZkR6kHWjtMDFA
+Message-ID: <CAO3HoF09uLm=pQ1ZFx-9Y9aj0UoDbk3=gJ34HbKWf_0FHzwL3g@mail.gmail.com>
+Subject: =?UTF-8?Q?Inscription_d=E2=80=99un_enfant_=C3=A0_la_cantine_scolaire?=
+To: jean.testeur2024@gmail.com
+Content-Type: multipart/alternative; boundary="0000000000009c7c1d0637e91003"
+
+--0000000000009c7c1d0637e91003
+Content-Type: text/plain; charset="UTF-8"
+
+Pellentesque tempor tellus non neque tincidunt elementum. In nec placerat
+nulla. Vivamus pretium dictum eros eu ultrices. Nam porta nisl et turpis
+semper, eu dapibus enim bibendum. Donec consectetur elit vitae tellus
+venenatis, id lacinia tellus convallis. Duis sit amet felis fringilla massa
+ornare hendrerit. Maecenas efficitur sem at quam tempor volutpat. Nulla
+urna mi, dignissim id malesuada fringilla, sodales a lacus. Nulla malesuada
+arcu eu nulla faucibus, non eleifend dolor hendrerit. Sed vestibulum
+dignissim neque eget efficitur. Donec maximus aliquet commodo.
+
+--0000000000009c7c1d0637e91003
+Content-Type: text/html; charset="UTF-8"
+
+<div dir="ltr">Pellentesque tempor tellus non neque tincidunt elementum. In nec 
+placerat nulla. Vivamus pretium dictum eros eu ultrices. Nam porta nisl 
+et turpis semper, eu dapibus enim bibendum. Donec consectetur elit vitae
+ tellus venenatis, id lacinia tellus convallis. Duis sit amet felis 
+fringilla massa ornare hendrerit. Maecenas efficitur sem at quam tempor 
+volutpat. Nulla urna mi, dignissim id malesuada fringilla, sodales a 
+lacus. Nulla malesuada arcu eu nulla faucibus, non eleifend dolor 
+hendrerit. Sed vestibulum dignissim neque eget efficitur. Donec maximus 
+aliquet commodo.
+<br></div>
+
+--0000000000009c7c1d0637e91003--
+
+From 1835354339593558272@xxx Thu Jun 19 10:51:35 +0000 2025
+X-GM-THRID: 1835353232697289617
+X-Gmail-Labels: =?UTF-8?Q?Bo=C3=AEte_de_r=C3=A9ception,Non_lus?=
+Delivered-To: jean.testeur2024@gmail.com
+Received: by 2002:a05:6214:2025:b0:6fa:baa3:e5c6 with SMTP id 5csp207464qvf;
+        Thu, 19 Jun 2025 03:51:35 -0700 (PDT)
+X-Received: by 2002:a05:6602:3ca:b0:86a:256e:12df with SMTP id ca18e2360f4ac-875ded369bbmr2138511639f.2.1750330294895;
+        Thu, 19 Jun 2025 03:51:34 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1750330294; cv=none;
+        d=google.com; s=arc-20240605;
+        b=XjH2ySnMFidZB4zq2Ghj9meWLPKB6s+St7+N4jO4nMfx6qFyJC1U+uUJo3ur34P4dB
+         0kjURLxpQaOXaqbnRoTGgJX2c5An4OlnlXSRM9t8aa0QJzWfn4xYjbZ8zC48bdFZjZvy
+         BTfkabY1igBj2hkR2/QQicGu+9q7b1kw6FlpT0yuzEsmsL7X4YMtgA+rtJ4e1mGwtYLB
+         RzLN+0ryHxi3ZSRVV7KTNYYV1/vstueS1nsk/I6egwigyYcP7WvjlQ+FOiml2zKaMWhK
+         J45QhZJbugD/jRBGcbJyKtgKZ49nOu+/gFNmqcRKyd1zeM6wAk8qPzELKxeA7prXs14o
+         rMzQ==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:from:subject:message-id:feedback-id:date:mime-version
+         :dkim-signature;
+        bh=OnWoR7/pEapMD4lgRpm35jsLojcNYs5dwmcfASsKGhU=;
+        fh=2kZ02oqgupZh3+ZYlm2LJuid/rgQknBd0YCgFxVbMXg=;
+        b=jsQqxkYoFH7fw59W50zpnh1qF+KGDc+bjvF5S6OY7itH0wxMi2QBAy41S+H6wLXvSV
+         Q24hUjxCRaWemQwEwYMvJ+JdUgox5WXT4OyX5otaSrH2hvwsjJ/51d+/0XqN4phxOL4v
+         slvzb941jo6Pa4YNALrhvXMZSh2YL9lAWCVcPQxJdpMaqpakIT4YnZaURC/JFco7oXq9
+         WEwLiMFHvKyThngQpEglcOzldyDMcCP4CcKg1xG6Bnxm2wapPBIsXuNpofZXsP8KGKaA
+         NOgv98LzqueAopPXNquWhexopkgHSwcuKlXWT7smAvgcPbe4wui+aD7P2Mv+wfL2b99c
+         2NFw==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@accounts.google.com header.s=20230601 header.b=blMdzLvB;
+       spf=pass (google.com: domain of 3tuttaagtaccqr-uhsobdffrxqwv.jrrjoh.frp@gaia.bounces.google.com designates 209.85.220.73 as permitted sender) smtp.mailfrom=3tutTaAgTACcQR-UHSObDFFRXQWV.JRRJOH.FRP@gaia.bounces.google.com;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=accounts.google.com;
+       dara=pass header.i=@gmail.com
+Return-Path: <3tutTaAgTACcQR-UHSObDFFRXQWV.JRRJOH.FRP@gaia.bounces.google.com>
+Received: from mail-sor-f73.google.com (mail-sor-f73.google.com. [209.85.220.73])
+        by mx.google.com with SMTPS id ca18e2360f4ac-875d571cf00sor817841739f.1.2025.06.19.03.51.34
+        for <jean.testeur2024@gmail.com>
+        (Google Transport Security);
+        Thu, 19 Jun 2025 03:51:34 -0700 (PDT)
+Received-SPF: pass (google.com: domain of 3tuttaagtaccqr-uhsobdffrxqwv.jrrjoh.frp@gaia.bounces.google.com designates 209.85.220.73 as permitted sender) client-ip=209.85.220.73;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@accounts.google.com header.s=20230601 header.b=blMdzLvB;
+       spf=pass (google.com: domain of 3tuttaagtaccqr-uhsobdffrxqwv.jrrjoh.frp@gaia.bounces.google.com designates 209.85.220.73 as permitted sender) smtp.mailfrom=3tutTaAgTACcQR-UHSObDFFRXQWV.JRRJOH.FRP@gaia.bounces.google.com;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=accounts.google.com;
+       dara=pass header.i=@gmail.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=accounts.google.com; s=20230601; t=1750330294; x=1750935094; dara=google.com;
+        h=to:from:subject:message-id:feedback-id:date:mime-version:from:to:cc
+         :subject:date:message-id:reply-to;
+        bh=OnWoR7/pEapMD4lgRpm35jsLojcNYs5dwmcfASsKGhU=;
+        b=blMdzLvB62r6hFW1YSrlyar4DCLXfRbnsKtb2JJ+UGgP5XX1K7IhY4IWj5omqtv7y7
+         vc4Sfhwli7GyPNVfvZDa5UtgMoGZeyw5B69R4Q3CLliqD0dEghw4Vk+vcsUKqmNvEuIP
+         ByXSe9DtcG19WTh7fzNsSUzufoJo820CdAHIeh/ix1BKx79rp6KJ+kRG5e0PRfNOxnsU
+         Z8yp2XkhnnT6JLlzDFxIn4B0Z6Uv1xznYnZNebG2JI6xA/I+o+UGph6yz8VnGT1AgE7v
+         vYfnbAqVJlcdJezd6AAh/yDFDyAGLe4LUsMjn1MejKcIyyxLHemQLQBJZTlReksDJDxu
+         I3Dw==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1750330294; x=1750935094;
+        h=to:from:subject:message-id:feedback-id:date:mime-version
+         :x-gm-message-state:from:to:cc:subject:date:message-id:reply-to;
+        bh=OnWoR7/pEapMD4lgRpm35jsLojcNYs5dwmcfASsKGhU=;
+        b=qECQc1+10dKLLM9b/5XbIB+ENLK0QRAHqM96LjaHWapjTfdc//fJbG99WpISDiHZ7r
+         WFIVg4g2JNQYepNIZUA65OLX4Ms0ORyisotJnkFDN01l1fxpWOBUwObkhMo8xMUyg46s
+         XrRQ6GXxgXiBQjbRo2M4A7MLYjYYx7s2PAKkfed76IHqwT8QL0ZZdJ8lQaiKazsesIgf
+         oxcaJTcsr/uYhLUwvXaF6TPtVO5sKr+Kw1FyqHV9AumKOhZC7W/cjvV5FujnCZulCRfD
+         9qa5sxi8ARHs2p8LHSAzLufROBEKNqCbhPYmPctYQ+MXx2A4sq0Z/AWRkTNy3i3YMWjn
+         AlDA==
+X-Gm-Message-State: AOJu0YzqXD3W0qJ63jyMURekYBocjJh/AoYT+ev1AjoxpHhZaJH41cHK
+	9SXFrbGDOiQYj3imPk870dLPqt5Cta1Doo3K6OdZXlm7DAliMYKLLKntK4Ma/CzfhQe5OvXQLnG
+	fXhLHUAQ/y/iEZc00tjfFynDg7WQ/V2VlQurGvfQ=
+X-Google-Smtp-Source: AGHT+IE6VOPetCvzMNupdFjZiG64o4jwgd1cc4J7h10TUz1mC4rmpFfd9tYZ26J9Sgdi6fs9v/5XrZuHmfRi5+nd6oTC8Q==
+MIME-Version: 1.0
+X-Received: by 2002:a05:6602:1513:b0:86d:5f:aef4 with SMTP id
+ ca18e2360f4ac-875dec75b32mr2597981139f.0.1750330294608; Thu, 19 Jun 2025
+ 03:51:34 -0700 (PDT)
+Date: Thu, 19 Jun 2025 10:51:34 GMT
+X-Account-Notification-Type: 140
+Feedback-ID: 140:account-notifier
+X-Notifications: 4e03966f0c2a0000
+X-Notifications-Bounce-Info: AWoTSIF847LLJyQyJ_w0k8p-LW5skdL-aYE7tQeI3EQuiKcwfu_vVtWvOQQkZdFGOfaXTcHQSMqAHodT0c-mBWd3MmEwQuur-BSwhtxn-XiJpHt20kTdnwwYMdUx4KyNJzWZkdkH-qVZyVAPJeaGg9Pe3YI_hx1G7Cf-Sgk9nF2ZBH5WSQaijlKl3lXxekvTW5GDBVlKN_PUBKFonT4ryNLoBwNjAwNjA0MDQxNTM1NTk2OTMzMg
+Message-ID: <Zl3Tlk1QCC6AD4a7nPQ5ew@notifications.google.com>
+Subject: =?UTF-8?Q?Demande_de_cr=C3=A9ation_d=27archive_des_donn=C3=A9es_Google?=
+From: Google <no-reply@accounts.google.com>
+To: jean.testeur2024@gmail.com
+Content-Type: multipart/alternative; boundary="0000000000007323a50637ea8776"
+
+--0000000000007323a50637ea8776
+Content-Type: text/plain; charset="UTF-8"; format=flowed; delsp=yes
+Content-Transfer-Encoding: base64
+
+W2ltYWdlOiBHb29nbGVdDQpDcsOpYXRpb24gZCd1bmUgYXJjaGl2ZSBkZXMgZG9ubsOpZXMgR29v
+Z2xlIGRlbWFuZMOpZSBwb3VyDQoNCg0KamVhbi50ZXN0ZXVyMjAyNEBnbWFpbC5jb20NCg0KVm91
+cyByZWNldmV6IGNldCBlLW1haWwsIGNhciBxdWVscXUndW4gYSBkZW1hbmTDqSDDoCBjcsOpZXIg
+dW5lIGFyY2hpdmUgZGUgdm9zDQpkb25uw6llcyBHb29nbGUuDQoNClNpIHZvdXMgbifDqnRlcyBw
+YXMgw6AgbCdvcmlnaW5lIGRlIGNldHRlIGRlbWFuZGUsIGlsIHNlIHBldXQgcXVlIHF1ZWxxdSd1
+bg0KZXNzYWllIGQnYWNjw6lkZXIgw6Agdm90cmUgY29tcHRlIEdvb2dsZS4gVsOpcmlmaWV6IGwn
+YWN0aXZpdMOpIHLDqWNlbnRlIGRlDQp2b3RyZSBjb21wdGUgZXQgcHJlbmV6IGRlcyBtZXN1cmVz
+IHBvdXIgbGUgc8OpY3VyaXNlci4NCkNvbnN1bHRlciBsJ2FjdGl2aXTDqQ0KPGh0dHBzOi8vYWNj
+b3VudHMuZ29vZ2xlLmNvbS9BY2NvdW50Q2hvb3Nlcj9FbWFpbD1qZWFuLnRlc3RldXIyMDI0QGdt
+YWlsLmNvbSZjb250aW51ZT1odHRwczovL215YWNjb3VudC5nb29nbGUuY29tL2FsZXJ0L250LzE3
+NTAzMzAyOTQyMDM/cmZuJTNEMTQwJTI2cmZuYyUzRDElMjZlaWQlM0Q0NTcwNzM1NDQ2NzE4NDc1
+NTA2JTI2ZXQlM0QwPg0KVm91cyBwb3V2ZXogYXVzc2kgdm9pciBsJ2FjdGl2aXTDqSBsacOpZSDD
+oCBsYSBzw6ljdXJpdMOpIGRlIHZvdHJlIGNvbXB0ZSBpY2kgOg0KaHR0cHM6Ly9teWFjY291bnQu
+Z29vZ2xlLmNvbS9ub3RpZmljYXRpb25zDQpDZXQgZS1tYWlsIHZvdXMgYSDDqXTDqSBlbnZvecOp
+IHBvdXIgdm91cyBpbmZvcm1lciBkZSBtb2RpZmljYXRpb25zDQppbXBvcnRhbnRlcyBhcHBvcnTD
+qWVzIMOgIHZvdHJlIGNvbXB0ZSBldCBhdXggc2VydmljZXMgR29vZ2xlIHF1ZSB2b3VzDQp1dGls
+aXNlei4NCsKpIDIwMjUgR29vZ2xlIElyZWxhbmQgTHRkLiwgR29yZG9uIEhvdXNlLCBCYXJyb3cg
+U3RyZWV0LCBEdWJsaW4gNCwgSXJlbGFuZA0K
+--0000000000007323a50637ea8776
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html><html lang=3D"en"><head><meta name=3D"format-detection" cont=
+ent=3D"email=3Dno"/><meta name=3D"format-detection" content=3D"date=3Dno"/>=
+<style nonce=3D"3lQutx-YXcsRsat2q-aI6A">.awl a {color: #FFFFFF; text-decora=
+tion: none;} .abml a {color: #000000; font-family: Roboto-Medium,Helvetica,=
+Arial,sans-serif; font-weight: bold; text-decoration: none;} .adgl a {color=
+: rgba(0, 0, 0, 0.87); text-decoration: none;} .afal a {color: #b0b0b0; tex=
+t-decoration: none;} @media screen and (min-width: 600px) {.v2sp {padding: =
+6px 30px 0px;} .v2rsp {padding: 0px 10px;}} @media screen and (min-width: 6=
+00px) {.mdv2rw {padding: 40px 40px;}} </style><link href=3D"//fonts.googlea=
+pis.com/css?family=3DGoogle+Sans" rel=3D"stylesheet" type=3D"text/css" nonc=
+e=3D"3lQutx-YXcsRsat2q-aI6A"/></head><body style=3D"margin: 0; padding: 0;"=
+ bgcolor=3D"#FFFFFF"><table width=3D"100%" height=3D"100%" style=3D"min-wid=
+th: 348px;" border=3D"0" cellspacing=3D"0" cellpadding=3D"0" lang=3D"en"><t=
+r height=3D"32" style=3D"height: 32px;"><td></td></tr><tr align=3D"center">=
+<td><div itemscope itemtype=3D"//schema.org/EmailMessage"><div itemprop=3D"=
+action" itemscope itemtype=3D"//schema.org/ViewAction"><link itemprop=3D"ur=
+l" href=3D"https://accounts.google.com/AccountChooser?Email=3Djean.testeur2=
+024@gmail.com&amp;continue=3Dhttps://myaccount.google.com/alert/nt/17503302=
+94203?rfn%3D140%26rfnc%3D1%26eid%3D4570735446718475506%26et%3D0"/><meta ite=
+mprop=3D"name" content=3D"Consulter l&#39;activit=C3=A9 du compte"/></div><=
+/div><table border=3D"0" cellspacing=3D"0" cellpadding=3D"0" style=3D"paddi=
+ng-bottom: 20px; max-width: 516px; min-width: 220px;"><tr><td width=3D"8" s=
+tyle=3D"width: 8px;"></td><td><div style=3D"border-style: solid; border-wid=
+th: thin; border-color:#dadce0; border-radius: 8px; padding: 40px 20px;" al=
+ign=3D"center" class=3D"mdv2rw"><img src=3D"https://www.gstatic.com/images/=
+branding/googlelogo/2x/googlelogo_color_74x24dp.png" width=3D"74" height=3D=
+"24" aria-hidden=3D"true" style=3D"margin-bottom: 16px;" alt=3D"Google"><di=
+v style=3D"font-family: &#39;Google Sans&#39;,Roboto,RobotoDraft,Helvetica,=
+Arial,sans-serif;border-bottom: thin solid #dadce0; color: rgba(0,0,0,0.87)=
+; line-height: 32px; padding-bottom: 24px;text-align: center; word-break: b=
+reak-word;"><div style=3D"font-size: 24px;">Cr=C3=A9ation d'une archive des=
+ donn=C3=A9es Google demand=C3=A9e pour </div><table align=3D"center" style=
+=3D"margin-top:8px;"><tr style=3D"line-height: normal;"><td align=3D"right"=
+ style=3D"padding-right:8px;"><img width=3D"20" height=3D"20" style=3D"widt=
+h: 20px; height: 20px; vertical-align: sub; border-radius: 50%;;" src=3D"ht=
+tps://lh3.googleusercontent.com/a/ACg8ocIRLu5gNjRryiv4jjhkPFRvu9qtG6ophqmUo=
+cysuf4PzmwhVA=3Ds96-c" alt=3D""></td><td><a style=3D"font-family: &#39;Goog=
+le Sans&#39;,Roboto,RobotoDraft,Helvetica,Arial,sans-serif;color: rgba(0,0,=
+0,0.87); font-size: 14px; line-height: 20px;">jean.testeur2024@gmail.com</a=
+></td></tr></table> </div><div style=3D"font-family: Roboto-Regular,Helveti=
+ca,Arial,sans-serif; font-size: 14px; color: rgba(0,0,0,0.87); line-height:=
+ 20px;padding-top: 20px; text-align: left;"><p>Vous recevez cet e-mail, car=
+ quelqu'un a demand=C3=A9 =C3=A0 cr=C3=A9er une archive de vos donn=C3=A9es=
+ Google.</p><p>Si vous n'=C3=AAtes pas =C3=A0 l'origine de cette demande, i=
+l se peut que quelqu'un essaie d'acc=C3=A9der =C3=A0 votre compte Google. V=
+=C3=A9rifiez l'activit=C3=A9 r=C3=A9cente de votre compte et prenez des mes=
+ures pour le s=C3=A9curiser.</p><div style=3D"padding-top: 32px; text-align=
+: center;"><a href=3D"https://accounts.google.com/AccountChooser?Email=3Dje=
+an.testeur2024@gmail.com&amp;continue=3Dhttps://myaccount.google.com/alert/=
+nt/1750330294203?rfn%3D140%26rfnc%3D1%26eid%3D4570735446718475506%26et%3D0"=
+ target=3D"_blank" link-id=3D"main-button-link" style=3D"font-family: &#39;=
+Google Sans&#39;,Roboto,RobotoDraft,Helvetica,Arial,sans-serif; line-height=
+: 16px; color: #ffffff; font-weight: 400; text-decoration: none;font-size: =
+14px;display:inline-block;padding: 10px 24px;background-color: #4184F3; bor=
+der-radius: 5px; min-width: 90px;">Consulter l&#39;activit=C3=A9</a></div><=
+/div><div style=3D"padding-top: 20px; font-size: 12px; line-height: 16px; c=
+olor: #5f6368; letter-spacing: 0.3px; text-align: center">Vous pouvez aussi=
+ voir l'activit=C3=A9 li=C3=A9e =C3=A0 la s=C3=A9curit=C3=A9 de votre compt=
+e ici=C2=A0:<br><a style=3D"color: rgba(0, 0, 0, 0.87);text-decoration: inh=
+erit;">https://myaccount.google.com/notifications</a></div></div><div style=
+=3D"text-align: left;"><div style=3D"font-family: Roboto-Regular,Helvetica,=
+Arial,sans-serif;color: rgba(0,0,0,0.54); font-size: 11px; line-height: 18p=
+x; padding-top: 12px; text-align: center;"><div>Cet e-mail vous a =C3=A9t=
+=C3=A9 envoy=C3=A9 pour vous informer de modifications importantes apport=
+=C3=A9es =C3=A0 votre compte et aux services Google que vous utilisez.</div=
+><div style=3D"direction: ltr;">&copy; 2025 Google Ireland Ltd., <a class=
+=3D"afal" style=3D"font-family: Roboto-Regular,Helvetica,Arial,sans-serif;c=
+olor: rgba(0,0,0,0.54); font-size: 11px; line-height: 18px; padding-top: 12=
+px; text-align: center;">Gordon House, Barrow Street, Dublin 4, Ireland</a>=
+</div></div></div></td><td width=3D"8" style=3D"width: 8px;"></td></tr></ta=
+ble></td></tr><tr height=3D"32" style=3D"height: 32px;"><td></td></tr></tab=
+le></body></html>
+--0000000000007323a50637ea8776--
+
+From 1835353232697289617@xxx Thu Jun 19 10:33:59 +0000 2025
+X-GM-THRID: 1835353232697289617
+X-Gmail-Labels: =?UTF-8?Q?Bo=C3=AEte_de_r=C3=A9ception,Non_lus?=
+Delivered-To: jean.testeur2024@gmail.com
+Received: by 2002:a05:6214:2025:b0:6fa:baa3:e5c6 with SMTP id 5csp200450qvf;
+        Thu, 19 Jun 2025 03:34:00 -0700 (PDT)
+X-Received: by 2002:a05:6602:6d01:b0:86c:fea7:6b83 with SMTP id ca18e2360f4ac-875ded4ecabmr2480711939f.6.1750329239772;
+        Thu, 19 Jun 2025 03:33:59 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1750329239; cv=none;
+        d=google.com; s=arc-20240605;
+        b=fJXS9QXdSSrxsV4y99HH8stFDg/TA3PkAnzLBkIGbKmBCNMvQqzDExENJYT8sDRuD+
+         vTq/tBvqSWPoHb31giq/1F69SeW8LvVZYDFZtmPAE52+qKPSo5FJC/kfW+iS0+mk/wcL
+         MU8lEO/dWggI28FrNw7+mrYU4enrBihApQeQmzBgTP4VWh+Zpv0yZeRBdorrt+Nv1wvw
+         Sm/abxhf3eaN99lIU+5GeV42LZU8LAB6+vJdsuOFjFKZgNk5A7AAXZGQymyrqOdgdalQ
+         Wco4Nf+P04dMveIwruLu3G41xtPsn7nGQGv1CXFr1nE4/2SFIeZzS1aS70VJKWOwyJLX
+         UeXQ==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:from:subject:message-id:feedback-id:date:mime-version
+         :dkim-signature;
+        bh=tyQY2EYGS6790jIRQiFpSmFDr7yPiRGFzta0+/yG9G0=;
+        fh=2kZ02oqgupZh3+ZYlm2LJuid/rgQknBd0YCgFxVbMXg=;
+        b=JAIAN3Mdt67zV6Gat1CYhB4FFVTMZwVTMvNQ+QKub4LT+KoOhG+tNh4O2V9IAXiTCx
+         2GoGiqDOCsDkGDTyFzFnaxIIsgNWmKm9ccimakARvWPtlQ+rafoJaI4C4yL/WN6WtYBo
+         YQb9qdJX5SxxBYYjtXLmH9PLcnt1BnpyFV4ND62CfKYhb2EDjHwIBnhvy8L9w3xXM6dG
+         nWkNFU2wgVcT91dWc8GYn07mtmgSqr4Qcb4JcoCoyF9npOU/mMM21NteIODIPfr+OBAy
+         HNJL60EQI6XPfr9+dy5j1x0ljcOjC1EM2zYjBbSKtLayL256CIuFaY94NJAYCXqUCQuD
+         9Jrw==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@accounts.google.com header.s=20230601 header.b=bIl084KC;
+       spf=pass (google.com: domain of 3l-dtaagtap4tu-xkvr4giiu0tzy.muumrk.ius@gaia.bounces.google.com designates 209.85.220.73 as permitted sender) smtp.mailfrom=3l-dTaAgTAP4tu-xkvr4giiu0tzy.muumrk.ius@gaia.bounces.google.com;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=accounts.google.com;
+       dara=pass header.i=@gmail.com
+Return-Path: <3l-dTaAgTAP4tu-xkvr4giiu0tzy.muumrk.ius@gaia.bounces.google.com>
+Received: from mail-sor-f73.google.com (mail-sor-f73.google.com. [209.85.220.73])
+        by mx.google.com with SMTPS id ca18e2360f4ac-875d57ff5b5sor913861639f.4.2025.06.19.03.33.59
+        for <jean.testeur2024@gmail.com>
+        (Google Transport Security);
+        Thu, 19 Jun 2025 03:33:59 -0700 (PDT)
+Received-SPF: pass (google.com: domain of 3l-dtaagtap4tu-xkvr4giiu0tzy.muumrk.ius@gaia.bounces.google.com designates 209.85.220.73 as permitted sender) client-ip=209.85.220.73;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@accounts.google.com header.s=20230601 header.b=bIl084KC;
+       spf=pass (google.com: domain of 3l-dtaagtap4tu-xkvr4giiu0tzy.muumrk.ius@gaia.bounces.google.com designates 209.85.220.73 as permitted sender) smtp.mailfrom=3l-dTaAgTAP4tu-xkvr4giiu0tzy.muumrk.ius@gaia.bounces.google.com;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=accounts.google.com;
+       dara=pass header.i=@gmail.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=accounts.google.com; s=20230601; t=1750329239; x=1750934039; dara=google.com;
+        h=to:from:subject:message-id:feedback-id:date:mime-version:from:to:cc
+         :subject:date:message-id:reply-to;
+        bh=tyQY2EYGS6790jIRQiFpSmFDr7yPiRGFzta0+/yG9G0=;
+        b=bIl084KC6OwwS27sdCIIkcxfqTW7K+L0sdxnBh5c1nHLGSSRbgClxKVygOU/dGuklY
+         Yhed8V3Ec0104C20GhyWikRXWrKU03ysUVmwZDGSXmlJ+/iFZJ7lSqMgLslTT/I1jHkx
+         31ICAdJW1j8iGkij6eRc68GO3hmQOaregmYzb9MpC5tyYyqsQs8BODK8sBhO/aQz+8zn
+         CXRYnfI+UZbA+cTcrzy+YAll1TaUybctMjO/i+CzGa6w8XB27C8ymAJ7PL3VvtwWOJgX
+         PSBi1FEQt2V7QIxGebCeL6ty0NiAcsK8vUOt3uHUu8omdxG8Fk0kCum3uv0yYXTf4yvA
+         EHtA==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1750329239; x=1750934039;
+        h=to:from:subject:message-id:feedback-id:date:mime-version
+         :x-gm-message-state:from:to:cc:subject:date:message-id:reply-to;
+        bh=tyQY2EYGS6790jIRQiFpSmFDr7yPiRGFzta0+/yG9G0=;
+        b=vEOalqS12M7S2SEQ9m8GZ2mEy+0IJ1N0ZTBC0rODSL2IUI65gZqXCVD5rH2/+nIUXt
+         lA/56L917jUJ1nr6uR5ELvBwmq9ma8EsI9CrV1gfWTBIU9pHbcrodpjXpvUxQEAGrRMw
+         3TryU+FHZ0M1OFDpqUi1QEogZ/Zb0u+EFR1KeSFcMdP/VPgjda7uls1YOi0KAgatOBkb
+         /ME1IZYws9EEHIwlLjgADEf3IWVJaFUTatOhR2ell36ua2AvvsWgKoK7jV3SnrhEtgFu
+         oeEGkCnENeLcTNr+5IdpZASJZ+adbKJuZFdxZxJKJISk+c/cG/7xy03oqFfDGE+BFVHK
+         Vvew==
+X-Gm-Message-State: AOJu0YwzalC8bjFOFShaofY3ArZFNRrdMgmrY2vgBtKH7wMyZ0aGcfDh
+	xI9rP2Ws1WzH0DF6Mf8t0vB1cDd1zTf5/NrwVJ/+MgzrKaLyDjpv7D8eI6QKzUuBkiCWrr7ZeX6
+	53uH/u6caiR/ZYOiZukTWSjMPSCA9Yh2xH/0mHN4=
+X-Google-Smtp-Source: AGHT+IEcC0qNwAOGXQDbEzO9HW6Te8es2HSpflIiHAvts/oawN5YG96C6GgVC7FjH/taEM0vGvmvsu2tOVRNaSedJDiIBw==
+MIME-Version: 1.0
+X-Received: by 2002:a05:6602:29d2:b0:875:b255:e6af with SMTP id
+ ca18e2360f4ac-875dedd7824mr2179407239f.10.1750329239475; Thu, 19 Jun 2025
+ 03:33:59 -0700 (PDT)
+Date: Thu, 19 Jun 2025 10:33:59 GMT
+X-Account-Notification-Type: 140
+Feedback-ID: 140:account-notifier
+X-Notifications: 94c5ed166eea0000
+X-Notifications-Bounce-Info: AWoTSIGS3MHgLdEfr7A7jKXk6yqBkImkMCsuA3duu1mDQm31eRgtEpVtAdQrNztfNy3nRsRT1OiwRYm_BI56o5X3_eM8OoJEiR3HcoP3JCRNpxT15n4MpLd5HzoPI_rIQOVQGoS_Kb-ZI_ykGSWE59uikLyoKMIVeHc7UxK4HQHk66zV9cYDk6m4HwXyjvRmVDduhX0u-mimRRhyLIvYcjknGQNjAwNjA0MDQxNTM1NTk2OTMzMg
+Message-ID: <0kWo8sLpl8_-HhlVaEZdDg@notifications.google.com>
+Subject: =?UTF-8?Q?Demande_de_cr=C3=A9ation_d=27archive_des_donn=C3=A9es_Google?=
+From: Google <no-reply@accounts.google.com>
+To: jean.testeur2024@gmail.com
+Content-Type: multipart/alternative; boundary="0000000000008f156a0637ea489c"
+
+--0000000000008f156a0637ea489c
+Content-Type: text/plain; charset="UTF-8"; format=flowed; delsp=yes
+Content-Transfer-Encoding: base64
+
+W2ltYWdlOiBHb29nbGVdDQpDcsOpYXRpb24gZCd1bmUgYXJjaGl2ZSBkZXMgZG9ubsOpZXMgR29v
+Z2xlIGRlbWFuZMOpZSBwb3VyDQoNCg0KamVhbi50ZXN0ZXVyMjAyNEBnbWFpbC5jb20NCg0KVm91
+cyByZWNldmV6IGNldCBlLW1haWwsIGNhciBxdWVscXUndW4gYSBkZW1hbmTDqSDDoCBjcsOpZXIg
+dW5lIGFyY2hpdmUgZGUgdm9zDQpkb25uw6llcyBHb29nbGUuDQoNClNpIHZvdXMgbifDqnRlcyBw
+YXMgw6AgbCdvcmlnaW5lIGRlIGNldHRlIGRlbWFuZGUsIGlsIHNlIHBldXQgcXVlIHF1ZWxxdSd1
+bg0KZXNzYWllIGQnYWNjw6lkZXIgw6Agdm90cmUgY29tcHRlIEdvb2dsZS4gVsOpcmlmaWV6IGwn
+YWN0aXZpdMOpIHLDqWNlbnRlIGRlDQp2b3RyZSBjb21wdGUgZXQgcHJlbmV6IGRlcyBtZXN1cmVz
+IHBvdXIgbGUgc8OpY3VyaXNlci4NCkNvbnN1bHRlciBsJ2FjdGl2aXTDqQ0KPGh0dHBzOi8vYWNj
+b3VudHMuZ29vZ2xlLmNvbS9BY2NvdW50Q2hvb3Nlcj9FbWFpbD1qZWFuLnRlc3RldXIyMDI0QGdt
+YWlsLmNvbSZjb250aW51ZT1odHRwczovL215YWNjb3VudC5nb29nbGUuY29tL2FsZXJ0L250LzE3
+NTAzMjkyMzkxNTQ/cmZuJTNEMTQwJTI2cmZuYyUzRDElMjZlaWQlM0QtODAyNzk5Mzc5MTI1MTcy
+OTI3MSUyNmV0JTNEMD4NClZvdXMgcG91dmV6IGF1c3NpIHZvaXIgbCdhY3Rpdml0w6kgbGnDqWUg
+w6AgbGEgc8OpY3VyaXTDqSBkZSB2b3RyZSBjb21wdGUgaWNpIDoNCmh0dHBzOi8vbXlhY2NvdW50
+Lmdvb2dsZS5jb20vbm90aWZpY2F0aW9ucw0KQ2V0IGUtbWFpbCB2b3VzIGEgw6l0w6kgZW52b3nD
+qSBwb3VyIHZvdXMgaW5mb3JtZXIgZGUgbW9kaWZpY2F0aW9ucw0KaW1wb3J0YW50ZXMgYXBwb3J0
+w6llcyDDoCB2b3RyZSBjb21wdGUgZXQgYXV4IHNlcnZpY2VzIEdvb2dsZSBxdWUgdm91cw0KdXRp
+bGlzZXouDQrCqSAyMDI1IEdvb2dsZSBJcmVsYW5kIEx0ZC4sIEdvcmRvbiBIb3VzZSwgQmFycm93
+IFN0cmVldCwgRHVibGluIDQsIElyZWxhbmQNCg==
+--0000000000008f156a0637ea489c
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html><html lang=3D"en"><head><meta name=3D"format-detection" cont=
+ent=3D"email=3Dno"/><meta name=3D"format-detection" content=3D"date=3Dno"/>=
+<style nonce=3D"KPMOaXcEomNMQ8I7FsIzaA">.awl a {color: #FFFFFF; text-decora=
+tion: none;} .abml a {color: #000000; font-family: Roboto-Medium,Helvetica,=
+Arial,sans-serif; font-weight: bold; text-decoration: none;} .adgl a {color=
+: rgba(0, 0, 0, 0.87); text-decoration: none;} .afal a {color: #b0b0b0; tex=
+t-decoration: none;} @media screen and (min-width: 600px) {.v2sp {padding: =
+6px 30px 0px;} .v2rsp {padding: 0px 10px;}} @media screen and (min-width: 6=
+00px) {.mdv2rw {padding: 40px 40px;}} </style><link href=3D"//fonts.googlea=
+pis.com/css?family=3DGoogle+Sans" rel=3D"stylesheet" type=3D"text/css" nonc=
+e=3D"KPMOaXcEomNMQ8I7FsIzaA"/></head><body style=3D"margin: 0; padding: 0;"=
+ bgcolor=3D"#FFFFFF"><table width=3D"100%" height=3D"100%" style=3D"min-wid=
+th: 348px;" border=3D"0" cellspacing=3D"0" cellpadding=3D"0" lang=3D"en"><t=
+r height=3D"32" style=3D"height: 32px;"><td></td></tr><tr align=3D"center">=
+<td><div itemscope itemtype=3D"//schema.org/EmailMessage"><div itemprop=3D"=
+action" itemscope itemtype=3D"//schema.org/ViewAction"><link itemprop=3D"ur=
+l" href=3D"https://accounts.google.com/AccountChooser?Email=3Djean.testeur2=
+024@gmail.com&amp;continue=3Dhttps://myaccount.google.com/alert/nt/17503292=
+39154?rfn%3D140%26rfnc%3D1%26eid%3D-8027993791251729271%26et%3D0"/><meta it=
+emprop=3D"name" content=3D"Consulter l&#39;activit=C3=A9 du compte"/></div>=
+</div><table border=3D"0" cellspacing=3D"0" cellpadding=3D"0" style=3D"padd=
+ing-bottom: 20px; max-width: 516px; min-width: 220px;"><tr><td width=3D"8" =
+style=3D"width: 8px;"></td><td><div style=3D"border-style: solid; border-wi=
+dth: thin; border-color:#dadce0; border-radius: 8px; padding: 40px 20px;" a=
+lign=3D"center" class=3D"mdv2rw"><img src=3D"https://www.gstatic.com/images=
+/branding/googlelogo/2x/googlelogo_color_74x24dp.png" width=3D"74" height=
+=3D"24" aria-hidden=3D"true" style=3D"margin-bottom: 16px;" alt=3D"Google">=
+<div style=3D"font-family: &#39;Google Sans&#39;,Roboto,RobotoDraft,Helveti=
+ca,Arial,sans-serif;border-bottom: thin solid #dadce0; color: rgba(0,0,0,0.=
+87); line-height: 32px; padding-bottom: 24px;text-align: center; word-break=
+: break-word;"><div style=3D"font-size: 24px;">Cr=C3=A9ation d'une archive =
+des donn=C3=A9es Google demand=C3=A9e pour </div><table align=3D"center" st=
+yle=3D"margin-top:8px;"><tr style=3D"line-height: normal;"><td align=3D"rig=
+ht" style=3D"padding-right:8px;"><img width=3D"20" height=3D"20" style=3D"w=
+idth: 20px; height: 20px; vertical-align: sub; border-radius: 50%;;" src=3D=
+"https://lh3.googleusercontent.com/a/ACg8ocIRLu5gNjRryiv4jjhkPFRvu9qtG6ophq=
+mUocysuf4PzmwhVA=3Ds96-c" alt=3D""></td><td><a style=3D"font-family: &#39;G=
+oogle Sans&#39;,Roboto,RobotoDraft,Helvetica,Arial,sans-serif;color: rgba(0=
+,0,0,0.87); font-size: 14px; line-height: 20px;">jean.testeur2024@gmail.com=
+</a></td></tr></table> </div><div style=3D"font-family: Roboto-Regular,Helv=
+etica,Arial,sans-serif; font-size: 14px; color: rgba(0,0,0,0.87); line-heig=
+ht: 20px;padding-top: 20px; text-align: left;"><p>Vous recevez cet e-mail, =
+car quelqu'un a demand=C3=A9 =C3=A0 cr=C3=A9er une archive de vos donn=C3=
+=A9es Google.</p><p>Si vous n'=C3=AAtes pas =C3=A0 l'origine de cette deman=
+de, il se peut que quelqu'un essaie d'acc=C3=A9der =C3=A0 votre compte Goog=
+le. V=C3=A9rifiez l'activit=C3=A9 r=C3=A9cente de votre compte et prenez de=
+s mesures pour le s=C3=A9curiser.</p><div style=3D"padding-top: 32px; text-=
+align: center;"><a href=3D"https://accounts.google.com/AccountChooser?Email=
+=3Djean.testeur2024@gmail.com&amp;continue=3Dhttps://myaccount.google.com/a=
+lert/nt/1750329239154?rfn%3D140%26rfnc%3D1%26eid%3D-8027993791251729271%26e=
+t%3D0" target=3D"_blank" link-id=3D"main-button-link" style=3D"font-family:=
+ &#39;Google Sans&#39;,Roboto,RobotoDraft,Helvetica,Arial,sans-serif; line-=
+height: 16px; color: #ffffff; font-weight: 400; text-decoration: none;font-=
+size: 14px;display:inline-block;padding: 10px 24px;background-color: #4184F=
+3; border-radius: 5px; min-width: 90px;">Consulter l&#39;activit=C3=A9</a><=
+/div></div><div style=3D"padding-top: 20px; font-size: 12px; line-height: 1=
+6px; color: #5f6368; letter-spacing: 0.3px; text-align: center">Vous pouvez=
+ aussi voir l'activit=C3=A9 li=C3=A9e =C3=A0 la s=C3=A9curit=C3=A9 de votre=
+ compte ici=C2=A0:<br><a style=3D"color: rgba(0, 0, 0, 0.87);text-decoratio=
+n: inherit;">https://myaccount.google.com/notifications</a></div></div><div=
+ style=3D"text-align: left;"><div style=3D"font-family: Roboto-Regular,Helv=
+etica,Arial,sans-serif;color: rgba(0,0,0,0.54); font-size: 11px; line-heigh=
+t: 18px; padding-top: 12px; text-align: center;"><div>Cet e-mail vous a =C3=
+=A9t=C3=A9 envoy=C3=A9 pour vous informer de modifications importantes appo=
+rt=C3=A9es =C3=A0 votre compte et aux services Google que vous utilisez.</d=
+iv><div style=3D"direction: ltr;">&copy; 2025 Google Ireland Ltd., <a class=
+=3D"afal" style=3D"font-family: Roboto-Regular,Helvetica,Arial,sans-serif;c=
+olor: rgba(0,0,0,0.54); font-size: 11px; line-height: 18px; padding-top: 12=
+px; text-align: center;">Gordon House, Barrow Street, Dublin 4, Ireland</a>=
+</div></div></div></td><td width=3D"8" style=3D"width: 8px;"></td></tr></ta=
+ble></td></tr><tr height=3D"32" style=3D"height: 32px;"><td></td></tr></tab=
+le></body></html>
+--0000000000008f156a0637ea489c--
+
+From 1833215653612141880@xxx Mon May 26 20:18:05 +0000 2025
+X-GM-THRID: 1833215463084471980
+X-Gmail-Labels: =?UTF-8?Q?Messages_envoy=C3=A9s,Corbeille?=
+MIME-Version: 1.0
+Date: Mon, 26 May 2025 22:18:04 +0200
+References: <CAO3HoF2_KueH7UoLUpYAFwqe+bVY-9NL+M8R4cVukVZmQeS6Qg@mail.gmail.com>
+In-Reply-To: <CAO3HoF2_KueH7UoLUpYAFwqe+bVY-9NL+M8R4cVukVZmQeS6Qg@mail.gmail.com>
+Message-ID: <CAKo5_uYQh508s7ixKd+0nMa-BQG6B3YPMSwjKXsHTFiZjnQ3Ag@mail.gmail.com>
+Subject: Re: Je t'envoie encore un message...
+From: Jean Testeur <jean.testeur2024@gmail.com>
+To: "julie.testeuse Julie Testeuse" <julietesteuse24@gmail.com>
+Content-Type: multipart/alternative; boundary="0000000000003e487306360fa54e"
+
+--0000000000003e487306360fa54e
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+Yes !
+
+On Mon, May 26, 2025 at 10:15=E2=80=AFPM julie.testeuse Julie Testeuse <
+julietesteuse24@gmail.com> wrote:
+
+> Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut hendrerit,
+> ante ac facilisis convallis, leo augue volutpat mi, ac suscipit velit nun=
+c
+> non massa. Morbi dignissim nibh eu velit imperdiet, eget efficitur nulla
+> gravida. Suspendisse potenti. Proin nulla dui, efficitur a porta quis,
+> semper non est. Proin massa neque, consequat in diam at, placerat
+> pellentesque justo. Praesent tristique augue nec erat vulputate, volutpat
+> commodo ipsum dapibus. Donec venenatis, urna eu volutpat volutpat, enim
+> lacus egestas tortor, sit amet volutpat nulla augue nec urna. Integer vit=
+ae
+> tellus dignissim, tincidunt leo vitae, accumsan tellus. Nam luctus sed
+> augue ut maximus. Sed ullamcorper quam nec luctus iaculis. Quisque sed an=
+te
+> quis sem sodales dignissim sed ac nisl. Morbi rhoncus accumsan ornare.
+> Suspendisse sed efficitur nunc, sit amet luctus ante. Donec nunc leo,
+> mattis ac odio at, vulputate congue libero. Cras augue arcu, pellentesque
+> euismod velit eu, suscipit eleifend tortor.
+>
+> Quisque venenatis ex in nibh bibendum, eu tincidunt diam volutpat.
+> Maecenas maximus id sem ut pellentesque. Sed vitae elementum arcu, a
+> feugiat urna. Cras ullamcorper aliquet dolor ut placerat. Donec a enim
+> laoreet, luctus turpis ac, dapibus elit. Mauris euismod, nunc vel faucibu=
+s
+> auctor, arcu sem feugiat orci, quis scelerisque libero felis in erat. Dui=
+s
+> interdum mi ac lectus faucibus, nec ullamcorper elit auctor.
+>
+>
+
+--0000000000003e487306360fa54e
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+<div dir=3D"ltr">Yes !</div><br><div class=3D"gmail_quote gmail_quote_conta=
+iner"><div dir=3D"ltr" class=3D"gmail_attr">On Mon, May 26, 2025 at 10:15=
+=E2=80=AFPM julie.testeuse Julie Testeuse &lt;<a href=3D"mailto:julietesteu=
+se24@gmail.com">julietesteuse24@gmail.com</a>&gt; wrote:<br></div><blockquo=
+te class=3D"gmail_quote" style=3D"margin:0px 0px 0px 0.8ex;border-left:1px =
+solid rgb(204,204,204);padding-left:1ex"><div dir=3D"ltr"><div dir=3D"ltr">=
+<p style=3D"margin:0px 0px 15px;padding:0px;text-align:justify;color:rgb(0,=
+0,0);font-family:&quot;Open Sans&quot;,Arial,sans-serif;font-size:14px">Lor=
+em
+ ipsum dolor sit amet, consectetur adipiscing elit. Ut hendrerit, ante=20
+ac facilisis convallis, leo augue volutpat mi, ac suscipit velit nunc=20
+non massa. Morbi dignissim nibh eu velit imperdiet, eget efficitur nulla
+ gravida. Suspendisse potenti. Proin nulla dui, efficitur a porta quis,=20
+semper non est. Proin massa neque, consequat in diam at, placerat=20
+pellentesque justo. Praesent tristique augue nec erat vulputate,=20
+volutpat commodo ipsum dapibus. Donec venenatis, urna eu volutpat=20
+volutpat, enim lacus egestas tortor, sit amet volutpat nulla augue nec=20
+urna. Integer vitae tellus dignissim, tincidunt leo vitae, accumsan=20
+tellus. Nam luctus sed augue ut maximus. Sed ullamcorper quam nec luctus
+ iaculis. Quisque sed ante quis sem sodales dignissim sed ac nisl. Morbi
+ rhoncus accumsan ornare. Suspendisse sed efficitur nunc, sit amet=20
+luctus ante. Donec nunc leo, mattis ac odio at, vulputate congue libero.
+ Cras augue arcu, pellentesque euismod velit eu, suscipit eleifend=20
+tortor.</p><p style=3D"margin:0px 0px 15px;padding:0px;text-align:justify;c=
+olor:rgb(0,0,0);font-family:&quot;Open Sans&quot;,Arial,sans-serif;font-siz=
+e:14px">Quisque
+ venenatis ex in nibh bibendum, eu tincidunt diam volutpat. Maecenas=20
+maximus id sem ut pellentesque. Sed vitae elementum arcu, a feugiat=20
+urna. Cras ullamcorper aliquet dolor ut placerat. Donec a enim laoreet,=20
+luctus turpis ac, dapibus elit. Mauris euismod, nunc vel faucibus=20
+auctor, arcu sem feugiat orci, quis scelerisque libero felis in erat.=20
+Duis interdum mi ac lectus faucibus, nec ullamcorper elit auctor.</p></div>=
+<br></div>
+</blockquote></div>
+
+--0000000000003e487306360fa54e--
+
+From 1833215463084471980@xxx Mon May 26 20:15:03 +0000 2025
+X-GM-THRID: 1833215463084471980
+X-Gmail-Labels: Corbeille,Ouvert
+Delivered-To: jean.testeur2024@gmail.com
+Received: by 2002:a05:6022:73a2:b0:70:dff8:2c7c with SMTP id bl34csp5498892lab;
+        Mon, 26 May 2025 13:15:03 -0700 (PDT)
+X-Received: by 2002:a05:6122:4b08:b0:52b:789:cf93 with SMTP id 71dfb90a1353d-52f2c4eac37mr7993026e0c.5.1748290503283;
+        Mon, 26 May 2025 13:15:03 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1748290503; cv=none;
+        d=google.com; s=arc-20240605;
+        b=a4hL/cg32SRwbh4Z6jaD4D8Z8tYrABI99tt1w/BwPzcgM0LwFcqLRI+6PIIJutVAaY
+         Z3PBYsjRMm37+CCk9gtIjGbCNquQN29rx5VqKNc238GDXbLltn9qsQ6wCHekOWeRFsC4
+         DrDQjtBGCkBT2fDVPP6Iw5WQOIPuYM+bNjISkYf/TQKljZ8oN5GYIpgrDQQ40lDpMWiI
+         ulH8YjezJKS9T+JKNPKp1uncE7kxlGXgqeHUdXt3T/VxevMZzsIDmbxsxTQiboLK1SG1
+         nGGZe7N4iM7ErlUBO+pWyrevv3RFtH2b2yMqGKt191x6AXsIFDyt8ZfIb/FyyrXPcbl/
+         5V+Q==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:subject:message-id:date:from:mime-version:dkim-signature;
+        bh=LNmZmhoLrzkAOvj7XI/7TuVxCFWLu5SonZ9rUvUPVv4=;
+        fh=qduXiWmpvL6Nvb9jWGQZYNWtwk3WUF2Q+1YIukHYAeA=;
+        b=ESsgvMNaZNgGaa4XB7qGfllru8IS6y8J4U8q5iUGzrFxNRQpIIDLqTv9isubsKjH9o
+         BFqTKHZXP4SE/jDsUdbCg0VCcE8rhe8dqpj5RMCMKDJiyWsBHlFnTzBW+KP3LqzuLc+u
+         dvEkt5p3OwvR0VfGCul0LP9IWjToAwEhpJe1qd+Y+cu1r5cPhNYGE2hXbnwu2VmUu4yv
+         znaGu/PH0kcazzlB1OET3otb522S7aVaql3UU1f/PhgnviEQ1CNWAIfzRkoKCfjr4wzB
+         JCYHXseYlAMBfG2xPEofCWiGbndjg0Hz8QXqnbKtEQ4jHGI/3zrRfyzHaUetkLzXUgg9
+         tyng==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b="Eorro/th";
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+Return-Path: <julietesteuse24@gmail.com>
+Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])
+        by mx.google.com with SMTPS id 71dfb90a1353d-52dba91b125sor2044419e0c.1.2025.05.26.13.15.03
+        for <jean.testeur2024@gmail.com>
+        (Google Transport Security);
+        Mon, 26 May 2025 13:15:03 -0700 (PDT)
+Received-SPF: pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20230601 header.b="Eorro/th";
+       spf=pass (google.com: domain of julietesteuse24@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=julietesteuse24@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=pass header.i=@gmail.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20230601; t=1748290503; x=1748895303; dara=google.com;
+        h=to:subject:message-id:date:from:mime-version:from:to:cc:subject
+         :date:message-id:reply-to;
+        bh=LNmZmhoLrzkAOvj7XI/7TuVxCFWLu5SonZ9rUvUPVv4=;
+        b=Eorro/th/oGDAVphPxZcJqfejnu4eK9HxMyWxUlH8fxXYM5870nJfoDkoL12ScdsFj
+         wZHz2lvB3lTxNCqIG0HzzM9j6KT4aPylvOq6Dd26CC31ot9aKY6Rkte3xXwIvhPf6yCb
+         /27XrMNJ4b49s87H6wHCGujVUcb6/vVncZdAFVW/Us2g0FmEedpvL+ICPloquVhQqI8T
+         vGhKUZ1v/GBLE6r77Qu2jj8mCngrB68Wle+hsaoO3n7Rd/2ye0h0VR3ZfMaYhLiTtIMA
+         oNVd1FMghGWW6GdE3BvI8owEl+rJIfy/H4mwJDZOTFvOg+o88bNBSbrowe0Pt3ARd9fd
+         CHjA==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1748290503; x=1748895303;
+        h=to:subject:message-id:date:from:mime-version:x-gm-message-state
+         :from:to:cc:subject:date:message-id:reply-to;
+        bh=LNmZmhoLrzkAOvj7XI/7TuVxCFWLu5SonZ9rUvUPVv4=;
+        b=CxOTkT/RnFL8H9m5EkIqY2R4jd5QV+bYUTGkN6Qq0uoCBuRjyZYdhJpR394+RGi9dr
+         m5V459AMli8fOxofJFaIB6+1Db9SqZvn1ELXlTteevQr6S5TEk8DP3TKWSonl5YeCr7g
+         CjKESsjD8Aat0MMfmJXppU1+C4LFFux40w0T6tTmDwzjZqlglRm2Kv79hNXG0vjmcRPu
+         A0xVXjqWU+QPXeB6JgTqtbFzs3iGvVhUp1flurG+zegxLbe81cvPmwKk5PpGF3n34Sff
+         LpUUrYD+aYTDu8Xh0Plxo/Q+r2tbi6YAWAfpCiBvyDYmRBpeoOglNkUdBWDDgaCDYrw+
+         ezYw==
+X-Gm-Message-State: AOJu0Yy6X5XoL71Ia1Ez9v+GYCXrxuCGBM85cF0Bh8l49Uyjn9eEqTNG
+	7BDYYqSQCHx/FraJFZRjTXH+05Y2VtztwztHde4AjqdGUv+DQGtsePVMomhGrGnYJN3woLBgPkj
+	OiKVDmeeMwXcvXVt2AuymSbbWnBe3Rkr3v88OQGJKyJV9
+X-Gm-Gg: ASbGnctCEk+JYH9Tl37IAL8mvnMxHEmUj7IE1vSNA6ebYImlleQdHyPJVh5eclcdpmG
+	NzGmm4Rp89RSS20W7ERV3xyVd0gViWVMHyikOlnS66k1yHWXMRSoAsJkn1LzA5j1PK88GcdIa/r
+	eufda3+xES3HHul+lKo3458pghkKhhpB6CMlcyjiC/cfkgR4GVz+a3y31o5Lw2WWsp7g==
+X-Google-Smtp-Source: AGHT+IGRkIXFELmJfHRa0gSagLxsUrHHt5k5BCHBwSlmpMDRt2uJ2lglOLFzNs1cQF6Vwzmm8NW8ZYXRe7eQ0U5LUag=
+X-Received: by 2002:a05:6122:6598:b0:525:aecb:6306 with SMTP id
+ 71dfb90a1353d-52f2c5b4127mr8111130e0c.11.1748290502704; Mon, 26 May 2025
+ 13:15:02 -0700 (PDT)
+MIME-Version: 1.0
+From: "julie.testeuse Julie Testeuse" <julietesteuse24@gmail.com>
+Date: Mon, 26 May 2025 22:14:50 +0200
+X-Gm-Features: AX0GCFvfcEjGMkMu2__KspyXeWt0-2S3k7PS7Z-0u35-bZQd9jigZxsTb8ZRuxs
+Message-ID: <CAO3HoF2_KueH7UoLUpYAFwqe+bVY-9NL+M8R4cVukVZmQeS6Qg@mail.gmail.com>
+Subject: Je t'envoie encore un message...
+To: "jean.testeur2024@gmail.com" <jean.testeur2024@gmail.com>
+Content-Type: multipart/alternative; boundary="00000000000060c70906360f9ac0"
+
+--00000000000060c70906360f9ac0
+Content-Type: text/plain; charset="UTF-8"
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut hendrerit, ante
+ac facilisis convallis, leo augue volutpat mi, ac suscipit velit nunc non
+massa. Morbi dignissim nibh eu velit imperdiet, eget efficitur nulla
+gravida. Suspendisse potenti. Proin nulla dui, efficitur a porta quis,
+semper non est. Proin massa neque, consequat in diam at, placerat
+pellentesque justo. Praesent tristique augue nec erat vulputate, volutpat
+commodo ipsum dapibus. Donec venenatis, urna eu volutpat volutpat, enim
+lacus egestas tortor, sit amet volutpat nulla augue nec urna. Integer vitae
+tellus dignissim, tincidunt leo vitae, accumsan tellus. Nam luctus sed
+augue ut maximus. Sed ullamcorper quam nec luctus iaculis. Quisque sed ante
+quis sem sodales dignissim sed ac nisl. Morbi rhoncus accumsan ornare.
+Suspendisse sed efficitur nunc, sit amet luctus ante. Donec nunc leo,
+mattis ac odio at, vulputate congue libero. Cras augue arcu, pellentesque
+euismod velit eu, suscipit eleifend tortor.
+
+Quisque venenatis ex in nibh bibendum, eu tincidunt diam volutpat. Maecenas
+maximus id sem ut pellentesque. Sed vitae elementum arcu, a feugiat urna.
+Cras ullamcorper aliquet dolor ut placerat. Donec a enim laoreet, luctus
+turpis ac, dapibus elit. Mauris euismod, nunc vel faucibus auctor, arcu sem
+feugiat orci, quis scelerisque libero felis in erat. Duis interdum mi ac
+lectus faucibus, nec ullamcorper elit auctor.
+
+--00000000000060c70906360f9ac0
+Content-Type: text/html; charset="UTF-8"
+
+<div dir="ltr"><div dir="ltr"><p style="margin:0px 0px 15px;padding:0px;text-align:justify;color:rgb(0,0,0);font-family:&quot;Open Sans&quot;,Arial,sans-serif;font-size:14px">Lorem
+ ipsum dolor sit amet, consectetur adipiscing elit. Ut hendrerit, ante 
+ac facilisis convallis, leo augue volutpat mi, ac suscipit velit nunc 
+non massa. Morbi dignissim nibh eu velit imperdiet, eget efficitur nulla
+ gravida. Suspendisse potenti. Proin nulla dui, efficitur a porta quis, 
+semper non est. Proin massa neque, consequat in diam at, placerat 
+pellentesque justo. Praesent tristique augue nec erat vulputate, 
+volutpat commodo ipsum dapibus. Donec venenatis, urna eu volutpat 
+volutpat, enim lacus egestas tortor, sit amet volutpat nulla augue nec 
+urna. Integer vitae tellus dignissim, tincidunt leo vitae, accumsan 
+tellus. Nam luctus sed augue ut maximus. Sed ullamcorper quam nec luctus
+ iaculis. Quisque sed ante quis sem sodales dignissim sed ac nisl. Morbi
+ rhoncus accumsan ornare. Suspendisse sed efficitur nunc, sit amet 
+luctus ante. Donec nunc leo, mattis ac odio at, vulputate congue libero.
+ Cras augue arcu, pellentesque euismod velit eu, suscipit eleifend 
+tortor.</p><p style="margin:0px 0px 15px;padding:0px;text-align:justify;color:rgb(0,0,0);font-family:&quot;Open Sans&quot;,Arial,sans-serif;font-size:14px">Quisque
+ venenatis ex in nibh bibendum, eu tincidunt diam volutpat. Maecenas 
+maximus id sem ut pellentesque. Sed vitae elementum arcu, a feugiat 
+urna. Cras ullamcorper aliquet dolor ut placerat. Donec a enim laoreet, 
+luctus turpis ac, dapibus elit. Mauris euismod, nunc vel faucibus 
+auctor, arcu sem feugiat orci, quis scelerisque libero felis in erat. 
+Duis interdum mi ac lectus faucibus, nec ullamcorper elit auctor.</p></div><br></div>
+
+--00000000000060c70906360f9ac0--
+
+From 1835353246695716371@xxx Thu Jun 19 10:34:12 +0000 2025
+X-GM-THRID: 1835353246695716371
+X-Gmail-Labels: =?UTF-8?Q?Bo=C3=AEte_de_r=C3=A9ception,Non_lus?=
+Delivered-To: jean.testeur2024@gmail.com
+Received: by 2002:a05:6214:2025:b0:6fa:baa3:e5c6 with SMTP id 5csp200598qvf;
+        Thu, 19 Jun 2025 03:34:13 -0700 (PDT)
+X-Received: by 2002:a17:907:1b15:b0:ade:316e:bfc with SMTP id a640c23a62f3a-adfad30de8emr2154497066b.21.1750329253006;
+        Thu, 19 Jun 2025 03:34:13 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1750329252; cv=none;
+        d=google.com; s=arc-20240605;
+        b=MQWToC9H12ZV4huHhhsAd9g1EkSMMuMvwPlwDaNko+KrfhF65fLbntkgyjJDgdEIi0
+         HuKgrrLZg1BP8tRvH3ES0JiIm7ecdQoP8w+R9oKeOZRPBw4YhL8v63zeuKniDP6HTnPH
+         d9H4zBJu59n5yFtJEQQ9tnEDvGJItWSs7wiP6XNzuwQTGDlEFOJjLK+bbj8J1ZpHh+bU
+         xOLIgYVOdsE0yAlgHfrYqW4YexXItAr3BNDtBtP8t8fvh8yjFSoweYqaz5HIGBzz8Lub
+         fvBUaX1bcLj/WSkC6PMYpGfjzrnZCXCp1lg2aTppFHrDmWTD0pRmWsfXAGj0J6+9fbt3
+         NrLA==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:from:subject:date:message-id:mime-version:dkim-signature;
+        bh=HYh/287JFFGXKrBKNjtZdLnpDOLv5fb4Cffp0+bChmM=;
+        fh=2kZ02oqgupZh3+ZYlm2LJuid/rgQknBd0YCgFxVbMXg=;
+        b=cGa3arr355TkbUc7GKz4u1RgAOK35mxUPUYOuNFvjCD3NkqgsqzhtQT+bk4J244v/c
+         Hd0gG2BY4YN9XaCcijloQFIAH0ALC5IqlmOqSAxf9WjpRR7F/PrUE9S2vPMJ58rukfDV
+         Zdu08mBYDcdpd7w0XwZuQRltvAf2BteYCg4GZ6JBT34Eg+oEX8HQDqgSV5cmRcQkWzhd
+         SlnFgbSIvGR6dxDlAFCtuXEiA+8UnMkJvEP/4R4VOLw7ZE+nP6KK/2lKLugth4zdyxg4
+         x94zdKv80OnGjzZbR6YFG6iJe3LBkmfmy+gwG88r8PqDmILQxprrQRuf+5sCAewproZz
+         6NKg==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@google.com header.s=20230601 header.b=v0dGBKo8;
+       spf=pass (google.com: domain of 3podtaackea0014r2ybt11tyr.p1zwrn0.6r56r74fdfhtznvy.p1z@takeout.bounces.google.com designates 209.85.220.69 as permitted sender) smtp.mailfrom=3pOdTaAcKEA0014r2yBt11tyr.p1zwrn0.6r56r74FDFHtznvy.p1z@takeout.bounces.google.com;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=google.com;
+       dara=pass header.i=@gmail.com
+Return-Path: <3pOdTaAcKEA0014r2yBt11tyr.p1zwrn0.6r56r74FDFHtznvy.p1z@takeout.bounces.google.com>
+Received: from mail-sor-f69.google.com (mail-sor-f69.google.com. [209.85.220.69])
+        by mx.google.com with SMTPS id a640c23a62f3a-ae016cc2e97sor208870466b.1.2025.06.19.03.34.12
+        for <jean.testeur2024@gmail.com>
+        (Google Transport Security);
+        Thu, 19 Jun 2025 03:34:12 -0700 (PDT)
+Received-SPF: pass (google.com: domain of 3podtaackea0014r2ybt11tyr.p1zwrn0.6r56r74fdfhtznvy.p1z@takeout.bounces.google.com designates 209.85.220.69 as permitted sender) client-ip=209.85.220.69;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@google.com header.s=20230601 header.b=v0dGBKo8;
+       spf=pass (google.com: domain of 3podtaackea0014r2ybt11tyr.p1zwrn0.6r56r74fdfhtznvy.p1z@takeout.bounces.google.com designates 209.85.220.69 as permitted sender) smtp.mailfrom=3pOdTaAcKEA0014r2yBt11tyr.p1zwrn0.6r56r74FDFHtznvy.p1z@takeout.bounces.google.com;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=google.com;
+       dara=pass header.i=@gmail.com
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=google.com; s=20230601; t=1750329252; x=1750934052; dara=google.com;
+        h=to:from:subject:date:message-id:mime-version:from:to:cc:subject
+         :date:message-id:reply-to;
+        bh=HYh/287JFFGXKrBKNjtZdLnpDOLv5fb4Cffp0+bChmM=;
+        b=v0dGBKo8D/ZO3ksDF2fB8BBZOD1dd3rGcla+Dci8H3rYax3kFD+hXfUqVvYRpeN3xE
+         bLT/vbtKPE4D7BxOLXrTlIQW8vGVUxl7GQanUWwSXWAR9cwPuULRkd+WXYj93nBwINbx
+         ct5m4w3Vh0YUXc2VqRE4sSe5mbU9xvkWA+S63ZGtBOBzBYdXfru0g4qZ+AbPNhbLnDgn
+         wD51wGBhMjUqgRxhrR2LAERTKt6LjhPvs2mFkHutVN+8ycG53cw7qO+9J7vLCYfpr8xk
+         AiwwUsYzyPFLS2X5n2ctIFRQsp61YRT9fpkE3hoeoGRbDmkDgP11TxQVyIfuSiTougLz
+         RQOA==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1750329252; x=1750934052;
+        h=to:from:subject:date:message-id:mime-version:x-gm-message-state
+         :from:to:cc:subject:date:message-id:reply-to;
+        bh=HYh/287JFFGXKrBKNjtZdLnpDOLv5fb4Cffp0+bChmM=;
+        b=ePaqIt8f52MF0hLHtJSSRWHDWphQhh7iFQboPoQPThubuqQqJA579Eez2vBkxYBsZW
+         MkSsOw5R15otYMUU2dwtn8Fu/dfLFlQP6by9pSvhnxoAu37L5P0bU63Y8dChQHqyLgay
+         bfkzSeylhr/57CRogJ6UNwM7IXXCPf+cW7mQxLQb53faQF72dotCMF7P8RUnv6wyne4D
+         uM0gsqoS4iGRwNW0sJihuadQ8PXigJyxexL8Mfj6LZ9vyfkBEXkt/QlnEDG/wGsRpJaO
+         +2E1F8Qd3tlmTkJavuPdhyiztON7d/OxEWnltuEq4ws4zIiadx1rGrYnoH47bQpKdgv0
+         ravA==
+X-Gm-Message-State: AOJu0YyDdnnEUVezJ5v8lCk3LfQdJOb+a/fIL2SHpwub8+Y4vVh4Layi
+	9o+3JXRvL6uIfQkzQFvEGGrLtL+iCQIKk/cUgxjTiTfQTCHokSVZWOFgPpZ/rEK7fdm0b8X51iI
+	KUvbOXGEt0j0x8rxO9w7LWqrAGvYDJ2d4MB9wWXWgqCClXzT/eOwj/hRzPnkME2qcR2oyOCoSV/
+	VmYGJR8uzIWF01wEI21qTSrf5qTMOKpPGYrtAhafN/GbpBoQw2MlidawG/8yFHAbBvNVMRcg8Jj
+	A==
+X-Google-Smtp-Source: AGHT+IE/Jx7Kcy9VWdCrbD53f4532jEQFywi4KmI29WomCln28a795rRp0VnTNjBfRTbbolsZ9HX70slrtuwgJxawgcGkbFkC0Ejd6E=
+MIME-Version: 1.0
+X-Received: by 2002:a17:906:4952:b0:add:fa23:b4a0 with SMTP id
+ a640c23a62f3a-adfad41cadfmr403566b.2.1750329252424; Thu, 19 Jun 2025 03:34:12
+ -0700 (PDT)
+Message-ID: <00000000000055293f0637ea4906@google.com>
+Date: Thu, 19 Jun 2025 10:34:12 +0000
+Subject: Your Google data is ready to download
+From: Google Takeout <noreply@google.com>
+To: jean.testeur2024@gmail.com
+Content-Type: multipart/alternative; boundary="0000000000005529330637ea4903"
+
+--0000000000005529330637ea4903
+Content-Type: text/plain; charset="UTF-8"; format=flowed; delsp=yes
+
+Your account, your data.
+We&#39;ve finished creating a copy of the Google data you requested on June  
+19, 2025. You can download your files until June 26, 2025.
+Your download will contain data from:
+Mail
+Manage Google Takeout request  
+(https://accounts.google.com/AccountChooser?continue=https://takeout.google.com/manage/archive/cbc575c1-d756-4ee6-aecb-51a79cbbb187&amp;Email=jean.testeur2024@gmail.com)
+This message was sent to you because you recently used Google Takeout.  
+Learn more (https://support.google.com/accounts/answer/3024190) about how  
+to locate, access, and share your data.
+  Privacy Policy (https://www.google.com/privacy/privacy-policy.html) |  
+Terms of Service (https://www.google.com/accounts/TOS)
+
+
+--0000000000005529330637ea4903
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+<div align=3D"center" style=3D"width:100%" data-job-id=3D"cbc575c1-d756-4ee=
+6-aecb-51a79cbbb187"><div align=3D"center" style=3D"border-style:solid;bord=
+er-width:thin;border-color:#dadce0; border-radius:8px;max-width:650px"><img=
+ src=3D"https://www.gstatic.com/images/branding/googlelogo/1x/googlelogo_co=
+lor_74x24dp.png" width=3D"74" height=3D"24" aria-hidden=3D"true" style=3D"m=
+argin-bottom:16px;margin-top:40px" class=3D"CToWUd" alt=3D"Google logo"><di=
+v style=3D"font-family:Roboto-Regular,Helvetica,Arial,sans-serif;font-size:=
+14px; color:rgba(0,0,0,0.87);line-height:20px;text-align:left;padding:0 20p=
+x;"><div><div align=3D"center" style=3D"font-size:24px;font-family:'Google =
+Sans',Roboto,RobotoDraft, Helvetica,Arial,sans-serif;border-bottom:thin sol=
+id #dadce0; color:rgba(0,0,0,0.87);line-height:32px;margin-bottom:24px; pad=
+ding-bottom:24px;text-align:center;word-break:break-word">Your account, you=
+r data.</div><div>We've finished creating a copy of the Google data you req=
+uested on June 19, 2025. You can download your files until June 26, 2025.</=
+div><div style=3D"padding-top:15px">Your download will contain data from:</=
+div><ul><li>Mail</li></ul></div><div style=3D"text-align:center"><p><a styl=
+e=3D"background-color: #4184f3;; color: #fff;; display: inline-block; paddi=
+ng: 7px 15px; font-size: 15px; font-weight: bold; white-space: normal; bord=
+er: solid 1px rgba(0, 0, 0, 0.14902); text-decoration: none; border-radius:=
+ 3px; font-family:&#39;Google Sans&#39;,Roboto,RobotoDraft,Helvetica,Arial,=
+sans-serif; line-height:16px;color:#fff;;font-weight:400;text-decoration:no=
+ne;font-size:14px; display:inline-block;padding:10px 24px;background-color:=
+#4184f3;;border-radius:5px; min-width:90px" href=3D"https://accounts.google=
+.com/AccountChooser?continue=3Dhttps://takeout.google.com/manage/archive/cb=
+c575c1-d756-4ee6-aecb-51a79cbbb187&amp;Email=3Djean.testeur2024@gmail.com">=
+Manage Google Takeout request</a></p></div><div>This message was sent to yo=
+u because you recently used Google Takeout. <a style=3D"color: #36c; text-d=
+ecoration: none;" href=3D"https://support.google.com/accounts/answer/302419=
+0">Learn more</a> about how to locate, access, and share your data.</div></=
+div><div style=3D"border-top: solid 1px #dfdfdf; color: #636363; font: 11px=
+ Arial; line-height: 1.5em; border-bottom-left-radius:8px; border-bottom-ri=
+ght-radius:8px; padding: 10px 20px; background-color: #f5f5f5; height: 33px=
+; text-align:left;"><div style=3D"width: 350px; display:inline-block; float=
+: left;">&nbsp;<a style=3D"color: #36c; text-decoration: none;" href=3D"htt=
+ps://www.google.com/privacy/privacy-policy.html">Privacy Policy</a> | <a st=
+yle=3D"color: #36c; text-decoration: none;" href=3D"https://www.google.com/=
+accounts/TOS">Terms of Service</a></div><div style=3D"border-style: none; w=
+idth: 77px; height: 27px; display:inline-block; float: right;"><img src=3D"=
+https://gstatic.com/images/branding/googlelogo/1x/googlelogo_color_74x24dp.=
+png" style=3D"border-style: none; width: 74px; height: 24px; padding-top:5p=
+x;" alt=3D"Google logo"/></div><br/></div></div></div>
+--0000000000005529330637ea4903--
+

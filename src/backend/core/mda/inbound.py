@@ -4,7 +4,7 @@
 import html
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -17,6 +17,70 @@ logger = logging.getLogger(__name__)
 
 # Helper function to extract Message-IDs
 MESSAGE_ID_RE = re.compile(r"<([^<>]+)>")
+
+
+GMAIL_LABEL_TO_MESSAGE_FLAG = {
+    "Drafts": "is_draft",
+    "Brouillons": "is_draft",
+    "Sent": "is_sender",
+    "Messages envoyés": "is_sender",
+    "Archived": "is_archived",
+    "Messages archivés": "is_archived",
+    "Starred": "is_starred",
+    "Favoris": "is_starred",
+    "Trash": "is_trashed",
+    "Corbeille": "is_trashed",
+}
+
+GMAIL_LABEL_TO_THREAD_FLAG = {
+    "Spam": "is_spam",
+}
+
+GMAIL_READ_UNREAD_LABELS = {
+    "Ouvert": "read",
+    "Non lus": "unread",
+    "Opened": "read",
+    "Unread": "unread",
+}
+
+GMAIL_LABELS_TO_IGNORE = [
+    "Promotions",
+    "Social",
+    "Boîte de réception",
+    "Inbox",
+]
+
+
+def compute_labels_and_flags(
+    parsed_email: Dict[str, Any],
+) -> Tuple[List[str], Dict[str, bool], Dict[str, bool]]:
+    """Compute labels and flags for a parsed email."""
+    labels = parsed_email.get("gmail_labels", [])
+    message_flags = {}
+    thread_flags = {}
+    labels_to_add = []
+    for label in labels:
+        # Handle read/unread status
+        if label in GMAIL_READ_UNREAD_LABELS:
+            if GMAIL_READ_UNREAD_LABELS[label] == "read":
+                message_flags["is_unread"] = False
+            elif GMAIL_READ_UNREAD_LABELS[label] == "unread":
+                message_flags["is_unread"] = True
+            continue  # Skip further processing for this label
+        message_flag = GMAIL_LABEL_TO_MESSAGE_FLAG.get(label)
+        thread_flag = GMAIL_LABEL_TO_THREAD_FLAG.get(label)
+        if message_flag:
+            message_flags[message_flag] = True
+        elif thread_flag:
+            thread_flags[thread_flag] = True
+        elif label not in GMAIL_LABELS_TO_IGNORE:
+            labels_to_add.append(label)
+
+    # Special case: if message is sender or draft, it should not be unread
+    if message_flags.get("is_sender") or message_flags.get("is_draft"):
+        message_flags["is_unread"] = False
+
+    return labels_to_add, message_flags, thread_flags
 
 
 def _process_attachments(
@@ -163,7 +227,7 @@ def find_thread_for_inbound_message(
     return None  # potential_parents.first().thread
 
 
-def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-statements
+def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-statements, too-many-locals
     recipient_email: str,
     parsed_email: Dict[str, Any],
     raw_data: bytes,
@@ -173,6 +237,8 @@ def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-stat
 
     raw_data is not parsed again, just stored as is.
     """
+    message_flags = {}
+    thread_flags = {}
 
     # --- 1. Find or Create Mailbox --- #
     try:
@@ -284,6 +350,19 @@ def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-stat
         )
         return False
 
+    if is_import:
+        # get labels from parsed_email
+        labels, message_flags, thread_flags = compute_labels_and_flags(parsed_email)
+        for label in labels:
+            try:
+                label_obj, _ = models.Label.objects.get_or_create(
+                    name=label, mailbox=mailbox
+                )
+                thread.labels.add(label_obj)
+            except Exception as e:
+                logger.exception("Error creating label %s: %s", label, e)
+                continue
+
     # --- 4. Get or Create Sender Contact --- #
     logger.warning(parsed_email)
     sender_info = parsed_email.get("from", {})
@@ -379,7 +458,19 @@ def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-stat
             # We need to set the created_at field to the date of the message
             # because the inbound message is not created at the same time as the message is received
             message.created_at = parsed_email.get("date") or timezone.now()
-            message.save(update_fields=["created_at"])
+            for flag, value in message_flags.items():
+                if hasattr(message, flag):
+                    setattr(message, flag, value)
+            message.save(
+                update_fields=[
+                    "created_at",
+                    *message_flags.keys(),
+                ]
+            )
+            for flag, value in thread_flags.items():
+                if hasattr(thread, flag):
+                    setattr(thread, flag, value)
+            thread.save(update_fields=thread_flags.keys())
     except (DjangoDbError, ValidationError) as e:
         logger.error("Failed to create message in thread %s: %s", thread.id, e)
         return False  # Indicate failure
