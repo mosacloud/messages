@@ -230,6 +230,17 @@ services:
       - ./src/backend/core/api/openapi.json:/home/backend/core/api/openapi.json
       - ./src/frontend/:/home/frontend/
 
+  frontend-tools-amd64:
+    user: "${DOCKER_USER:-1000}"
+    profiles:
+      - frontend-tools
+    platform: linux/amd64
+    build:
+      dockerfile: ./src/frontend/Dockerfile.dev
+    volumes:
+      - ./src/backend/core/api/openapi.json:/home/backend/core/api/openapi.json
+      - ./src/frontend/:/home/frontend/
+
   # frontend:
   #   user: "${DOCKER_USER:-1000}"
   #   build: 

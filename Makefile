@@ -371,6 +371,10 @@ frontend-install-frozen: ## install the frontend locally, following the frozen l
 	@$(COMPOSE) run --rm frontend-tools npm ci
 .PHONY: frontend-install-frozen
 
+frontend-install-frozen-amd64: ## install the frontend locally, following the frozen lockfile
+	@$(COMPOSE) run --rm frontend-tools-amd64 npm ci
+.PHONY: frontend-install-frozen-amd64
+
 frontend-build: ## build the frontend locally
 	@$(COMPOSE) run --rm frontend-tools npm run build
 .PHONY: frontend-build
@@ -381,6 +385,10 @@ frontend-lint: ## run the frontend linter
 
 frontend-test: ## run the frontend tests
 	@$(COMPOSE) run --rm frontend-tools npm run test
+.PHONY: frontend-test
+
+frontend-test-amd64: ## run the frontend tests
+	@$(COMPOSE) run --rm frontend-tools-amd64 npm run test
 .PHONY: frontend-test
 
 frontend-i18n-extract: ## Extract the frontend translation inside a json to be used for crowdin

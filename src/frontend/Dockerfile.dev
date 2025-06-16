@@ -1,4 +1,4 @@
-FROM node:22-alpine AS frontend-deps
+FROM node:22-slim AS frontend-deps
 
 WORKDIR /home/frontend/
 
@@ -8,4 +8,3 @@ ARG DOCKER_USER
 USER ${DOCKER_USER}
 
 ENV npm_config_cache=/tmp/npm-cache
-
