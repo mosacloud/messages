@@ -147,7 +147,6 @@ def test_import_file_eml_by_superuser_sync(admin_user, mailbox, eml_file):
             mock_task.update_state.assert_any_call(
                 state="PROGRESS",
                 meta={
-                    "status": "PROGRESS",
                     "result": {
                         "message_status": "Processing message 1 of 1",
                         "total_messages": 1,
@@ -163,7 +162,10 @@ def test_import_file_eml_by_superuser_sync(admin_user, mailbox, eml_file):
             # Verify success update
             mock_task.update_state.assert_called_with(
                 state="SUCCESS",
-                meta=task_result,
+                meta={
+                    "result": task_result["result"],
+                    "error": None,
+                },
             )
 
             # Verify message was created
@@ -252,7 +254,6 @@ def test_import_file_eml_by_user_with_access_sync(
             mock_task.update_state.assert_any_call(
                 state="PROGRESS",
                 meta={
-                    "status": "PROGRESS",
                     "result": {
                         "message_status": "Processing message 1 of 1",
                         "total_messages": 1,
@@ -268,7 +269,10 @@ def test_import_file_eml_by_user_with_access_sync(
             # Verify success update
             mock_task.update_state.assert_called_with(
                 state="SUCCESS",
-                meta=task_result,
+                meta={
+                    "result": task_result["result"],
+                    "error": None,
+                },
             )
 
             # Verify message was created

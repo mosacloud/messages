@@ -313,31 +313,24 @@ def process_mbox_file_task(
         recipient = Mailbox.objects.get(id=recipient_id)
     except Mailbox.DoesNotExist:
         error_msg = f"Recipient mailbox {recipient_id} not found"
+        result = {
+            "message_status": "Failed to process messages",
+            "total_messages": 0,
+            "success_count": 0,
+            "failure_count": 0,
+            "type": "mbox",
+            "current_message": 0,
+        }
         self.update_state(
             state="FAILURE",
             meta={
-                "status": "FAILURE",
-                "result": {
-                    "message_status": "Failed to process messages",
-                    "total_messages": 0,
-                    "success_count": 0,
-                    "failure_count": 0,
-                    "type": "mbox",
-                    "current_message": 0,
-                },
+                "result": result,
                 "error": error_msg,
             },
         )
         return {
             "status": "FAILURE",
-            "result": {
-                "message_status": "Failed to process messages",
-                "total_messages": 0,
-                "success_count": 0,
-                "failure_count": 0,
-                "type": "mbox",
-                "current_message": 0,
-            },
+            "result": result,
             "error": error_msg,
         }
 
@@ -349,18 +342,18 @@ def process_mbox_file_task(
         current_message = i
         try:
             # Update task state with progress
+            result = {
+                "message_status": f"Processing message {i} of {total_messages}",
+                "total_messages": total_messages,
+                "success_count": success_count,
+                "failure_count": failure_count,
+                "type": "mbox",
+                "current_message": i,
+            }
             self.update_state(
                 state="PROGRESS",
                 meta={
-                    "status": "PROGRESS",
-                    "result": {
-                        "message_status": f"Processing message {i} of {total_messages}",
-                        "total_messages": total_messages,
-                        "success_count": success_count,
-                        "failure_count": failure_count,
-                        "type": "mbox",
-                        "current_message": i,
-                    },
+                    "result": result,
                     "error": None,
                 },
             )
@@ -394,7 +387,6 @@ def process_mbox_file_task(
     self.update_state(
         state="SUCCESS",
         meta={
-            "status": "SUCCESS",
             "result": result,
             "error": None,
         },
@@ -490,31 +482,25 @@ def import_imap_messages_task(
         status, messages = imap.select(folder)
         if status != "OK":
             error_msg = f"Failed to select folder {folder}: {messages}"
+            result = {
+                "message_status": "Failed to process messages",
+                "total_messages": 0,
+                "success_count": 0,
+                "failure_count": 0,
+                "type": "imap",
+                "current_message": 0,
+            }
+            logger.info("FAILURE !!!!!!!")
             self.update_state(
                 state="FAILURE",
                 meta={
-                    "status": "FAILURE",
-                    "result": {
-                        "message_status": "Failed to process messages",
-                        "total_messages": 0,
-                        "success_count": 0,
-                        "failure_count": 0,
-                        "type": "imap",
-                        "current_message": 0,
-                    },
+                    "result": result,
                     "error": error_msg,
                 },
             )
             return {
                 "status": "FAILURE",
-                "result": {
-                    "message_status": "Failed to process messages",
-                    "total_messages": 0,
-                    "success_count": 0,
-                    "failure_count": 0,
-                    "type": "imap",
-                    "current_message": 0,
-                },
+                "result": result,
                 "error": error_msg,
             }
 
@@ -522,31 +508,24 @@ def import_imap_messages_task(
         status, message_numbers = imap.search(None, "ALL")
         if status != "OK":
             error_msg = f"Failed to search messages: {message_numbers}"
+            result = {
+                "message_status": "Failed to process messages",
+                "total_messages": 0,
+                "success_count": 0,
+                "failure_count": 0,
+                "type": "imap",
+                "current_message": 0,
+            }
             self.update_state(
                 state="FAILURE",
                 meta={
-                    "status": "FAILURE",
-                    "result": {
-                        "message_status": "Failed to process messages",
-                        "total_messages": 0,
-                        "success_count": 0,
-                        "failure_count": 0,
-                        "type": "imap",
-                        "current_message": 0,
-                    },
+                    "result": result,
                     "error": error_msg,
                 },
             )
             return {
                 "status": "FAILURE",
-                "result": {
-                    "message_status": "Failed to process messages",
-                    "total_messages": 0,
-                    "success_count": 0,
-                    "failure_count": 0,
-                    "type": "imap",
-                    "current_message": 0,
-                },
+                "result": result,
                 "error": error_msg,
             }
 
@@ -567,18 +546,18 @@ def import_imap_messages_task(
             current_message = i
             try:
                 # Update task state
+                result = {
+                    "message_status": f"Processing message {i} of {total_messages}",
+                    "total_messages": total_messages,
+                    "success_count": success_count,
+                    "failure_count": failure_count,
+                    "type": "imap",
+                    "current_message": i,
+                }
                 self.update_state(
                     state="PROGRESS",
                     meta={
-                        "status": "PROGRESS",
-                        "result": {
-                            "message_status": f"Processing message {i} of {total_messages}",
-                            "total_messages": total_messages,
-                            "success_count": success_count,
-                            "failure_count": failure_count,
-                            "type": "imap",
-                            "current_message": i,
-                        },
+                        "result": result,
                         "error": None,
                     },
                 )
@@ -648,7 +627,6 @@ def import_imap_messages_task(
         self.update_state(
             state="FAILURE",
             meta={
-                "status": "FAILURE",
                 "result": result,
                 "error": error_msg,
             },
@@ -678,48 +656,40 @@ def process_eml_file_task(
         recipient = Mailbox.objects.get(id=recipient_id)
     except Mailbox.DoesNotExist:
         error_msg = f"Recipient mailbox {recipient_id} not found"
+        result = {
+            "message_status": "Failed to process message",
+            "total_messages": 1,
+            "success_count": 0,
+            "failure_count": 0,
+            "type": "eml",
+            "current_message": 0,
+        }
         self.update_state(
             state="FAILURE",
             meta={
-                "status": "FAILURE",
-                "result": {
-                    "message_status": "Failed to process message",
-                    "total_messages": 1,
-                    "success_count": 0,
-                    "failure_count": 0,
-                    "type": "eml",
-                    "current_message": 0,
-                },
+                "result": result,
                 "error": error_msg,
             },
         )
         return {
-            "status": "FAILURE",
-            "result": {
-                "message_status": "Failed to process message",
-                "total_messages": 1,
-                "success_count": 0,
-                "failure_count": 0,
-                "type": "eml",
-                "current_message": 0,
-            },
+            "result": result,
             "error": error_msg,
         }
 
     try:
         # Update progress state
+        progress_result = {
+            "message_status": "Processing message 1 of 1",
+            "total_messages": 1,
+            "success_count": 0,
+            "failure_count": 0,
+            "type": "eml",
+            "current_message": 1,
+        }
         self.update_state(
             state="PROGRESS",
             meta={
-                "status": "PROGRESS",
-                "result": {
-                    "message_status": "Processing message 1 of 1",
-                    "total_messages": 1,
-                    "success_count": 0,
-                    "failure_count": 0,
-                    "type": "eml",
-                    "current_message": 1,
-                },
+                "result": progress_result,
                 "error": None,
             },
         )
@@ -744,7 +714,6 @@ def process_eml_file_task(
             self.update_state(
                 state="SUCCESS",
                 meta={
-                    "status": "SUCCESS",
                     "result": result,
                     "error": None,
                 },
@@ -759,7 +728,6 @@ def process_eml_file_task(
         self.update_state(
             state="FAILURE",
             meta={
-                "status": "FAILURE",
                 "result": result,
                 "error": error_msg,
             },
@@ -788,7 +756,6 @@ def process_eml_file_task(
         self.update_state(
             state="FAILURE",
             meta={
-                "status": "FAILURE",
                 "result": result,
                 "error": error_msg,
             },

@@ -105,7 +105,6 @@ class TestProcessMboxFileTask:
                 mock_task.update_state.assert_any_call(
                     state="PROGRESS",
                     meta={
-                        "status": "PROGRESS",
                         "result": {
                             "message_status": "Processing message 1 of 3",
                             "total_messages": 3,
@@ -122,7 +121,6 @@ class TestProcessMboxFileTask:
                 mock_task.update_state.assert_any_call(
                     state="PROGRESS",
                     meta={
-                        "status": "PROGRESS",
                         "result": {
                             "message_status": "Processing message 2 of 3",
                             "total_messages": 3,
@@ -139,7 +137,6 @@ class TestProcessMboxFileTask:
                 mock_task.update_state.assert_any_call(
                     state="PROGRESS",
                     meta={
-                        "status": "PROGRESS",
                         "result": {
                             "message_status": "Processing message 3 of 3",
                             "total_messages": 3,
@@ -155,7 +152,10 @@ class TestProcessMboxFileTask:
                 # Verify success update
                 mock_task.update_state.assert_called_with(
                     state="SUCCESS",
-                    meta=task_result,
+                    meta={
+                        "result": task_result["result"],
+                        "error": None,
+                    },
                 )
 
                 # Verify messages were created
@@ -215,7 +215,6 @@ class TestProcessMboxFileTask:
             mock_task.update_state.assert_any_call(
                 state="PROGRESS",
                 meta={
-                    "status": "PROGRESS",
                     "result": {
                         "message_status": "Processing message 1 of 3",
                         "total_messages": 3,
@@ -232,7 +231,6 @@ class TestProcessMboxFileTask:
             mock_task.update_state.assert_any_call(
                 state="PROGRESS",
                 meta={
-                    "status": "PROGRESS",
                     "result": {
                         "message_status": "Processing message 2 of 3",
                         "total_messages": 3,
@@ -249,7 +247,6 @@ class TestProcessMboxFileTask:
             mock_task.update_state.assert_any_call(
                 state="PROGRESS",
                 meta={
-                    "status": "PROGRESS",
                     "result": {
                         "message_status": "Processing message 3 of 3",
                         "total_messages": 3,
@@ -265,7 +262,10 @@ class TestProcessMboxFileTask:
             # Verify success update
             mock_task.update_state.assert_called_with(
                 state="SUCCESS",
-                meta=task_result,
+                meta={
+                    "result": task_result["result"],
+                    "error": None,
+                },
             )
 
             # Verify messages were created
@@ -309,7 +309,10 @@ class TestProcessMboxFileTask:
             assert mock_task.update_state.call_count == 1
             mock_task.update_state.assert_called_once_with(
                 state="FAILURE",
-                meta=task_result,
+                meta={
+                    "result": task_result["result"],
+                    "error": task_result["error"],
+                },
             )
 
             # Verify no messages were created
@@ -353,7 +356,6 @@ class TestProcessMboxFileTask:
             mock_task.update_state.assert_any_call(
                 state="PROGRESS",
                 meta={
-                    "status": "PROGRESS",
                     "result": {
                         "message_status": "Processing message 1 of 3",
                         "total_messages": 3,
@@ -370,7 +372,6 @@ class TestProcessMboxFileTask:
             mock_task.update_state.assert_any_call(
                 state="PROGRESS",
                 meta={
-                    "status": "PROGRESS",
                     "result": {
                         "message_status": "Processing message 2 of 3",
                         "total_messages": 3,
@@ -387,7 +388,6 @@ class TestProcessMboxFileTask:
             mock_task.update_state.assert_any_call(
                 state="PROGRESS",
                 meta={
-                    "status": "PROGRESS",
                     "result": {
                         "message_status": "Processing message 3 of 3",
                         "total_messages": 3,
@@ -403,7 +403,10 @@ class TestProcessMboxFileTask:
             # Verify final success update
             mock_task.update_state.assert_called_with(
                 state="SUCCESS",
-                meta=task_result,
+                meta={
+                    "result": task_result["result"],
+                    "error": None,
+                },
             )
 
             # Verify no messages were created
@@ -439,7 +442,10 @@ class TestProcessMboxFileTask:
             assert mock_task.update_state.call_count == 1
             mock_task.update_state.assert_called_once_with(
                 state="SUCCESS",
-                meta=task_result,
+                meta={
+                    "result": task_result["result"],
+                    "error": None,
+                },
             )
 
             # Verify no messages were created

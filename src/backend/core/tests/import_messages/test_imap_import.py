@@ -191,7 +191,6 @@ def test_imap_import_task_success(
             mock_task.update_state.assert_any_call(
                 state="PROGRESS",
                 meta={
-                    "status": "PROGRESS",
                     "result": {
                         "message_status": f"Processing message {i} of 3",
                         "total_messages": 3,
@@ -262,7 +261,6 @@ def test_imap_import_task_login_failure(mailbox):
         )
 
         # Verify task result
-        assert task_result["status"] == "FAILURE"
         assert task_result["result"]["message_status"] == "Failed to process messages"
         assert task_result["result"]["type"] == "imap"
         assert task_result["result"]["total_messages"] == 0
@@ -275,7 +273,10 @@ def test_imap_import_task_login_failure(mailbox):
         assert mock_task.update_state.call_count == 1
         mock_task.update_state.assert_called_once_with(
             state="FAILURE",
-            meta=task_result,
+            meta={
+                "result": task_result["result"],
+                "error": task_result["error"],
+            },
         )
 
         # Verify no messages were created
@@ -325,7 +326,10 @@ def test_imap_import_task_folder_not_found(mailbox):
         assert mock_task.update_state.call_count == 1
         mock_task.update_state.assert_called_once_with(
             state="FAILURE",
-            meta=task_result,
+            meta={
+                "result": task_result["result"],
+                "error": task_result["error"],
+            },
         )
 
         # Verify no messages were created
@@ -377,7 +381,6 @@ def test_imap_import_task_max_messages(
             mock_task.update_state.assert_any_call(
                 state="PROGRESS",
                 meta={
-                    "status": "PROGRESS",
                     "result": {
                         "message_status": f"Processing message {i} of 2",
                         "total_messages": 2,
@@ -447,7 +450,6 @@ def test_imap_import_task_message_fetch_failure(
             mock_task.update_state.assert_any_call(
                 state="PROGRESS",
                 meta={
-                    "status": "PROGRESS",
                     "result": {
                         "message_status": f"Processing message {i} of 3",
                         "total_messages": 3,

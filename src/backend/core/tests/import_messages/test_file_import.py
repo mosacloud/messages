@@ -116,7 +116,6 @@ def test_import_eml_file(admin_client, eml_file, mailbox):
         task_result = process_eml_file_task(
             file_content=eml_file, recipient_id=str(mailbox.id)
         )
-        assert task_result["status"] == "SUCCESS"
         assert task_result["result"]["message_status"] == "Completed processing message"
         assert task_result["result"]["type"] == "eml"
         assert task_result["result"]["total_messages"] == 1
@@ -125,13 +124,11 @@ def test_import_eml_file(admin_client, eml_file, mailbox):
         assert task_result["result"]["current_message"] == 1
 
         # Verify progress updates were called correctly
-        assert mock_task.update_state.call_count == 2  # PROGRESS + SUCCESS
+        assert mock_task.update_state.call_count == 2
 
-        # Verify progress update
         mock_task.update_state.assert_any_call(
             state="PROGRESS",
             meta={
-                "status": "PROGRESS",
                 "result": {
                     "message_status": "Processing message 1 of 1",
                     "total_messages": 1,
@@ -143,11 +140,12 @@ def test_import_eml_file(admin_client, eml_file, mailbox):
                 "error": None,
             },
         )
-
-        # Verify success update
-        mock_task.update_state.assert_any_call(
+        mock_task.update_state.assert_called_with(
             state="SUCCESS",
-            meta=task_result,
+            meta={
+                "result": task_result["result"],
+                "error": None,
+            },
         )
 
         # check that the message was created
@@ -196,7 +194,6 @@ def test_process_mbox_file_task(mailbox, mbox_file):
             mock_task.update_state.assert_any_call(
                 state="PROGRESS",
                 meta={
-                    "status": "PROGRESS",
                     "result": {
                         "message_status": f"Processing message {i} of 3",
                         "total_messages": 3,
@@ -212,7 +209,10 @@ def test_process_mbox_file_task(mailbox, mbox_file):
         # Verify success update
         mock_task.update_state.assert_any_call(
             state="SUCCESS",
-            meta=task_result,
+            meta={
+                "result": task_result["result"],
+                "error": None,
+            },
         )
 
         # Verify messages were created
