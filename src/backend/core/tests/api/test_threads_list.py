@@ -659,7 +659,7 @@ class TestThreadListAPI:
         )
         # check that the accesses are returned
         assert len(response.data["results"][0]["accesses"]) == 1
-        access = response.data["results"][0]["accesses"][0]
+        access = response.data["results"][1]["accesses"][0]
         assert access["id"] == str(access2.id)
         assert access["mailbox"]["id"] == str(access2.mailbox.id)
         assert access["mailbox"]["email"] == str(access2.mailbox)

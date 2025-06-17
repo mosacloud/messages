@@ -89,7 +89,7 @@ class ThreadViewSet(
                     # Allow filtering for threads with zero count
                     queryset = queryset.filter(**{filter_lookup.replace("__gt", ""): 0})
 
-        queryset = queryset.order_by("-messaged_at")
+        queryset = queryset.order_by("-messaged_at", "-created_at")
         return queryset
 
     @extend_schema(
