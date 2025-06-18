@@ -181,8 +181,8 @@ class TestLabelSerializer:
 
         response = api_client.post(url, data, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "Label with this Slug and Mailbox already exists." in str(
-            response.data["__all__"]
+        assert "A label with this name already exists in this mailbox." in str(
+            response.data["name"]
         )
 
     def test_create_label_with_parents(self, api_client, mailbox):
@@ -252,7 +252,9 @@ class TestLabelSerializer:
 
         response = api_client.post(url, data, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "Label with this Slug and Mailbox already exists" in str(response.data)
+        assert "A label with this name already exists in this mailbox." in str(
+            response.data["name"]
+        )
 
     def test_create_label_with_special_characters(self, api_client, mailbox):
         """Test creating labels with special characters in the hierarchy."""
@@ -703,8 +705,8 @@ class TestLabelViewSet:
 
     def test_label_unique_constraint(self, api_client, mailbox):
         """Test that labels must have unique names within a mailbox."""
-        models.Label.objects.all().delete()
         LabelFactory(name="Work", mailbox=mailbox)
+        assert models.Label.objects.count() == 1
         url = reverse("labels-list")
         data = {
             "name": "Work",
@@ -713,9 +715,10 @@ class TestLabelViewSet:
         }
         response = api_client.post(url, data, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "Label with this Slug and Mailbox already exists." in str(
-            response.data["__all__"]
+        assert "A label with this name already exists in this mailbox." in str(
+            response.data["name"]
         )
+        assert models.Label.objects.count() == 1
 
     def test_list_labels_hierarchical_structure(self, api_client, mailbox, user):
         """Test that labels are returned in a proper hierarchical structure."""

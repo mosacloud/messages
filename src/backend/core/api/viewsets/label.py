@@ -306,37 +306,8 @@ class LabelViewSet(
             models.Label._meta.get_field("color").default,  # noqa: SLF001
         )
 
-        # Split the name into parts to handle hierarchy
-        parts = name.split("/")
-
-        # Create parent labels if they don't exist
-        current_path = []
-        created_labels = []  # Track all labels created (including parents)
-        for part in parts[:-1]:  # Exclude the last part (the actual label)
-            current_path.append(part)
-            parent_name = "/".join(current_path)
-
-            # Check if parent label exists
-            parent_label = models.Label.objects.filter(
-                name=parent_name, mailbox=mailbox
-            ).first()
-
-            if not parent_label:
-                # Create parent label with color if provided, otherwise use model default
-                parent_label = models.Label.objects.create(
-                    name=parent_name,
-                    mailbox=mailbox,
-                    color=color,
-                )
-                created_labels.append(parent_label)
-
         # Create the actual label with color if provided, otherwise use model default
-        label = models.Label.objects.create(
-            name=name,
-            mailbox=mailbox,
-            color=color,
-        )
-        created_labels.append(label)
+        label = models.Label.objects.create(name=name, mailbox=mailbox, color=color)
 
         # Get all labels for the mailbox to build the tree structure
         all_labels = models.Label.objects.filter(mailbox=mailbox).order_by("name")

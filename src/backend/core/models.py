@@ -456,7 +456,22 @@ class Label(BaseModel):
         return f"{self.name} ({self.mailbox})"
 
     def save(self, *args, **kwargs):
-        """Generate slug from name before saving."""
+        """
+        Ensure all parent labels exist before saving this label.
+        """
+        # Create parent labels if they don't exist
+        if self.name and self.mailbox:
+            parts = self.name.split("/")
+            current_path = []
+            for part in parts[:-1]:  # Exclude the last part (the actual label)
+                current_path.append(part)
+                parent_name = "/".join(current_path)
+                Label.objects.get_or_create(
+                    name=parent_name,
+                    mailbox=self.mailbox,
+                    defaults={"color": self.color},
+                )
+        # Generate slug from name before saving
         if not self.slug:
             self.slug = slugify(self.name.replace("/", "-"))
         super().save(*args, **kwargs)
