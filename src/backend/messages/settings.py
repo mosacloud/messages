@@ -403,7 +403,7 @@ class Base(Configuration):
     # OIDC - Authorization Code Flow
     OIDC_CREATE_USER = values.BooleanValue(
         default=False,
-        environ_name="OIDC_CREATE_USER",
+        environ_name="OIDC_CREATE_USER", environ_prefix=None
     )
     OIDC_RP_SIGN_ALGO = values.Value(
         "RS256", environ_name="OIDC_RP_SIGN_ALGO", environ_prefix=None
