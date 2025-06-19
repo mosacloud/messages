@@ -1,8 +1,8 @@
 import { cunninghamConfig as tokens } from '@gouvfr-lasuite/ui-kit';
 
-// NOTE: Ideally this would contain the same values accross all of the apps 20250614:Alevale
+// NOTE: Ideally this would contain the same values across all apps 20250614:Alevale
 const customColors = {
-  // NOTE: This colours seem to be the ones that are really ruling most of the app theme 20250614:Alevale
+  // NOTE: These colors seem to be the ones that are really ruling most of the app theme 20250614:Alevale
   'primary-800': '#000091',
   'primary-text': '#000091',
 
@@ -10,7 +10,8 @@ const customColors = {
 
 // NOTE: This is a similar copy to what's in DOCS,
 // although not everything is supported, so I'm
-// commenting what doesn't work 20250614:Alevale
+// commenting what doesn't work, but leaving it there
+// for future support 20250614:Alevale
 tokens.themes.default.theme = {
   ...tokens.themes.default.theme,
   ...{
@@ -70,7 +71,7 @@ const dsfrTheme = {
   },
 };
 
-// NOTE: Some more room for customization 20250614:Alevale
+// NOTE: Some more room for customization (reusing the darkscale of docs) 20250614:Alevale
 const genericTheme = {
   generic: {
     theme: {
@@ -81,35 +82,33 @@ const genericTheme = {
       //   alt: 'Some Logo',
       // },
       colors: {
-        'primary-action': '#0443F2',
-        'primary-focus': '#0443F2',
-        'primary-text': '#0443F2',
-        'primary-050': '#E6F0FF',
-        'primary-100': '#CCE0FF',
-        'primary-150': '#B3D1FF',
-        'primary-200': '#99C2FF',
-        'primary-300': '#66A3FF',
-        'primary-400': '#3385FF',
-        'primary-500': '#0443F2',
-        'primary-600': '#0339CC',
-        'primary-700': '#022EAA',
-        'primary-800': '#022488',
-        'primary-900': '#011966',
-        'primary-950': '#011244',
-
-        'secondary-text': '#262626',
-        'secondary-50': '#F9F9F9',
-        'secondary-100': '#F1F1F1',
-        'secondary-200': '#E2E2E2',
-        'secondary-300': '#CFCFCF',
-        'secondary-400': '#B9B9B9',
-        'secondary-500': '#9E9E9E',
-        'secondary-600': '#7F7F7F',
-        'secondary-700': '#5C5C5C',
-        'secondary-800': '#3A3A3A',
-        'secondary-900': '#262626',
-        'secondary-950': '#1A1A1A',
-
+        'primary-action': '#206EBD',
+        'primary-focus': '#1E64BF',
+        'primary-text': '#2E2C28',
+        'primary-050': '#F8F8F7',
+        'primary-100': '#F0EFEC',
+        'primary-150': '#F4F4FD',
+        'primary-200': '#E8E7E4',
+        'primary-300': '#CFCDC9',
+        'primary-400': '#979592',
+        'primary-500': '#82807D',
+        'primary-600': '#3F3D39',
+        'primary-700': '#2E2C28',
+        'primary-800': '#302E29',
+        'primary-900': '#282622',
+        'primary-950': '#201F1C',
+        'secondary-text': '#fff',
+        'secondary-50': '#F4F7FA',
+        'secondary-100': '#D7E3EE',
+        'secondary-200': '#B8CCE1',
+        'secondary-300': '#99B4D3',
+        'secondary-400': '#7595BE',
+        'secondary-500': '#5874A0',
+        'secondary-600': '#3A5383',
+        'secondary-700': '#1E3462',
+        'secondary-800': '#091B41',
+        'secondary-900': '#08183B',
+        'secondary-950': '#071636',
         'greyscale-text': '#3C3B38',
         'greyscale-000': '#fff',
         'greyscale-050': '#F8F7F7',
@@ -127,7 +126,6 @@ const genericTheme = {
         'greyscale-900': '#262522',
         'greyscale-950': '#201F1C',
         'greyscale-1000': '#181714',
-
         'success-text': '#234935',
         'success-50': '#F3FBF5',
         'success-100': '#E4F7EA',
@@ -140,7 +138,6 @@ const genericTheme = {
         'success-800': '#28583F',
         'success-900': '#234935',
         'success-950': '#0F281B',
-
         'info-text': '#212445',
         'info-50': '#F2F6FB',
         'info-100': '#E2E9F5',
@@ -153,7 +150,6 @@ const genericTheme = {
         'info-800': '#353C8F',
         'info-900': '#303771',
         'info-950': '#212445',
-
         'warning-text': '#D97C3A',
         'warning-50': '#FDF7F1',
         'warning-100': '#FBEDDC',
@@ -166,7 +162,6 @@ const genericTheme = {
         'warning-800': '#813B2C',
         'warning-900': '#693327',
         'warning-950': '#381713',
-
         'danger-action': '#C0182A',
         'danger-text': '#FFF',
         'danger-050': '#FDF5F4',
@@ -219,8 +214,8 @@ const genericTheme = {
       },
     },
     components: {
-      'la-gaufre': false,
-      'home-proconnect': false,
+      'la-gaufre': true,
+      'home-proconnect': true,
       beta: true,
       footer: true,
       button: {
@@ -237,7 +232,7 @@ const genericTheme = {
   },
 };
 
-const docsTokens = {
+const styleTokens = {
   ...tokens,
   themes: {
     ...tokens.themes,
@@ -246,4 +241,4 @@ const docsTokens = {
   },
 };
 
-export default docsTokens;
+export default styleTokens;
