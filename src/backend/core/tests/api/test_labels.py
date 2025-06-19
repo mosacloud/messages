@@ -181,8 +181,8 @@ class TestLabelSerializer:
 
         response = api_client.post(url, data, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "A label with this name already exists in this mailbox." in str(
-            response.data["name"]
+        assert "Label with this Slug and Mailbox already exists" in str(
+            response.data["__all__"]
         )
 
     def test_create_label_with_parents(self, api_client, mailbox):
@@ -252,8 +252,8 @@ class TestLabelSerializer:
 
         response = api_client.post(url, data, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "A label with this name already exists in this mailbox." in str(
-            response.data["name"]
+        assert "Label with this Slug and Mailbox already exists" in str(
+            response.data["__all__"]
         )
 
     def test_create_label_with_special_characters(self, api_client, mailbox):
@@ -502,13 +502,35 @@ class TestLabelViewSet:
             "color": "#00FF00",
         }
 
-        response = api_client.put(url, data, format="json")
+        response = api_client.patch(url, data, format="json")
         assert response.status_code == status.HTTP_200_OK
 
         label.refresh_from_db()
         assert label.name == "Updated Label"
         assert label.slug == "updated-label"
         assert label.color == "#00FF00"
+
+        # Test partial update, we only change color
+        new_data = {
+            "color": "#CCCCCC",
+        }
+        response = api_client.patch(url, new_data, format="json")
+        assert response.status_code == status.HTTP_200_OK
+        label.refresh_from_db()
+        assert label.color == "#CCCCCC"
+
+    def test_update_label_with_similar_name_to_existing_label(
+        self, api_client, label, user
+    ):
+        """Test updating a label with a similar name to an existing label."""
+        LabelFactory(name="Work", mailbox=label.mailbox)
+        url = reverse("labels-detail", args=[label.pk])
+        data = {
+            "name": "Work",
+        }
+        response = api_client.patch(url, data, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Label with this Slug and Mailbox already exists" in str(response.data)
 
     def test_update_label_access_denied(self, api_client, label, user):
         """Test updating a label when user doesn't have proper access."""
@@ -715,9 +737,7 @@ class TestLabelViewSet:
         }
         response = api_client.post(url, data, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "A label with this name already exists in this mailbox." in str(
-            response.data["name"]
-        )
+        assert "Label with this Slug and Mailbox already exists" in str(response.data)
         assert models.Label.objects.count() == 1
 
     def test_list_labels_hierarchical_structure(self, api_client, mailbox, user):

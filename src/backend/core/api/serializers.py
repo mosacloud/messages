@@ -167,16 +167,6 @@ class LabelSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "slug", "color", "mailbox", "threads"]
         read_only_fields = ["id", "slug"]
 
-    def validate(self, attrs):
-        """Validate that the label name is unique within the mailbox."""
-        if models.Label.objects.filter(
-            name=attrs.get("name"), mailbox=attrs.get("mailbox")
-        ).exists():
-            raise serializers.ValidationError(
-                {"name": "A label with this name already exists in this mailbox."}
-            )
-        return attrs
-
     def validate_mailbox(self, value):
         """Validate that user has access to the mailbox."""
         user = self.context["request"].user
