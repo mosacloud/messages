@@ -11,7 +11,7 @@ class MessageImportForm(forms.Form):
     import_file = forms.FileField(
         label="Import File",
         help_text="Select an EML or MBOX file to import",
-        widget=forms.FileInput(attrs={"accept": ".eml,.mbox"}),
+        widget=forms.FileInput(attrs={"accept": ".eml,.mbox,mbox"}),
     )
     recipient = forms.ModelChoiceField(
         queryset=Mailbox.objects.all(),
@@ -27,9 +27,9 @@ class MessageImportForm(forms.Form):
         if not file:
             return None
 
-        if not file.name.endswith((".eml", ".mbox")):
+        if not file.name.endswith((".eml", ".mbox", "mbox")):
             raise forms.ValidationError(
-                "File must be either an EML (.eml) or MBOX (.mbox) file"
+                "File must be either an EML (.eml) or MBOX (.mbox) file or named 'mbox'"
             )
         return file
 

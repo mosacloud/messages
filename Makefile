@@ -83,30 +83,27 @@ bootstrap: \
 	create-env-files \
 	build \
 	migrate \
-	# back-i18n-compile \
-	frontend-install-frozen
+	collectstatic \
+	frontend-install-frozen \
+	# back-i18n-compile
 .PHONY: bootstrap
 
 # -- Docker/compose
-build: cache ?= --no-cache
 build: ## build the project containers
-	@$(MAKE) build-backend cache=$(cache)
-	@$(MAKE) build-frontend-dev cache=$(cache)
+	@$(MAKE) build-backend
+	@$(MAKE) build-frontend-dev
 .PHONY: build
 
-build-backend: cache ?=
 build-backend: ## build the backend-dev container
-	@$(COMPOSE) build backend-dev $(cache)
+	@$(COMPOSE) build backend-dev
 .PHONY: build-backend
 
-build-frontend-dev: cache ?=
 build-frontend-dev: ## build the frontend container
-	@$(COMPOSE) build frontend-dev $(cache)
+	@$(COMPOSE) build frontend-dev
 .PHONY: build-frontend-dev
 
-build-frontend: cache ?=
 build-frontend: ## build the frontend container
-	@$(COMPOSE) build frontend $(cache)
+	@$(COMPOSE) build frontend
 .PHONY: build-frontend
 
 down: ## stop and remove containers, networks, images, and volumes
@@ -118,7 +115,7 @@ logs: ## display backend-dev logs (follow mode)
 .PHONY: logs
 
 start: ## start the wsgi (production) and development server
-	@$(COMPOSE) up --force-recreate --build -d nginx
+	@$(COMPOSE) up --force-recreate --build -d frontend-dev backend-dev celery-dev mta-in
 .PHONY: start
 
 run-with-frontend: ## Start all the containers needed (backend to frontend)
@@ -127,7 +124,7 @@ run-with-frontend: ## Start all the containers needed (backend to frontend)
 .PHONY: run-with-frontend
 
 run-all-fg: ## Start backend containers and frontend in foreground
-	@$(COMPOSE) up --force-recreate --build nginx frontend-dev backend-dev celery-dev
+	@$(COMPOSE) up --force-recreate --build frontend-dev backend-dev celery-dev mta-in
 .PHONY: run-all-fg
 
 status: ## an alias for "docker compose ps"
@@ -230,8 +227,12 @@ back-i18n-generate: ## create the .pot files used for i18n
 .PHONY: back-i18n-generate
 
 back-shell: ## open a shell in the backend container
-	@$(COMPOSE) run --rm --build backend-dev /bin/sh
+	@$(COMPOSE) run --rm --build backend-dev /bin/bash
 .PHONY: back-shell
+
+back-exec: ## open a shell in the running backend-dev container
+	@$(COMPOSE) exec backend-dev /bin/bash
+.PHONY: back-exec
 
 back-poetry-lock: ## lock the dependencies
 	@$(COMPOSE) run --rm --build backend-poetry poetry lock
@@ -252,6 +253,10 @@ collectstatic: ## collect static files
 shell: ## connect to django shell
 	@$(MANAGE) shell #_plus
 .PHONY: dbshell
+
+keycloak-export: ## export all keycloak data to a JSON file
+	@$(COMPOSE) run -v `pwd`/src/keycloak:/tmp/keycloak-export --rm keycloak export --realm messages --file /tmp/keycloak-export/realm.json
+.PHONY: keycloak-export
 
 # -- Database
 
@@ -362,6 +367,10 @@ frontend-install-frozen: ## install the frontend locally, following the frozen l
 	@$(COMPOSE) run --rm frontend-tools npm ci
 .PHONY: frontend-install-frozen
 
+frontend-install-frozen-amd64: ## install the frontend locally, following the frozen lockfile
+	@$(COMPOSE) run --rm frontend-tools-amd64 npm ci
+.PHONY: frontend-install-frozen-amd64
+
 frontend-build: ## build the frontend locally
 	@$(COMPOSE) run --rm frontend-tools npm run build
 .PHONY: frontend-build
@@ -372,6 +381,10 @@ frontend-lint: ## run the frontend linter
 
 frontend-test: ## run the frontend tests
 	@$(COMPOSE) run --rm frontend-tools npm run test
+.PHONY: frontend-test
+
+frontend-test-amd64: ## run the frontend tests
+	@$(COMPOSE) run --rm frontend-tools-amd64 npm run test
 .PHONY: frontend-test
 
 frontend-i18n-extract: ## Extract the frontend translation inside a json to be used for crowdin

@@ -6,11 +6,4 @@
  * OpenAPI spec version: 1.0.0 (v1.0)
  */
 
-export type ThreadsStatsRetrieve200 = {
-  unread?: number;
-  trashed?: number;
-  draft?: number;
-  starred?: number;
-  sender?: number;
-  messages?: number;
-};
+export type ThreadsStatsRetrieve200 = { [key: string]: number };

@@ -312,8 +312,8 @@ class TestMailboxAccessViewSet:
     @pytest.mark.parametrize("admin_type", ["domain_admin", "mailbox_admin"])
     def test_update_access_role_success(
         self,
-        api_client,
         admin_type,
+        api_client,
         user_beta,
         domain_admin_user,
         mailbox1_admin_user,

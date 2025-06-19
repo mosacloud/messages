@@ -4,6 +4,7 @@ from django.db.models import Count, Exists, OuterRef, Q
 
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 
 from core import models
 
@@ -15,6 +16,27 @@ class UserSerializer(serializers.ModelSerializer):
         model = models.User
         fields = ["id", "email", "full_name", "short_name"]
         read_only_fields = ["id", "email", "full_name", "short_name"]
+
+
+class MailboxAvailableSerializer(serializers.ModelSerializer):
+    """Serialize mailboxes."""
+
+    contact = serializers.SerializerMethodField(read_only=True)
+    email = serializers.SerializerMethodField(read_only=True)
+
+    def get_contact(self, instance):
+        """Return the contact of the mailbox."""
+        if instance.contact:
+            return instance.contact.name
+        return None
+
+    def get_email(self, instance):
+        """Return the email of the mailbox."""
+        return str(instance)
+
+    class Meta:
+        model = models.Mailbox
+        fields = ["id", "email", "contact"]
 
 
 class MailboxSerializer(serializers.ModelSerializer):
@@ -122,6 +144,69 @@ class AttachmentSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class ThreadLabelSerializer(serializers.ModelSerializer):
+    """Serializer to get labels details for a thread."""
+
+    display_name = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = models.Label
+        fields = ["id", "name", "slug", "color", "display_name"]
+        read_only_fields = ["id", "slug", "display_name"]
+
+    def get_display_name(self, instance):
+        """Return the display name of the label."""
+        return instance.name.split("/")[-1]
+
+
+class TreeLabelSerializer(serializers.ModelSerializer):
+    """Serializer for tree label response structure (OpenAPI purpose only...)."""
+
+    id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(read_only=True)
+    slug = serializers.CharField(read_only=True)
+    color = serializers.CharField(read_only=True)
+    display_name = serializers.CharField(read_only=True)
+    children = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = models.Label
+        fields = ["id", "name", "slug", "color", "display_name", "children"]
+        read_only_fields = fields
+
+    @extend_schema_field({
+        "type": "array",
+        "items": {"$ref": "#/components/schemas/TreeLabel"}
+    })
+    def get_children(self, instance):
+        """
+        Fake method just to make the OpenAPI schema valid and work well with
+        the recursive nature of the tree label structure.
+        """
+
+
+class LabelSerializer(serializers.ModelSerializer):
+    """Serializer for Label model."""
+
+    class Meta:
+        model = models.Label
+        fields = ["id", "name", "slug", "color", "mailbox", "threads"]
+        read_only_fields = ["id", "slug"]
+
+    def validate_mailbox(self, value):
+        """Validate that user has access to the mailbox."""
+        user = self.context["request"].user
+        if not value.accesses.filter(
+            user=user,
+            role__in=[
+                models.MailboxRoleChoices.ADMIN,
+                models.MailboxRoleChoices.EDITOR,
+            ],
+        ).exists():
+            raise PermissionDenied("You don't have access to this mailbox")
+        return value
+
+
 class ThreadAccessDetailSerializer(serializers.ModelSerializer):
     """Serializer for thread access details."""
 
@@ -171,6 +256,7 @@ class ThreadSerializer(serializers.ModelSerializer):
                     return None
         return None
 
+    @extend_schema_field(ThreadLabelSerializer(many=True))
     def get_labels(self, instance):
         """Get labels for the thread, filtered by user's mailbox access."""
         request = self.context.get("request")
@@ -194,12 +280,14 @@ class ThreadSerializer(serializers.ModelSerializer):
             "subject",
             "snippet",
             "messages",
-            "count_unread",
-            "count_trashed",
-            "count_draft",
-            "count_starred",
-            "count_sender",
-            "count_messages",
+            "has_unread",
+            "has_trashed",
+            "has_draft",
+            "has_starred",
+            "has_sender",
+            "has_messages",
+            "is_spam",
+            "has_active",
             "messaged_at",
             "sender_names",
             "updated_at",
@@ -450,24 +538,17 @@ class ImportBaseSerializer(serializers.Serializer):
 
 
 class ImportFileSerializer(ImportBaseSerializer):
-    """Serializer for importing EML or MBOX files via API."""
+    """Serializer for importing email files."""
 
-    import_file = serializers.FileField(
-        help_text="Select an EML or MBOX file to import",
+    blob = serializers.UUIDField(
+        help_text="UUID of the blob",
         required=True,
     )
+
     recipient = serializers.UUIDField(
         help_text="UUID of the recipient mailbox",
         required=True,
     )
-
-    def validate_import_file(self, file):
-        """Validate the import file."""
-        if not file.name.endswith((".eml", ".mbox")):
-            raise serializers.ValidationError(
-                "File must be either an EML (.eml) or MBOX (.mbox) file"
-            )
-        return file
 
 
 class ImportIMAPSerializer(ImportBaseSerializer):
@@ -498,12 +579,3 @@ class ImportIMAPSerializer(ImportBaseSerializer):
         default=0,
         min_value=0,
     )
-
-
-class ThreadLabelSerializer(serializers.ModelSerializer):
-    """Serializer to get labels details for a thread."""
-
-    class Meta:
-        model = models.Label
-        fields = ["id", "name", "slug", "color"]
-        read_only_fields = ["id", "slug"]

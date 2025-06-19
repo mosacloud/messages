@@ -364,7 +364,6 @@ class Base(Configuration):
     )
 
     AUTH_USER_MODEL = "core.User"
-    INVITATION_VALIDITY_DURATION = 604800  # 7 days, in seconds
 
     # CORS
     CORS_ALLOW_CREDENTIALS = True
@@ -403,8 +402,7 @@ class Base(Configuration):
 
     # OIDC - Authorization Code Flow
     OIDC_CREATE_USER = values.BooleanValue(
-        default=False,
-        environ_name="OIDC_CREATE_USER",
+        default=False, environ_name="OIDC_CREATE_USER", environ_prefix=None
     )
     OIDC_RP_SIGN_ALGO = values.Value(
         "RS256", environ_name="OIDC_RP_SIGN_ALGO", environ_prefix=None
@@ -490,6 +488,25 @@ class Base(Configuration):
 
     ALLOW_LOGOUT_GET_METHOD = values.BooleanValue(
         default=True, environ_name="ALLOW_LOGOUT_GET_METHOD", environ_prefix=None
+    )
+
+    IDENTITY_PROVIDER = values.Value(
+        "keycloak", environ_name="IDENTITY_PROVIDER", environ_prefix=None
+    )
+
+    KEYCLOAK_REALM = values.Value(
+        "messages", environ_name="KEYCLOAK_REALM", environ_prefix=None
+    )
+    KEYCLOAK_URL = values.Value(
+        "http://keycloak:8083", environ_name="KEYCLOAK_URL", environ_prefix=None
+    )
+    KEYCLOAK_CLIENT_ID = values.Value(
+        "rest-api", environ_name="KEYCLOAK_CLIENT_ID", environ_prefix=None
+    )
+    KEYCLOAK_CLIENT_SECRET = values.Value(
+        "ServiceAccountClientSecretForDev",
+        environ_name="KEYCLOAK_CLIENT_SECRET",
+        environ_prefix=None,
     )
 
     # Logging
@@ -666,6 +683,8 @@ class Test(Base):
     ]
     USE_SWAGGER = True
 
+    IDENTITY_PROVIDER = None
+
     CELERY_TASK_ALWAYS_EAGER = values.BooleanValue(True)
 
     def __init__(self):
@@ -717,10 +736,7 @@ class Production(Base):
     SECURE_HSTS_PRELOAD = True
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_SSL_REDIRECT = True
-    SECURE_REDIRECT_EXEMPT = [
-        "^__lbheartbeat__",
-        "^__heartbeat__",
-    ]
+    SECURE_REDIRECT_EXEMPT = ["^__lbheartbeat__", "^__heartbeat__", "^api/v1\\.0/mta/"]
 
     # Modern browsers require to have the `secure` attribute on cookies with `Samesite=none`
     CSRF_COOKIE_SECURE = True

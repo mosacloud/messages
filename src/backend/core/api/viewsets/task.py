@@ -79,13 +79,18 @@ class TaskDetailView(APIView):
             "error": None,
         }
 
-        # Include result or error information if available
-        if task_result.successful():
+        # If the result is a dict with status/result/error, unpack and propagate status
+        if isinstance(task_result.result, dict) and set(task_result.result.keys()) >= {
+            "status",
+            "result",
+            "error",
+        }:
+            result_data["status"] = task_result.result["status"]
+            result_data["result"] = task_result.result["result"]
+            result_data["error"] = task_result.result["error"]
+        else:
             result_data["result"] = task_result.result
-        elif task_result.failed():
-            result_data["status"] = "FAILURE"
-            result_data["error"] = str(task_result.result)
-        elif task_result.state == "PROGRESS" and task_result.info:
+        if task_result.state == "PROGRESS" and task_result.info:
             result_data.update(task_result.info)
 
         return Response(result_data)

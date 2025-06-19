@@ -6,6 +6,7 @@
  * OpenAPI spec version: 1.0.0 (v1.0)
  */
 import type { ThreadAccessDetail } from "./thread_access_detail";
+import type { ThreadLabel } from "./thread_label";
 
 /**
  * Serialize threads.
@@ -16,12 +17,14 @@ export interface Thread {
   readonly subject: string;
   readonly snippet: string;
   readonly messages: string;
-  readonly count_unread: number;
-  readonly count_trashed: number;
-  readonly count_draft: number;
-  readonly count_starred: number;
-  readonly count_sender: number;
-  readonly count_messages: number;
+  readonly has_unread: boolean;
+  readonly has_trashed: boolean;
+  readonly has_draft: boolean;
+  readonly has_starred: boolean;
+  readonly has_sender: boolean;
+  readonly has_messages: boolean;
+  readonly is_spam: boolean;
+  readonly has_active: boolean;
   /** @nullable */
   readonly messaged_at: string | null;
   readonly sender_names: readonly string[];
@@ -29,4 +32,5 @@ export interface Thread {
   readonly updated_at: string;
   readonly user_role: string;
   readonly accesses: readonly ThreadAccessDetail[];
+  readonly labels: readonly ThreadLabel[];
 }

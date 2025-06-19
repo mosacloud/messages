@@ -1219,17 +1219,6 @@
             "post": {
                 "operationId": "import_file_create",
                 "description": "\n        Import messages by uploading an EML or MBOX file.\n        \n        The import is processed asynchronously and returns a task ID for tracking.\n        The file must be a valid EML or MBOX format. The recipient mailbox must exist\n        and the user must have access to it.\n        ",
-                "parameters": [
-                    {
-                        "in": "query",
-                        "name": "recipient",
-                        "schema": {
-                            "type": "integer"
-                        },
-                        "description": "ID of the mailbox to import messages into",
-                        "required": true
-                    }
-                ],
                 "tags": [
                     "import"
                 ],
@@ -1295,80 +1284,6 @@
             "post": {
                 "operationId": "import_imap_create",
                 "description": "\n        Import messages from an IMAP server.\n        \n        This endpoint initiates an asynchronous import process from an IMAP server.\n        The import is processed in the background and returns a task ID for tracking.\n        \n        Required parameters:\n        - imap_server: Hostname of the IMAP server\n        - imap_port: Port number for the IMAP server\n        - username: IMAP account username\n        - password: IMAP account password\n        - recipient: ID of the mailbox to import messages into\n        \n        Optional parameters:\n        - use_ssl: Whether to use SSL for the connection (default: true)\n        - folder: IMAP folder to import from (default: \"INBOX\")\n        - max_messages: Maximum number of messages to import (default: 0, meaning all messages)\n        ",
-                "parameters": [
-                    {
-                        "in": "query",
-                        "name": "folder",
-                        "schema": {
-                            "type": "string",
-                            "default": "INBOX"
-                        },
-                        "description": "IMAP folder to import from"
-                    },
-                    {
-                        "in": "query",
-                        "name": "imap_port",
-                        "schema": {
-                            "type": "integer"
-                        },
-                        "description": "Port number for the IMAP server",
-                        "required": true
-                    },
-                    {
-                        "in": "query",
-                        "name": "imap_server",
-                        "schema": {
-                            "type": "string"
-                        },
-                        "description": "Hostname of the IMAP server",
-                        "required": true
-                    },
-                    {
-                        "in": "query",
-                        "name": "max_messages",
-                        "schema": {
-                            "type": "integer",
-                            "default": 0
-                        },
-                        "description": "Maximum number of messages to import (0 for all messages)"
-                    },
-                    {
-                        "in": "query",
-                        "name": "password",
-                        "schema": {
-                            "type": "string"
-                        },
-                        "description": "IMAP account password",
-                        "required": true
-                    },
-                    {
-                        "in": "query",
-                        "name": "recipient",
-                        "schema": {
-                            "type": "integer"
-                        },
-                        "description": "ID of the mailbox to import messages into",
-                        "required": true
-                    },
-                    {
-                        "in": "query",
-                        "name": "use_ssl",
-                        "schema": {
-                            "type": "boolean",
-                            "default": true
-                        },
-                        "description": "Whether to use SSL for the connection"
-                    },
-                    {
-                        "in": "query",
-                        "name": "username",
-                        "schema": {
-                            "type": "string"
-                        },
-                        "description": "IMAP account username",
-                        "required": true
-                    }
-                ],
                 "tags": [
                     "import"
                 ],
@@ -1426,6 +1341,417 @@
                     },
                     "404": {
                         "description": "Specified mailbox not found"
+                    }
+                }
+            }
+        },
+        "/api/v1.0/labels/": {
+            "get": {
+                "operationId": "labels_list",
+                "description": "\n        List all labels accessible to the user in a hierarchical structure.\n\n        The response returns labels in a tree structure where:\n        - Labels are ordered alphabetically by name\n        - Each label includes its children (sub-labels)\n        - The hierarchy is determined by the label's name (e.g., \"Inbox/Important\" is a child of \"Inbox\")\n\n        You can filter labels by mailbox using the mailbox_id query parameter.\n        ",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "mailbox_id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "\n                Filter labels by mailbox ID. If not provided, returns labels from all accessible mailboxes.\n                "
+                    }
+                ],
+                "tags": [
+                    "labels"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/TreeLabel"
+                                    }
+                                }
+                            }
+                        },
+                        "description": "List of labels in hierarchical structure"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "labels_create",
+                "description": "View and manage labels",
+                "tags": [
+                    "labels"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LabelRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LabelRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/TreeLabel"
+                                    }
+                                }
+                            }
+                        },
+                        "description": "Created labels in hierarchical structure"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "detail": "Validation error"
+                                }
+                            }
+                        },
+                        "description": "Invalid input data"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "detail": "You need EDITOR or ADMIN role to manage labels"
+                                }
+                            }
+                        },
+                        "description": "Permission denied"
+                    }
+                }
+            }
+        },
+        "/api/v1.0/labels/{id}/": {
+            "put": {
+                "operationId": "labels_update",
+                "description": "View and manage labels",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "labels"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LabelRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/LabelRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Label"
+                                }
+                            }
+                        },
+                        "description": "Label updated successfully"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "detail": "Validation error"
+                                }
+                            }
+                        },
+                        "description": "Invalid input data"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "detail": "You need EDITOR or ADMIN role to manage labels"
+                                }
+                            }
+                        },
+                        "description": "Permission denied"
+                    }
+                }
+            },
+            "patch": {
+                "operationId": "labels_partial_update",
+                "description": "View and manage labels",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "labels"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedLabelRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedLabelRequest"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Label"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "labels_destroy",
+                "description": "View and manage labels",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "labels"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Label deleted successfully"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "detail": "You need EDITOR or ADMIN role to manage labels"
+                                }
+                            }
+                        },
+                        "description": "Permission denied"
+                    },
+                    "404": {
+                        "description": "Label not found"
+                    }
+                }
+            }
+        },
+        "/api/v1.0/labels/{id}/add-threads/": {
+            "post": {
+                "operationId": "labels_add_threads_create",
+                "description": "View and manage labels",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "labels"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "thread_ids": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "description": "List of thread IDs to add to this label"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Label"
+                                }
+                            }
+                        },
+                        "description": "Threads added to label successfully"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "detail": "Validation error"
+                                }
+                            }
+                        },
+                        "description": "Invalid input data"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "detail": "You need EDITOR or ADMIN role to manage labels"
+                                }
+                            }
+                        },
+                        "description": "Permission denied"
+                    }
+                }
+            }
+        },
+        "/api/v1.0/labels/{id}/remove-threads/": {
+            "post": {
+                "operationId": "labels_remove_threads_create",
+                "description": "View and manage labels",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "labels"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "thread_ids": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "description": "List of thread IDs to remove from this label"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Label"
+                                }
+                            }
+                        },
+                        "description": "Threads removed from label successfully"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "detail": "Validation error"
+                                }
+                            }
+                        },
+                        "description": "Invalid input data"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "detail": "You need EDITOR or ADMIN role to manage labels"
+                                }
+                            }
+                        },
+                        "description": "Permission denied"
                     }
                 }
             }
@@ -2413,11 +2739,27 @@
                 "parameters": [
                     {
                         "in": "query",
+                        "name": "has_active",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Filter threads that have active messages (1=true, 0=false)."
+                    },
+                    {
+                        "in": "query",
                         "name": "has_draft",
                         "schema": {
                             "type": "integer"
                         },
                         "description": "Filter threads with draft messages (1=true, 0=false)."
+                    },
+                    {
+                        "in": "query",
+                        "name": "has_messages",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Filter threads that have messages (1=true, 0=false)."
                     },
                     {
                         "in": "query",
@@ -2445,11 +2787,19 @@
                     },
                     {
                         "in": "query",
-                        "name": "has_unread",
+                        "name": "is_spam",
                         "schema": {
                             "type": "integer"
                         },
-                        "description": "Filter threads with unread messages (1=true, 0=false)."
+                        "description": "Filter threads that are spam (1=true, 0=false)."
+                    },
+                    {
+                        "in": "query",
+                        "name": "label_slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Filter threads by label slug."
                     },
                     {
                         "in": "query",
@@ -2902,11 +3252,11 @@
                     },
                     {
                         "in": "query",
-                        "name": "has_unread",
+                        "name": "label_slug",
                         "schema": {
-                            "type": "integer"
+                            "type": "string"
                         },
-                        "description": "Filter threads with unread messages (1=true, 0=false)."
+                        "description": "Filter threads by label slug."
                     },
                     {
                         "in": "query",
@@ -2931,15 +3281,11 @@
                         "schema": {
                             "type": "string",
                             "enum": [
-                                "draft",
-                                "messages",
-                                "sender",
-                                "starred",
-                                "trashed",
-                                "unread"
+                                "all",
+                                "all_unread"
                             ]
                         },
-                        "description": "Comma-separated list of fields to aggregate. Allowed values: unread, trashed, draft, starred, sender, messages",
+                        "description": "Comma-separated list of fields to aggregate.\n                Special values: 'all' (count all threads), 'all_unread' (count all unread threads).\n                Boolean fields: has_trashed, has_draft, has_starred, has_sender, has_active, is_spam, has_messages.\n                Unread variants ('_unread' suffix): count threads where the condition is true AND the thread is unread.\n                Examples: 'all,all_unread', 'has_starred,has_starred_unread', 'is_spam,is_spam_unread'",
                         "required": true,
                         "explode": false,
                         "style": "form"
@@ -2959,30 +3305,13 @@
                             "application/json": {
                                 "schema": {
                                     "type": "object",
-                                    "properties": {
-                                        "unread": {
-                                            "type": "integer"
-                                        },
-                                        "trashed": {
-                                            "type": "integer"
-                                        },
-                                        "draft": {
-                                            "type": "integer"
-                                        },
-                                        "starred": {
-                                            "type": "integer"
-                                        },
-                                        "sender": {
-                                            "type": "integer"
-                                        },
-                                        "messages": {
-                                            "type": "integer"
-                                        }
+                                    "additionalProperties": {
+                                        "type": "integer"
                                     }
                                 }
                             }
                         },
-                        "description": "A dictionary containing the aggregated counts. Keys correspond to the fields requested via the `stats_fields` query parameter. All possible keys (derived from THREAD_STATS_FIELDS_MAP) are defined in the schema, each mapping to an integer count. Keys not requested will not be present in the response."
+                        "description": "A dictionary containing the aggregated counts. Keys correspond to the fields requested via the `stats_fields` query parameter. Each value is an integer count. Keys not requested will not be present in the response."
                     },
                     "400": {
                         "content": {
@@ -2997,7 +3326,7 @@
                                 }
                             }
                         },
-                        "description": "Returned if `stats_fields` parameter is missing or contains invalid fields. Allowed fields: unread, trashed, draft, starred, sender, messages"
+                        "description": "Returned if `stats_fields` parameter is missing or contains invalid fields."
                     }
                 }
             }
@@ -3221,12 +3550,12 @@
             },
             "ImportFileRequest": {
                 "type": "object",
-                "description": "Serializer for importing EML or MBOX files via API.",
+                "description": "Serializer for importing email files.",
                 "properties": {
-                    "import_file": {
+                    "blob": {
                         "type": "string",
-                        "format": "binary",
-                        "description": "Select an EML or MBOX file to import"
+                        "format": "uuid",
+                        "description": "UUID of the blob"
                     },
                     "recipient": {
                         "type": "string",
@@ -3235,7 +3564,7 @@
                     }
                 },
                 "required": [
-                    "import_file",
+                    "blob",
                     "recipient"
                 ]
             },
@@ -3294,6 +3623,88 @@
                     "password",
                     "recipient",
                     "username"
+                ]
+            },
+            "Label": {
+                "type": "object",
+                "description": "Serializer for Label model.",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true,
+                        "description": "primary key for the record as UUID"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the label/folder (can use slashes for hierarchy, e.g. 'Work/Projects')",
+                        "maxLength": 255
+                    },
+                    "slug": {
+                        "type": "string",
+                        "readOnly": true,
+                        "description": "URL-friendly version of the name",
+                        "pattern": "^[-a-zA-Z0-9_]+$"
+                    },
+                    "color": {
+                        "type": "string",
+                        "description": "Color of the label in hex format (e.g. #FF0000)",
+                        "maxLength": 7
+                    },
+                    "mailbox": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Mailbox that owns this label"
+                    },
+                    "threads": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "Threads that have this label"
+                    }
+                },
+                "required": [
+                    "id",
+                    "mailbox",
+                    "name",
+                    "slug"
+                ]
+            },
+            "LabelRequest": {
+                "type": "object",
+                "description": "Serializer for Label model.",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Name of the label/folder (can use slashes for hierarchy, e.g. 'Work/Projects')",
+                        "maxLength": 255
+                    },
+                    "color": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Color of the label in hex format (e.g. #FF0000)",
+                        "maxLength": 7
+                    },
+                    "mailbox": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Mailbox that owns this label"
+                    },
+                    "threads": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "Threads that have this label"
+                    }
+                },
+                "required": [
+                    "mailbox",
+                    "name"
                 ]
             },
             "MailDomainAdmin": {
@@ -3936,6 +4347,37 @@
                     }
                 }
             },
+            "PatchedLabelRequest": {
+                "type": "object",
+                "description": "Serializer for Label model.",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Name of the label/folder (can use slashes for hierarchy, e.g. 'Work/Projects')",
+                        "maxLength": 255
+                    },
+                    "color": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Color of the label in hex format (e.g. #FF0000)",
+                        "maxLength": 7
+                    },
+                    "mailbox": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Mailbox that owns this label"
+                    },
+                    "threads": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "Threads that have this label"
+                    }
+                }
+            },
             "PatchedMailboxAccessWriteRequest": {
                 "type": "object",
                 "description": "Serializer for creating and updating mailbox access records.\nMailbox is set from the view based on URL parameters.",
@@ -4069,28 +4511,36 @@
                         "type": "string",
                         "readOnly": true
                     },
-                    "count_unread": {
-                        "type": "integer",
+                    "has_unread": {
+                        "type": "boolean",
                         "readOnly": true
                     },
-                    "count_trashed": {
-                        "type": "integer",
+                    "has_trashed": {
+                        "type": "boolean",
                         "readOnly": true
                     },
-                    "count_draft": {
-                        "type": "integer",
+                    "has_draft": {
+                        "type": "boolean",
                         "readOnly": true
                     },
-                    "count_starred": {
-                        "type": "integer",
+                    "has_starred": {
+                        "type": "boolean",
                         "readOnly": true
                     },
-                    "count_sender": {
-                        "type": "integer",
+                    "has_sender": {
+                        "type": "boolean",
                         "readOnly": true
                     },
-                    "count_messages": {
-                        "type": "integer",
+                    "has_messages": {
+                        "type": "boolean",
+                        "readOnly": true
+                    },
+                    "is_spam": {
+                        "type": "boolean",
+                        "readOnly": true
+                    },
+                    "has_active": {
+                        "type": "boolean",
                         "readOnly": true
                     },
                     "messaged_at": {
@@ -4125,19 +4575,24 @@
                         "readOnly": true
                     },
                     "labels": {
-                        "type": "string",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ThreadLabel"
+                        },
                         "readOnly": true
                     }
                 },
                 "required": [
                     "accesses",
-                    "count_draft",
-                    "count_messages",
-                    "count_sender",
-                    "count_starred",
-                    "count_trashed",
-                    "count_unread",
+                    "has_active",
+                    "has_draft",
+                    "has_messages",
+                    "has_sender",
+                    "has_starred",
+                    "has_trashed",
+                    "has_unread",
                     "id",
+                    "is_spam",
                     "labels",
                     "messaged_at",
                     "messages",
@@ -4247,6 +4702,86 @@
                 ],
                 "type": "string",
                 "description": "* `viewer` - Viewer\n* `editor` - Editor"
+            },
+            "ThreadLabel": {
+                "type": "object",
+                "description": "Serializer to get labels details for a thread.",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true,
+                        "description": "primary key for the record as UUID"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the label/folder (can use slashes for hierarchy, e.g. 'Work/Projects')",
+                        "maxLength": 255
+                    },
+                    "slug": {
+                        "type": "string",
+                        "readOnly": true,
+                        "description": "URL-friendly version of the name",
+                        "pattern": "^[-a-zA-Z0-9_]+$"
+                    },
+                    "color": {
+                        "type": "string",
+                        "description": "Color of the label in hex format (e.g. #FF0000)",
+                        "maxLength": 7
+                    },
+                    "display_name": {
+                        "type": "string",
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "display_name",
+                    "id",
+                    "name",
+                    "slug"
+                ]
+            },
+            "TreeLabel": {
+                "type": "object",
+                "description": "Serializer for tree label response structure (OpenAPI purpose only...).",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
+                    "name": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "slug": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "color": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "display_name": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "children": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/TreeLabel"
+                        },
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "children",
+                    "color",
+                    "display_name",
+                    "id",
+                    "name",
+                    "slug"
+                ]
             },
             "User": {
                 "type": "object",

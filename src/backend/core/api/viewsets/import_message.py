@@ -2,13 +2,13 @@
 
 from django.shortcuts import get_object_or_404
 
-from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
-from core.models import Mailbox
+from core.models import Blob, Mailbox
 from core.services.import_service import ImportService
 
 from .. import permissions
@@ -62,22 +62,6 @@ class ImportViewSet(viewsets.ViewSet):
         The file must be a valid EML or MBOX format. The recipient mailbox must exist
         and the user must have access to it.
         """,
-        parameters=[
-            OpenApiParameter(
-                name="recipient",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                description="ID of the mailbox to import messages into",
-                required=True,
-            ),
-            OpenApiParameter(
-                name="import_file",
-                type="file",
-                location=OpenApiParameter.QUERY,
-                description="The EML or MBOX file to import",
-                required=True,
-            ),
-        ],
     )
     @action(detail=False, methods=["post"], url_path="file")
     def import_file(self, request):
@@ -85,14 +69,18 @@ class ImportViewSet(viewsets.ViewSet):
         serializer = ImportFileSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         recipient_id = serializer.validated_data["recipient"]
-        import_file = serializer.validated_data["import_file"]
         mailbox = get_object_or_404(Mailbox, id=recipient_id)
 
+        blob_id = serializer.validated_data["blob"]
+        blob = get_object_or_404(Blob, id=blob_id)
+
         success, response_data = ImportService.import_file(
-            file=import_file,
+            file=blob,
             recipient=mailbox,
             user=request.user,
         )
+        # clean up the blob
+        blob.delete()
 
         if not success:
             return Response(response_data, status=status.HTTP_403_FORBIDDEN)
@@ -144,64 +132,6 @@ class ImportViewSet(viewsets.ViewSet):
         - folder: IMAP folder to import from (default: "INBOX")
         - max_messages: Maximum number of messages to import (default: 0, meaning all messages)
         """,
-        parameters=[
-            OpenApiParameter(
-                name="imap_server",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                description="Hostname of the IMAP server",
-                required=True,
-            ),
-            OpenApiParameter(
-                name="imap_port",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                description="Port number for the IMAP server",
-                required=True,
-            ),
-            OpenApiParameter(
-                name="username",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                description="IMAP account username",
-                required=True,
-            ),
-            OpenApiParameter(
-                name="password",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                description="IMAP account password",
-                required=True,
-            ),
-            OpenApiParameter(
-                name="recipient",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                description="ID of the mailbox to import messages into",
-                required=True,
-            ),
-            OpenApiParameter(
-                name="use_ssl",
-                type=bool,
-                location=OpenApiParameter.QUERY,
-                description="Whether to use SSL for the connection",
-                default=True,
-            ),
-            OpenApiParameter(
-                name="folder",
-                type=str,
-                location=OpenApiParameter.QUERY,
-                description="IMAP folder to import from",
-                default="INBOX",
-            ),
-            OpenApiParameter(
-                name="max_messages",
-                type=int,
-                location=OpenApiParameter.QUERY,
-                description="Maximum number of messages to import (0 for all messages)",
-                default=0,
-            ),
-        ],
     )
     @action(detail=False, methods=["post"], url_path="imap")
     def import_imap(self, request):

@@ -4,7 +4,7 @@
 import html
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -17,6 +17,70 @@ logger = logging.getLogger(__name__)
 
 # Helper function to extract Message-IDs
 MESSAGE_ID_RE = re.compile(r"<([^<>]+)>")
+
+
+GMAIL_LABEL_TO_MESSAGE_FLAG = {
+    "Drafts": "is_draft",
+    "Brouillons": "is_draft",
+    "Sent": "is_sender",
+    "Messages envoyés": "is_sender",
+    "Archived": "is_archived",
+    "Messages archivés": "is_archived",
+    "Starred": "is_starred",
+    "Favoris": "is_starred",
+    "Trash": "is_trashed",
+    "Corbeille": "is_trashed",
+}
+
+GMAIL_LABEL_TO_THREAD_FLAG = {
+    "Spam": "is_spam",
+}
+
+GMAIL_READ_UNREAD_LABELS = {
+    "Ouvert": "read",
+    "Non lus": "unread",
+    "Opened": "read",
+    "Unread": "unread",
+}
+
+GMAIL_LABELS_TO_IGNORE = [
+    "Promotions",
+    "Social",
+    "Boîte de réception",
+    "Inbox",
+]
+
+
+def compute_labels_and_flags(
+    parsed_email: Dict[str, Any],
+) -> Tuple[List[str], Dict[str, bool], Dict[str, bool]]:
+    """Compute labels and flags for a parsed email."""
+    labels = parsed_email.get("gmail_labels", [])
+    message_flags = {}
+    thread_flags = {}
+    labels_to_add = []
+    for label in labels:
+        # Handle read/unread status
+        if label in GMAIL_READ_UNREAD_LABELS:
+            if GMAIL_READ_UNREAD_LABELS[label] == "read":
+                message_flags["is_unread"] = False
+            elif GMAIL_READ_UNREAD_LABELS[label] == "unread":
+                message_flags["is_unread"] = True
+            continue  # Skip further processing for this label
+        message_flag = GMAIL_LABEL_TO_MESSAGE_FLAG.get(label)
+        thread_flag = GMAIL_LABEL_TO_THREAD_FLAG.get(label)
+        if message_flag:
+            message_flags[message_flag] = True
+        elif thread_flag:
+            thread_flags[thread_flag] = True
+        elif label not in GMAIL_LABELS_TO_IGNORE:
+            labels_to_add.append(label)
+
+    # Special case: if message is sender or draft, it should not be unread
+    if message_flags.get("is_sender") or message_flags.get("is_draft"):
+        message_flags["is_unread"] = False
+
+    return labels_to_add, message_flags, thread_flags
 
 
 def _process_attachments(
@@ -163,7 +227,7 @@ def find_thread_for_inbound_message(
     return None  # potential_parents.first().thread
 
 
-def deliver_inbound_message(
+def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-statements, too-many-locals
     recipient_email: str,
     parsed_email: Dict[str, Any],
     raw_data: bytes,
@@ -173,6 +237,8 @@ def deliver_inbound_message(
 
     raw_data is not parsed again, just stored as is.
     """
+    message_flags = {}
+    thread_flags = {}
 
     # --- 1. Find or Create Mailbox --- #
     try:
@@ -185,9 +251,70 @@ def deliver_inbound_message(
         logger.warning("Invalid recipient address: %s", recipient_email)
         return False
 
-    # --- 2. Find or Create Thread --- #
+    # --- 2. Check for Duplicate Message --- #
+    mime_id = parsed_email.get("messageId", parsed_email.get("message_id"))
+    if mime_id:
+        # Remove angle brackets if present
+        if mime_id.startswith("<") and mime_id.endswith(">"):
+            mime_id = mime_id[1:-1]
+
+        # Check if a message with this MIME ID already exists in this mailbox
+        existing_message = models.Message.objects.filter(
+            mime_id=mime_id, thread__accesses__mailbox=mailbox
+        ).first()
+
+        if existing_message:
+            logger.info(
+                "Skipping duplicate message %s (MIME ID: %s) in mailbox %s",
+                existing_message.id,
+                mime_id,
+                mailbox.id,
+            )
+            return True  # Return success since we handled the duplicate gracefully
+
+    # --- 3. Find or Create Thread --- #
     try:
+        # thread = None
+        # if is_import:
+        #     # During import, try to find an existing thread that contains messages
+        #     # with the same subject or referenced message IDs
+        #     subject = parsed_email.get("subject", "")
+        #     in_reply_to = parsed_email.get("in_reply_to")
+        #     references = parsed_email.get("headers", {}).get("references", "")
+
+        #     # First try to find a thread by message IDs
+        #     if in_reply_to or references:
+        #         thread = models.Thread.objects.filter(
+        #             messages__mime_id__in=[in_reply_to] if in_reply_to else [],
+        #             accesses__mailbox=mailbox,
+        #         ).first()
+        #         if not thread and references:
+        #             # Extract message IDs from references
+        #             ref_ids = MESSAGE_ID_RE.findall(references)
+        #             if ref_ids:
+        #                 thread = models.Thread.objects.filter(
+        #                     messages__mime_id__in=ref_ids,
+        #                     accesses__mailbox=mailbox,
+        #                 ).first()
+
+        #     # If no thread found by message IDs, try by subject
+        #     if not thread and subject:
+        #         # Look for threads with similar subjects
+        #         canonical_subject = re.sub(
+        #             r"^((re|fwd|fw|rep|tr|rép)\s*:\s+)+",
+        #             "",
+        #             subject.lower(),
+        #             flags=re.IGNORECASE,
+        #         ).strip()
+        #         thread = models.Thread.objects.filter(
+        #             subject__iregex=rf"^(re|fwd|fw|rep|tr|rép)\s*:\s*{re.escape(canonical_subject)}$",
+        #             accesses__mailbox=mailbox,
+        #         ).first()
+
+        # # If no thread found or not an import, use normal thread finding logic
+        # if not thread:
         thread = find_thread_for_inbound_message(parsed_email, mailbox)
+
         if not thread:
             snippet = ""
             if text_body := parsed_email.get("textBody"):
@@ -205,7 +332,6 @@ def deliver_inbound_message(
             thread = models.Thread.objects.create(
                 subject=parsed_email.get("subject", "(no subject)"),
                 snippet=snippet,
-                count_unread=1,
             )
             # Create a thread access for the sender mailbox
             models.ThreadAccess.objects.create(
@@ -224,7 +350,20 @@ def deliver_inbound_message(
         )
         return False
 
-    # --- 3. Get or Create Sender Contact --- #
+    if is_import:
+        # get labels from parsed_email
+        labels, message_flags, thread_flags = compute_labels_and_flags(parsed_email)
+        for label in labels:
+            try:
+                label_obj, _ = models.Label.objects.get_or_create(
+                    name=label, mailbox=mailbox
+                )
+                thread.labels.add(label_obj)
+            except Exception as e:
+                logger.exception("Error creating label %s: %s", label, e)
+                continue
+
+    # --- 4. Get or Create Sender Contact --- #
     logger.warning(parsed_email)
     sender_info = parsed_email.get("from", {})
     sender_email = sender_info.get("email")
@@ -289,7 +428,7 @@ def deliver_inbound_message(
         )
         return False
 
-    # --- 4. Create Message --- #
+    # --- 5. Create Message --- #
     try:
         # Can we get a parent message for reference?
         # TODO: validate this doesn't create security issues
@@ -319,7 +458,19 @@ def deliver_inbound_message(
             # We need to set the created_at field to the date of the message
             # because the inbound message is not created at the same time as the message is received
             message.created_at = parsed_email.get("date") or timezone.now()
-            message.save(update_fields=["created_at"])
+            for flag, value in message_flags.items():
+                if hasattr(message, flag):
+                    setattr(message, flag, value)
+            message.save(
+                update_fields=[
+                    "created_at",
+                    *message_flags.keys(),
+                ]
+            )
+            for flag, value in thread_flags.items():
+                if hasattr(thread, flag):
+                    setattr(thread, flag, value)
+            thread.save(update_fields=thread_flags.keys())
     except (DjangoDbError, ValidationError) as e:
         logger.error("Failed to create message in thread %s: %s", thread.id, e)
         return False  # Indicate failure
@@ -331,7 +482,7 @@ def deliver_inbound_message(
         )
         return False
 
-    # --- 5. Create Recipient Contacts and Links --- #
+    # --- 6. Create Recipient Contacts and Links --- #
     recipient_types_to_process = [
         (models.MessageRecipientTypeChoices.TO, parsed_email.get("to", [])),
         (models.MessageRecipientTypeChoices.CC, parsed_email.get("cc", [])),
@@ -396,11 +547,11 @@ def deliver_inbound_message(
                 )
                 # Log and continue
 
-    # --- 6. Process Attachments if present --- #
+    # --- 7. Process Attachments if present --- #
     if parsed_email.get("attachments"):
         _process_attachments(message, parsed_email["attachments"], mailbox)
 
-    # --- 7. Final Updates --- #
+    # --- 8. Final Updates --- #
     try:
         # Update snippet using the new message's body if possible
         # (This assumes the subject was used for the initial snippet if body was empty)

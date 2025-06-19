@@ -90,8 +90,15 @@ def test_import_eml_file(admin_client, eml_file, mailbox):
         content_type="message/rfc822",
     )
 
-    with patch("core.tasks.process_eml_file_task.delay") as mock_task:
-        mock_task.return_value.id = "fake-task-id"
+    # Create a mock task instance
+    mock_task = MagicMock()
+    mock_task.update_state = MagicMock()
+
+    with (
+        patch("core.tasks.process_eml_file_task.delay") as mock_delay,
+        patch.object(process_eml_file_task, "update_state", mock_task.update_state),
+    ):
+        mock_delay.return_value.id = "fake-task-id"
         # Submit the form
         response = admin_client.post(
             url, {"import_file": test_file, "recipient": mailbox.id}, follow=True
@@ -100,20 +107,47 @@ def test_import_eml_file(admin_client, eml_file, mailbox):
         # Check response
         assert response.status_code == 200
         assert (
-            f"Started processing EML file: test.eml for recipient {mailbox}"
+            f"Started processing EML file for recipient {mailbox}"
             in response.content.decode()
         )
-        mock_task.assert_called_once()
+        mock_delay.assert_called_once()
 
         # Run the task synchronously for testing
-        result = process_eml_file_task(
+        task_result = process_eml_file_task(
             file_content=eml_file, recipient_id=str(mailbox.id)
         )
-        assert result["status"] == "completed"
-        assert result["type"] == "eml"
-        assert result["total_messages"] == 1
-        assert result["success_count"] == 1
-        assert result["failure_count"] == 0
+        assert task_result["result"]["message_status"] == "Completed processing message"
+        assert task_result["result"]["type"] == "eml"
+        assert task_result["result"]["total_messages"] == 1
+        assert task_result["result"]["success_count"] == 1
+        assert task_result["result"]["failure_count"] == 0
+        assert task_result["result"]["current_message"] == 1
+
+        # Verify progress updates were called correctly
+        assert mock_task.update_state.call_count == 2
+
+        mock_task.update_state.assert_any_call(
+            state="PROGRESS",
+            meta={
+                "result": {
+                    "message_status": "Processing message 1 of 1",
+                    "total_messages": 1,
+                    "success_count": 0,
+                    "failure_count": 0,
+                    "type": "eml",
+                    "current_message": 1,
+                },
+                "error": None,
+            },
+        )
+        mock_task.update_state.assert_called_with(
+            state="SUCCESS",
+            meta={
+                "result": task_result["result"],
+                "error": None,
+            },
+        )
+
         # check that the message was created
         assert Message.objects.count() == 1
         message = Message.objects.first()
@@ -137,26 +171,49 @@ def test_process_mbox_file_task(mailbox, mbox_file):
     # Mock the task's update_state method to avoid database operations
     with patch.object(process_mbox_file_task, "update_state", mock_task.update_state):
         # Run the task synchronously for testing
-        result = process_mbox_file_task(
+        task_result = process_mbox_file_task(
             file_content=mbox_file, recipient_id=str(mailbox.id)
         )
-        assert result["status"] == "completed"
-        assert result["type"] == "mbox"
-        assert result["total_messages"] == 3  # Three messages in the test MBOX file
-        assert result["success_count"] == 3
-        assert result["failure_count"] == 0
+        assert task_result["status"] == "SUCCESS"
+        assert (
+            task_result["result"]["message_status"] == "Completed processing messages"
+        )
+        assert task_result["result"]["type"] == "mbox"
+        assert (
+            task_result["result"]["total_messages"] == 3
+        )  # Three messages in the test MBOX file
+        assert task_result["result"]["success_count"] == 3
+        assert task_result["result"]["failure_count"] == 0
+        assert task_result["result"]["current_message"] == 3
 
         # Verify progress updates were called correctly
-        assert mock_task.update_state.call_count == 3
+        assert mock_task.update_state.call_count == 4  # 3 PROGRESS + 1 SUCCESS
+
+        # Verify progress updates
         for i in range(1, 4):
             mock_task.update_state.assert_any_call(
                 state="PROGRESS",
                 meta={
-                    "current": i,
-                    "total": 3,
-                    "status": f"Processing message {i} of 3",
+                    "result": {
+                        "message_status": f"Processing message {i} of 3",
+                        "total_messages": 3,
+                        "success_count": i - 1,  # Previous messages were successful
+                        "failure_count": 0,
+                        "type": "mbox",
+                        "current_message": i,
+                    },
+                    "error": None,
                 },
             )
+
+        # Verify success update
+        mock_task.update_state.assert_any_call(
+            state="SUCCESS",
+            meta={
+                "result": task_result["result"],
+                "error": None,
+            },
+        )
 
         # Verify messages were created
         assert Message.objects.count() == 3
@@ -206,7 +263,7 @@ def test_upload_mbox_file(admin_client, mailbox, mbox_file):
     # Check response
     assert response.status_code == 200
     assert (
-        f"Started processing MBOX file: test.mbox for recipient {mailbox}"
+        f"Started processing MBOX file for recipient {mailbox}"
         in response.content.decode()
     )
     assert Message.objects.count() == 3

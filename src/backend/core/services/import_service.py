@@ -4,10 +4,9 @@ import logging
 from typing import Any, Dict, Optional, Tuple
 
 from django.contrib import messages
-from django.core.files.uploadedfile import UploadedFile
 from django.http import HttpRequest
 
-from core.models import Mailbox
+from core.models import Blob, Mailbox
 from core.tasks import (
     import_imap_messages_task,
     process_eml_file_task,
@@ -22,7 +21,7 @@ class ImportService:
 
     @staticmethod
     def import_file(
-        file: UploadedFile,
+        file: Blob,
         recipient: Mailbox,
         user: Any,
         request: Optional[HttpRequest] = None,
@@ -43,38 +42,50 @@ class ImportService:
             return False, {"detail": "You do not have access to this mailbox."}
 
         try:
-            file_content = file.read()
+            file_content = file.raw_content
+            content_type = file.type
 
-            if file.name.endswith(".mbox"):
+            # Check MIME type for MBOX
+            if content_type in [
+                "application/octet-stream",
+                "text/plain",
+                "application/mbox",
+            ]:
                 # Process MBOX file asynchronously
                 task = process_mbox_file_task.delay(file_content, str(recipient.id))
                 response_data = {"task_id": task.id, "type": "mbox"}
                 if request:
                     messages.info(
                         request,
-                        f"Started processing MBOX file: {file.name} for recipient {recipient}. "
+                        f"Started processing MBOX file for recipient {recipient}. "
                         "This may take a while. You can check the status in the Celery task monitor.",
                     )
                 return True, response_data
-            elif file.name.endswith(".eml"):
+            # Check MIME type for EML
+            elif content_type in ["message/rfc822", "application/eml"]:
                 # Process EML file asynchronously
                 task = process_eml_file_task.delay(file_content, str(recipient.id))
                 response_data = {"task_id": task.id, "type": "eml"}
                 if request:
                     messages.info(
                         request,
-                        f"Started processing EML file: {file.name} for recipient {recipient}. "
+                        f"Started processing EML file for recipient {recipient}. "
                         "This may take a while. You can check the status in the Celery task monitor.",
                     )
                 return True, response_data
             else:
                 return False, {
-                    "detail": "Invalid file format. Only EML and MBOX files are supported."
+                    "detail": (
+                        "Invalid file format. Only EML (message/rfc822) and MBOX "
+                        "(application/octet-stream, application/mbox, or text/plain) files are supported. "
+                        "Detected content type: {content_type}"
+                    ).format(content_type=content_type)
                 }
         except Exception as e:
             logger.exception("Error processing file: %s", e)
             if request:
                 messages.error(request, f"Error processing file: {str(e)}")
+
             return False, {"detail": str(e)}
 
     @staticmethod

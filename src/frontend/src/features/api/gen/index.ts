@@ -2,6 +2,8 @@ export * from "./blob/blob";
 export * from "./config/config";
 export * from "./messages/messages";
 export * from "./flags/flags";
+export * from "./import/import";
+export * from "./labels/labels";
 export * from "./mailboxes/mailboxes";
 export * from "./mailbox-accesses/mailbox-accesses";
 export * from "./maildomains/maildomains";

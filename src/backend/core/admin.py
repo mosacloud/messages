@@ -1,6 +1,8 @@
 """Admin classes and registrations for core app."""
 
-from django.contrib import admin
+import hashlib
+
+from django.contrib import admin, messages
 from django.contrib.auth import admin as auth_admin
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -9,10 +11,49 @@ from django.utils.html import escape, format_html
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
+from core.identity.keycloak import reset_keycloak_user_password
 from core.services.import_service import ImportService
 
 from . import models
 from .forms import IMAPImportForm, MessageImportForm
+
+
+def reset_keycloak_password_action(_, request, queryset):
+    """Admin action to reset Keycloak passwords for selected mailboxes."""
+    success_count = 0
+    error_count = 0
+
+    for mailbox in queryset:
+        if not mailbox.domain.identity_sync:
+            messages.warning(
+                request,
+                f"Skipped {mailbox} - identity sync not enabled for domain {mailbox.domain.name}",
+            )
+            continue
+
+        try:
+            username = str(mailbox)  # email format
+            new_password = reset_keycloak_user_password(username)
+            messages.success(
+                request,
+                f"Password reset for {mailbox}. New temporary password: {new_password}",
+            )
+            success_count += 1
+
+        # pylint: disable=broad-except
+        except Exception as e:  # noqa: BLE001
+            messages.error(request, f"Failed to reset password for {mailbox}: {str(e)}")
+            error_count += 1
+
+    if success_count > 0:
+        messages.info(request, f"Successfully reset {success_count} password(s)")
+    if error_count > 0:
+        messages.warning(request, f"Failed to reset {error_count} password(s)")
+
+
+reset_keycloak_password_action.short_description = (
+    "Reset Keycloak password for selected mailboxes"
+)
 
 
 @admin.register(models.User)
@@ -107,9 +148,11 @@ class MailDomainAdmin(admin.ModelAdmin):
 
     list_display = (
         "name",
+        "identity_sync",
         "created_at",
         "updated_at",
     )
+    list_filter = ("identity_sync",)
     search_fields = ("name",)
 
 
@@ -126,6 +169,7 @@ class MailboxAdmin(admin.ModelAdmin):
     inlines = [MailboxAccessInline]
     list_display = ("__str__", "domain", "updated_at")
     search_fields = ("local_part", "domain__name")
+    actions = [reset_keycloak_password_action]
 
 
 @admin.register(models.MailboxAccess)
@@ -164,12 +208,14 @@ class ThreadAdmin(admin.ModelAdmin):
             _("Statistics"),
             {
                 "fields": (
-                    "count_unread",
-                    "count_trashed",
-                    "count_draft",
-                    "count_starred",
-                    "count_sender",
-                    "count_messages",
+                    "has_unread",
+                    "has_trashed",
+                    "has_draft",
+                    "has_starred",
+                    "has_sender",
+                    "has_messages",
+                    "is_spam",
+                    "has_active",
                 ),
                 "classes": ("collapse",),
             },
@@ -184,12 +230,14 @@ class ThreadAdmin(admin.ModelAdmin):
     )
     readonly_fields = (
         "display_labels",
-        "count_unread",
-        "count_trashed",
-        "count_draft",
-        "count_starred",
-        "count_sender",
-        "count_messages",
+        "has_unread",
+        "has_trashed",
+        "has_draft",
+        "has_starred",
+        "has_sender",
+        "has_messages",
+        "is_spam",
+        "has_active",
         "messaged_at",
         "sender_names",
         "created_at",
@@ -277,8 +325,19 @@ class MessageAdmin(admin.ModelAdmin):
             if form.is_valid():
                 import_file = request.FILES["import_file"]
                 recipient = form.cleaned_data["recipient"]
+
+                # Create a Blob from the uploaded file
+                file_content = import_file.read()
+                blob = models.Blob.objects.create(
+                    raw_content=file_content,
+                    type=import_file.content_type,
+                    size=import_file.size,
+                    mailbox=recipient,
+                    sha256=hashlib.sha256(file_content).hexdigest(),
+                )
+
                 success, _response_data = ImportService.import_file(
-                    file=import_file,
+                    file=blob,
                     recipient=recipient,
                     user=request.user,
                     request=request,
@@ -393,3 +452,12 @@ class LabelAdmin(admin.ModelAdmin):
         if not obj.slug or (change and "name" in form.changed_data):
             obj.slug = slugify(obj.name.replace("/", "-"))
         super().save_model(request, obj, form, change)
+
+
+@admin.register(models.Blob)
+class BlobAdmin(admin.ModelAdmin):
+    """Admin class for the Blob model"""
+
+    list_display = ("id", "mailbox", "type", "size", "created_at")
+    search_fields = ("mailbox__local_part", "mailbox__domain__name")
+    list_filter = ("mailbox", "type")

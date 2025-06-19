@@ -19,7 +19,10 @@ export const RhfInput = (props: InputProps & { name: string }) => {
             {...props}
             aria-invalid={!!fieldState.error}
             state={fieldState.error ? "error" : "default"}
-            onBlur={field.onBlur}
+            onBlur={(event) => {
+              field.onBlur();
+              props.onBlur?.(event);
+            }}
             onChange={(e) => setValue(field.name, e.target.value, { shouldDirty: true })}
             value={field.value}
           />
