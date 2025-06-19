@@ -1,5 +1,5 @@
+import { useState, useCallback } from "react";
 import merge from "lodash/merge";
-import { create } from "zustand";
 
 import { tokens } from "./cunningham-tokens";
 
@@ -29,23 +29,24 @@ const getMergedTokens = (theme: Theme) => {
 const DEFAULT_THEME: Theme = "generic";
 const defaultTokens = getMergedTokens(DEFAULT_THEME);
 
-const initialState: ThemeStore = {
+const initialState: Omit<ThemeStore, "setTheme"> = {
   colorsTokens: defaultTokens.theme.colors,
   componentTokens: defaultTokens.components,
   currentTokens: tokens.themes[DEFAULT_THEME] as Partial<Tokens>,
   fontSizesTokens: defaultTokens.theme.font.sizes,
-  setTheme: () => {},
   spacingsTokens: defaultTokens.theme.spacings,
   theme: DEFAULT_THEME,
   themeTokens: defaultTokens.theme,
 };
 
-export const useCunninghamTheme = create<ThemeStore>((set) => ({
-  ...initialState,
-  setTheme: (theme: Theme) => {
+export const useCunninghamTheme = (): ThemeStore => {
+  const [themeState, setThemeState] =
+    useState<Omit<ThemeStore, "setTheme">>(initialState);
+
+  const setTheme = useCallback((theme: Theme) => {
     const newTokens = getMergedTokens(theme);
 
-    set({
+    setThemeState({
       colorsTokens: newTokens.theme.colors,
       componentTokens: newTokens.components,
       currentTokens: tokens.themes[theme] as Partial<Tokens>,
@@ -54,5 +55,10 @@ export const useCunninghamTheme = create<ThemeStore>((set) => ({
       theme,
       themeTokens: newTokens.theme,
     });
-  },
-}));
+  }, []);
+
+  return {
+    ...themeState,
+    setTheme,
+  };
+};
