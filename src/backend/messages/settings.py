@@ -402,8 +402,7 @@ class Base(Configuration):
 
     # OIDC - Authorization Code Flow
     OIDC_CREATE_USER = values.BooleanValue(
-        default=False,
-        environ_name="OIDC_CREATE_USER", environ_prefix=None
+        default=False, environ_name="OIDC_CREATE_USER", environ_prefix=None
     )
     OIDC_RP_SIGN_ALGO = values.Value(
         "RS256", environ_name="OIDC_RP_SIGN_ALGO", environ_prefix=None
@@ -737,11 +736,7 @@ class Production(Base):
     SECURE_HSTS_PRELOAD = True
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_SSL_REDIRECT = True
-    SECURE_REDIRECT_EXEMPT = [
-        "^__lbheartbeat__",
-        "^__heartbeat__",
-        "^api/v1\\.0/mta/"
-    ]
+    SECURE_REDIRECT_EXEMPT = ["^__lbheartbeat__", "^__heartbeat__", "^api/v1\\.0/mta/"]
 
     # Modern browsers require to have the `secure` attribute on cookies with `Samesite=none`
     CSRF_COOKIE_SECURE = True

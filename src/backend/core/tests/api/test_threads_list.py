@@ -220,8 +220,12 @@ def test_list_threads_filter_combined(api_client):
         thread=thread4,
         role=enums.ThreadAccessRoleChoices.EDITOR,
     )
-    MessageFactory(thread=thread4, is_starred=True, is_trashed=False)  # Starred, not trashed
-    MessageFactory(thread=thread4, is_starred=False, is_trashed=True)  # Not starred, trashed
+    MessageFactory(
+        thread=thread4, is_starred=True, is_trashed=False
+    )  # Starred, not trashed
+    MessageFactory(
+        thread=thread4, is_starred=False, is_trashed=True
+    )  # Not starred, trashed
 
     for t in [thread1, thread2, thread3, thread4]:
         t.update_stats()
@@ -305,7 +309,10 @@ class TestThreadStatsAPI:
         )
 
         response = api_client.get(
-            url, {"stats_fields": "has_messages,has_trashed,has_draft,has_starred,has_sender"}
+            url,
+            {
+                "stats_fields": "has_messages,has_trashed,has_draft,has_starred,has_sender"
+            },
         )
 
         assert response.status_code == 200
@@ -490,13 +497,25 @@ class TestThreadStatsAPI:
 
         # Create threads with different combinations of flags and unread status
         thread1 = ThreadFactory(
-            has_unread=True, has_starred=True, has_sender=True, is_spam=False, has_active=True
+            has_unread=True,
+            has_starred=True,
+            has_sender=True,
+            is_spam=False,
+            has_active=True,
         )
         thread2 = ThreadFactory(
-            has_unread=False, has_starred=True, has_sender=True, is_spam=False, has_active=True
+            has_unread=False,
+            has_starred=True,
+            has_sender=True,
+            is_spam=False,
+            has_active=True,
         )
         thread3 = ThreadFactory(
-            has_unread=True, has_starred=False, has_sender=False, is_spam=True, has_active=False
+            has_unread=True,
+            has_starred=False,
+            has_sender=False,
+            is_spam=True,
+            has_active=False,
         )
 
         for thread in [thread1, thread2, thread3]:
@@ -519,7 +538,7 @@ class TestThreadStatsAPI:
                     "has_active,"
                     "has_active_unread"
                 )
-            }
+            },
         )
 
         assert response.status_code == 200
@@ -555,7 +574,7 @@ class TestThreadStatsAPI:
         # Filter for only starred threads and get unread counts
         response = api_client.get(
             url,
-            {"has_starred": "1", "stats_fields": "all,all_unread,has_sender_unread"}
+            {"has_starred": "1", "stats_fields": "all,all_unread,has_sender_unread"},
         )
 
         assert response.status_code == 200

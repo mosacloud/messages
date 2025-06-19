@@ -146,6 +146,7 @@ class AttachmentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+
 class ThreadLabelSerializer(serializers.ModelSerializer):
     """Serializer to get labels details for a thread."""
 
@@ -159,6 +160,7 @@ class ThreadLabelSerializer(serializers.ModelSerializer):
     def get_display_name(self, instance):
         """Return the display name of the label."""
         return instance.name.split("/")[-1]
+
 
 class LabelSerializer(serializers.ModelSerializer):
     """Serializer for Label model."""

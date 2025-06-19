@@ -36,7 +36,6 @@ class MessageRecipientTypeChoices(models.TextChoices):
     BCC = "bcc", _("Bcc")
 
 
-
 class MessageDeliveryStatusChoices(models.TextChoices):
     """Defines the possible statuses of a message delivery."""
 
@@ -50,6 +49,7 @@ class MailDomainAccessRoleChoices(models.TextChoices):
     """Defines the unique roles a user can have to access a mail domain."""
 
     ADMIN = "ADMIN", _("Admin")
+
 
 THREAD_STATS_FIELDS_MAP = {
     "all": "all",

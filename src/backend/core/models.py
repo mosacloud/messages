@@ -350,7 +350,8 @@ class Thread(BaseModel):
         """Update the denormalized stats of the thread."""
         # Fetch all message metadata in a single query to avoid multiple DB hits
         message_data = list(
-            self.messages.select_related("sender").values(
+            self.messages.select_related("sender")
+            .values(
                 "is_unread",
                 "is_trashed",
                 "is_draft",
@@ -360,7 +361,8 @@ class Thread(BaseModel):
                 "is_archived",
                 "created_at",
                 "sender__name",
-            ).order_by("created_at")
+            )
+            .order_by("created_at")
         )
 
         if not message_data:
@@ -388,12 +390,14 @@ class Thread(BaseModel):
                 msg["is_starred"] and not msg["is_trashed"] for msg in message_data
             )
             self.has_sender = any(
-                msg["is_sender"] and not msg["is_trashed"] and not msg["is_draft"] for msg in message_data
+                msg["is_sender"] and not msg["is_trashed"] and not msg["is_draft"]
+                for msg in message_data
             )
 
             # Check if we have any non-trashed, non-spam messages
             active_messages = [
-                msg for msg in message_data
+                msg
+                for msg in message_data
                 if not msg["is_trashed"] and not msg["is_spam"]
             ]
             self.has_messages = len(active_messages) > 0
@@ -403,11 +407,11 @@ class Thread(BaseModel):
 
             # Check if thread has active messages (!is_sender && !is_spam && !is_archived && !is_trashed && !is_draft)
             self.has_active = any(
-                not msg["is_sender"] and
-                not msg["is_spam"] and
-                not msg["is_archived"] and
-                not msg["is_trashed"] and
-                not msg["is_draft"]
+                not msg["is_sender"]
+                and not msg["is_spam"]
+                and not msg["is_archived"]
+                and not msg["is_trashed"]
+                and not msg["is_draft"]
                 for msg in message_data
             )
 
@@ -416,7 +420,9 @@ class Thread(BaseModel):
                 msg for msg in message_data if not msg["is_trashed"]
             ]
             if non_trashed_messages:
-                self.messaged_at = max(msg["created_at"] for msg in non_trashed_messages)
+                self.messaged_at = max(
+                    msg["created_at"] for msg in non_trashed_messages
+                )
             elif len(message_data) > 0:
                 self.messaged_at = max(msg["created_at"] for msg in message_data)
             else:
@@ -425,9 +431,15 @@ class Thread(BaseModel):
             # Set sender names (first and last sender names)
             sender_names = None
             if len(active_messages) > 0:
-                sender_names = [active_messages[0]["sender__name"], active_messages[-1]["sender__name"]]
+                sender_names = [
+                    active_messages[0]["sender__name"],
+                    active_messages[-1]["sender__name"],
+                ]
             elif len(message_data) > 0:
-                sender_names = [message_data[0]["sender__name"], message_data[-1]["sender__name"]]
+                sender_names = [
+                    message_data[0]["sender__name"],
+                    message_data[-1]["sender__name"],
+                ]
 
             if sender_names:
                 # Get unique sender names from first and last messages
