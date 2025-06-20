@@ -29,7 +29,7 @@ export default function HomePage() {
         <Hero
           logo={<img src="/images/app-icon.svg" alt="Messages Logo" width={64} />}
           title={t("home.title")}
-          banner="/images/banner.png"
+          banner="/images/banner.webp"
           subtitle={t("home.subtitle")}
           mainButton={withProConnect ? <ProConnectButton onClick={login} /> : <Button onClick={login}>{t("home.loginMessage")}</Button>}
         />
