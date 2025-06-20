@@ -1,6 +1,6 @@
 """Tests for the label API endpoints."""
 
-# pylint: disable=redefined-outer-name, unused-argument, too-many-public-methods
+# pylint: disable=redefined-outer-name, unused-argument, too-many-public-methods, too-many-lines
 from django.urls import reverse
 
 import pytest
@@ -925,3 +925,110 @@ class TestLabelViewSet:
             children_by_name["Root/With/Spaces And More"]["display_name"]
             == "Spaces And More"
         )
+
+    def test_delete_label_cascades_to_children(self, api_client, mailbox, user):
+        """Test that deleting a parent label also deletes all its child labels."""
+        # Create a hierarchical structure of labels
+        LabelFactory(mailbox=mailbox, name="Work/Meetings", color="#0000FF")
+        LabelFactory(mailbox=mailbox, name="Work/Projects/Urgent", color="#FFFF00")
+
+        # Verify all labels exist
+        parent_label = models.Label.objects.get(name="Work")
+        assert models.Label.objects.filter(name="Work/Projects").exists()
+        assert models.Label.objects.filter(name="Work/Meetings").exists()
+        assert models.Label.objects.filter(name="Work/Projects/Urgent").exists()
+        assert models.Label.objects.count() == 4
+
+        # Delete the parent label
+        url = reverse("labels-detail", args=[parent_label.pk])
+        response = api_client.delete(url)
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+
+        # Verify all child labels are also deleted
+        assert not models.Label.objects.filter(name="Work").exists()
+        assert not models.Label.objects.filter(name="Work/Projects").exists()
+        assert not models.Label.objects.filter(name="Work/Meetings").exists()
+        assert not models.Label.objects.filter(name="Work/Projects/Urgent").exists()
+        assert models.Label.objects.count() == 0
+
+    def test_delete_label_without_children(self, api_client, mailbox, user):
+        """Test that deleting a label without children works normally."""
+        # Create a simple label without children
+        label = LabelFactory(mailbox=mailbox, name="Simple", color="#FF0000")
+        assert models.Label.objects.count() == 1
+
+        # Delete the label
+        url = reverse("labels-detail", args=[label.pk])
+        response = api_client.delete(url)
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+
+        # Verify the label is deleted
+        assert not models.Label.objects.filter(name="Simple").exists()
+        assert models.Label.objects.count() == 0
+
+    def test_delete_child_label_does_not_affect_parent(self, api_client, mailbox, user):
+        """Test that deleting a child label does not affect its parent."""
+        # Create parent and child labels
+        LabelFactory(mailbox=mailbox, name="Work", color="#FF0000")
+        child_label = LabelFactory(
+            mailbox=mailbox, name="Work/Projects", color="#00FF00"
+        )
+
+        # Verify both labels exist
+        assert models.Label.objects.filter(name="Work").exists()
+        assert models.Label.objects.filter(name="Work/Projects").exists()
+        assert models.Label.objects.count() == 2
+
+        # Delete only the child label
+        url = reverse("labels-detail", args=[child_label.pk])
+        response = api_client.delete(url)
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+
+        # Verify only the child is deleted, parent remains
+        assert models.Label.objects.filter(name="Work").exists()
+        assert not models.Label.objects.filter(name="Work/Projects").exists()
+        assert models.Label.objects.count() == 1
+
+    def test_delete_label_with_threads(self, api_client, mailbox, user):
+        """Test that deleting a label removes it from all threads."""
+        # Create a label and some threads
+        label = LabelFactory(mailbox=mailbox, name="Important", color="#FF0000")
+        thread1 = ThreadFactory()
+        thread2 = ThreadFactory()
+
+        # Add threads to the label
+        label.threads.add(thread1, thread2)
+        assert label.threads.count() == 2
+
+        # Delete the label
+        url = reverse("labels-detail", args=[label.pk])
+        response = api_client.delete(url)
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+
+        # Verify the label is deleted and threads are no longer associated
+        assert not models.Label.objects.filter(name="Important").exists()
+        # Threads should still exist but not be associated with the deleted label
+        assert models.Thread.objects.count() == 2
+
+    def test_model_level_cascading_deletion(self, mailbox):
+        """Test that cascading deletion works at the model level."""
+        # Create a hierarchical structure of labels
+        LabelFactory(mailbox=mailbox, name="Work/Meetings", color="#0000FF")
+        LabelFactory(mailbox=mailbox, name="Work/Projects/Urgent", color="#FFFF00")
+
+        # Verify all labels exist
+        parent_label = models.Label.objects.get(name="Work")
+        assert models.Label.objects.filter(name="Work/Projects").exists()
+        assert models.Label.objects.filter(name="Work/Meetings").exists()
+        assert models.Label.objects.filter(name="Work/Projects/Urgent").exists()
+        assert models.Label.objects.count() == 4
+
+        # Delete the parent label directly (bypassing the API)
+        parent_label.delete()
+
+        # Verify all child labels are also deleted
+        assert not models.Label.objects.filter(name="Work").exists()
+        assert not models.Label.objects.filter(name="Work/Projects").exists()
+        assert not models.Label.objects.filter(name="Work/Meetings").exists()
+        assert not models.Label.objects.filter(name="Work/Projects/Urgent").exists()
+        assert models.Label.objects.count() == 0

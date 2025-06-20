@@ -574,6 +574,28 @@ class Label(BaseModel):
             return self.name
         return self.name.rsplit("/", maxsplit=1)[-1]
 
+    def delete(self, *args, **kwargs):
+        """Delete this label and all its child labels (cascading deletion)."""
+        # Find all child labels that start with this label's name followed by a slash
+        child_labels = Label.objects.filter(
+            mailbox=self.mailbox, name__startswith=f"{self.name}/"
+        )
+
+        # Delete all child labels first (to maintain referential integrity)
+        child_count = child_labels.count()
+        if child_count > 0:
+            logger.info(
+                "Deleting %d child labels for parent label '%s' (mailbox: %s)",
+                child_count,
+                self.name,
+                self.mailbox,
+            )
+            child_labels.delete()
+
+        # Delete the parent label
+        logger.info("Deleting parent label '%s' (mailbox: %s)", self.name, self.mailbox)
+        super().delete(*args, **kwargs)
+
 
 class ThreadAccess(BaseModel):
     """Thread access model to store thread access information for a mailbox."""
