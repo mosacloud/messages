@@ -420,7 +420,17 @@ def parse_email_message(raw_email_bytes: bytes) -> Optional[Dict[str, Any]]:
             labels_str = headers["x-gmail-labels"]
             if isinstance(labels_str, list):
                 labels_str = labels_str[0]  # Take first value if multiple
-            gmail_labels = [label.strip() for label in labels_str.split(",")]
+
+            # Parse labels, handling quoted strings with commas
+            # Split by comma, but respect quoted strings
+            pattern = r'"([^"]*)"|([^,]+)'
+            matches = re.findall(pattern, labels_str)
+            for match in matches:
+                # match[0] is the quoted part, match[1] is the unquoted part
+                label = match[0] if match[0] else match[1]
+                stripped_label = label.strip()
+                if stripped_label:
+                    gmail_labels.append(stripped_label)
 
         subject = headers.get("subject", "")
         from_header_decoded = headers.get("from", "")

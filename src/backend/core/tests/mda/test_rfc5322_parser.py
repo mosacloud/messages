@@ -632,6 +632,157 @@ PDF data
         assert attachment["content"] == b"PDF data"
 
 
+class TestGmailLabelsSplitting:
+    """Tests specifically for Gmail labels splitting functionality."""
+
+    def test_split_simple_labels(self):
+        """Test splitting simple labels without quotes."""
+        email_content = """From: test@example.com
+To: recipient@example.com
+Subject: Test Email
+X-Gmail-Labels: Important, Work, Personal
+
+This is a test email.
+"""
+        parsed = parse_email_message(email_content.encode("utf-8"))
+        assert parsed["gmail_labels"] == ["Important", "Work", "Personal"]
+
+    def test_split_labels_with_quoted_strings(self):
+        """Test splitting labels that contain quoted strings with commas."""
+        email_content = """From: test@example.com
+To: recipient@example.com
+Subject: Test Email
+X-Gmail-Labels: "Culture, associations, événements", Work, Personal
+
+This is a test email.
+"""
+        parsed = parse_email_message(email_content.encode("utf-8"))
+        assert parsed["gmail_labels"] == [
+            "Culture, associations, événements",
+            "Work",
+            "Personal",
+        ]
+
+    def test_split_single_quoted_label(self):
+        """Test splitting when there's only one quoted label."""
+
+        email_content = """From: test@example.com
+To: recipient@example.com
+Subject: Test Email
+X-Gmail-Labels: "Culture, associations, événements"
+
+This is a test email.
+"""
+        parsed = parse_email_message(email_content.encode("utf-8"))
+        assert parsed["gmail_labels"] == ["Culture, associations, événements"]
+
+    def test_split_empty_header(self):
+        """Test splitting when X-Gmail-Labels header is empty."""
+        email_content = """From: test@example.com
+To: recipient@example.com
+Subject: Test Email
+X-Gmail-Labels: 
+
+This is a test email.
+"""
+        parsed = parse_email_message(email_content.encode("utf-8"))
+        assert len(parsed["gmail_labels"]) == 0
+
+    def test_split_missing_header(self):
+        """Test splitting when X-Gmail-Labels header is missing."""
+        email_content = """From: test@example.com
+To: recipient@example.com
+Subject: Test Email
+
+This is a test email.
+"""
+        parsed = parse_email_message(email_content.encode("utf-8"))
+        assert len(parsed["gmail_labels"]) == 0
+
+    def test_split_multiple_headers(self):
+        """Test splitting when there are multiple X-Gmail-Labels headers (should take first)."""
+        email_content = """From: test@example.com
+To: recipient@example.com
+Subject: Test Email
+X-Gmail-Labels: "Culture, associations, événements", Work
+X-Gmail-Labels: Personal, Family
+
+This is a test email.
+"""
+        parsed = parse_email_message(email_content.encode("utf-8"))
+        # Should take the first X-Gmail-Labels header
+        assert parsed["gmail_labels"] == ["Culture, associations, événements", "Work"]
+
+    def test_split_with_escaped_quotes(self):
+        """Test splitting with escaped quotes inside quoted strings."""
+        email_content = """From: test@example.com
+To: recipient@example.com
+Subject: Test Email
+X-Gmail-Labels: "Culture, associations, événements", "Test with \\"quotes\\" inside", Work
+
+This is a test email.
+"""
+        parsed = parse_email_message(email_content.encode("utf-8"))
+        # The current implementation should handle this correctly
+        assert "Culture, associations, événements" in parsed["gmail_labels"]
+        assert "Work" in parsed["gmail_labels"]
+
+    def test_split_edge_case_trailing_comma(self):
+        """Test splitting with trailing comma."""
+        email_content = """From: test@example.com
+To: recipient@example.com
+Subject: Test Email
+X-Gmail-Labels: Important, Work, Personal,
+
+This is a test email.
+"""
+        parsed = parse_email_message(email_content.encode("utf-8"))
+        assert parsed["gmail_labels"] == ["Important", "Work", "Personal"]
+
+    def test_split_edge_case_leading_comma(self):
+        """Test splitting with leading comma."""
+        email_content = """From: test@example.com
+To: recipient@example.com
+Subject: Test Email
+X-Gmail-Labels: , Important, Work, Personal
+
+This is a test email.
+"""
+        parsed = parse_email_message(email_content.encode("utf-8"))
+        assert parsed["gmail_labels"] == ["Important", "Work", "Personal"]
+
+    def test_split_edge_case_consecutive_commas(self):
+        """Test splitting with consecutive commas."""
+        email_content = """From: test@example.com
+To: recipient@example.com
+Subject: Test Email
+X-Gmail-Labels: Important,, Work, Personal
+
+This is a test email.
+"""
+        parsed = parse_email_message(email_content.encode("utf-8"))
+        assert parsed["gmail_labels"] == ["Important", "Work", "Personal"]
+
+    def test_split_utf8_encoded_labels(self):
+        """Test splitting with real Gmail labels format from .mbox file."""
+        email_content = """From: test@example.com
+To: recipient@example.com
+Subject: Test Email
+X-Gmail-Labels: =?UTF-8?Q?Messages_archiv=C3=A9s,Ouvert,Cat=C3=A9gorie=C2=A0:_E-mails_?=
+ =?UTF-8?Q?personnels,"Culture,_associations,_=C3=A9v=C3=A9nements"?=
+
+This is a test email.
+"""
+        parsed = parse_email_message(email_content.encode("utf-8"))
+        # The parser should handle the UTF-8 encoded content and extract the labels
+        # Expected: ["Messages archivés", "Ouvert", "Catégorie : E-mails personnels",
+        # "Culture, associations, événements"]
+        assert "Messages archivés" in parsed["gmail_labels"]
+        assert "Ouvert" in parsed["gmail_labels"]
+        assert "Culture, associations, événements" in parsed["gmail_labels"]
+        assert "Catégorie : E-mails personnels" in parsed["gmail_labels"]
+
+
 # --- Fixtures for TestEmailMessageParsing ---
 @pytest.fixture(name="simple_email")
 def fixture_simple_email():
