@@ -12,6 +12,8 @@ tar -xvf keycloak.tgz
 mv keycloak-${KEYCLOAK_VERSION} keycloak
 rm keycloak.tgz
 
-# echo "-----> Building Keycloak"
-# cd keycloak
-# ./bin/kc.sh build
+# Copy themes
+cp -r themes/* keycloak/providers/
+
+echo "-----> Building Keycloak"
+PATH=$HOME/.scalingo/with_jstack/bin:$PATH ./keycloak/bin/kc.sh build
