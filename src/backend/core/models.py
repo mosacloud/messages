@@ -505,7 +505,7 @@ class Label(BaseModel):
         verbose_name = _("label")
         verbose_name_plural = _("labels")
         unique_together = ("slug", "mailbox")
-        ordering = ["name"]
+        ordering = ["slug"]
 
     def __str__(self):
         return f"{self.name} ({self.mailbox})"

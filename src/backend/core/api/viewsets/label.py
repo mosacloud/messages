@@ -107,7 +107,7 @@ class LabelViewSet(
     )
     def list(self, request, *args, **kwargs):
         """List labels in a hierarchical structure, ordered alphabetically by name."""
-        queryset = self.get_queryset().order_by("name")
+        queryset = self.get_queryset().order_by("slug")
 
         # Get all labels and build the tree structure
         labels = list(queryset)
@@ -144,10 +144,10 @@ class LabelViewSet(
 
         # Sort children alphabetically by name
         for label_data in label_dict.values():
-            label_data["children"].sort(key=lambda x: x["name"])
+            label_data["children"].sort(key=lambda x: x["slug"])
 
         # Sort root labels alphabetically
-        root_labels.sort(key=lambda x: x["name"])
+        root_labels.sort(key=lambda x: x["slug"])
 
         return Response(root_labels)
 
@@ -223,7 +223,7 @@ class LabelViewSet(
         label = models.Label.objects.create(name=name, mailbox=mailbox, color=color)
 
         # Get all labels for the mailbox to build the tree structure
-        all_labels = models.Label.objects.filter(mailbox=mailbox).order_by("name")
+        all_labels = models.Label.objects.filter(mailbox=mailbox).order_by("slug")
         label_dict = {}
         root_labels = []
 
