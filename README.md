@@ -19,6 +19,8 @@
     Chat on Matrix
   </a> - <a href="/docs/">
     Documentation
+  </a> - <a href="https://github.com/orgs/suitenumerique/projects/4">
+    Roadmap
   </a> - <a href="#getting-started-">
     Getting started
   </a> - <a href="mailto:sylvain.zimmer@beta.gouv.fr">
@@ -63,7 +65,7 @@ It offers a free and secure alternative to tools such as Zendesk, Outlook or Gma
 
 ### Self-host
 * 🚀 Messages is designed to be installed on the cloud or on your own servers.
-
+* 🛠️ Configuration through environment variables for most settings
 
 ## Getting started 🔧
 
@@ -201,6 +203,8 @@ While Messages is a public-driven initiative, our license choice is an invitatio
 
 
 This project is intended to be community-driven, so please, do not hesitate to [get in touch](https://matrix.to/#/#messages-official:matrix.org) if you have any question related to our implementation or design decisions.
+
+We also have a [public roadmap](https://github.com/orgs/suitenumerique/projects/4).
 
 If you intend to make pull requests, see [CONTRIBUTING](https://github.com/suitenumerique/messages/blob/main/CONTRIBUTING.md) for guidelines.
 
