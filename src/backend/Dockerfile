@@ -28,6 +28,9 @@ FROM poetry AS base-with-deps
 
 COPY pyproject.toml poetry.lock ./
 
+# Update the lock file to match pyproject.toml changes
+RUN poetry lock
+
 # Create a runtime virtual environment and activate it
 RUN python -m venv /venv
 ENV PATH="/venv/bin:$PATH"

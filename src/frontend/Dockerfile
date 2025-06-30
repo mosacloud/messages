@@ -2,53 +2,73 @@ FROM node:22-slim AS frontend-deps
 
 WORKDIR /home/frontend/
 
-COPY ./src/frontend/package.json ./package.json
-COPY ./src/frontend/package-lock.json ./package-lock.json
+COPY package.json ./package.json
+COPY package-lock.json ./package-lock.json
 
 RUN npm ci
 
 COPY .dockerignore ./.dockerignore
 # COPY ./src/frontend/.prettierrc.js ./.prettierrc.js
 #COPY ./src/frontend/packages/eslint-config-messages ./packages/eslint-config-messages
-COPY ./src/frontend ./apps/messages
+COPY . ./apps/messages
 
 ### ---- Front-end builder image ----
 FROM frontend-deps AS st-messages-dev
 
 WORKDIR /home/frontend/apps/messages
 
-ARG API_ORIGIN
-ENV NEXT_PUBLIC_API_ORIGIN=${API_ORIGIN}
-
 EXPOSE 3000
 
 CMD [ "npm", "run", "dev"]
 
-# # Tilt will rebuild messages target so, we dissociate messages and messages-builder 
-# # to avoid rebuilding the app at every changes.
-# FROM messages AS messages-builder
+# Tilt will rebuild messages target so, we dissociate messages and messages-builder 
+# to avoid rebuilding the app at every changes.
+FROM frontend-deps AS messages-builder
 
-# WORKDIR /home/frontend/apps/messages
+WORKDIR /home/frontend/apps/messages
 
-# ARG S3_DOMAIN_REPLACE
-# ENV NEXT_PUBLIC_S3_DOMAIN_REPLACE=${S3_DOMAIN_REPLACE}
+ARG S3_DOMAIN_REPLACE
+ENV NEXT_PUBLIC_S3_DOMAIN_REPLACE=${S3_DOMAIN_REPLACE}
 
-# RUN npm run build
+RUN npm run build
 
-# # ---- Front-end image ----
-# FROM nginxinc/nginx-unprivileged:1.26-alpine AS frontend-production
+# Build stage
+FROM node:22-alpine AS builder
 
-# # Un-privileged user running the application
-# ARG DOCKER_USER
-# USER ${DOCKER_USER}
+WORKDIR /app
 
-# COPY --from=messages-builder \
-#     /home/frontend/apps/messages/out \
-#     /usr/share/nginx/html
+# Copy package files
+COPY package.json ./package.json
+COPY package-lock.json ./package-lock.json
 
-# COPY ./src/frontend/conf/default.conf /etc/nginx/conf.d
-# COPY ./docker/files/usr/local/bin/entrypoint /usr/local/bin/entrypoint
+# Install all dependencies (needed for build)
+RUN npm ci --no-audit --no-fund
 
-# ENTRYPOINT [ "/usr/local/bin/entrypoint" ]
+# Copy source code
+COPY . .
 
-# CMD ["nginx", "-g", "daemon off;"]
+# Build application
+ENV NODE_ENV=production
+
+RUN npm run build && npm prune --production
+
+# Production stage
+FROM node:22-alpine AS production
+
+WORKDIR /app
+
+# No need to install deps - copying from builder
+
+# Copy standalone application
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nextjs -u 1001
+USER nextjs
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]
