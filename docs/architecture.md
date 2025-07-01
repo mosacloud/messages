@@ -2,101 +2,11 @@
 
 ## System Architecture Overview
 
-```mermaid
-graph TB
-    %% External actors
-    ExternalSender[External Email Sender]
-    User[User/Browser]
-
-    %% Frontend
-    Frontend[Next.js Frontend<br/>React + TypeScript]
-
-    %% Backend services
-    subgraph "Core Services"
-        Backend[Django REST API<br/>Backend Service]
-        Celery[Celery Worker<br/>Async Task Processing]
-
-        %% Backend components
-        subgraph "Backend Components"
-            API[REST API Endpoints]
-            MDA[Mail Delivery Agent]
-            Search[Search Service]
-            Tasks[Async Tasks]
-        end
-    end
-
-    %% Mail Transfer Agents
-    subgraph "Mail Processing Layer"
-        MTAIn[MTA-In<br/>Postfix + Python]
-        MTAOut[MTA-Out<br/>Postfix]
-        MPA[Mail Processing Agent<br/>rspamd]
-    end
-
-    %% Data layer
-    subgraph "Data Layer"
-        PostgreSQL[(PostgreSQL<br/>Primary Database)]
-        Redis[(Redis<br/>Cache & Message Broker)]
-        Elasticsearch[(Elasticsearch<br/>Search Index)]
-        S3[(S3 Storage<br/>File Attachments)]
-    end
-
-    %% Authentication
-    subgraph "Authentication"
-        Keycloak[Keycloak<br/>OIDC Provider]
-    end
-
-    %% Development tools
-    subgraph "Development Support"
-        MailCatcher[MailCatcher<br/>Email Testing]
-        Flower[Flower<br/>Celery Monitoring]
-        ElasticUI[ElasticVue<br/>Search Monitoring]
-    end
-
-    %% External flows
-    ExternalSender -->|SMTP| MTAIn
-    User -->|HTTPS| Frontend
-
-    %% Frontend to backend
-    Frontend -->|REST API| Backend
-    Frontend -->|Authentication| Keycloak
-
-    %% Backend internal flows
-    Backend --> API
-    Backend --> MDA
-    Backend --> Search
-    Backend --> Tasks
-
-    %% Mail processing flows
-    MTAIn -->|Recipient Validation| Backend
-    MTAIn -->|Message Delivery| MDA
-    Backend -->|Send Email| MTAOut
-    MTAOut -->|External Relay| MailCatcher
-    MPA -->|Filter/Process| MTAIn
-
-    %% Data access
-    Backend --> PostgreSQL
-    Backend --> Redis
-    Backend -->|Direct Queries| Elasticsearch
-    Backend --> S3
-    Celery --> Redis
-    Celery --> PostgreSQL
-
-    %% Async processing
-    Backend -->|Queue Tasks| Celery
-    Celery -->|Async Indexing| Elasticsearch
-
-    %% Development monitoring
-    Celery -.-> Flower
-    Elasticsearch -.-> ElasticUI
-    MTAOut -.-> MailCatcher
-
-    %% Authentication flow
-    Backend -->|Verify Tokens| Keycloak
-```
+![High-level architecture](./assets/architecture-high-level.png)
 
 ## Core Components
 
-### Frontend Layer
+### Frontend App
 
 - **Next.js Application**: React-based SPA with TypeScript
 - **Auto-generated API Client**: Generated from OpenAPI schema using Orval
@@ -105,9 +15,8 @@ graph TB
 
 ### Backend Services
 
-- **Django REST Framework**: Main API service handling business logic
+- **Django REST Framework**: Main API service handling business logic, including email processing
 - **Celery Workers**: Asynchronous task processing for heavy operations
-- **Mail Delivery Agent (MDA)**: Email processing and parsing
 - **Search Service**: Elasticsearch integration for full-text search
 
 ### Mail Transfer Layer
@@ -121,7 +30,7 @@ graph TB
 - **PostgreSQL**: Primary relational database for all structured data
 - **Redis**: Caching layer and Celery message broker
 - **Elasticsearch**: Full-text search index for messages and threads
-- **S3-Compatible Storage**: File and attachment storage
+- **S3-Compatible Storage**: File and attachment storage (In progress)
 
 ### Authentication & Authorization
 
@@ -134,10 +43,9 @@ graph TB
 
 1. External email arrives at **MTA-In** via SMTP
 2. **MTA-In** validates recipients against Django backend
-3. Valid emails are processed by **rspamd** for filtering
-4. **MDA** parses and stores messages in PostgreSQL
-5. **Celery** tasks index content in Elasticsearch
-6. Users see new messages in real-time via frontend
+3. **MDA** parses and stores messages in PostgreSQL
+4. **Celery** tasks index content in Elasticsearch
+5. Users see new messages in real-time via frontend
 
 ### Outbound Email Processing
 
@@ -217,4 +125,4 @@ The system is designed for containerized deployment with:
 - **Environment-specific configurations** (dev, staging, production)
 - **Horizontal scaling** capability for backend and Celery workers
 - **Load balancing** support via nginx reverse proxy
-- **Health checks** and monitoring integration
+- **Health checks** and monitoring integration (In Progress)

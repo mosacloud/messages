@@ -32,7 +32,7 @@
 
 Messages is the all-in-one collaborative inbox for [La Suite territoriale](https://suiteterritoriale.anct.gouv.fr/).
 
-<img src="/docs/assets/readme-screenshot.png" alt="Messages screenshot" width="100%" align="center"/>
+<img src="/docs/assets/readme-app.webp" alt="Messages screenshot" width="100%" align="center"/>
 
 ## Why use Messages ❓
 
