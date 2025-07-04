@@ -476,16 +476,170 @@ class TestApiDraftAndSendMessage:
                 "senderId": uuid.uuid4(),
                 "subject": "test",
                 "draftBody": "<p>test</p> or test",
-                "to": ["pierre@example.com"],
+                "to": ["pierre@external.com"],
             },
             format="json",
         )
         # Assert the response is unauthorized
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    # TODO: implement this test
-    # def test_send_message_unauthorized(self, mailbox, authenticated_user, send_url):
-    #    """Test send message unauthorized."""
+    def test_draft_message_with_empty_subject(self, mailbox, authenticated_user):
+        """Test create draft message with empty subject."""
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=authenticated_user,
+            role=enums.MailboxRoleChoices.EDITOR,
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=authenticated_user)
+
+        draft_response = client.post(
+            reverse("draft-message"),
+            {
+                "senderId": mailbox.id,
+                "subject": "",  # Empty subject should be allowed
+                "draftBody": "Test content",
+                "to": ["pierre@external.com"],
+            },
+            format="json",
+        )
+
+        assert draft_response.status_code == status.HTTP_201_CREATED
+        draft_message_id = draft_response.data["id"]
+
+        # Verify the message was created with empty subject
+        draft_message = models.Message.objects.get(id=draft_message_id)
+        assert draft_message.subject == ""
+        assert draft_message.is_draft is True
+        assert str(draft_message) == "(no subject)"
+
+        # Verify the thread also has empty subject
+        assert draft_message.thread.subject == ""
+        assert str(draft_message.thread) == "(no subject)"
+
+    def test_draft_message_without_subject(self, mailbox, authenticated_user):
+        """Test create draft message without subject field."""
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=authenticated_user,
+            role=enums.MailboxRoleChoices.EDITOR,
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=authenticated_user)
+
+        draft_response = client.post(
+            reverse("draft-message"),
+            {
+                "senderId": mailbox.id,
+                # No subject field - should default to None
+                "draftBody": "Test content",
+                "to": ["pierre@external.com"],
+            },
+            format="json",
+        )
+
+        assert draft_response.status_code == status.HTTP_201_CREATED
+        draft_message_id = draft_response.data["id"]
+
+        # Verify the message was created with None subject
+        draft_message = models.Message.objects.get(id=draft_message_id)
+        assert draft_message.subject is None
+        assert draft_message.is_draft is True
+        assert str(draft_message) == "(no subject)"
+
+        # Verify the thread also has None subject
+        assert draft_message.thread.subject is None
+        assert str(draft_message.thread) == "(no subject)"
+
+    @patch("core.mda.outbound.send_outbound_message")
+    def test_send_message_with_empty_subject(
+        self, mock_send_outbound_message, mailbox, authenticated_user, send_url
+    ):
+        """Test sending a message with empty subject (migration 0018)."""
+        mock_send_outbound_message.side_effect = lambda recipient_emails, message: {
+            recipient_email: {
+                "delivered": True,
+                "error": None,
+            }
+            for recipient_email in recipient_emails
+        }
+
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=authenticated_user,
+            role=enums.MailboxRoleChoices.EDITOR,
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=authenticated_user)
+
+        # Create draft with empty subject
+        draft_response = client.post(
+            reverse("draft-message"),
+            {
+                "senderId": mailbox.id,
+                "subject": "",  # Empty subject
+                "draftBody": "Test content",
+                "to": ["pierre@external.com"],
+            },
+            format="json",
+        )
+
+        assert draft_response.status_code == status.HTTP_201_CREATED
+        draft_message_id = draft_response.data["id"]
+
+        # Send the message
+        send_response = client.post(
+            send_url,
+            {
+                "messageId": draft_message_id,
+                "senderId": mailbox.id,
+            },
+            format="json",
+        )
+
+        assert send_response.status_code == status.HTTP_200_OK
+
+        # Verify the message was sent with empty subject
+        sent_message = models.Message.objects.get(id=draft_message_id)
+        assert sent_message.subject == ""
+        assert sent_message.is_draft is False
+        assert sent_message.sent_at is not None
+        assert str(sent_message) == "(no subject)"
+
+        # Verify the thread also has empty subject
+        assert sent_message.thread.subject == ""
+        assert str(sent_message.thread) == "(no subject)"
+
+    def test_draft_message_with_very_long_subject(self, mailbox, authenticated_user):
+        """Test create draft message with subject exceeding max_length."""
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=authenticated_user,
+            role=enums.MailboxRoleChoices.EDITOR,
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=authenticated_user)
+
+        # Create a subject that exceeds max_length (255)
+        long_subject = "A" * 256
+
+        draft_response = client.post(
+            reverse("draft-message"),
+            {
+                "senderId": mailbox.id,
+                "subject": long_subject,
+                "draftBody": "Test content",
+                "to": ["pierre@external.com"],
+            },
+            format="json",
+        )
+
+        # Should fail due to max_length constraint
+        assert draft_response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_send_nonexistent_message(self, mailbox, authenticated_user, send_url):
         """Test sending a message that does not exist."""

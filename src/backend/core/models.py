@@ -325,7 +325,7 @@ class MailboxAccess(BaseModel):
 class Thread(BaseModel):
     """Thread model to group messages."""
 
-    subject = models.CharField(_("subject"), max_length=255)
+    subject = models.CharField(_("subject"), max_length=255, null=True, blank=True)
     snippet = models.TextField(_("snippet"), blank=True)
     has_unread = models.BooleanField(_("has unread"), default=False)
     has_trashed = models.BooleanField(_("has trashed"), default=False)
@@ -344,7 +344,7 @@ class Thread(BaseModel):
         verbose_name_plural = _("threads")
 
     def __str__(self):
-        return self.subject
+        return str(self.subject) if self.subject else "(no subject)"
 
     def update_stats(self):
         """Update the denormalized stats of the thread."""
@@ -693,7 +693,7 @@ class Message(BaseModel):
     thread = models.ForeignKey(
         Thread, on_delete=models.CASCADE, related_name="messages"
     )
-    subject = models.CharField(_("subject"), max_length=255)
+    subject = models.CharField(_("subject"), max_length=255, null=True, blank=True)
     sender = models.ForeignKey("Contact", on_delete=models.CASCADE)
     parent = models.ForeignKey(
         "Message", on_delete=models.SET_NULL, null=True, blank=True
@@ -733,7 +733,7 @@ class Message(BaseModel):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return self.subject
+        return str(self.subject) if self.subject else "(no subject)"
 
     def get_parsed_data(self) -> Dict[str, Any]:
         """Parse raw_mime using parser and cache the result."""

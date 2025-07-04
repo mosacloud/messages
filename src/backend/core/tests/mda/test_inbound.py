@@ -564,3 +564,180 @@ class TestDeliverInboundMessage:
         message3 = thread2.messages.exclude(id=message1.id).first()
         assert thread2.subject == subject  # Make sure the original subject is kept
         assert message3.mime_id == parsed_email_3["message_id"]
+
+    def test_deliver_message_with_empty_subject(self, target_mailbox, raw_email_data):
+        """Test delivery of message with empty subject."""
+        recipient_addr = f"{target_mailbox.local_part}@{target_mailbox.domain.name}"
+
+        # Create parsed email with empty subject
+        parsed_email_empty_subject = {
+            "subject": "",  # Empty subject
+            "from": {"name": "Test Sender", "email": "sender@test.com"},
+            "to": [{"name": "Recipient Name", "email": recipient_addr}],
+            "cc": [],
+            "bcc": [],
+            "textBody": [{"content": "Test body content."}],
+            "message_id": "test.empty.subject@example.com",
+            "date": timezone.now(),
+        }
+
+        success = deliver_inbound_message(
+            recipient_addr, parsed_email_empty_subject, raw_email_data
+        )
+
+        assert success is True
+        assert models.Message.objects.count() == 1
+        assert models.Thread.objects.count() == 1
+
+        message = models.Message.objects.first()
+        thread = models.Thread.objects.first()
+
+        # Verify message and thread have empty subject
+        assert message.subject == ""
+        assert thread.subject == ""
+        assert message.thread == thread
+        assert str(message) == "(no subject)"
+        assert str(thread) == "(no subject)"
+
+    def test_deliver_message_with_null_subject(self, target_mailbox, raw_email_data):
+        """Test delivery of message with null subject."""
+        recipient_addr = f"{target_mailbox.local_part}@{target_mailbox.domain.name}"
+
+        # Create parsed email with null subject
+        parsed_email_null_subject = {
+            "subject": None,  # Null subject
+            "from": {"name": "Test Sender", "email": "sender@test.com"},
+            "to": [{"name": "Recipient Name", "email": recipient_addr}],
+            "cc": [],
+            "bcc": [],
+            "textBody": [{"content": "Test body content."}],
+            "message_id": "test.null.subject@example.com",
+            "date": timezone.now(),
+        }
+
+        success = deliver_inbound_message(
+            recipient_addr, parsed_email_null_subject, raw_email_data
+        )
+
+        assert success is True
+        assert models.Message.objects.count() == 1
+        assert models.Thread.objects.count() == 1
+
+        message = models.Message.objects.first()
+        thread = models.Thread.objects.first()
+
+        # Verify message and thread have null subject
+        assert message.subject is None
+        assert thread.subject is None
+        assert message.thread == thread
+        assert str(message) == "(no subject)"
+        assert str(thread) == "(no subject)"
+
+    def test_deliver_message_without_subject_field(
+        self, target_mailbox, raw_email_data
+    ):
+        """Test delivery of message without subject field."""
+        recipient_addr = f"{target_mailbox.local_part}@{target_mailbox.domain.name}"
+
+        # Create parsed email without subject field
+        parsed_email_no_subject = {
+            # No subject field
+            "from": {"name": "Test Sender", "email": "sender@test.com"},
+            "to": [{"name": "Recipient Name", "email": recipient_addr}],
+            "cc": [],
+            "bcc": [],
+            "textBody": [{"content": "Test body content."}],
+            "message_id": "test.no.subject@example.com",
+            "date": timezone.now(),
+        }
+
+        success = deliver_inbound_message(
+            recipient_addr, parsed_email_no_subject, raw_email_data
+        )
+
+        assert success is True
+        assert models.Message.objects.count() == 1
+        assert models.Thread.objects.count() == 1
+
+        message = models.Message.objects.first()
+        thread = models.Thread.objects.first()
+
+        # Verify message and thread have null subject (default behavior)
+        assert message.subject is None
+        assert thread.subject is None
+        assert message.thread == thread
+        assert str(message) == "(no subject)"
+        assert str(thread) == "(no subject)"
+
+    def test_deliver_message_with_very_long_subject(
+        self, target_mailbox, raw_email_data
+    ):
+        """Test delivery of message with subject exceeding max_length."""
+        recipient_addr = f"{target_mailbox.local_part}@{target_mailbox.domain.name}"
+
+        # Create parsed email with very long subject
+        long_subject = "A" * 256  # Exceeds max_length of 255
+        parsed_email_long_subject = {
+            "subject": long_subject,
+            "from": {"name": "Test Sender", "email": "sender@test.com"},
+            "to": [{"name": "Recipient Name", "email": recipient_addr}],
+            "cc": [],
+            "bcc": [],
+            "textBody": [{"content": "Test body content."}],
+            "message_id": "test.long.subject@example.com",
+            "date": timezone.now(),
+        }
+
+        # This should fail due to max_length constraint
+        success = deliver_inbound_message(
+            recipient_addr, parsed_email_long_subject, raw_email_data
+        )
+        assert success is False
+        assert models.Message.objects.count() == 0
+
+    def test_thread_subject_consistency_with_empty_subject(
+        self, target_mailbox, raw_email_data
+    ):
+        """Test that thread subject is consistent when messages have empty subjects."""
+        recipient_addr = f"{target_mailbox.local_part}@{target_mailbox.domain.name}"
+
+        # First message with empty subject
+        parsed_email_1 = {
+            "subject": "",
+            "from": {"name": "Sender 1", "email": "sender1@test.com"},
+            "to": [{"name": "Recipient", "email": recipient_addr}],
+            "textBody": [{"content": "First message."}],
+            "message_id": "msg1.empty@example.com",
+            "date": timezone.now(),
+        }
+
+        success1 = deliver_inbound_message(
+            recipient_addr, parsed_email_1, raw_email_data
+        )
+        assert success1 is True
+
+        # Second message with empty subject (should join same thread)
+        parsed_email_2 = {
+            "subject": "",
+            "from": {"name": "Sender 2", "email": "sender2@test.com"},
+            "to": [{"name": "Recipient", "email": recipient_addr}],
+            "textBody": [{"content": "Second message."}],
+            "message_id": "msg2.empty@example.com",
+            "in_reply_to": "msg1.empty@example.com",
+            "date": timezone.now(),
+        }
+
+        success2 = deliver_inbound_message(
+            recipient_addr, parsed_email_2, raw_email_data
+        )
+        assert success2 is True
+
+        # Verify both messages are in the same thread with empty subject
+        assert models.Thread.objects.count() == 1
+        thread = models.Thread.objects.first()
+        assert thread.subject == ""
+        assert thread.messages.count() == 2
+
+        messages = thread.messages.all()
+        assert messages[0].subject == ""
+        assert messages[1].subject == ""

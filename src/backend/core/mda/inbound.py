@@ -330,7 +330,7 @@ def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-stat
                 snippet = "(No snippet available)"  # Absolute fallback
 
             thread = models.Thread.objects.create(
-                subject=parsed_email.get("subject", "(no subject)"),
+                subject=parsed_email.get("subject"),
                 snippet=snippet,
             )
             # Create a thread access for the sender mailbox
@@ -441,7 +441,7 @@ def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-stat
         message = models.Message.objects.create(
             thread=thread,
             sender=sender_contact,
-            subject=parsed_email.get("subject", "(no subject)"),
+            subject=parsed_email.get("subject"),
             raw_mime=raw_data,
             mime_id=parsed_email.get("messageId", parsed_email.get("message_id"))
             or None,
