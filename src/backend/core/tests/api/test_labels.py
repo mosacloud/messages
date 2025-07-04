@@ -1032,3 +1032,146 @@ class TestLabelViewSet:
         assert not models.Label.objects.filter(name="Work/Meetings").exists()
         assert not models.Label.objects.filter(name="Work/Projects/Urgent").exists()
         assert models.Label.objects.count() == 0
+
+    def test_list_labels_alphabetical_order_by_slug(self, api_client, mailbox, user):
+        """Test that labels are returned in alphabetical order by slug."""
+        # Create labels in random order to test ordering
+        LabelFactory(mailbox=mailbox, name="Zebra")
+        LabelFactory(mailbox=mailbox, name="Alpha")
+        LabelFactory(mailbox=mailbox, name="Charlie")
+        LabelFactory(mailbox=mailbox, name="Beta")
+
+        url = reverse("labels-list")
+        response = api_client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+
+        # Verify labels are ordered alphabetically by slug
+        assert len(data) == 4
+        assert data[0]["slug"] == "alpha"
+        assert data[1]["slug"] == "beta"
+        assert data[2]["slug"] == "charlie"
+        assert data[3]["slug"] == "zebra"
+
+    def test_list_labels_alphabetical_order_with_numbers(
+        self, api_client, mailbox, user
+    ):
+        """Test that labels with numbers in slugs are ordered correctly."""
+        # Create labels with numbers in different positions
+        LabelFactory(mailbox=mailbox, name="Label 10")
+        LabelFactory(mailbox=mailbox, name="Label 1")
+        LabelFactory(mailbox=mailbox, name="Label 2")
+        LabelFactory(mailbox=mailbox, name="10 Label")
+        LabelFactory(mailbox=mailbox, name="1 Label")
+
+        url = reverse("labels-list")
+        response = api_client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+
+        # Verify alphabetical ordering (not numerical)
+        assert len(data) == 5
+        assert data[0]["slug"] == "1-label"
+        assert data[1]["slug"] == "10-label"
+        assert data[2]["slug"] == "label-1"
+        assert data[3]["slug"] == "label-10"
+        assert data[4]["slug"] == "label-2"
+
+    def test_list_labels_alphabetical_order_with_accents(
+        self, api_client, mailbox, user
+    ):
+        """Test that labels with accented characters are ordered correctly."""
+        # Create labels with accented characters
+        LabelFactory(mailbox=mailbox, name="État civil")
+        LabelFactory(mailbox=mailbox, name="Enfance")
+        LabelFactory(mailbox=mailbox, name="Urbanisme")
+
+        url = reverse("labels-list")
+        response = api_client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+
+        # Verify alphabetical ordering by slug
+        assert len(data) == 3
+        assert data[0]["slug"] == "enfance"
+        assert data[1]["slug"] == "etat-civil"
+        assert data[2]["slug"] == "urbanisme"
+
+    def test_list_labels_alphabetical_order_hierarchical(
+        self, api_client, mailbox, user
+    ):
+        """Test that hierarchical labels maintain alphabetical order within each level."""
+        # Create hierarchical labels in random order
+        LabelFactory(mailbox=mailbox, name="Work/Meetings")
+        LabelFactory(mailbox=mailbox, name="Work/Projects")
+        LabelFactory(mailbox=mailbox, name="Personal/Family")
+        LabelFactory(mailbox=mailbox, name="Personal/Friends")
+
+        url = reverse("labels-list")
+        response = api_client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+
+        # Verify top-level labels are ordered alphabetically
+        assert len(data) == 2
+        assert data[0]["slug"] == "personal"
+        assert data[1]["slug"] == "work"
+
+        # Verify children within each parent are ordered alphabetically
+        personal_children = data[0]["children"]
+        assert len(personal_children) == 2
+        assert personal_children[0]["slug"] == "personal-family"
+        assert personal_children[1]["slug"] == "personal-friends"
+
+        work_children = data[1]["children"]
+        assert len(work_children) == 2
+        assert work_children[0]["slug"] == "work-meetings"
+        assert work_children[1]["slug"] == "work-projects"
+
+    def test_list_labels_alphabetical_order_mixed_mailboxes(
+        self, api_client, mailbox, user
+    ):
+        """Test that labels from different mailboxes maintain alphabetical order."""
+        # Create another mailbox
+        other_mailbox = MailboxFactory()
+        other_mailbox.accesses.create(user=user, role=models.MailboxRoleChoices.ADMIN)
+
+        # Create labels in both mailboxes
+        LabelFactory(mailbox=mailbox, name="Zebra")
+        LabelFactory(mailbox=mailbox, name="Alpha")
+        LabelFactory(mailbox=other_mailbox, name="Charlie")
+        LabelFactory(mailbox=other_mailbox, name="Beta")
+
+        url = reverse("labels-list")
+        response = api_client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+
+        # Verify all labels are ordered alphabetically by slug regardless of mailbox
+        assert len(data) == 4
+        assert data[0]["slug"] == "alpha"
+        assert data[1]["slug"] == "beta"
+        assert data[2]["slug"] == "charlie"
+        assert data[3]["slug"] == "zebra"
+
+    def test_list_labels_alphabetical_order_case_insensitive(
+        self, api_client, mailbox, user
+    ):
+        """Test that label ordering is case-insensitive."""
+        # Create labels with mixed case
+        LabelFactory(mailbox=mailbox, name="ZEBRA")
+        LabelFactory(mailbox=mailbox, name="alpha")
+        LabelFactory(mailbox=mailbox, name="Charlie")
+        LabelFactory(mailbox=mailbox, name="BETA")
+
+        url = reverse("labels-list")
+        response = api_client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+
+        # Verify case-insensitive alphabetical ordering
+        assert len(data) == 4
+        assert data[0]["slug"] == "alpha"
+        assert data[1]["slug"] == "beta"
+        assert data[2]["slug"] == "charlie"
+        assert data[3]["slug"] == "zebra"
