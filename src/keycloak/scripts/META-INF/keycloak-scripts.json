@@ -1,0 +1,9 @@
+{
+    "mappers": [
+      {
+        "name": "Map Group Attribute",
+        "fileName": "map-group-attribute.js",
+        "description": "Map a group attribute in the user token"
+      }
+    ]
+}

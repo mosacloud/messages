@@ -15,5 +15,12 @@ rm keycloak.tgz
 # Copy themes
 cp -r themes/* keycloak/providers/
 
+# Package scripts
+# if variable SCRIPT_GROUP_ATTRIBUTE_WHITELIST if defined, replace it in the .js file
+if [ -n "$SCRIPT_GROUP_ATTRIBUTE_WHITELIST" ]; then
+    sed -i "s/SCRIPT_GROUP_ATTRIBUTE_WHITELIST/$SCRIPT_GROUP_ATTRIBUTE_WHITELIST/g" scripts/map-group-attribute.js
+fi
+cd scripts && zip -r ../keycloak/providers/custom-scripts.jar META-INF *.js && cd ..
+
 echo "-----> Building Keycloak"
 PATH=$HOME/.scalingo/with_jstack/bin:$PATH ./keycloak/bin/kc.sh build
