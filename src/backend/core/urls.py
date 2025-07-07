@@ -7,6 +7,7 @@ from rest_framework.routers import DefaultRouter
 
 from core.api.viewsets.blob import BlobViewSet
 from core.api.viewsets.config import ConfigView
+from core.api.viewsets.contacts import ContactViewSet
 from core.api.viewsets.draft import DraftMessageView
 from core.api.viewsets.flag import ChangeFlagViewSet
 from core.api.viewsets.import_message import ImportViewSet
@@ -31,6 +32,7 @@ router.register("mta", MTAViewSet, basename="mta")
 router.register("users", UserViewSet, basename="users")
 router.register("messages", MessageViewSet, basename="messages")
 router.register("blob", BlobViewSet, basename="blob")
+router.register("contacts", ContactViewSet, basename="contacts")
 router.register("threads", ThreadViewSet, basename="threads")
 router.register("labels", LabelViewSet, basename="labels")
 router.register("mailboxes", MailboxViewSet, basename="mailboxes")
