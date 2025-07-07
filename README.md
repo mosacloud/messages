@@ -40,8 +40,6 @@ Messages is a full communication platform enabling teams to collaborate on email
 
 It features a [MTA](https://en.wikipedia.org/wiki/Message_transfer_agent) based on [Postfix](https://www.postfix.org/), a custom [MDA](https://en.wikipedia.org/wiki/Message_delivery_agent) built on top of [Django Rest Framework](https://www.django-rest-framework.org/) and a frontend using [Next.js](https://nextjs.org/) and [BlockNote.js](https://www.blocknotejs.org/).
 
-It offers a free and secure alternative to tools such as Zendesk, Outlook or Gmail.
-
 ### Familiar messaging features
 * 📝 Receive, draft and send emails.
 * 🧵 Smart threading
