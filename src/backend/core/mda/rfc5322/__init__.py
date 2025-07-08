@@ -8,8 +8,8 @@ content according to RFC5322 standards.
 from .composer import (
     EmailComposeError,
     compose_email,
-    create_reply_message,
     create_forward_message,
+    create_reply_message,
     format_address,
     format_address_list,
 )

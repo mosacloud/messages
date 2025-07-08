@@ -537,6 +537,7 @@ def compose_email(
         logger.exception("Unexpected error during email composition: %s", str(e))
         raise EmailComposeError(f"Failed to compose email: {str(e)}") from e
 
+
 def _embed_original_message(
     original_message: Dict[str, Any],
     new_text: str = "",
@@ -669,13 +670,13 @@ def _embed_original_message(
             header_html = "<p>---------- In reply to ----------<br/>"
 
         if from_display_html:
-            header_html += f'<strong>From:</strong> {from_display_html}<br/>'
+            header_html += f"<strong>From:</strong> {from_display_html}<br/>"
         if to_display_html:
-            header_html += f'<strong>To:</strong> {to_display_html}<br/>'
+            header_html += f"<strong>To:</strong> {to_display_html}<br/>"
         if cc_display_html:
-            header_html += f'<strong>Cc:</strong> {cc_display_html}<br/>'
-        header_html += f'<strong>Subject:</strong> {html.escape(orig_subject)}<br/>'
-        header_html += f'<strong>Date:</strong> {html.escape(date_str)}<br/>'
+            header_html += f"<strong>Cc:</strong> {cc_display_html}<br/>"
+        header_html += f"<strong>Subject:</strong> {html.escape(orig_subject)}<br/>"
+        header_html += f"<strong>Date:</strong> {html.escape(date_str)}<br/>"
         header_html += "</p>"
 
         # Get original HTML content
@@ -691,7 +692,6 @@ def _embed_original_message(
                 orig_html = first_html
             elif isinstance(first_html, dict):
                 orig_html = first_html.get("content", "")
-
 
         nested_html = f"""
         <hr data-type="quote-separator" />

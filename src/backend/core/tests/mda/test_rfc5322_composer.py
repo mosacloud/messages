@@ -16,10 +16,10 @@ from core.mda.rfc5322.composer import (
     EmailComposeError,
     compose_email,
     create_attachment_part,
+    create_forward_message,
     create_reply_message,
     format_address,
     format_address_list,
-    create_forward_message,
 )
 
 
@@ -822,7 +822,7 @@ class TestReplyGeneration:
             "This is the original <b>HTML</b> content"
             in reply["htmlBody"][0]["content"]
         )
-        assert "<hr data-type=\"quote-separator\" />" in reply["htmlBody"][0]["content"]
+        assert '<hr data-type="quote-separator" />' in reply["htmlBody"][0]["content"]
         assert "---------- In reply to ----------" in reply["htmlBody"][0]["content"]
 
     def test_reply_with_long_original(self):
@@ -1004,9 +1004,12 @@ class TestForwardGeneration:
         # Check HTML body
         html_content = forward["htmlBody"][0]["content"]
         assert "<p>Forward HTML content.</p>" in html_content
-        assert "<hr data-type=\"quote-separator\" />" in html_content
+        assert '<hr data-type="quote-separator" />' in html_content
         assert "---------- Forwarded message ----------" in html_content
-        assert "<strong>From:</strong> HTML Sender &lt;html@example.com&gt;<br/>" in html_content
+        assert (
+            "<strong>From:</strong> HTML Sender &lt;html@example.com&gt;<br/>"
+            in html_content
+        )
         assert "<p>Original <strong>HTML</strong> content.</p>" in html_content
 
     def test_forward_without_original(self):
@@ -1027,7 +1030,9 @@ class TestForwardGeneration:
 
         forward_text = "This is a forward message."
 
-        forward = create_forward_message(original_message, forward_text, include_original=False)
+        forward = create_forward_message(
+            original_message, forward_text, include_original=False
+        )
 
         # Check subject
         assert forward["subject"] == "Fwd: Original Subject"

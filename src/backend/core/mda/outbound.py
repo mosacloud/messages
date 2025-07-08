@@ -12,7 +12,12 @@ from django.utils import timezone
 from core import models
 from core.enums import MessageDeliveryStatusChoices
 from core.mda.inbound import check_local_recipient, deliver_inbound_message
-from core.mda.rfc5322 import compose_email, parse_email_message, create_reply_message, create_forward_message
+from core.mda.rfc5322 import (
+    compose_email,
+    create_forward_message,
+    create_reply_message,
+    parse_email_message,
+)
 from core.mda.signing import sign_message_dkim
 
 logger = logging.getLogger(__name__)
@@ -69,7 +74,7 @@ def prepare_outbound_message(
                 original_message=parent_parsed,
                 forward_text=text_body,
                 forward_html=html_body,
-                include_original=True
+                include_original=True,
             )
         else:
             # Handle reply message embedding
@@ -79,7 +84,7 @@ def prepare_outbound_message(
                 original_message=parent_parsed,
                 reply_text=text_body,
                 reply_html=html_body,
-                include_quote=True
+                include_quote=True,
             )
 
         # Update the bodies with properly formatted reply content
