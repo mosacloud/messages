@@ -142,10 +142,17 @@ class UserAdmin(auth_admin.UserAdmin):
     search_fields = ("id", "sub", "admin_email", "email", "full_name")
 
 
+class MailDomainAccessInline(admin.TabularInline):
+    """Inline class for the MailDomainAccess model"""
+
+    model = models.MailDomainAccess
+
+
 @admin.register(models.MailDomain)
 class MailDomainAdmin(admin.ModelAdmin):
     """Admin class for the MailDomain model"""
 
+    inlines = [MailDomainAccessInline]
     list_display = (
         "name",
         "identity_sync",
@@ -461,3 +468,12 @@ class BlobAdmin(admin.ModelAdmin):
     list_display = ("id", "mailbox", "type", "size", "created_at")
     search_fields = ("mailbox__local_part", "mailbox__domain__name")
     list_filter = ("mailbox", "type")
+
+
+@admin.register(models.MailDomainAccess)
+class MailDomainAccessAdmin(admin.ModelAdmin):
+    """Admin class for the MailDomainAccess model"""
+
+    list_display = ("id", "maildomain", "user", "role")
+    search_fields = ("maildomain__name", "user__email")
+    list_filter = ("role",)
