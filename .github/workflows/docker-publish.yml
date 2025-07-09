@@ -1,0 +1,56 @@
+name: Build and Push Docker Image
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        type: string
+        required: false
+        default: ghcr.io
+        description: The container registry FQDN.
+      image_name:
+        type: string
+        required: true
+        description: The full image name, without the registry.
+      context:
+        type: string
+        required: true
+        description: The path to the context to start `docker build` into.
+
+# see https://docs.github.com/en/enterprise-cloud@latest/actions/how-tos/use-cases-and-examples/publishing-packages/publishing-docker-images#publishing-images-to-github-packages
+jobs:
+  docker-build-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ inputs.registry }}/${{ inputs.image_name }}
+      - name: Build and push Docker image
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ inputs.registry }}/${{ inputs.image_name }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true

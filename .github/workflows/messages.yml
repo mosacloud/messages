@@ -88,3 +88,27 @@ jobs:
         run: |
           git diff --quiet || \
           (echo "API changes detected. Please run 'make api-update' then commit the changes." && exit 1)
+
+  docker-publish-mta-in:
+    uses: ./.github/workflows/docker-publish.yml
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    secrets: inherit
+    with:
+      image_name: "${{ github.repository }}-mta-in"
+      context: "src/mta-in/postfix"
+
+  docker-publish-mta-out:
+    uses: ./.github/workflows/docker-publish.yml
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    secrets: inherit
+    with:
+      image_name: "${{ github.repository }}-mta-out"
+      context: "src/mta-out/postfix"
