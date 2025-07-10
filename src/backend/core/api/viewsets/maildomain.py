@@ -26,6 +26,9 @@ class MailDomainAdminViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         if not user or not user.is_authenticated:
             return models.MailDomain.objects.none()
 
+        if user.is_superuser and user.is_staff:
+            return models.MailDomain.objects.all().order_by("name")
+
         accessible_maildomain_ids = models.MailDomainAccess.objects.filter(
             user=user, role=models.MailDomainAccessRoleChoices.ADMIN
         ).values_list("maildomain_id", flat=True)

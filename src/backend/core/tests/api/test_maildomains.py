@@ -160,6 +160,82 @@ class TestMailDomainAdminViewSet:
         response = api_client.get(self.LIST_DOMAINS_URL)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
+    def test_list_administered_maildomains_superuser_staff(
+        self,
+        api_client,
+        mail_domain1,
+        mail_domain2,
+        unmanaged_domain,
+    ):
+        """Test that superuser with staff status can list all domains."""
+        superuser_staff = factories.UserFactory(is_superuser=True, is_staff=True)
+        api_client.force_authenticate(user=superuser_staff)
+        response = api_client.get(self.LIST_DOMAINS_URL)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 3
+        domain_ids = [item["id"] for item in response.data["results"]]
+        assert str(mail_domain1.id) in domain_ids
+        assert str(mail_domain2.id) in domain_ids
+        assert str(unmanaged_domain.id) in domain_ids
+
+    def test_list_administered_maildomains_superuser_not_staff(
+        self,
+        api_client,
+        mail_domain1,
+        mail_domain2,
+        unmanaged_domain,
+    ):
+        """Test that superuser without staff status cannot list all domains."""
+        superuser_not_staff = factories.UserFactory(is_superuser=True, is_staff=False)
+        api_client.force_authenticate(user=superuser_not_staff)
+        response = api_client.get(self.LIST_DOMAINS_URL)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 0
+
+    def test_list_administered_maildomains_staff_not_superuser(
+        self,
+        api_client,
+        mail_domain1,
+        mail_domain2,
+        unmanaged_domain,
+    ):
+        """Test that staff without superuser status cannot list all domains."""
+        staff_not_superuser = factories.UserFactory(is_superuser=False, is_staff=True)
+        api_client.force_authenticate(user=staff_not_superuser)
+        response = api_client.get(self.LIST_DOMAINS_URL)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 0
+
+    def test_list_administered_maildomains_staff_not_superuser_with_access(
+        self,
+        api_client,
+        mail_domain1,
+        mail_domain2,
+        unmanaged_domain,
+    ):
+        """Test that staff without superuser status can only see domains they have access to."""
+        staff_not_superuser = factories.UserFactory(is_superuser=False, is_staff=True)
+
+        # Give access to only one domain
+        models.MailDomainAccess.objects.create(
+            maildomain=mail_domain1,
+            user=staff_not_superuser,
+            role=models.MailDomainAccessRoleChoices.ADMIN,
+        )
+
+        api_client.force_authenticate(user=staff_not_superuser)
+        response = api_client.get(self.LIST_DOMAINS_URL)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 1
+        domain_ids = [item["id"] for item in response.data["results"]]
+        assert str(mail_domain1.id) in domain_ids
+        assert str(mail_domain2.id) not in domain_ids
+        assert str(unmanaged_domain.id) not in domain_ids
+
 
 class TestMailboxAdminViewSet:
     """Tests for the MailboxAdminViewSet."""
