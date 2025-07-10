@@ -377,3 +377,143 @@ class TestMailboxAdminViewSet:
         response = api_client.post(url, data=data)
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "local_part" in response.data
+
+    # --- EXCLUDE ABILITIES Tests ---
+    def test_mailbox_admin_list_excludes_abilities_from_nested_users(
+        self,
+        api_client,
+        domain_admin_user,
+        domain_admin_access1,
+        mail_domain1,
+        mailbox1_domain1,
+        mailbox2_domain1,
+        access_mailbox1_user1,
+        access_mailbox1_user2,
+        user_for_access1,
+        user_for_access2,
+    ):
+        """Test that mailbox admin list endpoint excludes abilities from nested users."""
+        api_client.force_authenticate(user=domain_admin_user)
+        url = TestMailDomainAdminViewSet().mailboxes_url(mail_domain1.pk)
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "results" in response.data
+        assert len(response.data["results"]) == 2
+
+        # Find mailbox1_domain1 data for detailed check
+        mb1_data = next(
+            (
+                item
+                for item in response.data["results"]
+                if item["id"] == str(mailbox1_domain1.pk)
+            ),
+            None,
+        )
+        assert mb1_data is not None
+        assert "accesses" in mb1_data
+        assert len(mb1_data["accesses"]) == 2
+
+        # Verify that all nested users do NOT contain abilities
+        for access_data in mb1_data["accesses"]:
+            assert "user" in access_data
+            user_data = access_data["user"]
+            assert "abilities" not in user_data
+            assert "id" in user_data
+            assert "email" in user_data
+            assert "full_name" in user_data
+            assert "short_name" in user_data
+
+        # Also check mailbox2_domain1 (should have 0 accesses)
+        mb2_data = next(
+            (
+                item
+                for item in response.data["results"]
+                if item["id"] == str(mailbox2_domain1.pk)
+            ),
+            None,
+        )
+        assert mb2_data is not None
+        assert "accesses" in mb2_data
+        assert len(mb2_data["accesses"]) == 0
+
+    def test_mailbox_admin_retrieve_excludes_abilities_from_nested_users(
+        self,
+        api_client,
+        domain_admin_user,
+        domain_admin_access1,
+        mail_domain1,
+        mailbox1_domain1,
+        access_mailbox1_user1,
+        access_mailbox1_user2,
+        user_for_access1,
+        user_for_access2,
+    ):
+        """Test that mailbox admin retrieve endpoint excludes abilities from nested users."""
+        api_client.force_authenticate(user=domain_admin_user)
+        url = TestMailDomainAdminViewSet().mailbox_detail_url(
+            mail_domain1.pk, mailbox1_domain1.pk
+        )
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "accesses" in response.data
+        assert len(response.data["accesses"]) == 2
+
+        # Verify that all nested users do NOT contain abilities
+        for access_data in response.data["accesses"]:
+            assert "user" in access_data
+            user_data = access_data["user"]
+            assert "abilities" not in user_data
+            assert "id" in user_data
+            assert "email" in user_data
+            assert "full_name" in user_data
+            assert "short_name" in user_data
+
+    def test_mailbox_admin_excludes_abilities_with_superuser(
+        self,
+        api_client,
+        mail_domain1,
+        mailbox1_domain1,
+        mailbox2_domain1,
+        access_mailbox1_user1,
+        user_for_access1,
+    ):
+        """Test that mailbox admin excludes abilities even when accessed by superuser."""
+        # Create a superuser and give them access to the maildomain
+        superuser = factories.UserFactory(is_superuser=True, is_staff=True)
+
+        # Give superuser access to the maildomain
+        models.MailDomainAccess.objects.create(
+            maildomain=mail_domain1,
+            user=superuser,
+            role=models.MailDomainAccessRoleChoices.ADMIN,
+        )
+
+        api_client.force_authenticate(user=superuser)
+
+        url = TestMailDomainAdminViewSet().mailboxes_url(mail_domain1.pk)
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "results" in response.data
+        assert len(response.data["results"]) == 2  # Both mailboxes in the domain
+
+        # Find mailbox1_domain1 data for detailed check
+        mb1_data = next(
+            (
+                item
+                for item in response.data["results"]
+                if item["id"] == str(mailbox1_domain1.pk)
+            ),
+            None,
+        )
+        assert mb1_data is not None
+        assert "accesses" in mb1_data
+        assert len(mb1_data["accesses"]) == 1
+
+        # Verify that nested users do NOT contain abilities, even for superuser
+        access_data = mb1_data["accesses"][0]
+        assert "user" in access_data
+        user_data = access_data["user"]
+        assert "abilities" not in user_data

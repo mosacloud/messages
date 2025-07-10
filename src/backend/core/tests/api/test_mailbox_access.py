@@ -369,3 +369,87 @@ class TestMailboxAccessViewSet:
         )
         assert response.status_code == status.HTTP_204_NO_CONTENT
         assert not models.MailboxAccess.objects.filter(pk=access_m1d1_alpha.pk).exists()
+
+    # --- EXCLUDE ABILITIES Tests ---
+    def test_list_mailbox_access_excludes_abilities_from_nested_users(
+        self,
+        api_client,
+        domain_admin_user,
+        mailbox1_domain1,
+        access_m1d1_alpha,
+        access_m1d1_beta,
+    ):
+        """Test that mailbox access list endpoint excludes abilities from nested user_details."""
+        api_client.force_authenticate(user=domain_admin_user)
+        response = api_client.get(self.list_create_url(mailbox_id=mailbox1_domain1.pk))
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "results" in response.data
+        assert len(response.data["results"]) == 2
+
+        # Verify that all user_details do NOT contain abilities
+        for access_data in response.data["results"]:
+            assert "user_details" in access_data
+            user_details = access_data["user_details"]
+            assert "abilities" not in user_details
+            assert "id" in user_details
+            assert "email" in user_details
+            assert "full_name" in user_details
+            assert "short_name" in user_details
+
+    def test_retrieve_mailbox_access_excludes_abilities_from_nested_user(
+        self,
+        api_client,
+        domain_admin_user,
+        mailbox1_domain1,
+        access_m1d1_alpha,
+    ):
+        """Test that mailbox access retrieve endpoint excludes abilities from nested user_details."""
+        api_client.force_authenticate(user=domain_admin_user)
+        response = api_client.get(
+            self.detail_url(mailbox_id=mailbox1_domain1.pk, pk=access_m1d1_alpha.pk)
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "user_details" in response.data
+
+        # Verify that user_details does NOT contain abilities
+        user_details = response.data["user_details"]
+        assert "abilities" not in user_details
+        assert "id" in user_details
+        assert "email" in user_details
+        assert "full_name" in user_details
+        assert "short_name" in user_details
+
+    def test_mailbox_access_excludes_abilities_with_superuser(
+        self,
+        api_client,
+        domain_admin_user,
+        mailbox1_domain1,
+        access_m1d1_alpha,
+    ):
+        """Test that mailbox access excludes abilities even when accessed by superuser."""
+        # Create a superuser and give them access to the maildomain
+        superuser = factories.UserFactory(is_superuser=True, is_staff=True)
+        maildomain = mailbox1_domain1.domain
+
+        # Give superuser access to the maildomain
+        models.MailDomainAccess.objects.create(
+            maildomain=maildomain,
+            user=superuser,
+            role=models.MailDomainAccessRoleChoices.ADMIN,
+        )
+
+        api_client.force_authenticate(user=superuser)
+
+        response = api_client.get(self.list_create_url(mailbox_id=mailbox1_domain1.pk))
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "results" in response.data
+        assert len(response.data["results"]) == 1
+
+        # Verify that user_details does NOT contain abilities, even for superuser
+        access_data = response.data["results"][0]
+        assert "user_details" in access_data
+        user_details = access_data["user_details"]
+        assert "abilities" not in user_details

@@ -157,3 +157,22 @@ def test_api_users_retrieve_me_with_abilities_superuser_staff_with_access():
     abilities = data["abilities"]
     assert abilities["create_maildomains"] is True
     assert abilities["view_maildomains"] is True
+
+
+def test_users_me_endpoint_includes_abilities_by_default():
+    """Test that /users/me/ endpoint includes abilities by default (no exclude_abilities)."""
+    user = factories.UserFactory()
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    response = client.get("/api/v1.0/users/me/")
+    assert response.status_code == 200
+
+    data = response.json()
+    # Verify that abilities ARE included by default
+    assert "abilities" in data
+    assert data["abilities"] == user.get_abilities()
+    assert "id" in data
+    assert "email" in data
+    assert "full_name" in data
+    assert "short_name" in data

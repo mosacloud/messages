@@ -9,22 +9,36 @@ from rest_framework.exceptions import PermissionDenied
 from core import models
 
 
-class UserSerializer(serializers.ModelSerializer):
-    """Serialize users."""
+class AbilitiesModelSerializer(serializers.ModelSerializer):
+    """
+    A ModelSerializer that takes an additional `exclude` argument that
+    dynamically controls which fields should be excluded from the serializer.
+    """
 
-    abilities = serializers.SerializerMethodField(read_only=True)
+    def __init__(self, *args, **kwargs):
+        """Exclude fields after class instanciation."""
+        self.exclude_abilities = kwargs.pop("exclude_abilities", False)
+        super().__init__(*args, **kwargs)
 
-    def get_abilities(self, user) -> dict:
-        """Return abilities of the logged-in user on the mail domain."""
+    def to_representation(self, instance):
+        """Add abilities except when the serializer is nested."""
+        representation = super().to_representation(instance)
         request = self.context.get("request")
-        if request:
-            return user.get_abilities()
-        return {}
+        if request and not self.exclude_abilities:
+            if isinstance(instance, models.User):
+                representation["abilities"] = instance.get_abilities()
+            else:
+                representation["abilities"] = instance.get_abilities(request.user)
+        return representation
+
+
+class UserSerializer(AbilitiesModelSerializer):
+    """Serialize users."""
 
     class Meta:
         model = models.User
-        fields = ["id", "email", "full_name", "short_name", "abilities"]
-        read_only_fields = ["id", "email", "full_name", "short_name", "abilities"]
+        fields = ["id", "email", "full_name", "short_name"]
+        read_only_fields = ["id", "email", "full_name", "short_name"]
 
 
 class MailboxAvailableSerializer(serializers.ModelSerializer):
@@ -455,7 +469,7 @@ class MailboxAccessReadSerializer(serializers.ModelSerializer):
     Mailbox context is implied by the URL, so mailbox details are not included here.
     """
 
-    user_details = UserSerializer(source="user", read_only=True)
+    user_details = UserSerializer(source="user", read_only=True, exclude_abilities=True)
 
     class Meta:
         model = models.MailboxAccess
@@ -501,7 +515,7 @@ class MailboxAccessNestedUserSerializer(serializers.ModelSerializer):
     Shows user details and their role on the mailbox.
     """
 
-    user = UserSerializer(read_only=True)
+    user = UserSerializer(read_only=True, exclude_abilities=True)
 
     class Meta:
         model = models.MailboxAccess
