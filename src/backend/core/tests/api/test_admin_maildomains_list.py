@@ -1,5 +1,5 @@
 """Tests for the MailDomain Admin API endpoints."""
-# pylint: disable=unused-argument
+# pylint: disable=redefined-outer-name, unused-argument
 
 from django.urls import reverse
 
@@ -122,10 +122,12 @@ class TestAdminMailDomainViewSet:
         mail_domain1,
         mail_domain2,
         unmanaged_domain,
+        django_assert_num_queries,
     ):
         """Test that a domain admin can list domains they have admin access to."""
         api_client.force_authenticate(user=domain_admin_user)
-        response = api_client.get(self.LIST_DOMAINS_URL)
+        with django_assert_num_queries(2):  # 1 for list + 1 for pagination
+            response = api_client.get(self.LIST_DOMAINS_URL)
 
         assert response.status_code == status.HTTP_200_OK
         assert response.data["count"] == 2
@@ -226,3 +228,149 @@ class TestAdminMailDomainViewSet:
         assert str(mail_domain1.id) in domain_ids
         assert str(mail_domain2.id) not in domain_ids
         assert str(unmanaged_domain.id) not in domain_ids
+
+    def test_list_administered_maildomains_query_optimization(
+        self,
+        api_client,
+        domain_admin_user,
+        django_assert_num_queries,
+    ):
+        """Test that the query optimization works with multiple maildomains."""
+        # Create several maildomains with access
+        maildomains = []
+        for i in range(5):
+            maildomain = factories.MailDomainFactory(name=f"domain{i}.com")
+            models.MailDomainAccess.objects.create(
+                maildomain=maildomain,
+                user=domain_admin_user,
+                role=models.MailDomainAccessRoleChoices.ADMIN,
+            )
+            maildomains.append(maildomain)
+
+        # Create some maildomains without access
+        for i in range(3):
+            factories.MailDomainFactory(name=f"noaccess{i}.com")
+
+        api_client.force_authenticate(user=domain_admin_user)
+
+        with django_assert_num_queries(2):  # 1 for list + 1 for pagination
+            response = api_client.get(self.LIST_DOMAINS_URL)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 5
+
+        # Verify that all maildomains with access are present
+        domain_ids = [item["id"] for item in response.data["results"]]
+        for maildomain in maildomains:
+            assert str(maildomain.id) in domain_ids
+
+    def test_list_administered_maildomains_superuser_query_optimization(
+        self,
+        api_client,
+        django_assert_num_queries,
+    ):
+        """Test that superuser query is also optimized."""
+        # Create several maildomains
+        maildomains = []
+        for i in range(10):
+            maildomain = factories.MailDomainFactory(name=f"domain{i}.com")
+            maildomains.append(maildomain)
+
+        superuser = factories.UserFactory(is_superuser=True, is_staff=True)
+        api_client.force_authenticate(user=superuser)
+        with django_assert_num_queries(
+            3
+        ):  # 1 for list + 1 for pagination + 1 for abilities
+            response = api_client.get(self.LIST_DOMAINS_URL)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 10
+
+    def test_maildomain_retrieve_query_optimization(
+        self,
+        api_client,
+        domain_admin_user,
+        domain_admin_access1,
+        mail_domain1,
+        django_assert_num_queries,
+    ):
+        """Test that maildomain retrieve endpoint is optimized for queries."""
+        api_client.force_authenticate(user=domain_admin_user)
+
+        with django_assert_num_queries(
+            1
+        ):  # 1 query to retrieve maildomain with annotation
+            response = api_client.get(f"{self.LIST_DOMAINS_URL}{mail_domain1.id}/")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["id"] == str(mail_domain1.id)
+
+
+class TestMailDomainAbilitiesAPI:
+    """Test the abilities field in MailDomain API responses."""
+
+    def test_maildomain_abilities_in_response(
+        self, api_client, domain_admin_user, domain_admin_access1
+    ):
+        """Test that abilities are included in mail domain API response."""
+        api_client.force_authenticate(user=domain_admin_user)
+        url = reverse(
+            "admin-maildomains-detail", args=[domain_admin_access1.maildomain.id]
+        )
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "abilities" in response.data
+        abilities = response.data["abilities"]
+        assert abilities["get"] is True
+        assert abilities["patch"] is True
+        assert abilities["put"] is True
+        assert abilities["post"] is True
+        assert abilities["delete"] is True
+        assert abilities["manage_accesses"] is True
+        assert abilities["manage_mailboxes"] is True
+
+    def test_maildomain_list_with_abilities(
+        self, api_client, domain_admin_user, domain_admin_access1
+    ):
+        """Test that mail domain list includes abilities for each domain."""
+        api_client.force_authenticate(user=domain_admin_user)
+        url = reverse("admin-maildomains-list")
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data["results"]) == 1
+
+        domain_data = response.data["results"][0]
+        assert "abilities" in domain_data
+        abilities = domain_data["abilities"]
+        assert abilities["get"] is True
+        assert abilities["patch"] is True
+        assert abilities["put"] is True
+        assert abilities["post"] is True
+        assert abilities["delete"] is True
+        assert abilities["manage_accesses"] is True
+        assert abilities["manage_mailboxes"] is True
+
+    def test_maildomain_detail_no_access_abilities(
+        self, api_client, other_user, mail_domain1
+    ):
+        """Test that abilities are correctly set when user has no access to detail."""
+        api_client.force_authenticate(user=other_user)
+        url = reverse("admin-maildomains-detail", args=[mail_domain1.id])
+        response = api_client.get(url)
+
+        # Should return 404 since user has no access to this domain
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_maildomain_list_no_access_abilities(
+        self, api_client, other_user, mail_domain1, mail_domain2
+    ):
+        """Test that abilities are correctly set when user has no access."""
+        api_client.force_authenticate(user=other_user)
+        url = reverse("admin-maildomains-list")
+        response = api_client.get(url)
+
+        # User has no access, so should get empty list
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data["results"]) == 0

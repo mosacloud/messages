@@ -1,7 +1,7 @@
 """Admin ViewSets for MailDomain and Mailbox management."""
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import F, Q
 from django.shortcuts import get_object_or_404
 from django.utils.translation import gettext_lazy as _  # For user-facing error messages
 
@@ -29,7 +29,9 @@ from core.api import serializers as core_serializers
 from core.identity.keycloak import reset_keycloak_user_password
 
 
-class AdminMailDomainViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+class AdminMailDomainViewSet(
+    mixins.ListModelMixin, viewsets.GenericViewSet, mixins.RetrieveModelMixin
+):
     """
     ViewSet for listing MailDomains the user administers.
     Provides a top-level entry for mail domain administration.
@@ -45,11 +47,20 @@ class AdminMailDomainViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             return models.MailDomain.objects.none()
 
         if user.is_superuser and user.is_staff:
-            return models.MailDomain.objects.all().order_by("name")
-
-        return models.MailDomain.objects.filter(
-            accesses__user=user, accesses__role=models.MailDomainAccessRoleChoices.ADMIN
-        ).order_by("name")
+            # For superusers, preload accesses to avoid N+1 queries in get_abilities
+            return models.MailDomain.objects.prefetch_related("accesses").order_by(
+                "name"
+            )
+        # Optimization : one query with JOIN and annotation
+        return (
+            models.MailDomain.objects.filter(
+                accesses__user=user,
+                accesses__role=models.MailDomainAccessRoleChoices.ADMIN,
+            )
+            .annotate(user_role=F("accesses__role"))
+            .distinct()
+            .order_by("name")
+        )
 
 
 class AdminMailDomainMailboxViewSet(

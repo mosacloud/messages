@@ -500,8 +500,8 @@ class MailboxAccessWriteSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class MailDomainAdminSerializer(serializers.ModelSerializer):
-    """Serialize MailDomain basic information for admin listing."""
+class MailDomainAdminSerializer(AbilitiesModelSerializer):
+    """Serialize mail domains for admin view."""
 
     class Meta:
         model = models.MailDomain

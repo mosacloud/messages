@@ -258,6 +258,44 @@ class MailDomain(BaseModel):
         ]
         return records
 
+    def get_abilities(self, user):
+        """
+        Compute and return abilities for a given user on the mail domain.
+        """
+        role = None
+
+        if user.is_authenticated:
+            try:
+                role = self.user_role
+            except AttributeError:
+                # Use prefetched accesses if available to avoid additional queries
+                if (
+                    hasattr(self, "_prefetched_objects_cache")
+                    and "accesses" in self._prefetched_objects_cache
+                ):
+                    # Find the user's access in the prefetched accesses
+                    for access in self.accesses.all():
+                        if access.user_id == user.id:
+                            role = access.role
+                            break
+                else:
+                    try:
+                        role = self.accesses.filter(user=user).values("role")[0]["role"]
+                    except (MailDomainAccess.DoesNotExist, IndexError):
+                        role = None
+
+        is_admin = role == MailDomainAccessRoleChoices.ADMIN
+
+        return {
+            "get": bool(role),
+            "patch": is_admin,
+            "put": is_admin,
+            "post": is_admin,
+            "delete": is_admin,
+            "manage_accesses": is_admin,
+            "manage_mailboxes": is_admin,
+        }
+
 
 class Mailbox(BaseModel):
     """Mailbox model to store mailbox information."""
