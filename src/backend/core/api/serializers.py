@@ -12,10 +12,19 @@ from core import models
 class UserSerializer(serializers.ModelSerializer):
     """Serialize users."""
 
+    abilities = serializers.SerializerMethodField(read_only=True)
+
+    def get_abilities(self, user) -> dict:
+        """Return abilities of the logged-in user on the mail domain."""
+        request = self.context.get("request")
+        if request:
+            return user.get_abilities()
+        return {}
+
     class Meta:
         model = models.User
-        fields = ["id", "email", "full_name", "short_name"]
-        read_only_fields = ["id", "email", "full_name", "short_name"]
+        fields = ["id", "email", "full_name", "short_name", "abilities"]
+        read_only_fields = ["id", "email", "full_name", "short_name", "abilities"]
 
 
 class MailboxAvailableSerializer(serializers.ModelSerializer):

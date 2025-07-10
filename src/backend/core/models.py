@@ -185,6 +185,16 @@ class User(AbstractBaseUser, BaseModel, auth_models.PermissionsMixin):
     def __str__(self):
         return self.email or self.admin_email or str(self.id)
 
+    def get_abilities(self):
+        """Return abilities of the logged-in user."""
+        # if user as access to any maildomain, he can view them
+        has_access = self.maildomain_accesses.exists()
+        is_super_admin = self.is_superuser and self.is_staff
+        return {
+            "create_maildomains": is_super_admin,
+            "view_maildomains": has_access or is_super_admin,
+        }
+
 
 class MailDomain(BaseModel):
     """Mail domain model to store mail domain information."""
