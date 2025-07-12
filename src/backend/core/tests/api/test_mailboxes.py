@@ -9,6 +9,26 @@ from rest_framework.test import APIClient
 
 from core import enums, factories, models
 
+pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture(name="user")
+def fixture_user():
+    """Create a test user."""
+    return factories.UserFactory()
+
+
+@pytest.fixture(name="mailbox")
+def fixture_mailbox():
+    """Create a test mailbox."""
+    return factories.MailboxFactory()
+
+
+@pytest.fixture(name="superuser")
+def fixture_superuser():
+    """Create a test superuser."""
+    return factories.UserFactory(is_superuser=True, is_staff=True)
+
 
 @pytest.mark.django_db
 class TestMailboxViewSet:
@@ -78,22 +98,17 @@ class TestMailboxViewSet:
         assert len(response.data) == 2
 
         # Check response data
-        assert response.data == [
-            {
-                "id": str(user_mailbox2.id),
-                "email": str(user_mailbox2),
-                "role": "editor",
-                "count_unread_messages": 1,
-                "count_messages": 2,
-            },
-            {
-                "id": str(user_mailbox1.id),
-                "email": str(user_mailbox1),
-                "role": "viewer",
-                "count_unread_messages": 1,
-                "count_messages": 1,
-            },
-        ]
+        assert response.data[0]["id"] == str(user_mailbox2.id)
+        assert response.data[0]["email"] == str(user_mailbox2)
+        assert response.data[0]["role"] == "editor"
+        assert response.data[0]["count_unread_messages"] == 1
+        assert response.data[0]["count_messages"] == 2
+
+        assert response.data[1]["id"] == str(user_mailbox1.id)
+        assert response.data[1]["email"] == str(user_mailbox1)
+        assert response.data[1]["role"] == "viewer"
+        assert response.data[1]["count_unread_messages"] == 1
+        assert response.data[1]["count_messages"] == 1
 
     def test_list_unauthorized(self):
         """Anonymous user cannot access the list of mailboxes."""
@@ -251,6 +266,60 @@ class TestMailboxViewSet:
         )
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
+    def test_retrieve_mailbox(self):
+        """Test the retrieve method with user_access_roles optimization."""
+        # Create authenticated user with access to a mailbox
+        authenticated_user = factories.UserFactory()
+        mailbox = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=authenticated_user,
+            role=models.MailboxRoleChoices.EDITOR,
+        )
+
+        # Create a thread with one unread message for the mailbox
+        thread = factories.ThreadFactory()
+        factories.ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        factories.MessageFactory(thread=thread, read_at=None)
+
+        # Authenticate user
+        client = APIClient()
+        client.force_authenticate(user=authenticated_user)
+
+        # Get mailbox detail
+        response = client.get(
+            reverse("mailboxes-detail", kwargs={"pk": str(mailbox.id)})
+        )
+        assert response.status_code == status.HTTP_200_OK
+
+        # Check response data
+        assert response.data["id"] == str(mailbox.id)
+        assert response.data["email"] == str(mailbox)
+        assert response.data["role"] == "editor"
+        assert response.data["count_unread_messages"] == 1
+        assert response.data["count_messages"] == 1
+
+
+    def test_retrieve_mailbox_unauthorized(self):
+        """Test that users cannot retrieve mailboxes they don't have access to."""
+        # Create user without access to mailbox
+        user = factories.UserFactory()
+        mailbox = factories.MailboxFactory()
+
+        # Authenticate user
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        # Try to get mailbox detail
+        response = client.get(
+            reverse("mailboxes-detail", kwargs={"pk": str(mailbox.id)})
+        )
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
     def test_search_mailboxes_case_insensitive(self):
         """Test that search is case insensitive."""
         authenticated_user = factories.UserFactory()
@@ -291,3 +360,129 @@ class TestMailboxViewSet:
         )
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 1
+
+
+class TestMailboxAbilitiesAPI:
+    """Test the abilities field in Mailbox API responses."""
+
+    def test_mailbox_abilities_in_response(self, api_client, user, mailbox):
+        """Test that abilities are included in mailbox API response."""
+        models.MailboxAccess.objects.create(
+            mailbox=mailbox,
+            user=user,
+            role=models.MailboxRoleChoices.ADMIN,
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse("mailboxes-detail", args=[mailbox.id])
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "abilities" in response.data
+        abilities = response.data["abilities"]
+        assert abilities["get"] is True
+        assert abilities["patch"] is True
+        assert abilities["put"] is True
+        assert abilities["post"] is True
+        assert abilities["delete"] is True
+        assert abilities["manage_accesses"] is True
+        assert abilities["view_messages"] is True
+        assert abilities["send_messages"] is True
+        assert abilities["manage_labels"] is True
+
+    def test_mailbox_list_with_abilities(self, api_client, user, mailbox):
+        """Test that mailbox list includes abilities for each mailbox."""
+        models.MailboxAccess.objects.create(
+            mailbox=mailbox,
+            user=user,
+            role=models.MailboxRoleChoices.EDITOR,
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse("mailboxes-list")
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 1
+
+        mailbox_data = response.data[0]
+        assert "abilities" in mailbox_data
+        abilities = mailbox_data["abilities"]
+        assert abilities["get"] is True
+        assert abilities["patch"] is True
+        assert abilities["put"] is True
+        assert abilities["post"] is True
+        assert abilities["delete"] is False
+        assert abilities["manage_accesses"] is False
+        assert abilities["view_messages"] is True
+        assert abilities["send_messages"] is False
+        assert abilities["manage_labels"] is False
+
+    def test_mailbox_detail_no_access_abilities(self, api_client, user, mailbox):
+        """Test that abilities are correctly set when user has no access to detail."""
+        api_client.force_authenticate(user=user)
+        url = reverse("mailboxes-detail", args=[mailbox.id])
+        response = api_client.get(url)
+
+        # Should return 404 since user has no access to this mailbox
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    # pylint: disable=unused-argument
+    def test_mailbox_list_no_access_abilities(self, api_client, user, mailbox):
+        """Test that abilities are correctly set when user has no access."""
+        api_client.force_authenticate(user=user)
+        url = reverse("mailboxes-list")
+        response = api_client.get(url)
+
+        # User has no access, so should get empty list
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 0
+
+    def test_mailbox_viewer_abilities(self, api_client, user, mailbox):
+        """Test that viewer role has correct abilities."""
+        models.MailboxAccess.objects.create(
+            mailbox=mailbox,
+            user=user,
+            role=models.MailboxRoleChoices.VIEWER,
+        )
+
+        api_client.force_authenticate(user=user)
+        url = reverse("mailboxes-detail", args=[mailbox.id])
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "abilities" in response.data
+        abilities = response.data["abilities"]
+        assert abilities["get"] is True
+        assert abilities["patch"] is False
+        assert abilities["put"] is False
+        assert abilities["post"] is False
+        assert abilities["delete"] is False
+        assert abilities["manage_accesses"] is False
+        assert abilities["view_messages"] is True
+        assert abilities["send_messages"] is False
+        assert abilities["manage_labels"] is False
+
+    def test_mailbox_user_role_annotation(self, api_client, user, mailbox):
+        """Test that the user_role annotation works correctly."""
+        # Create access for user
+        models.MailboxAccess.objects.create(
+            mailbox=mailbox,
+            user=user,
+            role=models.MailboxRoleChoices.EDITOR,
+        )
+
+        api_client.force_authenticate(user=user)
+
+        # Test list endpoint
+        url = reverse("mailboxes-list")
+        response = api_client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 1
+        assert response.data[0]["role"] == "editor"
+
+        # Test detail endpoint
+        url = reverse("mailboxes-detail", args=[mailbox.id])
+        response = api_client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["role"] == "editor"

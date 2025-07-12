@@ -148,7 +148,7 @@ class MailboxAvailableSerializer(serializers.ModelSerializer):
         fields = ["id", "email", "contact"]
 
 
-class MailboxSerializer(serializers.ModelSerializer):
+class MailboxSerializer(AbilitiesModelSerializer):
     """Serialize mailboxes."""
 
     email = serializers.SerializerMethodField(read_only=True)
@@ -163,12 +163,24 @@ class MailboxSerializer(serializers.ModelSerializer):
     @extend_schema_field(IntegerChoicesField(choices_class=models.MailboxRoleChoices))
     def get_role(self, instance):
         """Return the allowed actions of the logged-in user on the instance."""
+        # Use the annotated user_role field
+        if hasattr(instance, "user_role") and instance.user_role is not None:
+            try:
+                role_enum = models.MailboxRoleChoices(instance.user_role)
+                return role_enum.label
+            except ValueError:
+                return None
+
+        # Fallback for backward compatibility
         request = self.context.get("request")
         if request:
-            role_enum = models.MailboxRoleChoices(
-                instance.accesses.get(user=request.user).role
-            )
-            return role_enum.label
+            try:
+                role_enum = models.MailboxRoleChoices(
+                    instance.accesses.get(user=request.user).role
+                )
+                return role_enum.label
+            except models.MailboxAccess.DoesNotExist:
+                return None
         return None
 
     def get_count_unread_messages(self, instance):

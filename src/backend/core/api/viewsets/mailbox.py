@@ -1,6 +1,6 @@
 """API ViewSet for Mailbox model."""
 
-from django.db.models import Q
+from django.db.models import OuterRef, Q, Subquery
 
 from drf_spectacular.utils import OpenApiParameter, OpenApiTypes, extend_schema
 from rest_framework import mixins, viewsets
@@ -23,10 +23,24 @@ class MailboxViewSet(
 
     def get_queryset(self):
         """Restrict results to the current user's mailboxes."""
-        accesses = self.request.user.mailbox_accesses.all()
-        return models.Mailbox.objects.filter(
-            id__in=accesses.values_list("mailbox_id", flat=True)
-        ).order_by("-created_at")
+        user = self.request.user
+        # for superuser, return all mailboxes
+        if user.is_superuser and user.is_staff:
+            return models.Mailbox.objects.all()
+
+        # For regular users, annotate with their actual role
+        return (
+            models.Mailbox.objects.filter(accesses__user=user)
+            .prefetch_related("accesses__user", "domain")
+            .annotate(
+                user_role=Subquery(
+                    models.MailboxAccess.objects.filter(
+                        mailbox=OuterRef("pk"), user=user
+                    ).values("role")[:1]
+                )
+            )
+            .order_by("-created_at")
+        )
 
     @extend_schema(
         tags=["mailboxes"],

@@ -482,6 +482,64 @@ class Mailbox(BaseModel):
 
         return blob
 
+    def get_abilities(self, user):
+        """
+        Compute and return abilities for a given user on the mailbox.
+        """
+        role = None
+
+        if user.is_authenticated:
+            # Use the annotated user_role field
+            try:
+                role = self.user_role
+            # Fallback to query if not pre-calculated (should not happen with optimized ViewSet)
+            except AttributeError:
+                if (
+                    hasattr(self, "_prefetched_objects_cache")
+                    and "accesses" in self._prefetched_objects_cache
+                ):
+                    # Find the user's access in the prefetched accesses
+                    for access in self.accesses.all():
+                        if access.user_id == user.id:
+                            role = access.role
+                            break
+                else:
+                    try:
+                        role = self.accesses.filter(user=user).values("role")[0]["role"]
+                    except (MailboxAccess.DoesNotExist, IndexError):
+                        role = None
+
+        if role is None:
+            return {
+                "get": False,
+                "patch": False,
+                "put": False,
+                "post": False,
+                "delete": False,
+                "manage_accesses": False,
+                "view_messages": False,
+                "send_messages": False,
+                "manage_labels": False,
+            }
+
+        is_admin = role == MailboxRoleChoices.ADMIN
+        can_modify = role >= MailboxRoleChoices.EDITOR
+        can_delete = role == MailboxRoleChoices.ADMIN
+        can_send = role >= MailboxRoleChoices.SENDER
+        has_access = bool(role)
+
+        return {
+            "get": has_access,
+            "patch": can_modify,
+            "put": can_modify,
+            "post": can_modify,
+            "delete": can_delete,
+            "manage_accesses": is_admin,
+            "view_messages": has_access,
+            "send_messages": can_send,
+            "manage_labels": is_admin,
+        }
+
 
 class MailboxAccess(BaseModel):
     """Mailbox access model to store mailbox access information."""
