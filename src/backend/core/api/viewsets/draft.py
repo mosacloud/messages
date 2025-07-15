@@ -253,8 +253,12 @@ class DraftMessageView(APIView):
 
         # Update draft body if provided
         if "draftBody" in request_data:
-            if message.draft_blob:
-                message.draft_blob.delete()
+
+            try:
+                if message.draft_blob:
+                    message.draft_blob.delete()
+            except models.Blob.DoesNotExist:
+                pass
             message.draft_blob = self.mailbox.create_blob(
                 content=(request_data.get("draftBody") or "").encode("utf-8"),
                 content_type="application/json",
@@ -468,7 +472,7 @@ class DraftMessageView(APIView):
         try:
             # Fetch the draft message, ensuring it belongs to the user indirectly via ThreadAccess
             # and matches the sender mailbox context if that's a requirement for *updating*.
-            message = models.Message.objects.select_related("thread").get(
+            message = models.Message.objects.select_related("thread", "draft_blob").get(
                 id=message_id,
                 is_draft=True,
                 # Ensure the user has access to this thread
