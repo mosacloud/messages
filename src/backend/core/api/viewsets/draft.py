@@ -244,7 +244,7 @@ class DraftMessageView(APIView):
                     )
                     # Only create MessageRecipient if message has been saved
                     if message.pk:
-                        models.MessageRecipient.objects.create(
+                        models.MessageRecipient.objects.get_or_create(
                             message=message,
                             contact=contact,
                             type=recipient_type_mapping[recipient_type],
