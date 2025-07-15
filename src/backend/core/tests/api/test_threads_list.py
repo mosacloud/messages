@@ -734,10 +734,7 @@ class TestThreadListAPI:
         assert str(thread1.id) not in thread_ids
         assert str(thread2.id) in thread_ids
         assert str(thread3.id) in thread_ids
-        assert (
-            response.data["results"][0]["user_role"]
-            == enums.ThreadAccessRoleChoices.VIEWER
-        )
+        assert response.data["results"][0]["user_role"] == "viewer"
         # check that the accesses are returned
         assert len(response.data["results"][0]["accesses"]) == 1
         access = response.data["results"][1]["accesses"][0]
@@ -745,11 +742,11 @@ class TestThreadListAPI:
         assert access["mailbox"]["id"] == str(access2.mailbox.id)
         assert access["mailbox"]["email"] == str(access2.mailbox)
         assert access["mailbox"]["name"] == access2.mailbox.contact.name
-        assert access["role"] == access2.role
+        assert access["role"] == enums.ThreadAccessRoleChoices(access2.role).label
         assert access["mailbox"]["id"] == str(access2.mailbox.id)
         assert access["mailbox"]["email"] == str(access2.mailbox)
         assert access["mailbox"]["name"] == access2.mailbox.contact.name
-        assert access["role"] == access2.role
+        assert access["role"] == enums.ThreadAccessRoleChoices(access2.role).label
 
     def test_list_threads_unauthorized(self, api_client, url):
         """Test listing threads without authentication."""

@@ -1,6 +1,5 @@
 """API ViewSet for handling binary data upload and download (JMAP-inspired implementation)."""
 
-import hashlib
 import logging
 
 from django.http import HttpResponse
@@ -120,17 +119,13 @@ class BlobViewSet(ViewSet):
             uploaded_file = request.FILES["file"]
             content_type = uploaded_file.content_type or "application/octet-stream"
 
-            # Read file content and calculate SHA-256 hash
-            content = uploaded_file.read()  # Read once, use for both hash and storage
-            sha256 = hashlib.sha256(content).hexdigest()
+            # Read file content
+            content = uploaded_file.read()
 
-            # Create the blob record
-            blob = models.Blob.objects.create(
-                sha256=sha256,
-                size=len(content),
-                type=content_type,
-                raw_content=content,
-                mailbox=mailbox,
+            # Create the blob record using mailbox method
+            blob = mailbox.create_blob(
+                content=content,
+                content_type=content_type,
             )
 
             # Return a response with the blob details
@@ -140,7 +135,7 @@ class BlobViewSet(ViewSet):
                     "blobId": str(blob.id),
                     "type": content_type,
                     "size": len(content),
-                    "sha256": sha256,
+                    "sha256": blob.sha256.hex(),
                 },
                 status=status.HTTP_201_CREATED,
             )
@@ -165,28 +160,63 @@ class BlobViewSet(ViewSet):
         by checking if the user has access to any mailbox that owns this blob.
         """
         try:
-            # Get the blob
-            blob = models.Blob.objects.get(id=pk)
+            # Blob IDs in the form msg_[message_id]_[attachment_number] are looked up
+            # directly in the message's attachments.
+            if pk.startswith("msg_"):
+                message_id = pk.split("_")[1]
+                attachment_number = pk.split("_")[2]
+                message = models.Message.objects.get(id=message_id)
 
-            # Check if user has access to the mailbox that owns this blob
-            if not models.MailboxAccess.objects.filter(
-                mailbox=blob.mailbox, user=request.user
-            ).exists():
-                return Response(
-                    {"error": "You do not have permission to download this blob"},
-                    status=status.HTTP_403_FORBIDDEN,
+                # Does the user have access to the message via its thread?
+                if not models.ThreadAccess.objects.filter(
+                    thread=message.thread, mailbox__accesses__user=request.user
+                ).exists():
+                    raise models.Blob.DoesNotExist()
+
+                # Does the message have any attachments?
+                if not message.has_attachments:
+                    raise models.Blob.DoesNotExist()
+
+                # Parse the raw mime message to get the attachment
+                parsed_email = message.get_parsed_data()
+                attachment = parsed_email.get("attachments", [])[int(attachment_number)]
+
+                # Create response with decompressed content
+                response = HttpResponse(
+                    attachment["content"], content_type=attachment["type"]
                 )
 
-            # Get the first attachment name to use as filename (if available)
-            attachment = models.Attachment.objects.filter(blob=blob).first()
-            filename = attachment.name if attachment else f"blob-{blob.id}.bin"
+                # Add appropriate headers for download
+                response["Content-Disposition"] = (
+                    f'attachment; filename="{attachment["name"]}"'
+                )
+                response["Content-Length"] = attachment["size"]
 
-            # Create response with raw_content
-            response = HttpResponse(blob.raw_content, content_type=blob.type)
+            else:
+                # Get the blob
+                blob = models.Blob.objects.get(id=pk)
 
-            # Add appropriate headers for download
-            response["Content-Disposition"] = f'attachment; filename="{filename}"'
-            response["Content-Length"] = blob.size
+                # Check if user has access to the mailbox that owns this blob
+                if not models.MailboxAccess.objects.filter(
+                    mailbox=blob.mailbox, user=request.user
+                ).exists():
+                    return Response(
+                        {"error": "You do not have permission to download this blob"},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
+                # Get the first attachment name to use as filename (if available)
+                attachment = models.Attachment.objects.filter(blob=blob).first()
+                filename = attachment.name if attachment else f"blob-{blob.id}.bin"
+
+                # Create response with decompressed content
+                response = HttpResponse(
+                    blob.get_content(), content_type=blob.content_type
+                )
+
+                # Add appropriate headers for download
+                response["Content-Disposition"] = f'attachment; filename="{filename}"'
+                response["Content-Length"] = blob.size
 
             return response
 

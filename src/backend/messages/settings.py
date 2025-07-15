@@ -62,17 +62,23 @@ class Base(Configuration):
 
     API_VERSION = "v1.0"
 
-    # Elasticsearch configuration
-    ELASTICSEARCH_HOSTS = values.ListValue(
-        ["http://elasticsearch:9200"],
-        environ_name="ELASTICSEARCH_URL",
+    # Admin URL configuration
+    ADMIN_URL = values.Value("admin/")
+
+    # OpenSearch configuration
+    OPENSEARCH_HOSTS = values.ListValue(
+        ["http://opensearch:9200"],
+        environ_name="OPENSEARCH_URL",
         environ_prefix=None,
     )
-    ELASTICSEARCH_TIMEOUT = values.PositiveIntegerValue(
-        20, environ_name="ELASTICSEARCH_TIMEOUT", environ_prefix=None
+    OPENSEARCH_TIMEOUT = values.PositiveIntegerValue(
+        20, environ_name="OPENSEARCH_TIMEOUT", environ_prefix=None
     )
-    ELASTICSEARCH_INDEX_THREADS = values.BooleanValue(
-        True, environ_name="ELASTICSEARCH_INDEX_THREADS", environ_prefix=None
+    OPENSEARCH_INDEX_THREADS = values.BooleanValue(
+        True, environ_name="OPENSEARCH_INDEX_THREADS", environ_prefix=None
+    )
+    OPENSEARCH_CA_CERTS = values.Value(
+        None, environ_name="OPENSEARCH_CA_CERTS", environ_prefix=None
     )
 
     # Security
@@ -153,10 +159,10 @@ class Base(Configuration):
 
     # Test domain settings
     MESSAGES_TESTDOMAIN = values.Value(
-        "localhost", environ_name="MESSAGES_TESTDOMAIN", environ_prefix=None
+        None, environ_name="MESSAGES_TESTDOMAIN", environ_prefix=None
     )
     MESSAGES_TESTDOMAIN_MAPPING_BASEDOMAIN = values.Value(
-        "gouv.fr",
+        None,
         environ_name="MESSAGES_TESTDOMAIN_MAPPING_BASEDOMAIN",
         environ_prefix=None,
     )
@@ -165,17 +171,38 @@ class Base(Configuration):
         environ_name="MESSAGES_ACCEPT_ALL_EMAILS",
         environ_prefix=None,
     )
-    MESSAGES_DKIM_SELECTOR = values.Value(
-        "default", environ_name="MESSAGES_DKIM_SELECTOR", environ_prefix=None
+
+    # Blob compression settings
+    MESSAGES_BLOB_ZSTD_LEVEL = values.PositiveIntegerValue(
+        default=3, environ_name="MESSAGES_BLOB_ZSTD_LEVEL", environ_prefix=None
     )
-    MESSAGES_DKIM_DOMAINS = values.ListValue(
-        [], environ_name="MESSAGES_DKIM_DOMAINS", environ_prefix=None
+
+    # Django fernet encrypted fields settings
+    # Can be a list for key rotation: ['new_key', 'old_key']
+    SALT_KEY = values.ListValue([], environ_name="SALT_KEY", environ_prefix=None)
+
+    # DKIM settings
+    MESSAGES_DKIM_DEFAULT_SELECTOR = values.Value(
+        "stmessages", environ_name="MESSAGES_DKIM_DEFAULT_SELECTOR", environ_prefix=None
     )
-    MESSAGES_DKIM_PRIVATE_KEY_B64 = values.Value(
-        None, environ_name="MESSAGES_DKIM_PRIVATE_KEY_B64", environ_prefix=None
+
+    # Technical domain for DNS records (MX, SPF, DKIM hosting)
+    MESSAGES_TECHNICAL_DOMAIN = values.Value(
+        "localhost", environ_name="MESSAGES_TECHNICAL_DOMAIN", environ_prefix=None
     )
-    MESSAGES_DKIM_PRIVATE_KEY_FILE = values.Value(
-        None, environ_name="MESSAGES_DKIM_PRIVATE_KEY_FILE", environ_prefix=None
+
+    # DNS Provider settings
+    DNS_SCALEWAY_API_TOKEN = values.Value(
+        None, environ_name="DNS_SCALEWAY_API_TOKEN", environ_prefix=None
+    )
+    DNS_SCALEWAY_PROJECT_ID = values.Value(
+        None, environ_name="DNS_SCALEWAY_PROJECT_ID", environ_prefix=None
+    )
+    DNS_SCALEWAY_TTL = values.PositiveIntegerValue(
+        3600, environ_name="DNS_SCALEWAY_TTL", environ_prefix=None
+    )
+    DNS_DEFAULT_PROVIDER = values.Value(
+        None, environ_name="DNS_DEFAULT_PROVIDER", environ_prefix=None
     )
 
     # Media
@@ -380,8 +407,9 @@ class Base(Configuration):
     )
 
     # Posthog
-    POSTHOG_KEY = values.DictValue(
-        None, environ_name="POSTHOG_KEY", environ_prefix=None
+    POSTHOG_KEY = values.Value(None, environ_name="POSTHOG_KEY", environ_prefix=None)
+    POSTHOG_HOST = values.Value(
+        "https://eu.i.posthog.com", environ_name="POSTHOG_HOST", environ_prefix=None
     )
 
     # Celery
@@ -491,21 +519,24 @@ class Base(Configuration):
     )
 
     IDENTITY_PROVIDER = values.Value(
-        "keycloak", environ_name="IDENTITY_PROVIDER", environ_prefix=None
+        None, environ_name="IDENTITY_PROVIDER", environ_prefix=None
     )
 
     KEYCLOAK_REALM = values.Value(
-        "messages", environ_name="KEYCLOAK_REALM", environ_prefix=None
+        None, environ_name="KEYCLOAK_REALM", environ_prefix=None
     )
-    KEYCLOAK_URL = values.Value(
-        "http://keycloak:8083", environ_name="KEYCLOAK_URL", environ_prefix=None
-    )
+    KEYCLOAK_URL = values.Value(None, environ_name="KEYCLOAK_URL", environ_prefix=None)
     KEYCLOAK_CLIENT_ID = values.Value(
-        "rest-api", environ_name="KEYCLOAK_CLIENT_ID", environ_prefix=None
+        None, environ_name="KEYCLOAK_CLIENT_ID", environ_prefix=None
     )
     KEYCLOAK_CLIENT_SECRET = values.Value(
-        "ServiceAccountClientSecretForDev",
+        None,
         environ_name="KEYCLOAK_CLIENT_SECRET",
+        environ_prefix=None,
+    )
+    KEYCLOAK_GROUP_PATH_PREFIX = values.Value(
+        None,
+        environ_name="KEYCLOAK_GROUP_PATH_PREFIX",
         environ_prefix=None,
     )
 
@@ -641,7 +672,7 @@ class Development(Base):
 
     ALLOWED_HOSTS = ["*"]
     CORS_ALLOW_ALL_ORIGINS = True
-    CSRF_TRUSTED_ORIGINS = ["http://localhost:8072", "http://localhost:3000"]
+    CSRF_TRUSTED_ORIGINS = ["http://localhost:8900", "http://localhost:8901"]
     DEBUG = True
 
     SESSION_COOKIE_NAME = "st_messages_sessionid"
@@ -675,6 +706,21 @@ class Development(Base):
         self.INSTALLED_APPS += ["django_extensions", "drf_spectacular_sidecar"]
 
 
+class DevelopmentMinimal(Development):
+    """
+    Development environment settings with minimal dependencies
+    """
+
+    CELERY_TASK_ALWAYS_EAGER = True
+    OPENSEARCH_INDEX_THREADS = False
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.dummy.DummyCache",
+        },
+        "session": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+    }
+
+
 class Test(Base):
     """Test environment settings"""
 
@@ -686,6 +732,9 @@ class Test(Base):
     IDENTITY_PROVIDER = None
 
     CELERY_TASK_ALWAYS_EAGER = values.BooleanValue(True)
+
+    # Add a test encryption key for django-fernet-encrypted-fields
+    SALT_KEY = ["test-salt-for-development-only"]
 
     def __init__(self):
         # pylint: disable=invalid-name

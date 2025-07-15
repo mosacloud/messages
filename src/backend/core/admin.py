@@ -1,7 +1,5 @@
 """Admin classes and registrations for core app."""
 
-import hashlib
-
 from django.contrib import admin, messages
 from django.contrib.auth import admin as auth_admin
 from django.shortcuts import redirect
@@ -41,7 +39,7 @@ def reset_keycloak_password_action(_, request, queryset):
             success_count += 1
 
         # pylint: disable=broad-except
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             messages.error(request, f"Failed to reset password for {mailbox}: {str(e)}")
             error_count += 1
 
@@ -78,7 +76,6 @@ class UserAdmin(auth_admin.UserAdmin):
                     "sub",
                     "email",
                     "full_name",
-                    "short_name",
                     "language",
                     "timezone",
                 )
@@ -89,7 +86,6 @@ class UserAdmin(auth_admin.UserAdmin):
             {
                 "fields": (
                     "is_active",
-                    "is_device",
                     "is_staff",
                     "is_superuser",
                     "groups",
@@ -117,16 +113,14 @@ class UserAdmin(auth_admin.UserAdmin):
         "is_active",
         "is_staff",
         "is_superuser",
-        "is_device",
         "created_at",
         "updated_at",
     )
-    list_filter = ("is_staff", "is_superuser", "is_device", "is_active")
+    list_filter = ("is_staff", "is_superuser", "is_active")
     ordering = (
         "is_active",
         "-is_superuser",
         "-is_staff",
-        "-is_device",
         "-updated_at",
         "full_name",
     )
@@ -135,7 +129,6 @@ class UserAdmin(auth_admin.UserAdmin):
         "sub",
         "email",
         "full_name",
-        "short_name",
         "created_at",
         "updated_at",
     )
@@ -221,6 +214,7 @@ class ThreadAdmin(admin.ModelAdmin):
                     "has_starred",
                     "has_sender",
                     "has_messages",
+                    "has_attachments",
                     "is_spam",
                     "has_active",
                 ),
@@ -241,6 +235,7 @@ class ThreadAdmin(admin.ModelAdmin):
         "has_trashed",
         "has_draft",
         "has_starred",
+        "has_attachments",
         "has_sender",
         "has_messages",
         "is_spam",
@@ -335,12 +330,9 @@ class MessageAdmin(admin.ModelAdmin):
 
                 # Create a Blob from the uploaded file
                 file_content = import_file.read()
-                blob = models.Blob.objects.create(
-                    raw_content=file_content,
-                    type=import_file.content_type,
-                    size=import_file.size,
-                    mailbox=recipient,
-                    sha256=hashlib.sha256(file_content).hexdigest(),
+                blob = recipient.create_blob(
+                    content=file_content,
+                    content_type=import_file.content_type,
                 )
 
                 success, _response_data = ImportService.import_file(
@@ -465,9 +457,9 @@ class LabelAdmin(admin.ModelAdmin):
 class BlobAdmin(admin.ModelAdmin):
     """Admin class for the Blob model"""
 
-    list_display = ("id", "mailbox", "type", "size", "created_at")
+    list_display = ("id", "mailbox", "content_type", "size", "created_at")
     search_fields = ("mailbox__local_part", "mailbox__domain__name")
-    list_filter = ("mailbox", "type")
+    list_filter = ("mailbox", "content_type")
 
 
 @admin.register(models.MailDomainAccess)
@@ -477,3 +469,44 @@ class MailDomainAccessAdmin(admin.ModelAdmin):
     list_display = ("id", "maildomain", "user", "role")
     search_fields = ("maildomain__name", "user__email")
     list_filter = ("role",)
+
+
+@admin.register(models.DKIMKey)
+class DKIMKeyAdmin(admin.ModelAdmin):
+    """Admin class for the DKIMKey model"""
+
+    list_display = (
+        "id",
+        "selector",
+        "domain",
+        "algorithm",
+        "key_size",
+        "is_active",
+        "created_at",
+    )
+    search_fields = ("selector", "domain__name")
+    list_filter = ("algorithm", "is_active", "domain")
+    readonly_fields = ("public_key", "created_at", "updated_at")
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "selector",
+                    "domain",
+                    "algorithm",
+                    "key_size",
+                    "is_active",
+                    "created_at",
+                    "updated_at",
+                )
+            },
+        ),
+        (
+            _("Keys"),
+            {
+                "fields": ("public_key",),
+                "classes": ("collapse",),
+            },
+        ),
+    )

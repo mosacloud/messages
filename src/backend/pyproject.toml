@@ -21,9 +21,12 @@ keywords = ["Django", "Contacts", "Templates", "RBAC"]
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.13,<4.0"
+
+# Note: after changing this list you must re-run `make back-poetry-lock`
 dependencies = [
     "boto3==1.36.7",
     "celery[redis]==5.5.2",
+    "cryptography==45.0.5",
     "dj-database-url==2.3.0",
     "django==5.1.8",
     "django-celery-beat==2.8.0",
@@ -31,6 +34,7 @@ dependencies = [
     "django-configurations==2.5.1",
     "django-cors-headers==4.6.0",
     "django-countries==7.6.1",
+    "django-fernet-encrypted-fields==0.3.0",
     "django-filter==24.3",
     "django-parler==2.3",   
     "django-redis==5.4.0",
@@ -41,7 +45,7 @@ dependencies = [
     "dnspython==2.7.0",
     "dockerflow==2024.4.2",
     "drf_spectacular==0.28.0",
-    "elasticsearch==7.17.12",
+    "opensearch-py==2.8.0",
     "factory_boy==3.3.1",
     "flanker@git+https://github.com/sylvinus/flanker@f94ba2c15ab310e333610a78828d09be4e11a6b6",
     "gunicorn==23.0.0",
@@ -51,6 +55,7 @@ dependencies = [
     "PyJWT==2.10.1",
     "python-keycloak==5.5.1",
     "python-magic==0.4.27",
+    "pyzstd==0.17.0",
     "redis==5.2.1",
     "requests==2.32.3",
     "sentry-sdk[django]==2.27.0",
@@ -69,6 +74,7 @@ dev = [
     "django-extensions==3.2.3",
     "drf-spectacular-sidecar==2024.12.1",
     "flower==2.0.1",
+    "pip-audit==2.9.0",
     "pylint-django==2.6.1",
     "pylint==3.3.4",
     "pytest-cov==6.0.0",
@@ -96,7 +102,7 @@ exclude = [
 line-length = 88
 
 [tool.ruff.lint]
-ignore = ["DJ001", "PLR2004", "PLR0915", "PLR0912", "PLR0913", "PLR0911"]
+ignore = ["DJ001", "PLR2004", "PLR0915", "PLR0912", "PLR0913", "PLR0911", "BLE001"]
 select = [
     "B", # flake8-bugbear
     "BLE", # flake8-blind-except

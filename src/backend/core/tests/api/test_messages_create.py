@@ -99,8 +99,9 @@ class TestApiDraftAndSendMessage:
         assert draft_message.is_unread is False
         assert draft_message.is_trashed is False
         assert draft_message.is_starred is False
+        assert draft_message.has_attachments is False
         assert draft_message.sent_at is None
-        assert draft_message.draft_body == draft_content
+        assert draft_message.draft_blob.get_content().decode("utf-8") == draft_content
 
         assert all(
             recipient.delivery_status is None
@@ -116,6 +117,7 @@ class TestApiDraftAndSendMessage:
         assert draft_message.thread.has_unread is False
         assert draft_message.thread.has_trashed is False
         assert draft_message.thread.has_starred is False
+        assert draft_message.thread.has_attachments is False
         assert draft_message.thread.has_draft is True
         assert draft_message.thread.sender_names == [draft_message.sender.name]
 
@@ -167,8 +169,8 @@ class TestApiDraftAndSendMessage:
         mock_send_outbound_message.assert_called()
 
         sent_message = models.Message.objects.get(id=draft_message_id)
-        assert sent_message.raw_mime
-        assert subject in sent_message.raw_mime.decode("utf-8")
+        assert sent_message.blob
+        assert subject in sent_message.blob.get_content().decode("utf-8")
 
         assert sent_message.is_draft is False
         assert sent_message.is_sender is True
@@ -264,13 +266,15 @@ class TestApiDraftAndSendMessage:
         assert draft_message.is_unread is False
         assert draft_message.is_trashed is False
         assert draft_message.is_starred is False
-        assert draft_message.draft_body == draft_content
+        assert draft_message.has_attachments is False
+        assert draft_message.draft_blob.get_content().decode("utf-8") == draft_content
 
         assert draft_message.thread.has_messages is True
         assert draft_message.thread.has_sender is False
         assert draft_message.thread.has_unread is False
         assert draft_message.thread.has_trashed is False
         assert draft_message.thread.has_starred is False
+        assert draft_message.thread.has_attachments is False
         assert draft_message.thread.has_draft is True
         assert draft_message.thread.sender_names == [
             message.sender.name,
@@ -299,8 +303,8 @@ class TestApiDraftAndSendMessage:
         mock_send_outbound_message.assert_called()
 
         sent_message = models.Message.objects.get(id=draft_message_id)
-        assert sent_message.raw_mime
-        assert subject in sent_message.raw_mime.decode("utf-8")
+        assert sent_message.blob
+        assert subject in sent_message.blob.get_content().decode("utf-8")
 
         assert sent_message.is_draft is False
         assert sent_message.is_sender is True
@@ -788,7 +792,7 @@ class TestApiDraftAndSendReply:
 
         assert (
             b"In-Reply-To: <" + message.mime_id.encode("utf-8") + b">\r\n"
-            in sent_message.raw_mime
+            in sent_message.blob.get_content()
         )
 
     @pytest.mark.parametrize(
@@ -972,7 +976,10 @@ class TestApiDraftAndSendReply:
         updated_message = models.Message.objects.get(id=draft_message.id)
         assert updated_message.is_draft is True
         assert updated_message.subject == updated_subject
-        assert updated_message.draft_body == "updated content"
+        assert (
+            updated_message.draft_blob.get_content().decode("utf-8")
+            == "updated content"
+        )
 
         # Assert recipients are updated
         assert updated_message.recipients.count() == 3

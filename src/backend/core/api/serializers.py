@@ -9,6 +9,69 @@ from rest_framework.exceptions import PermissionDenied
 from core import models
 
 
+class IntegerChoicesField(serializers.Field):
+    """
+    Custom field to handle IntegerChoices that accepts string labels for input
+    and returns string labels for output.
+
+    Example usage:
+        role = IntegerChoicesField(MailboxRoleChoices)
+
+    This field will:
+    - Accept strings like "viewer", "editor", "admin" for input
+    - Store them as integers (1, 2, 4) in the database
+    - Return strings like "viewer", "editor", "admin" for output
+    - Provide helpful error messages for invalid choices
+    - Support backward compatibility with integer input
+    """
+
+    def __init__(self, choices_class, **kwargs):
+        self.choices_class = choices_class
+        super().__init__(**kwargs)
+
+    def to_representation(self, value):
+        """Convert integer value to string label for output."""
+        if value is None:
+            return None
+        enum_instance = self.choices_class(value)
+        return enum_instance.label
+
+    def to_internal_value(self, data):
+        """Convert string label to integer value for storage."""
+        if data is None:
+            return None
+
+        # If it's already an integer (for backward compatibility), validate and return it
+        if isinstance(data, int):
+            try:
+                self.choices_class(data)  # Validate it's a valid choice
+                return data
+            except ValueError:
+                self.fail("invalid_choice", input=data)
+
+        # Convert string label to integer value
+        if isinstance(data, str):
+            for choice_value, choice_label in self.choices_class.choices:
+                if choice_label == data:
+                    return choice_value
+            self.fail("invalid_choice", input=data)
+
+        self.fail("invalid_choice", input=data)
+
+        return None
+
+    default_error_messages = {
+        "invalid_choice": "Invalid choice: {input}. Valid choices are: {choices}."
+    }
+
+    def fail(self, key, **kwargs):
+        """Override to provide better error messages."""
+        if key == "invalid_choice":
+            valid_choices = [label for value, label in self.choices_class.choices]
+            kwargs["choices"] = ", ".join(valid_choices)
+        super().fail(key, **kwargs)
+
+
 class AbilitiesModelSerializer(serializers.ModelSerializer):
     """
     A ModelSerializer that takes an additional `exclude` argument that
@@ -37,8 +100,8 @@ class UserSerializer(AbilitiesModelSerializer):
 
     class Meta:
         model = models.User
-        fields = ["id", "email", "full_name", "short_name"]
-        read_only_fields = ["id", "email", "full_name", "short_name"]
+        fields = ["id", "email", "full_name"]
+        read_only_fields = ["id", "email", "full_name"]
 
 
 class MailboxAvailableSerializer(serializers.ModelSerializer):
@@ -78,7 +141,10 @@ class MailboxSerializer(serializers.ModelSerializer):
         """Return the allowed actions of the logged-in user on the instance."""
         request = self.context.get("request")
         if request:
-            return instance.accesses.get(user=request.user).role
+            role_enum = models.MailboxRoleChoices(
+                instance.accesses.get(user=request.user).role
+            )
+            return role_enum.label
         return None
 
     def get_count_unread_messages(self, instance):
@@ -134,6 +200,12 @@ class BlobSerializer(serializers.ModelSerializer):
     """Serialize blobs."""
 
     blobId = serializers.UUIDField(source="id", read_only=True)
+    type = serializers.CharField(source="content_type", read_only=True)
+    sha256 = serializers.SerializerMethodField()
+
+    def get_sha256(self, obj):
+        """Convert binary SHA256 to hex string."""
+        return obj.sha256.hex() if obj.sha256 else None
 
     class Meta:
         model = models.Blob
@@ -152,6 +224,11 @@ class AttachmentSerializer(serializers.ModelSerializer):
 
     blobId = serializers.UUIDField(source="blob.id", read_only=True)
     type = serializers.CharField(source="content_type", read_only=True)
+    sha256 = serializers.SerializerMethodField()
+
+    def get_sha256(self, obj):
+        """Convert binary SHA256 to hex string."""
+        return obj.sha256.hex() if obj.sha256 else None
 
     class Meta:
         model = models.Attachment
@@ -233,7 +310,7 @@ class ThreadAccessDetailSerializer(serializers.ModelSerializer):
     """Serializer for thread access details."""
 
     mailbox = MailboxLightSerializer()
-    role = serializers.ChoiceField(choices=models.ThreadAccessRoleChoices.choices)
+    role = IntegerChoicesField(models.ThreadAccessRoleChoices, read_only=True)
 
     class Meta:
         model = models.ThreadAccess
@@ -273,7 +350,9 @@ class ThreadSerializer(serializers.ModelSerializer):
                 return None
             if request and hasattr(request, "user") and request.user.is_authenticated:
                 try:
-                    return instance.accesses.get(mailbox=mailbox).role
+                    role_value = instance.accesses.get(mailbox=mailbox).role
+                    role_enum = models.ThreadAccessRoleChoices(role_value)
+                    return role_enum.label
                 except models.ThreadAccess.DoesNotExist:
                     return None
         return None
@@ -306,6 +385,7 @@ class ThreadSerializer(serializers.ModelSerializer):
             "has_trashed",
             "has_draft",
             "has_starred",
+            "has_attachments",
             "has_sender",
             "has_messages",
             "is_spam",
@@ -362,21 +442,43 @@ class MessageSerializer(serializers.ModelSerializer):
     @extend_schema_field(serializers.CharField())
     def get_draftBody(self, instance):  # pylint: disable=invalid-name
         """Return an arbitrary JSON object representing the draft body."""
-        return instance.draft_body
+        return (
+            instance.draft_blob.get_content().decode("utf-8")
+            if instance.draft_blob
+            else None
+        )
 
     @extend_schema_field(AttachmentSerializer(many=True))
     def get_attachments(self, instance):
         """Return the parsed email attachments or linked attachments for drafts."""
+
+        # If the message has no attachments, return an empty list
+        if not instance.has_attachments:
+            return []
+
         # First check for directly linked attachments (for drafts)
-        if instance.attachments.exists():
+        if instance.is_draft:
             return AttachmentSerializer(instance.attachments.all(), many=True).data
 
         # Then get any parsed attachments from the email if available
         parsed_attachments = instance.get_parsed_field("attachments") or []
 
         # Convert parsed attachments to a format similar to AttachmentSerializer
+        # Remove the content field from the parsed attachments and create a
+        # reference to a virtual blob msg_[message_id]_[attachment_number]
+        # This is needed to map our storage schema with the JMAP spec.
         if parsed_attachments:
-            return parsed_attachments
+            stripped_attachments = []
+            for index, attachment in enumerate(parsed_attachments):
+                stripped_attachments.append(
+                    {
+                        "blobId": f"msg_{instance.id}_{index}",
+                        "name": attachment["name"],
+                        "size": attachment["size"],
+                        "type": attachment["type"],
+                    }
+                )
+            return stripped_attachments
 
         return []
 
@@ -451,12 +553,15 @@ class MessageSerializer(serializers.ModelSerializer):
             "is_unread",
             "is_starred",
             "is_trashed",
+            "has_attachments",
         ]
         read_only_fields = fields  # Mark all as read-only
 
 
 class ThreadAccessSerializer(serializers.ModelSerializer):
     """Serialize thread access information."""
+
+    role = IntegerChoicesField(models.ThreadAccessRoleChoices)
 
     class Meta:
         model = models.ThreadAccess
@@ -470,6 +575,7 @@ class MailboxAccessReadSerializer(serializers.ModelSerializer):
     """
 
     user_details = UserSerializer(source="user", read_only=True, exclude_abilities=True)
+    role = IntegerChoicesField(models.MailboxRoleChoices, read_only=True)
 
     class Meta:
         model = models.MailboxAccess
@@ -481,6 +587,8 @@ class MailboxAccessWriteSerializer(serializers.ModelSerializer):
     """Serializer for creating and updating mailbox access records.
     Mailbox is set from the view based on URL parameters.
     """
+
+    role = IntegerChoicesField(models.MailboxRoleChoices)
 
     class Meta:
         model = models.MailboxAccess
@@ -503,9 +611,19 @@ class MailboxAccessWriteSerializer(serializers.ModelSerializer):
 class MailDomainAdminSerializer(AbilitiesModelSerializer):
     """Serialize mail domains for admin view."""
 
+    expected_dns_records = serializers.SerializerMethodField(read_only=True)
+
+    def get_expected_dns_records(self, instance):
+        """Return the expected DNS records for the mail domain, only in detail views."""
+        # Only include DNS records in detail views, not in list views
+        view = self.context.get("view")
+        if view and hasattr(view, "action") and view.action == "retrieve":
+            return instance.get_expected_dns_records()
+        return None
+
     class Meta:
         model = models.MailDomain
-        fields = ["id", "name", "created_at", "updated_at"]
+        fields = ["id", "name", "created_at", "updated_at", "expected_dns_records"]
         read_only_fields = fields
 
 
@@ -516,6 +634,7 @@ class MailboxAccessNestedUserSerializer(serializers.ModelSerializer):
     """
 
     user = UserSerializer(read_only=True, exclude_abilities=True)
+    role = IntegerChoicesField(models.MailboxRoleChoices, read_only=True)
 
     class Meta:
         model = models.MailboxAccess

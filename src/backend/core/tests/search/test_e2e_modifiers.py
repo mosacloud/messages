@@ -21,32 +21,29 @@ from core.factories import (
     ThreadFactory,
     UserFactory,
 )
-from core.search import create_index_if_not_exists, delete_index, get_es_client
+from core.search import create_index_if_not_exists, delete_index, get_opensearch_client
 from core.search.mapping import MESSAGE_INDEX
 
 
-@pytest.fixture(name="setup_elasticsearch")
-def fixture_setup_elasticsearch():
-    """Setup Elasticsearch index for testing."""
-    try:
-        delete_index()
-        create_index_if_not_exists()
+@pytest.fixture(name="setup_search")
+def fixture_setup_search():
+    """Setup OpenSearch index for testing."""
 
-        # Check if Elasticsearch is actually available
-        es = get_es_client()
+    delete_index()
+    create_index_if_not_exists()
 
-        # pylint: disable=unexpected-keyword-arg
-        es.cluster.health(wait_for_status="yellow", timeout="10s")
-        yield
-    # pylint: disable=broad-exception-caught
-    except Exception as e:  # noqa: BLE001
-        pytest.skip(f"Elasticsearch is not available: {e}")
+    # Check if OpenSearch is actually available
+    es = get_opensearch_client()
+
+    # pylint: disable=unexpected-keyword-arg
+    es.cluster.health(wait_for_status="yellow", timeout=10)
+    yield
 
     # Teardown
     try:
         delete_index()
     # pylint: disable=broad-exception-caught
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
 
@@ -87,13 +84,13 @@ def fixture_wait_for_indexing():
 
     def _wait(max_retries=10, delay=0.5):
         """Wait for indexing to complete by refreshing the index."""
-        es = get_es_client()
+        es = get_opensearch_client()
         for _ in range(max_retries):
             try:
                 es.indices.refresh(index=MESSAGE_INDEX)
                 return True
             # pylint: disable=broad-exception-caught
-            except Exception:  # noqa: BLE001
+            except Exception:
                 time.sleep(delay)
         return False
 
@@ -135,7 +132,9 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
             f"Let's discuss the project status on Monday."
         ).encode("utf-8"),
     )
-    MessageRecipientFactory(message=message1, contact=contact2, type="to")
+    MessageRecipientFactory(
+        message=message1, contact=contact2, type=enums.MessageRecipientTypeChoices.TO
+    )
 
     # Thread 2: Thread with CC and BCC recipients
     thread2 = ThreadFactory(subject="Team Update")
@@ -156,9 +155,15 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
             f"Here's the weekly team update with project progress."
         ).encode("utf-8"),
     )
-    MessageRecipientFactory(message=message2, contact=contact1, type="to")
-    MessageRecipientFactory(message=message2, contact=contact3, type="cc")
-    MessageRecipientFactory(message=message2, contact=contact4, type="bcc")
+    MessageRecipientFactory(
+        message=message2, contact=contact1, type=enums.MessageRecipientTypeChoices.TO
+    )
+    MessageRecipientFactory(
+        message=message2, contact=contact3, type=enums.MessageRecipientTypeChoices.CC
+    )
+    MessageRecipientFactory(
+        message=message2, contact=contact4, type=enums.MessageRecipientTypeChoices.BCC
+    )
 
     # Thread 3: Draft message
     thread3 = ThreadFactory(subject="Draft Report")
@@ -178,7 +183,9 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
             f"This is a draft of the quarterly report."
         ).encode("utf-8"),
     )
-    MessageRecipientFactory(message=message3, contact=contact2, type="to")
+    MessageRecipientFactory(
+        message=message3, contact=contact2, type=enums.MessageRecipientTypeChoices.TO
+    )
 
     # Thread 4: Trashed message
     thread4 = ThreadFactory(subject="Old Newsletter")
@@ -198,7 +205,9 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
             f"This is last month's newsletter that should be in trash."
         ).encode("utf-8"),
     )
-    MessageRecipientFactory(message=message4, contact=contact1, type="to")
+    MessageRecipientFactory(
+        message=message4, contact=contact1, type=enums.MessageRecipientTypeChoices.TO
+    )
 
     # Thread 5: Starred and read message
     thread5 = ThreadFactory(subject="Important Announcement")
@@ -219,7 +228,9 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
             f"Please note that our office will be closed next Monday for maintenance."
         ).encode("utf-8"),
     )
-    MessageRecipientFactory(message=message5, contact=contact1, type="to")
+    MessageRecipientFactory(
+        message=message5, contact=contact1, type=enums.MessageRecipientTypeChoices.TO
+    )
 
     # Thread 6: Unread message
     thread6 = ThreadFactory(subject="New Notification")
@@ -239,7 +250,9 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
             f"You have a new notification from the system."
         ).encode("utf-8"),
     )
-    MessageRecipientFactory(message=message6, contact=contact1, type="to")
+    MessageRecipientFactory(
+        message=message6, contact=contact1, type=enums.MessageRecipientTypeChoices.TO
+    )
 
     # Thread 7: For testing exact phrases
     thread7 = ThreadFactory(subject="Project Feedback")
@@ -258,7 +271,9 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
             f"The client provided positive feedback about the new interface design."
         ).encode("utf-8"),
     )
-    MessageRecipientFactory(message=message7, contact=contact1, type="to")
+    MessageRecipientFactory(
+        message=message7, contact=contact1, type=enums.MessageRecipientTypeChoices.TO
+    )
 
     # Thread 8: For testing in second mailbox
     thread8 = ThreadFactory(subject="Different Mailbox Message")
@@ -277,7 +292,9 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
             f"This message is in a different mailbox for testing."
         ).encode("utf-8"),
     )
-    MessageRecipientFactory(message=message8, contact=contact2, type="to")
+    MessageRecipientFactory(
+        message=message8, contact=contact2, type=enums.MessageRecipientTypeChoices.TO
+    )
 
     # Thread 9: For testing sent messages
     thread9 = ThreadFactory(subject="Sent Message")
@@ -297,7 +314,9 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
             f"This is a message that was sent by the user. threadnine msgnineone"
         ).encode("utf-8"),
     )
-    MessageRecipientFactory(message=message9, contact=contact3, type="to")
+    MessageRecipientFactory(
+        message=message9, contact=contact3, type=enums.MessageRecipientTypeChoices.TO
+    )
 
     # A second sent message in the same thread
     message9_2 = MessageFactory(
@@ -313,7 +332,9 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
             f"This is a message that was sent by the user. threadnine msgninetwo"
         ).encode("utf-8"),
     )
-    MessageRecipientFactory(message=message9_2, contact=contact3, type="to")
+    MessageRecipientFactory(
+        message=message9_2, contact=contact3, type=enums.MessageRecipientTypeChoices.TO
+    )
 
     # Wait for indexing to complete
     wait_for_indexing()
@@ -332,15 +353,15 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
 
 
 @pytest.mark.skipif(
-    "elasticsearch" not in settings.ELASTICSEARCH_HOSTS[0],
-    reason="Elasticsearch is not available",
+    len(settings.OPENSEARCH_HOSTS) == 0,
+    reason="OpenSearch is not configured",
 )
 @pytest.mark.django_db
 class TestSearchModifiersE2E:
     """End-to-end tests for Gmail-style search modifiers."""
 
     def test_basic_searches(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         """Test searching with empty query."""
 
@@ -373,7 +394,7 @@ class TestSearchModifiersE2E:
         assert len(response.data["results"]) == 0
 
     def test_from_search_modifier(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         """Test searching with the 'from:' modifier."""
         # Test English version
@@ -403,7 +424,7 @@ class TestSearchModifiersE2E:
         assert str(test_threads["thread1"].id) in thread_ids
 
     def test_to_search_modifier(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         """Test searching with the 'to:' modifier."""
 
@@ -426,7 +447,7 @@ class TestSearchModifiersE2E:
         assert str(test_threads["thread1"].id) in thread_ids
 
     def test_to_search_modifier_substring(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         # Test substring search
         response = api_client.get(f"{test_url}?search=to:@example.com")
@@ -442,7 +463,7 @@ class TestSearchModifiersE2E:
         assert len(response.data["results"]) == 0
 
     def test_cc_search_modifier(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         """Test searching with the 'cc:' modifier."""
         # Test English version
@@ -464,7 +485,7 @@ class TestSearchModifiersE2E:
         assert str(test_threads["thread2"].id) in thread_ids
 
     def test_bcc_search_modifier(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         """Test searching with the 'bcc:' modifier."""
         # Test English version
@@ -486,7 +507,7 @@ class TestSearchModifiersE2E:
         assert str(test_threads["thread2"].id) in thread_ids
 
     def test_subject_search_modifier(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         """Test searching with the 'subject:' modifier."""
         # Test English version
@@ -508,7 +529,7 @@ class TestSearchModifiersE2E:
         assert str(test_threads["thread1"].id) in thread_ids
 
     def test_exact_phrase_search(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         """Test searching with quoted exact phrases."""
         response = api_client.get(f'{test_url}?search="positive feedback"')
@@ -528,7 +549,7 @@ class TestSearchModifiersE2E:
         assert len(response.data["results"]) == 0
 
     def test_in_trash_search_modifier(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         """Test searching with the 'in:trash' modifier."""
         # Test English version
@@ -550,7 +571,7 @@ class TestSearchModifiersE2E:
         assert str(test_threads["thread4"].id) in thread_ids
 
     def test_in_sent_search_modifier(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         """Test searching with the 'in:sent' modifier."""
         # Test English version
@@ -580,7 +601,7 @@ class TestSearchModifiersE2E:
         assert str(test_threads["thread9"].id) in thread_ids
 
     def test_in_draft_search_modifier(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         """Test searching with the 'in:draft' modifier."""
         # Test English version
@@ -602,7 +623,7 @@ class TestSearchModifiersE2E:
         assert str(test_threads["thread3"].id) in thread_ids
 
     def test_is_starred_search_modifier(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         """Test searching with the 'is:starred' modifier."""
         # Test English version
@@ -624,7 +645,7 @@ class TestSearchModifiersE2E:
         assert str(test_threads["thread5"].id) in thread_ids
 
     def test_is_read_search_modifier(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         """Test searching with the 'is:read' modifier."""
         # Test English version
@@ -646,7 +667,7 @@ class TestSearchModifiersE2E:
         assert str(test_threads["thread5"].id) in thread_ids
 
     def test_is_unread_search_modifier(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         """Test searching with the 'is:unread' modifier."""
         # Test English version
@@ -668,7 +689,7 @@ class TestSearchModifiersE2E:
         assert str(test_threads["thread6"].id) in thread_ids
 
     def test_multiple_modifiers_search(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         """Test searching with multiple modifiers."""
         # Combine from: and subject:
@@ -692,7 +713,7 @@ class TestSearchModifiersE2E:
         assert str(test_threads["thread6"].id) in thread_ids
 
     def test_combined_text_and_modifier_search(
-        self, setup_elasticsearch, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads
     ):
         """Test searching with both free text and modifiers."""
         # Search with text and from: modifier

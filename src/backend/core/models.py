@@ -4,6 +4,7 @@ Declare and configure the models for the messages core application
 # pylint: disable=too-many-lines,too-many-instance-attributes
 
 import base64
+import hashlib
 import uuid
 from logging import getLogger
 from typing import Any, Dict, List, Optional
@@ -16,9 +17,13 @@ from django.db import models
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
+import pyzstd
+from encrypted_fields.fields import EncryptedTextField
 from timezone_field import TimeZoneField
 
 from core.enums import (
+    CompressionTypeChoices,
+    DKIMAlgorithmChoices,
     MailboxRoleChoices,
     MailDomainAccessRoleChoices,
     MessageDeliveryStatusChoices,
@@ -26,6 +31,7 @@ from core.enums import (
     ThreadAccessRoleChoices,
 )
 from core.mda.rfc5322 import parse_email_message
+from core.mda.signing import generate_dkim_key as _generate_dkim_key
 
 logger = getLogger(__name__)
 
@@ -129,8 +135,7 @@ class User(AbstractBaseUser, BaseModel, auth_models.PermissionsMixin):
         null=True,
     )
 
-    full_name = models.CharField(_("full name"), max_length=100, null=True, blank=True)
-    short_name = models.CharField(_("short name"), max_length=20, null=True, blank=True)
+    full_name = models.CharField(_("full name"), max_length=255, null=True, blank=True)
 
     email = models.EmailField(_("identity email address"), blank=True, null=True)
 
@@ -153,11 +158,6 @@ class User(AbstractBaseUser, BaseModel, auth_models.PermissionsMixin):
         default=settings.TIME_ZONE,
         help_text=_("The timezone in which the user wants to see times."),
     )
-    is_device = models.BooleanField(
-        _("device"),
-        default=False,
-        help_text=_("Whether the user is a device or a real user."),
-    )
     is_staff = models.BooleanField(
         _("staff status"),
         default=False,
@@ -170,6 +170,14 @@ class User(AbstractBaseUser, BaseModel, auth_models.PermissionsMixin):
             "Whether this user should be treated as active. "
             "Unselect this instead of deleting accounts."
         ),
+    )
+
+    custom_attributes = models.JSONField(
+        _("Custom attributes"),
+        default=None,
+        null=True,
+        blank=True,
+        help_text=_("Metadata to sync to the user in the identity provider."),
     )
 
     objects = UserManager()
@@ -199,7 +207,17 @@ class User(AbstractBaseUser, BaseModel, auth_models.PermissionsMixin):
 class MailDomain(BaseModel):
     """Mail domain model to store mail domain information."""
 
-    name = models.CharField(_("name"), max_length=255, unique=True)
+    name_validator = validators.RegexValidator(
+        regex=r"^[a-z0-9][a-z0-9.-]*[a-z0-9]$",
+        message=_(
+            "Enter a valid domain name. This value may contain only lowercase "
+            "letters, numbers, dots and - characters."
+        ),
+    )
+
+    name = models.CharField(
+        _("name"), max_length=253, unique=True, validators=[name_validator]
+    )
 
     alias_of = models.ForeignKey(
         "self", on_delete=models.SET_NULL, null=True, blank=True
@@ -214,12 +232,11 @@ class MailDomain(BaseModel):
     identity_sync = models.BooleanField(
         _("Identity sync"),
         default=False,
-        help_text=_("Sync mailboxes to identity provider."),
+        help_text=_("Sync mailboxes to an identity provider."),
     )
 
-    # This contains French SIRETs
-    identity_group_metadata = models.JSONField(
-        _("Metadata to sync to the maildomain group in the identity provider"),
+    custom_attributes = models.JSONField(
+        _("Custom attributes"),
         default=None,
         null=True,
         blank=True,
@@ -238,24 +255,35 @@ class MailDomain(BaseModel):
 
     def get_expected_dns_records(self) -> List[str]:
         """Get the list of DNS records we expect to be present for this domain."""
+
+        technical_domain = settings.MESSAGES_TECHNICAL_DOMAIN
+
         records = [
-            {"target": "", "type": "mx", "value": "TODO"},
+            {"target": "", "type": "mx", "value": f"10 mx1.{technical_domain}."},
+            {"target": "", "type": "mx", "value": f"20 mx2.{technical_domain}."},
             {
                 "target": "",
                 "type": "txt",
-                "value": "v=spf1 include:_spf.TODO -all",
+                "value": f"v=spf1 include:_spf.{technical_domain} -all",
             },
             {
                 "target": "_dmarc",
                 "type": "txt",
                 "value": "v=DMARC1; p=reject; adkim=s; aspf=s;",
             },
-            {
-                "target": "s1._domainkey",
-                "type": "cname",
-                "value": "TODO",
-            },
         ]
+
+        # Add DKIM record if we have an active DKIM key
+        dkim_key = self.get_active_dkim_key()
+        if dkim_key:
+            records.append(
+                {
+                    "target": f"{dkim_key.selector}._domainkey",
+                    "type": "txt",
+                    "value": dkim_key.get_dns_record_value(),
+                }
+            )
+
         return records
 
     def get_abilities(self, user):
@@ -296,13 +324,50 @@ class MailDomain(BaseModel):
             "manage_mailboxes": is_admin,
         }
 
+    def generate_dkim_key(
+        self,
+        selector: str = settings.MESSAGES_DKIM_DEFAULT_SELECTOR,
+        algorithm: DKIMAlgorithmChoices = DKIMAlgorithmChoices.RSA,
+        key_size: int = 2048,
+    ) -> "DKIMKey":
+        """
+        Generate and create a new DKIM key for this domain.
+
+        Args:
+            selector: The DKIM selector (e.g., 'default', 'mail')
+            algorithm: The signing algorithm
+            key_size: The key size in bits (e.g., 2048, 4096 for RSA)
+
+        Returns:
+            The created DKIMKey instance
+        """
+        # Generate private and public keys
+        private_key, public_key = _generate_dkim_key(algorithm, key_size=key_size)
+        return DKIMKey.objects.create(
+            selector=selector,
+            private_key=private_key,
+            public_key=public_key,
+            algorithm=algorithm,
+            key_size=key_size,
+            is_active=True,
+            domain=self,
+        )
+
+    def get_active_dkim_key(self):
+        """Get the most recent active DKIM key for this domain."""
+        return (
+            DKIMKey.objects.filter(
+                domain=self, is_active=True
+            ).first()  # Most recent due to ordering in model
+        )
+
 
 class Mailbox(BaseModel):
     """Mailbox model to store mailbox information."""
 
     local_part = models.CharField(
         _("local part"),
-        max_length=255,
+        max_length=64,
         validators=[validators.RegexValidator(regex=r"^[a-zA-Z0-9_.-]+$")],
     )
     domain = models.ForeignKey("MailDomain", on_delete=models.CASCADE)
@@ -343,6 +408,72 @@ class Mailbox(BaseModel):
             accesses__role=ThreadAccessRoleChoices.EDITOR,
         )
 
+    def create_blob(
+        self,
+        content: bytes,
+        content_type: str,
+        compression: Optional[CompressionTypeChoices] = CompressionTypeChoices.ZSTD,
+    ) -> "Blob":
+        """
+        Create a new blob with automatic SHA256 calculation and compression.
+
+        Args:
+            content: Raw binary content to store
+            content_type: MIME type of the content
+            compression: Compression type to use (defaults to ZSTD)
+
+        Returns:
+            The created Blob instance
+
+        Raises:
+            ValueError: If content is empty
+        """
+        if not content:
+            raise ValueError("Content cannot be empty")
+
+        # Calculate SHA256 hash of the original content
+        sha256_hash = hashlib.sha256(content).digest()
+
+        # Store the original size
+        original_size = len(content)
+
+        # Apply compression if requested
+        compressed_content = content
+        if compression == CompressionTypeChoices.ZSTD:
+            compressed_content = pyzstd.compress(
+                content, level_or_option=settings.MESSAGES_BLOB_ZSTD_LEVEL
+            )
+            logger.debug(
+                "Compressed blob from %d bytes to %d bytes (%.1f%% reduction)",
+                original_size,
+                len(compressed_content),
+                (1 - len(compressed_content) / original_size) * 100,
+            )
+        elif compression == CompressionTypeChoices.NONE:
+            compressed_content = content
+        else:
+            raise ValueError(f"Unsupported compression type: {compression}")
+
+        # Create the blob
+        blob = Blob.objects.create(
+            sha256=sha256_hash,
+            size=original_size,
+            content_type=content_type,
+            compression=compression,
+            raw_content=compressed_content,
+            mailbox=self,
+        )
+
+        logger.info(
+            "Created blob %s: %d bytes, %s compression, %s content type",
+            blob.id,
+            original_size,
+            compression.label,
+            content_type,
+        )
+
+        return blob
+
 
 class MailboxAccess(BaseModel):
     """Mailbox access model to store mailbox access information."""
@@ -353,9 +484,8 @@ class MailboxAccess(BaseModel):
     user = models.ForeignKey(
         "User", on_delete=models.CASCADE, related_name="mailbox_accesses"
     )
-    role = models.CharField(
+    role = models.SmallIntegerField(
         _("role"),
-        max_length=20,
         choices=MailboxRoleChoices.choices,
         default=MailboxRoleChoices.VIEWER,
     )
@@ -381,6 +511,7 @@ class Thread(BaseModel):
     has_starred = models.BooleanField(_("has starred"), default=False)
     has_sender = models.BooleanField(_("has sender"), default=False)
     has_messages = models.BooleanField(_("has messages"), default=True)
+    has_attachments = models.BooleanField(_("has attachments"), default=False)
     is_spam = models.BooleanField(_("is spam"), default=False)
     has_active = models.BooleanField(_("has active"), default=False)
     messaged_at = models.DateTimeField(_("messaged at"), null=True, blank=True)
@@ -407,6 +538,7 @@ class Thread(BaseModel):
                 "is_sender",
                 "is_spam",
                 "is_archived",
+                "has_attachments",
                 "created_at",
                 "sender__name",
             )
@@ -421,6 +553,7 @@ class Thread(BaseModel):
             self.has_starred = False
             self.has_sender = False
             self.has_messages = False
+            self.has_attachments = False
             self.is_spam = False
             self.has_active = False
             self.messaged_at = None
@@ -440,6 +573,9 @@ class Thread(BaseModel):
             self.has_sender = any(
                 msg["is_sender"] and not msg["is_trashed"] and not msg["is_draft"]
                 for msg in message_data
+            )
+            self.has_attachments = any(
+                msg["has_attachments"] and not msg["is_trashed"] for msg in message_data
             )
 
             # Check if we have any non-trashed, non-spam messages
@@ -506,6 +642,7 @@ class Thread(BaseModel):
                 "has_starred",
                 "has_sender",
                 "has_messages",
+                "has_attachments",
                 "is_spam",
                 "has_active",
                 "messaged_at",
@@ -654,9 +791,8 @@ class ThreadAccess(BaseModel):
     mailbox = models.ForeignKey(
         "Mailbox", on_delete=models.CASCADE, related_name="thread_accesses"
     )
-    role = models.CharField(
+    role = models.SmallIntegerField(
         _("role"),
-        max_length=20,
         choices=ThreadAccessRoleChoices.choices,
         default=ThreadAccessRoleChoices.VIEWER,
     )
@@ -706,17 +842,15 @@ class MessageRecipient(BaseModel):
     contact = models.ForeignKey(
         "Contact", on_delete=models.CASCADE, related_name="messages"
     )
-    type = models.CharField(
+    type = models.SmallIntegerField(
         _("type"),
-        max_length=20,
         choices=MessageRecipientTypeChoices.choices,
         default=MessageRecipientTypeChoices.TO,
     )
 
     delivered_at = models.DateTimeField(_("delivered at"), null=True, blank=True)
-    delivery_status = models.CharField(
+    delivery_status = models.SmallIntegerField(
         _("delivery status"),
-        max_length=20,
         null=True,
         blank=True,
         choices=MessageDeliveryStatusChoices.choices,
@@ -755,6 +889,7 @@ class Message(BaseModel):
     is_unread = models.BooleanField(_("is unread"), default=False)
     is_spam = models.BooleanField(_("is spam"), default=False)
     is_archived = models.BooleanField(_("is archived"), default=False)
+    has_attachments = models.BooleanField(_("has attachments"), default=False)
 
     trashed_at = models.DateTimeField(_("trashed at"), null=True, blank=True)
     sent_at = models.DateTimeField(_("sent at"), null=True, blank=True)
@@ -763,13 +898,22 @@ class Message(BaseModel):
 
     mime_id = models.CharField(_("mime id"), max_length=998, null=True, blank=True)
 
-    # Stores the raw MIME message. This will be optimized and offloaded
-    # to object storage in the future.
-    raw_mime = models.BinaryField(blank=True, default=b"")
+    # Stores the raw MIME message.
+    blob = models.ForeignKey(
+        "Blob",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="messages",
+    )
 
-    # Store the draft body as arbitrary JSON text. Might be offloaded
-    # somewhere else as well.
-    draft_body = models.TextField(_("draft body"), blank=True, null=True)
+    draft_blob = models.ForeignKey(
+        "Blob",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="drafts",
+    )
 
     # Internal cache for parsed data
     _parsed_email_cache: Optional[Dict[str, Any]] = None
@@ -784,12 +928,12 @@ class Message(BaseModel):
         return str(self.subject) if self.subject else "(no subject)"
 
     def get_parsed_data(self) -> Dict[str, Any]:
-        """Parse raw_mime using parser and cache the result."""
+        """Parse raw mime message using parser and cache the result."""
         if self._parsed_email_cache is not None:
             return self._parsed_email_cache
 
-        if self.raw_mime:
-            self._parsed_email_cache = parse_email_message(self.raw_mime)
+        if self.blob:
+            self._parsed_email_cache = parse_email_message(self.blob.get_content())
         else:
             self._parsed_email_cache = {}
         return self._parsed_email_cache
@@ -819,28 +963,34 @@ class Blob(BaseModel):
 
     This model follows the JMAP blob design, storing raw content that can
     be referenced by multiple attachments.
+
+    This will be offloaded to object storage in the future.
     """
 
-    sha256 = models.CharField(
+    sha256 = models.BinaryField(
         _("sha256 hash"),
-        max_length=64,
+        max_length=32,
         db_index=True,
-        help_text=_("SHA-256 hash of the blob content"),
+        help_text=_("SHA-256 hash of the uncompressed blob content"),
     )
 
     size = models.PositiveIntegerField(
         _("file size"), help_text=_("Size of the blob in bytes")
     )
 
-    type = models.CharField(
-        _("content type"), max_length=255, help_text=_("MIME type of the blob")
+    content_type = models.CharField(
+        _("content type"), max_length=127, help_text=_("MIME type of the blob")
+    )
+
+    compression = models.SmallIntegerField(
+        _("compression"),
+        choices=CompressionTypeChoices.choices,
+        default=CompressionTypeChoices.NONE,
     )
 
     raw_content = models.BinaryField(
         _("raw content"),
-        help_text=_(
-            "Binary content of the blob, will be offloaded to object storage in the future"
-        ),
+        help_text=_("Compressed binary content of the blob"),
     )
 
     mailbox = models.ForeignKey(
@@ -858,6 +1008,22 @@ class Blob(BaseModel):
 
     def __str__(self):
         return f"Blob {self.id} ({self.size} bytes)"
+
+    def get_content(self) -> bytes:
+        """
+        Get the decompressed content of this blob.
+
+        Returns:
+            The decompressed content
+
+        Raises:
+            ValueError: If the blob compression type is not supported
+        """
+        if self.compression == CompressionTypeChoices.NONE:
+            return self.raw_content
+        if self.compression == CompressionTypeChoices.ZSTD:
+            return pyzstd.decompress(self.raw_content)
+        raise ValueError(f"Unsupported compression type: {self.compression}")
 
 
 class Attachment(BaseModel):
@@ -901,7 +1067,7 @@ class Attachment(BaseModel):
     @property
     def content_type(self):
         """Return the content type of the associated blob."""
-        return self.blob.type
+        return self.blob.content_type
 
     @property
     def size(self) -> int:
@@ -923,9 +1089,8 @@ class MailDomainAccess(BaseModel):
     user = models.ForeignKey(
         "User", on_delete=models.CASCADE, related_name="maildomain_accesses"
     )
-    role = models.CharField(
+    role = models.SmallIntegerField(
         _("role"),
-        max_length=20,
         choices=MailDomainAccessRoleChoices.choices,
         default=MailDomainAccessRoleChoices.ADMIN,
     )
@@ -938,3 +1103,66 @@ class MailDomainAccess(BaseModel):
 
     def __str__(self):
         return f"Access to {self.maildomain} for {self.user} with {self.role} role"
+
+
+class DKIMKey(BaseModel):
+    """DKIM Key model to store DKIM signing keys with encrypted private key storage."""
+
+    selector = models.CharField(
+        _("selector"),
+        max_length=255,
+        help_text=_("DKIM selector (e.g., 'default', 'mail')"),
+    )
+
+    private_key = EncryptedTextField(
+        _("private key"),
+        help_text=_("DKIM private key in PEM format (encrypted)"),
+    )
+
+    public_key = models.TextField(
+        _("public key"),
+        help_text=_("DKIM public key for DNS record generation"),
+    )
+
+    algorithm = models.SmallIntegerField(
+        _("algorithm"),
+        choices=DKIMAlgorithmChoices.choices,
+        default=DKIMAlgorithmChoices.RSA,
+        help_text=_("DKIM signing algorithm"),
+    )
+
+    key_size = models.PositiveIntegerField(
+        _("key size"),
+        help_text=_("Key size in bits (e.g., 2048, 4096 for RSA)"),
+    )
+
+    is_active = models.BooleanField(
+        _("is active"),
+        default=True,
+        help_text=_("Whether this DKIM key is active and should be used for signing"),
+    )
+
+    domain = models.ForeignKey(
+        "MailDomain",
+        on_delete=models.CASCADE,
+        related_name="dkim_keys",
+        help_text=_("Domain that owns this DKIM key"),
+    )
+
+    class Meta:
+        db_table = "messages_dkimkey"
+        verbose_name = _("DKIM key")
+        verbose_name_plural = _("DKIM keys")
+        ordering = ["-created_at"]  # Most recent first for picking latest active key
+
+    def __str__(self):
+        return f"DKIM Key {self.selector} ({self.algorithm}) - {self.domain}"
+
+    def get_private_key_bytes(self) -> bytes:
+        """Get the private key as bytes."""
+        return self.private_key.encode("utf-8")
+
+    def get_dns_record_value(self) -> str:
+        """Get the DNS TXT record value for this DKIM key."""
+        algorithm_enum = DKIMAlgorithmChoices(self.algorithm)
+        return f"v=DKIM1; k={algorithm_enum.label}; p={self.public_key}"

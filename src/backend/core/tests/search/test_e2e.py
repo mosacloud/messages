@@ -1,4 +1,4 @@
-"""End-to-end tests for the Elasticsearch search functionality."""
+"""End-to-end tests for the OpenSearch search functionality."""
 
 # pylint: disable=too-many-positional-arguments,unused-argument
 import time
@@ -9,6 +9,7 @@ from django.urls import reverse
 import pytest
 from rest_framework.test import APIClient
 
+from core import enums
 from core.factories import (
     ContactFactory,
     MailboxAccessFactory,
@@ -19,29 +20,29 @@ from core.factories import (
     ThreadFactory,
     UserFactory,
 )
-from core.search import create_index_if_not_exists, delete_index, get_es_client
+from core.search import create_index_if_not_exists, delete_index, get_opensearch_client
 from core.search.mapping import MESSAGE_INDEX
 
 
-@pytest.fixture(name="setup_elasticsearch")
-def fixture_setup_elasticsearch():
-    """Setup Elasticsearch index for testing."""
+@pytest.fixture(name="setup_search")
+def fixture_setup_search():
+    """Setup OpenSearch index for testing."""
 
     delete_index()
     create_index_if_not_exists()
 
-    # Check if Elasticsearch is actually available
-    es = get_es_client()
+    # Check if OpenSearch is actually available
+    es = get_opensearch_client()
 
     # pylint: disable=unexpected-keyword-arg
-    es.cluster.health(wait_for_status="yellow", timeout="10s")
+    es.cluster.health(wait_for_status="yellow", timeout=10)
     yield
 
     # Teardown
     try:
         delete_index()
     # pylint: disable=broad-exception-caught
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
 
@@ -79,13 +80,13 @@ def fixture_wait_for_indexing():
 
     def _wait(max_retries=10, delay=0.5):
         """Wait for indexing to complete by refreshing the index."""
-        es = get_es_client()
+        es = get_opensearch_client()
         for _ in range(max_retries):
             try:
                 es.indices.refresh(index=MESSAGE_INDEX)
                 return True
             # pylint: disable=broad-exception-caught
-            except Exception:  # noqa: BLE001
+            except Exception:
                 time.sleep(delay)
         return False
 
@@ -123,7 +124,9 @@ def fixture_create_test_thread(test_mailbox, wait_for_indexing):
             ).encode("utf-8"),
         )
 
-        MessageRecipientFactory(message=message, contact=contact2, type="to")
+        MessageRecipientFactory(
+            message=message, contact=contact2, type=enums.MessageRecipientTypeChoices.TO
+        )
 
         # Wait for indexing to complete
         wait_for_indexing()
@@ -134,15 +137,15 @@ def fixture_create_test_thread(test_mailbox, wait_for_indexing):
 
 
 @pytest.mark.skipif(
-    "elasticsearch" not in settings.ELASTICSEARCH_HOSTS[0],
-    reason="Elasticsearch is not available",
+    len(settings.OPENSEARCH_HOSTS) == 0,
+    reason="OpenSearch is not configured",
 )
 @pytest.mark.django_db
 class TestSearchE2E:
-    """End-to-end tests for Elasticsearch search functionality."""
+    """End-to-end tests for OpenSearch search functionality."""
 
     def test_search_thread_by_subject(
-        self, setup_elasticsearch, api_client, test_url, create_test_thread
+        self, setup_search, api_client, test_url, create_test_thread
     ):
         """Test searching for a thread by its subject."""
         # Create a thread with a specific subject
@@ -161,7 +164,7 @@ class TestSearchE2E:
         assert str(thread.id) in thread_ids
 
     def test_search_thread_by_message_content(
-        self, setup_elasticsearch, api_client, test_url, create_test_thread
+        self, setup_search, api_client, test_url, create_test_thread
     ):
         """Test searching for a thread by message content."""
         # Create a thread with specific content
@@ -181,7 +184,7 @@ class TestSearchE2E:
 
     def test_search_with_filters(
         self,
-        setup_elasticsearch,
+        setup_search,
         api_client,
         test_url,
         create_test_thread,
@@ -220,7 +223,7 @@ class TestSearchE2E:
 
     def test_multiple_threads_in_search_results(
         self,
-        setup_elasticsearch,
+        setup_search,
         api_client,
         test_url,
         create_test_thread,
