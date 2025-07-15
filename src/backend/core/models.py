@@ -866,7 +866,7 @@ class MessageRecipient(BaseModel):
         unique_together = ("message", "contact", "type")
 
     def __str__(self):
-        return f"{self.message} - {self.contact} - {self.type}"
+        return f"{self.message} - {self.contact} - {self.get_type_display()}"
 
 
 class Message(BaseModel):
