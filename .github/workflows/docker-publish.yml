@@ -16,6 +16,11 @@ on:
         type: string
         required: true
         description: The path to the context to start `docker build` into.
+      target:
+        type: string
+        required: false
+        default: ""
+        description: The Dockerfile target stage to build the image for.
 
 # see https://docs.github.com/en/enterprise-cloud@latest/actions/how-tos/use-cases-and-examples/publishing-packages/publishing-docker-images#publishing-images-to-github-packages
 jobs:
@@ -45,6 +50,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ inputs.context }}
+          target: ${{ inputs.target }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

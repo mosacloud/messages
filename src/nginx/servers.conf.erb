@@ -45,9 +45,6 @@ server {
     location ~* ^/domain$ {
         try_files /domain.html =404;
     }
-    location ~* ^/domains$ {
-        try_files /domain.html =404;
-    }
     location ~* ^/domain/[^/]+$ {
         try_files /domain/[maildomainId].html =404;
     }
