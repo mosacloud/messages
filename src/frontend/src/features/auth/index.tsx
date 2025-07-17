@@ -37,6 +37,16 @@ export const Auth = ({
     }
   }, [query.isError, redirect]);
 
+  useEffect(() => {
+    if (query.data?.data) {
+      const user = query.data.data;
+      posthog.identify(user.id, {
+        email: user.email || undefined,
+        name: user.full_name || undefined,
+      });
+    }
+  }, [query.data?.data]);
+
   if (!query.isFetched) {
     return (
       <div
