@@ -137,10 +137,16 @@ class LabelViewSet(
                 # This is a child label
                 parent_name = "/".join(parts[:-1])
                 # Find parent label
+                parent_found = False
                 for potential_parent in labels:
                     if potential_parent.name == parent_name:
                         label_dict[potential_parent.id]["children"].append(label_data)
+                        parent_found = True
                         break
+
+                # If parent not found, treat as root label (orphaned child)
+                if not parent_found:
+                    root_labels.append(label_data)
 
         # Sort children alphabetically by name
         for label_data in label_dict.values():

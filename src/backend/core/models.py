@@ -698,7 +698,40 @@ class Label(BaseModel):
     def save(self, *args, **kwargs):
         """
         Ensure all parent labels exist before saving this label.
+        Also handle renaming of parent labels by updating all children.
         """
+        # Check if this is an update and the name is changing
+        if self.pk and hasattr(self, "_state") and not self._state.adding:
+            try:
+                old_instance = Label.objects.get(pk=self.pk)
+                old_name = old_instance.name
+                new_name = self.name
+
+                # If the name is changing
+                if old_name != new_name:
+                    # Find all child labels that start with the old name
+                    child_labels = Label.objects.filter(
+                        mailbox=self.mailbox, name__startswith=f"{old_name}/"
+                    )
+
+                    # Update all child labels to use the new parent name
+                    for child in child_labels:
+                        child.name = child.name.replace(
+                            f"{old_name}/", f"{new_name}/", 1
+                        )
+                        child.slug = slugify(child.name.replace("/", "-"))
+                        # Use update to avoid triggering save method again
+                        Label.objects.filter(pk=child.pk).update(
+                            name=child.name, slug=child.slug
+                        )
+
+                    # Clean up orphaned parent labels that are no longer referenced
+                    self._cleanup_orphaned_parents(old_name)
+
+            except Label.DoesNotExist:
+                # This is a new instance, not an update
+                pass
+
         # Create parent labels if they don't exist
         if self.name and self.mailbox:
             parts = self.name.split("/")
@@ -715,6 +748,33 @@ class Label(BaseModel):
         if not self.slug:
             self.slug = slugify(self.name.replace("/", "-"))
         super().save(*args, **kwargs)
+
+    def _cleanup_orphaned_parents(self, old_name):
+        """Remove parent labels that are no longer referenced by any children."""
+        # Get all parts of the old name
+        old_parts = old_name.split("/")
+
+        # Check each potential parent level
+        for i in range(len(old_parts)):
+            potential_parent = "/".join(old_parts[: i + 1])
+
+            # Check if this parent is still referenced by any children
+            has_children = Label.objects.filter(
+                mailbox=self.mailbox, name__startswith=f"{potential_parent}/"
+            ).exists()
+
+            # If no children reference this parent, and it's not the current label being updated
+            if not has_children and potential_parent != self.name:
+                # Check if this parent label exists
+                try:
+                    orphaned_parent = Label.objects.get(
+                        mailbox=self.mailbox, name=potential_parent
+                    )
+                    # Only delete if it's not the current label being updated
+                    if orphaned_parent.pk != self.pk:
+                        orphaned_parent.delete()
+                except Label.DoesNotExist:
+                    pass
 
     @property
     def parent_name(self):

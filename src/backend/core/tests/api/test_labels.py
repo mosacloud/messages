@@ -740,6 +740,91 @@ class TestLabelViewSet:
         assert "Label with this Slug and Mailbox already exists" in str(response.data)
         assert models.Label.objects.count() == 1
 
+    def test_rename_parent_label_has_to_update_children(
+        self,
+        api_client,
+        mailbox,
+        user,
+    ):
+        """
+        Test that when a parent label is renamed, its children should also
+        be renamed to maintain the hierarchy.
+        """
+        api_client.force_authenticate(user=user)
+
+        # Create a parent label and child labels
+        parent_label = LabelFactory(name="Work", mailbox=mailbox)
+        child_label1 = LabelFactory(name="Work/Projects", mailbox=mailbox)
+        child_label2 = LabelFactory(name="Work/Meetings", mailbox=mailbox)
+        grandchild_label = LabelFactory(name="Work/Projects/Urgent", mailbox=mailbox)
+
+        # Verify initial state
+        assert models.Label.objects.filter(name="Work").exists()
+        assert models.Label.objects.filter(name="Work/Projects").exists()
+        assert models.Label.objects.filter(name="Work/Meetings").exists()
+        assert models.Label.objects.filter(name="Work/Projects/Urgent").exists()
+
+        # Rename the parent label from "Work" to "Job"
+        url = reverse("labels-detail", kwargs={"pk": str(parent_label.id)})
+        data = {"name": "Job", "mailbox": str(mailbox.id)}
+
+        response = api_client.put(url, data, format="json")
+        assert response.status_code == status.HTTP_200_OK
+
+        # Verify the parent label was renamed
+        parent_label.refresh_from_db()
+        assert parent_label.name == "Job"
+        assert parent_label.slug == "job"
+
+        child_label1.refresh_from_db()
+        child_label2.refresh_from_db()
+        grandchild_label.refresh_from_db()
+
+        assert child_label1.name == "Job/Projects"
+        assert child_label2.name == "Job/Meetings"
+        assert grandchild_label.name == "Job/Projects/Urgent"
+
+        assert models.Label.objects.filter(name="Job/Projects").exists()
+        assert models.Label.objects.filter(name="Job/Meetings").exists()
+        assert models.Label.objects.filter(name="Job/Projects/Urgent").exists()
+        assert not models.Label.objects.filter(name="Work").exists()
+        assert not models.Label.objects.filter(name="Work/Projects").exists()
+        assert not models.Label.objects.filter(name="Work/Meetings").exists()
+        assert not models.Label.objects.filter(name="Work/Projects/Urgent").exists()
+
+        # edit middle label
+        url = reverse("labels-detail", kwargs={"pk": str(child_label1.id)})
+        data = {"name": "Job/Bidule", "mailbox": str(mailbox.id)}
+        response = api_client.put(url, data, format="json")
+        assert response.status_code == status.HTTP_200_OK
+
+        # Refresh the labels to get updated data
+        child_label1.refresh_from_db()
+        grandchild_label.refresh_from_db()
+
+        # Verify the middle label was renamed
+        assert child_label1.name == "Job/Bidule"
+        assert child_label1.slug == "job-bidule"
+        assert child_label1.parent_name == "Job"
+        assert child_label1.depth == 1
+
+        # Verify the grandchild was also renamed
+        assert grandchild_label.name == "Job/Bidule/Urgent"
+
+        # Verify new labels exist
+        assert models.Label.objects.filter(name="Job/Bidule").exists()
+        assert models.Label.objects.filter(name="Job").exists()
+        assert models.Label.objects.filter(name="Job/Meetings").exists()
+        assert models.Label.objects.filter(name="Job/Bidule/Urgent").exists()
+
+        # Verify old labels no longer exist
+        assert not models.Label.objects.filter(name="Work").exists()
+        assert not models.Label.objects.filter(name="Work/Projects").exists()
+        assert not models.Label.objects.filter(name="Work/Meetings").exists()
+        assert not models.Label.objects.filter(name="Work/Projects/Urgent").exists()
+        assert not models.Label.objects.filter(name="Job/Projects").exists()
+        assert not models.Label.objects.filter(name="Job/Projects/Urgent").exists()
+
     def test_list_labels_hierarchical_structure(self, api_client, mailbox, user):
         """Test that labels are returned in a proper hierarchical structure."""
         # Create a hierarchical structure of labels
