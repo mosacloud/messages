@@ -218,6 +218,7 @@ class TestMailboxAccessViewSet:
         mailbox1_admin_user,
         mailbox1_domain1,
         user_beta,
+        user_alpha,
     ):
         """Domain and mailbox admins should be able to create new accesses."""
         user_performing_action = (
@@ -247,6 +248,22 @@ class TestMailboxAccessViewSet:
             self.list_create_url(mailbox_id=mailbox1_domain1.pk), data
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        # We can also create based on the email address
+        # This might be temporary until we have a proper invite system
+        data = {
+            "user": user_alpha.email,
+            "role": "editor",
+        }
+        response = api_client.post(
+            self.list_create_url(mailbox_id=mailbox1_domain1.pk), data
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data["user"] == user_alpha.pk
+        assert response.data["role"] == "editor"
+        assert models.MailboxAccess.objects.filter(
+            mailbox=mailbox1_domain1, user=user_alpha, role=MailboxRoleChoices.EDITOR
+        ).exists()
 
     def test_create_access_by_mailbox_admin_for_unmanaged_mailbox_forbidden(
         self, api_client, mailbox1_admin_user, mailbox1_domain2, user_beta

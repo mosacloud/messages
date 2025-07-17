@@ -612,12 +612,35 @@ class MailboxAccessReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields  # All fields are effectively read-only from this serializer's perspective
 
 
+class UserField(serializers.PrimaryKeyRelatedField):
+    """Custom field that accepts either UUID or email address for user lookup."""
+
+    def to_internal_value(self, data):
+        """Convert UUID string or email to User instance."""
+        if isinstance(data, str):
+            if "@" in data:
+                # It's an email address, look up the user
+                try:
+                    return models.User.objects.get(email=data)
+                except models.User.DoesNotExist as e:
+                    raise serializers.ValidationError(
+                        f"No user found with email: {data}"
+                    ) from e
+            else:
+                # It's a UUID, use the parent method
+                return super().to_internal_value(data)
+        return super().to_internal_value(data)
+
+
 class MailboxAccessWriteSerializer(serializers.ModelSerializer):
     """Serializer for creating and updating mailbox access records.
     Mailbox is set from the view based on URL parameters.
     """
 
     role = IntegerChoicesField(choices_class=models.MailboxRoleChoices)
+    user = UserField(
+        queryset=models.User.objects.all(), help_text="User ID (UUID) or email address"
+    )
 
     class Meta:
         model = models.MailboxAccess
