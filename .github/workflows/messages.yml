@@ -13,13 +13,15 @@ env:
 
 jobs:
 
-  lint-back:
+  lint-all:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Create env files
         run: make create-env-files
+      - name: Install frontend dependencies
+        run: make front-install-frozen
       - name: Run linting checks
         run: make lint-check
 
