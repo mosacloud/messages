@@ -64,7 +64,7 @@ class TestApiDraftAndSendMessage:
         factories.MailboxAccessFactory(
             mailbox=mailbox,
             user=authenticated_user,
-            role=enums.MailboxRoleChoices.EDITOR,
+            role=enums.MailboxRoleChoices.SENDER,
         )
         assert not models.ThreadAccess.objects.exists()
 
@@ -225,7 +225,7 @@ class TestApiDraftAndSendMessage:
         factories.MailboxAccessFactory(
             mailbox=mailbox,
             user=authenticated_user,
-            role=enums.MailboxRoleChoices.EDITOR,
+            role=enums.MailboxRoleChoices.SENDER,
         )
         # add access for the current mailbox to the thread
         factories.ThreadAccessFactory(
@@ -361,7 +361,7 @@ class TestApiDraftAndSendMessage:
         factories.MailboxAccessFactory(
             mailbox=mailbox,
             user=authenticated_user,
-            role=enums.MailboxRoleChoices.EDITOR,
+            role=enums.MailboxRoleChoices.SENDER,
         )
         client = APIClient()
         client.force_authenticate(user=authenticated_user)
@@ -441,10 +441,6 @@ class TestApiDraftAndSendMessage:
         # Assert the response is forbidden
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    # TODO: implement this test
-    # def test_send_message_without_permission_required(self, authenticated_user, send_url):
-    #    """Test send message without permission required."""
-
     def test_draft_message_not_allowed(self, authenticated_user):
         """Test create draft message not allowed."""
         # Create a client and authenticate the user
@@ -463,10 +459,6 @@ class TestApiDraftAndSendMessage:
         )
         # Assert the response is forbidden, there is no mailbox access
         assert response.status_code == status.HTTP_403_FORBIDDEN
-
-    # TODO: implement this test
-    #   def test_send_message_not_allowed(self, authenticated_user, send_url):
-    #    """Test send message not allowed."""
 
     def test_draft_message_unauthorized(self):
         """Test create draft message unauthorized."""
@@ -573,7 +565,7 @@ class TestApiDraftAndSendMessage:
         factories.MailboxAccessFactory(
             mailbox=mailbox,
             user=authenticated_user,
-            role=enums.MailboxRoleChoices.EDITOR,
+            role=enums.MailboxRoleChoices.SENDER,
         )
 
         client = APIClient()
@@ -714,7 +706,7 @@ class TestApiDraftAndSendReply:
         factories.MailboxAccessFactory(
             mailbox=mailbox,
             user=authenticated_user,
-            role=enums.MailboxRoleChoices.EDITOR,
+            role=enums.MailboxRoleChoices.SENDER,
         )
         # Create a thread with a message
         thread_access = factories.ThreadAccessFactory(
@@ -797,10 +789,7 @@ class TestApiDraftAndSendReply:
 
     @pytest.mark.parametrize(
         "thread_role",
-        [
-            enums.ThreadAccessRoleChoices.VIEWER,
-            enums.ThreadAccessRoleChoices.EDITOR,
-        ],
+        [enums.ThreadAccessRoleChoices.VIEWER, enums.ThreadAccessRoleChoices.EDITOR],
     )
     def test_draft_reply_without_permission_on_mailbox(
         self, mailbox, authenticated_user, thread_role
@@ -845,6 +834,7 @@ class TestApiDraftAndSendReply:
             enums.MailboxRoleChoices.VIEWER,
             enums.MailboxRoleChoices.EDITOR,
             enums.MailboxRoleChoices.ADMIN,
+            enums.MailboxRoleChoices.SENDER,
         ],
     )
     def test_draft_reply_without_permission_on_thread(
@@ -908,6 +898,7 @@ class TestApiDraftAndSendReply:
         [
             enums.MailboxRoleChoices.EDITOR,
             enums.MailboxRoleChoices.ADMIN,
+            enums.MailboxRoleChoices.SENDER,
         ],
     )
     def test_update_draft_message_success(
@@ -1014,14 +1005,21 @@ class TestApiDraftAndSendReply:
             format="json",
         )
 
-        # Assert the send response is successful
-        assert send_response.status_code == status.HTTP_200_OK
-
-        # Assert the message is now sent with the updated content
         sent_message = models.Message.objects.get(id=updated_message.id)
         assert sent_message.subject == updated_subject
-        assert sent_message.is_draft is False
-        assert sent_message.sent_at is not None
+
+        if mailbox_role == enums.MailboxRoleChoices.EDITOR:
+            # EDITORs can't send
+            assert send_response.status_code == status.HTTP_403_FORBIDDEN
+            assert sent_message.is_draft is True
+            assert sent_message.sent_at is None
+        else:
+            # Assert the send response is successful
+            assert send_response.status_code == status.HTTP_200_OK
+
+            # Assert the message is now sent with the updated content
+            assert sent_message.is_draft is False
+            assert sent_message.sent_at is not None
 
     def test_update_nonexistent_draft(
         self, mailbox, authenticated_user, draft_detail_url
@@ -1055,6 +1053,7 @@ class TestApiDraftAndSendReply:
         "mailbox_role",
         [
             enums.MailboxRoleChoices.EDITOR,
+            enums.MailboxRoleChoices.SENDER,
             enums.MailboxRoleChoices.ADMIN,
         ],
     )
@@ -1121,10 +1120,10 @@ class TestApiDraftAndSendReply:
         mailbox1 = factories.MailboxFactory(local_part="user1", domain=domain)
         mailbox2 = factories.MailboxFactory(local_part="user2", domain=domain)
         factories.MailboxAccessFactory(
-            mailbox=mailbox1, user=user1, role=enums.MailboxRoleChoices.EDITOR
+            mailbox=mailbox1, user=user1, role=enums.MailboxRoleChoices.SENDER
         )
         factories.MailboxAccessFactory(
-            mailbox=mailbox2, user=user2, role=enums.MailboxRoleChoices.EDITOR
+            mailbox=mailbox2, user=user2, role=enums.MailboxRoleChoices.SENDER
         )
         addr1 = str(mailbox1)
         addr2 = str(mailbox2)

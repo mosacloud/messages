@@ -20,6 +20,8 @@ from core import enums, factories
         (enums.MailboxRoleChoices.EDITOR, enums.ThreadAccessRoleChoices.EDITOR),
         (enums.MailboxRoleChoices.VIEWER, enums.ThreadAccessRoleChoices.EDITOR),
         (enums.MailboxRoleChoices.ADMIN, enums.ThreadAccessRoleChoices.EDITOR),
+        (enums.MailboxRoleChoices.SENDER, enums.ThreadAccessRoleChoices.VIEWER),
+        (enums.MailboxRoleChoices.SENDER, enums.ThreadAccessRoleChoices.EDITOR),
     ],
 )
 def test_list_threads(mailbox_role, thread_role):
@@ -149,6 +151,8 @@ def test_list_threads(mailbox_role, thread_role):
         (enums.MailboxRoleChoices.EDITOR, enums.ThreadAccessRoleChoices.EDITOR),
         (enums.MailboxRoleChoices.VIEWER, enums.ThreadAccessRoleChoices.EDITOR),
         (enums.MailboxRoleChoices.ADMIN, enums.ThreadAccessRoleChoices.EDITOR),
+        (enums.MailboxRoleChoices.SENDER, enums.ThreadAccessRoleChoices.VIEWER),
+        (enums.MailboxRoleChoices.SENDER, enums.ThreadAccessRoleChoices.EDITOR),
     ],
 )
 def test_list_threads_delegated_mailbox(mailbox_role, thread_role):

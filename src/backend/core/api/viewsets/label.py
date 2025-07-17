@@ -67,15 +67,18 @@ class LabelViewSet(
         return queryset.distinct()
 
     def check_mailbox_permissions(self, mailbox):
-        """Check if user has EDITOR or ADMIN role for the mailbox."""
+        """Check if user has EDITOR, SENDER or ADMIN role for the mailbox."""
         if not mailbox.accesses.filter(
             user=self.request.user,
             role__in=[
                 models.MailboxRoleChoices.ADMIN,
                 models.MailboxRoleChoices.EDITOR,
+                models.MailboxRoleChoices.SENDER,
             ],
         ).exists():
-            raise PermissionDenied("You need EDITOR or ADMIN role to manage labels")
+            raise PermissionDenied(
+                "You need EDITOR, SENDER or ADMIN role to manage labels"
+            )
 
     @extend_schema(
         description="""
@@ -169,7 +172,9 @@ class LabelViewSet(
                 description="Invalid input data",
             ),
             403: OpenApiResponse(
-                response={"detail": "You need EDITOR or ADMIN role to manage labels"},
+                response={
+                    "detail": "You need EDITOR, SENDER or ADMIN role to manage labels"
+                },
                 description="Permission denied",
             ),
         },
@@ -203,7 +208,9 @@ class LabelViewSet(
                 description="Invalid input data",
             ),
             403: OpenApiResponse(
-                response={"detail": "You need EDITOR or ADMIN role to manage labels"},
+                response={
+                    "detail": "You need EDITOR, SENDER or ADMIN role to manage labels"
+                },
                 description="Permission denied",
             ),
         },
@@ -271,7 +278,9 @@ class LabelViewSet(
         responses={
             204: OpenApiResponse(description="Label deleted successfully"),
             403: OpenApiResponse(
-                response={"detail": "You need EDITOR or ADMIN role to manage labels"},
+                response={
+                    "detail": "You need EDITOR, SENDER or ADMIN role to manage labels"
+                },
                 description="Permission denied",
             ),
             404: OpenApiResponse(description="Label not found"),
@@ -307,7 +316,9 @@ class LabelViewSet(
                 description="Invalid input data",
             ),
             403: OpenApiResponse(
-                response={"detail": "You need EDITOR or ADMIN role to manage labels"},
+                response={
+                    "detail": "You need EDITOR, SENDER or ADMIN role to manage labels"
+                },
                 description="Permission denied",
             ),
         },
@@ -364,7 +375,9 @@ class LabelViewSet(
                 description="Invalid input data",
             ),
             403: OpenApiResponse(
-                response={"detail": "You need EDITOR or ADMIN role to manage labels"},
+                response={
+                    "detail": "You need EDITOR, SENDER or ADMIN role to manage labels"
+                },
                 description="Permission denied",
             ),
         },

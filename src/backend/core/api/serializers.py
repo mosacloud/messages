@@ -324,6 +324,7 @@ class LabelSerializer(serializers.ModelSerializer):
             role__in=[
                 models.MailboxRoleChoices.ADMIN,
                 models.MailboxRoleChoices.EDITOR,
+                models.MailboxRoleChoices.SENDER,
             ],
         ).exists():
             raise PermissionDenied("You don't have access to this mailbox")

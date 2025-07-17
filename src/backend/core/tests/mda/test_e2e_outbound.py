@@ -101,7 +101,7 @@ class TestE2EMessageOutboundFlow:
         factories.MailboxAccessFactory(
             mailbox=mailbox,
             user=authenticated_user,
-            role=enums.MailboxRoleChoices.EDITOR,  # Needed by send view permission
+            role=enums.MailboxRoleChoices.SENDER,  # Needed by send view permission
         )
 
         local_mailbox = factories.MailboxFactory(

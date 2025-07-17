@@ -55,6 +55,7 @@ class TestThreadAccessList:
         [
             (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.ADMIN),
             (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.EDITOR),
+            (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.SENDER),
         ],
     )
     def test_list_thread_access_success(
@@ -128,6 +129,7 @@ class TestThreadAccessList:
         [
             (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.ADMIN),
             (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.EDITOR),
+            (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.SENDER),
             (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.VIEWER),
         ],
     )
@@ -175,6 +177,7 @@ class TestThreadAccessCreate:
         [
             (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.ADMIN),
             (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.EDITOR),
+            (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.SENDER),
         ],
     )
     def test_create_thread_access_success(
@@ -229,6 +232,7 @@ class TestThreadAccessCreate:
         [
             (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.ADMIN),
             (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.EDITOR),
+            (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.SENDER),
             (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.VIEWER),
         ],
     )
@@ -291,6 +295,7 @@ class TestThreadAccessUpdate:
         [
             (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.ADMIN),
             (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.EDITOR),
+            (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.SENDER),
         ],
     )
     def test_update_thread_access_success(
@@ -329,6 +334,7 @@ class TestThreadAccessUpdate:
         [
             (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.ADMIN),
             (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.EDITOR),
+            (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.SENDER),
             (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.VIEWER),
         ],
     )
@@ -396,6 +402,7 @@ class TestThreadAccessDelete:
         [
             (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.ADMIN),
             (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.EDITOR),
+            (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.SENDER),
         ],
     )
     def test_delete_thread_access_success(
@@ -429,6 +436,7 @@ class TestThreadAccessDelete:
         [
             (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.ADMIN),
             (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.EDITOR),
+            (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.SENDER),
             (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.VIEWER),
         ],
     )

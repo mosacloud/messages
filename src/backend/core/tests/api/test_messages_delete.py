@@ -41,6 +41,7 @@ class TestMessagesDelete:
             (enums.MailboxRoleChoices.VIEWER, enums.ThreadAccessRoleChoices.EDITOR),
             (enums.MailboxRoleChoices.EDITOR, enums.ThreadAccessRoleChoices.VIEWER),
             (enums.MailboxRoleChoices.ADMIN, enums.ThreadAccessRoleChoices.VIEWER),
+            (enums.MailboxRoleChoices.SENDER, enums.ThreadAccessRoleChoices.VIEWER),
         ],
     )
     def test_delete_message_with_bad_permission(self, mailbox_role, thread_role):
@@ -72,6 +73,7 @@ class TestMessagesDelete:
         [
             enums.MailboxRoleChoices.ADMIN,
             enums.MailboxRoleChoices.EDITOR,
+            enums.MailboxRoleChoices.SENDER,
         ],
     )
     def test_delete_message_with_delegated_permission(self, mailbox_role):
@@ -111,6 +113,7 @@ class TestMessagesDelete:
             enums.MailboxRoleChoices.ADMIN,
             enums.MailboxRoleChoices.EDITOR,
             enums.MailboxRoleChoices.VIEWER,
+            enums.MailboxRoleChoices.SENDER,
         ],
     )
     def test_delete_message_with_bad_delegated_permission(self, mailbox_role):
@@ -152,6 +155,7 @@ class TestMessagesDelete:
         [
             enums.MailboxRoleChoices.ADMIN,
             enums.MailboxRoleChoices.EDITOR,
+            enums.MailboxRoleChoices.SENDER,
         ],
     )
     def test_delete_message_success(self, mailbox_role):
@@ -191,8 +195,10 @@ class TestMessagesDelete:
     @pytest.mark.parametrize(
         "mailbox_role",
         [
+            enums.MailboxRoleChoices.VIEWER,
             enums.MailboxRoleChoices.ADMIN,
             enums.MailboxRoleChoices.EDITOR,
+            enums.MailboxRoleChoices.SENDER,
         ],
     )
     def test_delete_last_message_of_thread_success(self, mailbox_role):
@@ -214,6 +220,12 @@ class TestMessagesDelete:
         client.force_authenticate(user=authenticated_user)
         message = factories.MessageFactory(subject="Test message", thread=thread)
         response = client.delete(reverse("messages-detail", kwargs={"id": message.id}))
-        assert response.status_code == status.HTTP_204_NO_CONTENT
-        assert not models.Message.objects.filter(id=message.id).exists()
-        assert not models.Thread.objects.filter(id=message.thread.id).exists()
+
+        if mailbox_role == enums.MailboxRoleChoices.VIEWER:
+            assert response.status_code == status.HTTP_403_FORBIDDEN
+            assert models.Message.objects.filter(id=message.id).exists()
+            assert models.Thread.objects.filter(id=message.thread.id).exists()
+        else:
+            assert response.status_code == status.HTTP_204_NO_CONTENT
+            assert not models.Message.objects.filter(id=message.id).exists()
+            assert not models.Thread.objects.filter(id=message.thread.id).exists()

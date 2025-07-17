@@ -92,7 +92,7 @@ class SendMessageView(APIView):
     # Note: IsAllowedToAccess checks object permission based on ThreadAccess now.
     # We still need senderId for the sending context.
 
-    action = "send"  # TODO: check permission for this action
+    action = "send"
 
     def post(self, request):
         """Send a draft message identified by messageId."""
@@ -125,6 +125,8 @@ class SendMessageView(APIView):
             raise drf_exceptions.NotFound(
                 "Draft message not found or does not belong to the specified sender mailbox."
             ) from e
+
+        self.check_object_permissions(request, message)
 
         prepared = prepare_outbound_message(
             mailbox_sender,

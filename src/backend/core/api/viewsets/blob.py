@@ -102,6 +102,7 @@ class BlobViewSet(ViewSet):
                 role__in=[
                     models.MailboxRoleChoices.EDITOR,
                     models.MailboxRoleChoices.ADMIN,
+                    models.MailboxRoleChoices.SENDER,
                 ],
             ).exists():
                 return Response(

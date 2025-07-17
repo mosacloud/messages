@@ -446,6 +446,7 @@ class TestLabelViewSet:
             models.MailboxRoleChoices.ADMIN,
             models.MailboxRoleChoices.EDITOR,
             models.MailboxRoleChoices.VIEWER,
+            models.MailboxRoleChoices.SENDER,
         ],
     )
     def test_list_labels(self, api_client, role, user):
@@ -487,6 +488,7 @@ class TestLabelViewSet:
         [
             models.MailboxRoleChoices.ADMIN,
             models.MailboxRoleChoices.EDITOR,
+            models.MailboxRoleChoices.SENDER,
         ],
     )
     def test_update_label(self, api_client, label, role, user):
@@ -548,7 +550,7 @@ class TestLabelViewSet:
 
         response = api_client.put(url, data, format="json")
         assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert "You need EDITOR or ADMIN role to manage labels" in str(
+        assert "You need EDITOR, SENDER or ADMIN role to manage labels" in str(
             response.data["detail"]
         )
 
@@ -585,7 +587,7 @@ class TestLabelViewSet:
         url = reverse("labels-detail", args=[label.pk])
         response = api_client.delete(url)
         assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert "You need EDITOR or ADMIN role to manage labels" in str(
+        assert "You need EDITOR, SENDER or ADMIN role to manage labels" in str(
             response.data["detail"]
         )
 
@@ -606,6 +608,7 @@ class TestLabelViewSet:
         [
             models.MailboxRoleChoices.ADMIN,
             models.MailboxRoleChoices.EDITOR,
+            models.MailboxRoleChoices.SENDER,
         ],
     )
     def test_add_threads_to_label(self, api_client, label, role):
@@ -643,7 +646,7 @@ class TestLabelViewSet:
 
         response = api_client.post(url, data, format="json")
         assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert "You need EDITOR or ADMIN role to manage labels" in str(
+        assert "You need EDITOR, SENDER or ADMIN role to manage labels" in str(
             response.data["detail"]
         )
         assert label.threads.count() == 0  # Thread not added
@@ -672,6 +675,7 @@ class TestLabelViewSet:
         [
             models.MailboxRoleChoices.ADMIN,
             models.MailboxRoleChoices.EDITOR,
+            models.MailboxRoleChoices.SENDER,
         ],
     )
     def test_remove_threads_from_label(self, api_client, label, mailbox_role):

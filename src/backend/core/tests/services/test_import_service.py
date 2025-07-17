@@ -474,7 +474,14 @@ def test_import_imap_by_superuser(admin_user, mailbox, mock_request):
         mock_task.assert_called_once()
 
 
-@pytest.mark.parametrize("role", [MailboxRoleChoices.ADMIN, MailboxRoleChoices.EDITOR])
+@pytest.mark.parametrize(
+    "role",
+    [
+        MailboxRoleChoices.ADMIN,
+        MailboxRoleChoices.EDITOR,
+        MailboxRoleChoices.SENDER,
+    ],
+)
 def test_import_imap_by_user_with_access(user, mailbox, mock_request, role):
     """Test successful IMAP import by user with access on mailbox."""
     # Add access to mailbox

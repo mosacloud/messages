@@ -39,7 +39,7 @@ class TestBlobAPI:
 
     @pytest.fixture
     def user_mailbox(self, api_client):
-        """Create a mailbox for the test user with editor access."""
+        """Create a mailbox for the test user with sender access."""
         _, user = api_client
         mailbox = factories.MailboxFactory()
         factories.MailboxAccessFactory(
@@ -152,7 +152,7 @@ class TestDraftWithAttachments:
         factories.MailboxAccessFactory(
             mailbox=mailbox,
             user=user,
-            role=MailboxRoleChoices.EDITOR,
+            role=MailboxRoleChoices.SENDER,
         )
         return mailbox
 
