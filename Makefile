@@ -149,6 +149,18 @@ stop: ## stop all development services
 	@$(COMPOSE) stop
 .PHONY: stop
 
+restart: ## restart all development services
+restart: \
+	stop \
+	start
+.PHONY: restart
+
+restart-minimal: ## restart minimal services
+restart-minimal: \
+	stop \
+	start-minimal
+.PHONY: restart-minimal
+
 # -- Linters
 
 lint: ## run all linters
