@@ -116,3 +116,19 @@
     grid-template-columns: repeat(auto-fill, minmax(min(350px, 100%), 1fr));
     gap: 10px;
 }
+
+.attachments-forget__alert {
+    color: #ff7901;
+    font-weight: bold;
+    padding: var(--c--theme--spacings--base);
+    background-color: var(--c--components--forms-input--background-color);
+    border-radius: var(--c--components--forms-input--border-radius);
+    border-width: var(--c--components--forms-input--border-width);
+    border-color: #ff7901;
+    border-style: var(--c--components--forms-input--border-style);
+    background-color: rgba(255,219,164,0.4);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    position: relative;
+}

@@ -1,0 +1,94 @@
+{
+  "en": {
+    "attachment": [
+      "attachment",
+      "attached file",
+      "attached document",
+      "enclosed",
+      "see attached",
+      "attached is",
+      "included file",
+      "attached document is",
+      "attached are"
+    ],
+    "find_attached": [
+      "find attached",
+      "please find attached",
+      "you will find attached",
+      "attached you’ll find",
+      "attached please find",
+      "as attached",
+      "kindly find attached"
+    ],
+    "intent_to_attach": [
+      "I am attaching",
+      "I will attach",
+      "I’m sending you",
+      "I’ll attach",
+      "I intend to send"
+    ],
+    "ambiguous_keywords": [
+      "attached",
+      "see file"
+    ],
+    "abbreviations": [
+      "att.",
+      "attch.",
+      "attd.",
+      "enc."
+    ],
+    "patterns": [
+      "please (see|find) (the )?attached",
+      "you will find (the )?attached",
+      "attached (is|are|you’ll find)",
+      "find (the )?attached file",
+      "enclosed (you will find|please find)?",
+      "I (forgot|didn’t) (to )?(attach|include)"
+    ]
+  },
+  "fr": {
+    "attachment": [
+      "pièce jointe",
+      "fichier joint",
+      "document joint",
+      "ci-joint",
+      "en pièce jointe",
+      "fichier en pièce jointe",
+      "voir pièce jointe",
+      "le document joint",
+      "les documents joints"
+    ],
+    "find_attached": [
+      "veuillez trouver",
+      "vous trouverez ci-joint",
+      "je vous joins",
+      "je joins",
+      "je vous envoie en pièce jointe",
+      "ci-joint le fichier",
+      "en pièce jointe, vous trouverez"
+    ],
+    "intent_to_attach": [
+      "je vous joins",
+      "je joins",
+      "je vous envoie",
+      "je vais joindre",
+      "je vais vous envoyer"
+    ],
+    "ambiguous_keywords": [
+      "ci-joint",
+      "voici"
+    ],
+    "abbreviations": [
+      "pj",
+      "p.j.",
+      "p/j",
+      "annexe"
+    ],
+    "patterns": [
+      "vous trouverez (ci-joint|en pièce jointe)",
+      "je (vous )?(joins|envoie) (le|la|les)? (fichier|document|pièce jointe)",
+      "en pièce jointe(,)? (vous trouverez|je vous ai mis)",
+      "j[’']?ai oublié (de )?(joindre|mettre en pièce jointe)"
+    ]
+  }
+}

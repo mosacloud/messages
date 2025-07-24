@@ -167,4 +167,61 @@ describe('MailHelper', () => {
       expect(result).toBeUndefined();
     });
   });
+
+  describe('MailHelper.getAttachmentKeywords', () => {
+  it('should extract all keywords from the detection map and normalize to lowercase', () => {
+    const detectionMap = {
+      en: {
+        attachment: ["Attachment", "attached file"],
+        abbreviations: ["Att.", "Enc."]
+      },
+      fr: {
+        attachment: ["Pièce jointe"],
+        abbreviations: ["PJ"]
+      }
+    };
+
+    const keywords = MailHelper.getAttachmentKeywords(detectionMap);
+
+    // Check if all expected keywords are present
+    expect(keywords).toEqual(
+      expect.arrayContaining([
+        'attachment',
+        'attached file',
+        'att.',
+        'enc.',
+        'pièce jointe',
+        'pj'
+      ])
+    );
+
+    // No duplicates
+    const uniqueKeywords = new Set(keywords);
+    expect(uniqueKeywords.size).toBe(keywords.length);
+  });
+  });
+
+describe('MailHelper.areAttachmentsMentionedInDraft', () => {
+  it('should return true if draft contains an attachment keyword (case insensitive)', () => {
+    const draftText = 'Please find the ATTACHED file in this email.';
+    const result = MailHelper.areAttachmentsMentionedInDraft(draftText);
+    expect(result).toBe(true);
+  });
+
+  it('should return true if draft contains an attachment keyword in French', () => {
+    const draftText = 'Vous trouverez la pièce jointe ci-dessous.';
+    const result = MailHelper.areAttachmentsMentionedInDraft(draftText);
+    expect(result).toBe(true);
+  });
+
+  it('should return false if no attachment keywords are present', () => {
+    const draftText = 'Hello, how are you today?';
+    const result = MailHelper.areAttachmentsMentionedInDraft(draftText);
+    expect(result).toBe(false);
+  });
+
+  it('should handle empty safely', () => {
+    expect(MailHelper.areAttachmentsMentionedInDraft('')).toBe(false);
+  });
+});
 }); 

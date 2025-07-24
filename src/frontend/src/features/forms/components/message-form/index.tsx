@@ -2,7 +2,7 @@ import { Spinner } from "@gouvfr-lasuite/ui-kit";
 import { Button } from "@openfun/cunningham-react";
 import { clsx } from "clsx";
 import { useEffect, useMemo, useState, useRef } from "react";
-import { FormProvider, useForm } from "react-hook-form";
+import { FormProvider, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,6 +17,7 @@ import { useSentBox } from "@/features/providers/sent-box";
 import { useRouter } from "next/router";
 import { AttachmentUploader } from "./attachment-uploader";
 import { DateHelper } from "@/features/utils/date-helper";
+import { Banner } from "@/features/ui/components/banner";
 
 export type MessageFormMode = "new" |"reply" | "reply_all" | "forward";
 
@@ -163,6 +164,20 @@ export const MessageForm = ({
         shouldFocusError: false,
         defaultValues: formDefaultValues,
     });
+
+    const messageEditorDraft = useWatch({
+        control: form.control,
+        name: "messageEditorDraft",
+    }) || "";
+
+    const attachments = useWatch({
+        control: form.control,
+        name: "attachments",
+    }) || [];
+
+    const showAttachmentsForgetAlert = useMemo(() => {
+        return MailHelper.areAttachmentsMentionedInDraft(messageEditorDraft) && attachments.length === 0;
+    }, [messageEditorDraft, attachments]);
 
     const messageMutation = useSendCreate({
         mutation: {
@@ -499,6 +514,12 @@ export const MessageForm = ({
                 </div>
 
                 <AttachmentUploader initialAttachments={getDefaultAttachments()} onChange={form.handleSubmit(saveDraft)} />
+            
+                {showAttachmentsForgetAlert && 
+                  <Banner type="warning">
+                    {t("attachments.forgot_question")}
+                  </Banner>
+                }
 
                 <div className="form-field-row form-field-save-time">
                     {

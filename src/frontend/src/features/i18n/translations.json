@@ -69,7 +69,8 @@
         "create": "Create",
         "creating": "Creating...",
         "save": "Save",
-        "saving": "Saving..."
+        "saving": "Saving...",
+        "refresh_summary": "Refresh summary"
       },
       "tooltips": {
         "has_attachments": "This email has an attachment",
@@ -112,7 +113,8 @@
       "attachments": {
         "counter_zero": "No attachments",
         "counter_one": "{{count}} attachment",
-        "counter_other": "{{count}} attachments"
+        "counter_other": "{{count}} attachments",
+        "forgot_question": "Did you forget an attachment?"
       },
       "message_form": {
         "helper_text": {
@@ -285,6 +287,13 @@
       },
       "message_body": {
         "show_embedded_message": "Show embedded message"
+      },
+      "summary": {
+        "title": "Summary",
+        "generation_in_progress": "Generating summary...",
+        "no_summary": "No summary available.",
+        "refresh_success": "Summary refreshed!",
+        "refresh_error": "Failed to refresh summary."
       },
       "create_address_modal": {
         "title": "Create a new address @{{domain}}",
@@ -493,7 +502,8 @@
         "create": "Créer",
         "creating": "Création en cours...",
         "save": "Enregistrer",
-        "saving": "Enregistrement en cours..."
+        "saving": "Enregistrement en cours...",
+        "refresh_summary": "Rafraîchir le résumé"
       },
       "tooltips": {
         "has_attachments": "Cette email contient une pièce jointe",
@@ -536,7 +546,8 @@
       "attachments": {
         "counter_zero": "Aucune pièce jointe",
         "counter_one": "{{count}} pièce jointe",
-        "counter_other": "{{count}} pièces jointes"
+        "counter_other": "{{count}} pièces jointes",
+        "forgot_question": "N'avez-vous pas oublié une pièce jointe ?"
       },
       "message_form": {
         "helper_text": {
@@ -701,6 +712,13 @@
       },
       "message_body": {
         "show_embedded_message": "Afficher le message inclus"
+      },
+      "summary": {
+        "title": "Résumé",
+        "generation_in_progress": "Génération du résumé en cours...",
+        "no_summary": "Aucun résumé disponible.",
+        "refresh_success": "Résumé mis à jour !",
+        "refresh_error": "Erreur lors de la mise à jour du résumé."
       },
       "create_address_modal": {
         "title": "Création d'une nouvelle adresse @{{domain}}",

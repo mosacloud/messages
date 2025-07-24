@@ -1,5 +1,6 @@
 import { renderToString } from "react-dom/server";
 import { Markdown } from "@react-email/components";
+import DetectionMap from "@/features/i18n/attachments-detection-map.json";
 import React from "react";
 import { z } from "zod";
 
@@ -78,6 +79,28 @@ class MailHelper {
         if (!domain) return undefined;
 
         return SUPPORTED_IMAP_DOMAINS.get(domain)!;
+    }
+
+    /**
+     * Get all keywords for attachment detection from the detection map.
+     */
+    static getAttachmentKeywords(detectionMap: Record<string, Record<string, string[]>>): string[] {
+        const allKeywords = new Set<string>();
+        Object.values(detectionMap).forEach((langObj) => {
+            Object.values(langObj).forEach((arr) => {
+                (arr as string[]).forEach((kw) => allKeywords.add(kw.toLowerCase()));
+            });
+        });
+        return Array.from(allKeywords);
+    }
+
+    /**
+     * Check if any attachment keyword is mentioned in the draft text.
+     */
+    static areAttachmentsMentionedInDraft(draftText: string): boolean {
+        const keyWordsAttachments = MailHelper.getAttachmentKeywords(DetectionMap);
+        const messageEditorDraft = draftText?.toLowerCase() || "";
+        return keyWordsAttachments.some((keyword) => messageEditorDraft.includes(keyword));
     }
 }
 
