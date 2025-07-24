@@ -173,6 +173,14 @@
                                         "LANGUAGE_CODE": {
                                             "type": "string",
                                             "readOnly": true
+                                        },
+                                        "AI_ENABLED": {
+                                            "type": "boolean",
+                                            "readOnly": true
+                                        },
+                                        "AI_FEATURE_SUMMARY_ENABLED": {
+                                            "type": "boolean",
+                                            "readOnly": true
                                         }
                                     },
                                     "required": [
@@ -181,7 +189,9 @@
                                         "POSTHOG_HOST",
                                         "POSTHOG_SURVEY_ID",
                                         "LANGUAGES",
-                                        "LANGUAGE_CODE"
+                                        "LANGUAGE_CODE",
+                                        "AI_ENABLED",
+                                        "AI_FEATURE_SUMMARY_ENABLED"
                                     ]
                                 }
                             }
@@ -3191,6 +3201,108 @@
                 }
             }
         },
+        "/api/v1.0/threads/{id}/refresh-summary/": {
+            "post": {
+                "operationId": "threads_refresh_summary_create",
+                "description": "Refresh the summary of a thread.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "threads"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "summary": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "description": "Summary successfully refreshed."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "detail": "Permission denied"
+                                }
+                            }
+                        },
+                        "description": "User does not have permission to refresh the summary of this thread."
+                    }
+                }
+            }
+        },
+        "/api/v1.0/threads/{id}/summary/": {
+            "get": {
+                "operationId": "threads_summary_retrieve",
+                "description": "Retrieve the summary of a thread.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "threads"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "summary": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "description": "Thread summary retrieved successfully."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "detail": "Permission denied"
+                                }
+                            }
+                        },
+                        "description": "User does not have permission to access this thread."
+                    }
+                }
+            }
+        },
         "/api/v1.0/threads/{thread_id}/accesses/": {
             "get": {
                 "operationId": "threads_accesses_list",
@@ -5074,6 +5186,10 @@
                             "$ref": "#/components/schemas/ThreadLabel"
                         },
                         "readOnly": true
+                    },
+                    "summary": {
+                        "type": "string",
+                        "readOnly": true
                     }
                 },
                 "required": [
@@ -5094,6 +5210,7 @@
                     "sender_names",
                     "snippet",
                     "subject",
+                    "summary",
                     "updated_at",
                     "user_role"
                 ]

@@ -258,6 +258,16 @@ The application uses a new environment file structure with `.defaults` and `.loc
 |----------|---------|-------------|----------|
 | `LANGUAGE_CODE` | `en-us` | Default language code | Optional |
 
+
+### AI
+
+| Variable | Default | Description | Required |
+|----------|---------|-------------|----------|
+| `AI_BASE_URL` | None | Default URL to access AI API endpoint (Albert API) | Optional |
+| `AI_API_KEY` | None| API Key used for AI features | Optional |
+| `AI_MODEL` | None | Default model used for AI features | Optional |
+| `AI_FEATURE_SUMMARY_ENABLED` | `False` | Default enabled mode for summary AI features | Required |
+
 ## Legend
 
 - **Required**: Must be set for the application to function

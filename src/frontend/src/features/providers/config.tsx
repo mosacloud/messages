@@ -8,6 +8,8 @@ const DEFAULT_CONFIG: ConfigRetrieve200 = {
     POSTHOG_SURVEY_ID: null,
     LANGUAGES: [],
     LANGUAGE_CODE: "",
+    AI_ENABLED: false,
+    AI_FEATURE_SUMMARY_ENABLED: false,
 }
 
 const ConfigContext = createContext<ConfigRetrieve200>(DEFAULT_CONFIG)

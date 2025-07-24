@@ -6,6 +6,8 @@ import rest_framework as drf
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.permissions import AllowAny
 
+from core.ai.utils import is_ai_enabled, is_ai_summary_enabled
+
 
 class ConfigView(drf.views.APIView):
     """API ViewSet for sharing some public settings."""
@@ -42,6 +44,11 @@ class ConfigView(drf.views.APIView):
                             "readOnly": True,
                         },
                         "LANGUAGE_CODE": {"type": "string", "readOnly": True},
+                        "AI_ENABLED": {"type": "boolean", "readOnly": True},
+                        "AI_FEATURE_SUMMARY_ENABLED": {
+                            "type": "boolean",
+                            "readOnly": True,
+                        },
                     },
                     "required": [
                         "ENVIRONMENT",
@@ -50,6 +57,8 @@ class ConfigView(drf.views.APIView):
                         "POSTHOG_SURVEY_ID",
                         "LANGUAGES",
                         "LANGUAGE_CODE",
+                        "AI_ENABLED",
+                        "AI_FEATURE_SUMMARY_ENABLED",
                     ],
                 },
             )
@@ -73,5 +82,8 @@ class ConfigView(drf.views.APIView):
         for setting in array_settings:
             if hasattr(settings, setting):
                 dict_settings[setting] = getattr(settings, setting)
+
+        dict_settings["AI_ENABLED"] = is_ai_enabled()
+        dict_settings["AI_FEATURE_SUMMARY_ENABLED"] = is_ai_summary_enabled()
 
         return drf.response.Response(dict_settings)

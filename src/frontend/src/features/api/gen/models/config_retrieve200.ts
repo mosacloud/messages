@@ -16,4 +16,6 @@ export type ConfigRetrieve200 = {
   readonly POSTHOG_SURVEY_ID: string | null;
   readonly LANGUAGES: readonly string[];
   readonly LANGUAGE_CODE: string;
+  readonly AI_ENABLED: boolean;
+  readonly AI_FEATURE_SUMMARY_ENABLED: boolean;
 };

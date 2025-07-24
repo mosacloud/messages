@@ -21,6 +21,10 @@ pytestmark = pytest.mark.django_db
     POSTHOG_SURVEY_ID="7890",
     LANGUAGES=[["en-us", "English"], ["fr-fr", "French"], ["de-de", "German"]],
     LANGUAGE_CODE="en-us",
+    AI_API_KEY=None,
+    AI_BASE_URL=None,
+    AI_MODEL=None,
+    AI_FEATURE_SUMMARY_ENABLED=False,
 )
 @pytest.mark.parametrize("is_authenticated", [False, True])
 def test_api_config(is_authenticated):
@@ -40,4 +44,6 @@ def test_api_config(is_authenticated):
         "POSTHOG_KEY": "132456",
         "POSTHOG_HOST": "https://test.i.posthog-test.com",
         "POSTHOG_SURVEY_ID": "7890",
+        "AI_ENABLED": False,
+        "AI_FEATURE_SUMMARY_ENABLED": False,
     }
