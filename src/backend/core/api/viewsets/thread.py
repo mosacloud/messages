@@ -10,9 +10,10 @@ from drf_spectacular.utils import (
     OpenApiResponse,
     extend_schema,
 )
-from rest_framework import mixins, viewsets
+from rest_framework import mixins, status, viewsets
 
 from core import enums, models
+from core.ai.thread_summarizer import summarize_thread
 from core.search import search_threads
 
 from .. import permissions, serializers
@@ -28,8 +29,8 @@ class ThreadViewSet(
 
     serializer_class = serializers.ThreadSerializer
     permission_classes = [permissions.IsAuthenticated]
-    lookup_field = "id"
-    lookup_url_kwarg = "id"
+    lookup_field = "pk"
+    lookup_url_kwarg = "pk"
 
     def get_queryset(self):
         """Restrict results to threads accessible by the current user."""
@@ -409,6 +410,61 @@ class ThreadViewSet(
 
         # Fall back to regular DB query if no search query or OpenSearch not available
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(
+                response={
+                    "type": "object",
+                    "properties": {
+                        "summary": {"type": "string"},
+                    },
+                },
+                description="Thread summary retrieved successfully.",
+            ),
+            403: OpenApiResponse(
+                response={"detail": "Permission denied"},
+                description="User does not have permission to access this thread.",
+            ),
+        },
+        tags=["threads"],
+    )
+    @drf.decorators.action(detail=True, methods=["get"], url_path="summary")
+    def get_summary(self, request, pk):  # pylint: disable=unused-argument
+        """Retrieve the summary of a thread."""
+        thread = self.get_object()
+        return drf.response.Response({"summary": thread.summary})
+
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(
+                response={
+                    "type": "object",
+                    "properties": {"summary": {"type": "string"}},
+                },
+                description="Summary successfully refreshed.",
+            ),
+            403: OpenApiResponse(
+                response={"detail": "Permission denied"},
+                description="User does not have permission to refresh the summary of this thread.",
+            ),
+        },
+        tags=["threads"],
+    )
+    @drf.decorators.action(
+        detail=True,
+        methods=["post"],
+        url_path="refresh-summary",
+        url_name="refresh-summary",
+    )
+    def refresh_summary(self, request, pk):  # pylint: disable=unused-argument
+        """Refresh the summary of a thread."""
+        thread = self.get_object()
+        thread.summary = summarize_thread(thread)
+        thread.save()
+        return drf.response.Response(
+            {"summary": thread.summary}, status=status.HTTP_200_OK
+        )
 
     # @extend_schema(
     #     tags=["threads"],

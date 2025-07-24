@@ -365,6 +365,7 @@ class ThreadSerializer(serializers.ModelSerializer):
     user_role = serializers.SerializerMethodField(read_only=True)
     accesses = serializers.SerializerMethodField()
     labels = serializers.SerializerMethodField()
+    summary = serializers.CharField(read_only=True)
 
     @extend_schema_field(ThreadAccessDetailSerializer(many=True))
     def get_accesses(self, instance):
@@ -438,6 +439,7 @@ class ThreadSerializer(serializers.ModelSerializer):
             "user_role",
             "accesses",
             "labels",
+            "summary",
         ]
         read_only_fields = fields  # Mark all as read-only for safety
 

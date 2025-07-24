@@ -29,9 +29,11 @@ import type {
   PaginatedThreadList,
   Thread,
   ThreadsListParams,
+  ThreadsRefreshSummaryCreate200,
   ThreadsStatsRetrieve200,
   ThreadsStatsRetrieve400,
   ThreadsStatsRetrieveParams,
+  ThreadsSummaryRetrieve200,
 } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
@@ -652,6 +654,304 @@ export const useThreadsDestroy = <TError = unknown, TContext = unknown>(
 
   return useMutation(mutationOptions, queryClient);
 };
+/**
+ * Refresh the summary of a thread.
+ */
+export type threadsRefreshSummaryCreateResponse200 = {
+  data: ThreadsRefreshSummaryCreate200;
+  status: 200;
+};
+
+export type threadsRefreshSummaryCreateResponse403 = {
+  data: unknown;
+  status: 403;
+};
+
+export type threadsRefreshSummaryCreateResponseComposite =
+  | threadsRefreshSummaryCreateResponse200
+  | threadsRefreshSummaryCreateResponse403;
+
+export type threadsRefreshSummaryCreateResponse =
+  threadsRefreshSummaryCreateResponseComposite & {
+    headers: Headers;
+  };
+
+export const getThreadsRefreshSummaryCreateUrl = (id: string) => {
+  return `/api/v1.0/threads/${id}/refresh-summary/`;
+};
+
+export const threadsRefreshSummaryCreate = async (
+  id: string,
+  options?: RequestInit,
+): Promise<threadsRefreshSummaryCreateResponse> => {
+  return fetchAPI<threadsRefreshSummaryCreateResponse>(
+    getThreadsRefreshSummaryCreateUrl(id),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getThreadsRefreshSummaryCreateMutationOptions = <
+  TError = unknown,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof threadsRefreshSummaryCreate>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof fetchAPI>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof threadsRefreshSummaryCreate>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["threadsRefreshSummaryCreate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof threadsRefreshSummaryCreate>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return threadsRefreshSummaryCreate(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ThreadsRefreshSummaryCreateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof threadsRefreshSummaryCreate>>
+>;
+
+export type ThreadsRefreshSummaryCreateMutationError = unknown;
+
+export const useThreadsRefreshSummaryCreate = <
+  TError = unknown,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof threadsRefreshSummaryCreate>>,
+      TError,
+      { id: string },
+      TContext
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof threadsRefreshSummaryCreate>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationOptions =
+    getThreadsRefreshSummaryCreateMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * Retrieve the summary of a thread.
+ */
+export type threadsSummaryRetrieveResponse200 = {
+  data: ThreadsSummaryRetrieve200;
+  status: 200;
+};
+
+export type threadsSummaryRetrieveResponse403 = {
+  data: unknown;
+  status: 403;
+};
+
+export type threadsSummaryRetrieveResponseComposite =
+  | threadsSummaryRetrieveResponse200
+  | threadsSummaryRetrieveResponse403;
+
+export type threadsSummaryRetrieveResponse =
+  threadsSummaryRetrieveResponseComposite & {
+    headers: Headers;
+  };
+
+export const getThreadsSummaryRetrieveUrl = (id: string) => {
+  return `/api/v1.0/threads/${id}/summary/`;
+};
+
+export const threadsSummaryRetrieve = async (
+  id: string,
+  options?: RequestInit,
+): Promise<threadsSummaryRetrieveResponse> => {
+  return fetchAPI<threadsSummaryRetrieveResponse>(
+    getThreadsSummaryRetrieveUrl(id),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getThreadsSummaryRetrieveQueryKey = (id: string) => {
+  return [`/api/v1.0/threads/${id}/summary/`] as const;
+};
+
+export const getThreadsSummaryRetrieveQueryOptions = <
+  TData = Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
+  TError = unknown,
+>(
+  id: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getThreadsSummaryRetrieveQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof threadsSummaryRetrieve>>
+  > = ({ signal }) => threadsSummaryRetrieve(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ThreadsSummaryRetrieveQueryResult = NonNullable<
+  Awaited<ReturnType<typeof threadsSummaryRetrieve>>
+>;
+export type ThreadsSummaryRetrieveQueryError = unknown;
+
+export function useThreadsSummaryRetrieve<
+  TData = Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
+  TError = unknown,
+>(
+  id: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
+          TError,
+          Awaited<ReturnType<typeof threadsSummaryRetrieve>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useThreadsSummaryRetrieve<
+  TData = Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
+  TError = unknown,
+>(
+  id: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
+          TError,
+          Awaited<ReturnType<typeof threadsSummaryRetrieve>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useThreadsSummaryRetrieve<
+  TData = Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
+  TError = unknown,
+>(
+  id: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+
+export function useThreadsSummaryRetrieve<
+  TData = Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
+  TError = unknown,
+>(
+  id: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions = getThreadsSummaryRetrieveQueryOptions(id, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
 /**
  * Get aggregated statistics for threads based on filters.
  */

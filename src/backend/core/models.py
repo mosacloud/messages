@@ -582,6 +582,7 @@ class Thread(BaseModel):
     has_active = models.BooleanField(_("has active"), default=False)
     messaged_at = models.DateTimeField(_("messaged at"), null=True, blank=True)
     sender_names = models.JSONField(_("sender names"), null=True, blank=True)
+    summary = models.TextField(_("summary"), null=True, blank=True, default=None)
 
     class Meta:
         db_table = "messages_thread"
@@ -1081,6 +1082,57 @@ class Message(BaseModel):
         for mr in self.recipients.select_related("contact").all():
             recipients_by_type[mr.type].append(mr.contact)
         return recipients_by_type
+
+    def get_as_text(self) -> str:
+        """Get the message as text, similar to the Message dataclass __str__ in utils.py."""
+        # Date
+        date_str = self.sent_at.isoformat() if self.sent_at else ""
+        # Sender: "Name <email>" or just email
+        sender = str(self.sender)
+        # Recipients: list of "Name <email>" or just email
+        to_contacts = self.recipients.filter(
+            type=MessageRecipientTypeChoices.TO
+        ).select_related("contact")
+        recipients = [str(mr.contact) for mr in to_contacts]
+        # CC
+        cc_contacts = self.recipients.filter(
+            type=MessageRecipientTypeChoices.CC
+        ).select_related("contact")
+        cc = [str(mr.contact) for mr in cc_contacts]
+        # Subject
+        subject = self.subject or _("No subject")
+        # Body: try to get text/plain from parsed data
+        body = ""
+        parsed_data = self.get_parsed_data()
+        for part in parsed_data.get("textBody", []):
+            if part.get("type") == "text/plain":
+                body = part.get("content", "")
+                break
+        # Message ID
+        msg_id = str(self.id)
+        return (
+            f"{_('Message ID')}: {msg_id}\n"
+            f"{_('From')}: {sender}\n"
+            f"{_('To')}: {', '.join(recipients)}\n"
+            f"{_('CC')}: {', '.join(cc)}\n"
+            f"{_('Date')}: {date_str}\n"
+            f"{_('Subject')}: {subject}\n\n"
+            f"{_('Body')}: {body}"
+        )
+
+    def get_tokens_count(self) -> int:
+        """Get the number of tokens in the message (subject + body)."""
+        # Subject
+        subject = self.subject or _("No subject")
+        # Body: try to get text/plain from parsed data
+        body = ""
+        parsed_data = self.get_parsed_data()
+        for part in parsed_data.get("textBody", []):
+            if part.get("type") == "text/plain":
+                body = part.get("content", "")
+                break
+        counted_text = f"{subject} {body}"
+        return len(counted_text.split())
 
 
 class Blob(BaseModel):

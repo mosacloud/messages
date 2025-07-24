@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useAIFeaturesConfig } from "@/features/utils/ai-config";
 import { ActionBar } from "./components/thread-action-bar"
 import { ThreadMessage } from "./components/thread-message"
 import { useMailboxContext } from "@/features/providers/mailbox"
@@ -11,6 +12,7 @@ import { Banner } from "@/features/ui/components/banner"
 import { Button } from "@openfun/cunningham-react"
 import { useTranslation } from "react-i18next"
 import { ThreadViewLabelsList } from "./components/thread-view-labels-list"
+import { ThreadSummary } from "./components/thread-summary";
 
 type MessageWithDraftChild = Message & {
     draft_message?: Message;
@@ -31,7 +33,7 @@ export const ThreadView = () => {
             }
         })
     }, 300);
-    const { selectedThread, messages, queryStates } = useMailboxContext();
+    const { selectedMailbox, selectedThread, messages, queryStates } = useMailboxContext();
     const rootRef = useRef<HTMLDivElement>(null);
     const { markAsRead } = useRead();
     // Nest draft messages under their parent messages
@@ -47,6 +49,8 @@ export const ThreadView = () => {
         });
         return rootMessages
     }, [messages]);
+    const aiConfig = useAIFeaturesConfig();
+    const isAISummaryEnabled = aiConfig.isAISummaryEnabled;
 
     /**
      * If we are in the trash view, we only want to show trashed messages
@@ -120,6 +124,16 @@ export const ThreadView = () => {
     return (
         <div className="thread-view" ref={rootRef}>
             <ActionBar canUndelete={isThreadTrashed} />
+            <h2 className="thread-view__subject">{selectedThread.subject}</h2>
+            {isAISummaryEnabled && (
+                <ThreadSummary
+                threadId={selectedThread.id}
+                summary={selectedThread.summary}
+                selectedMailboxId={selectedMailbox?.id}
+                searchParams={searchParams}
+                selectedThread={selectedThread}
+                />
+            )}
             <div className="thread-view__messages-list">
                 {
                     selectedThread!.labels.length > 0 && (

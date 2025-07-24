@@ -1,0 +1,24 @@
+.thread-summary__container {
+  display: flex;
+  flex-direction: row;
+  padding-left: var(--c--theme--spacings--base);
+  margin-bottom: var(--c--theme--spacings--base);
+}
+.thread-summary__content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1;
+  min-height: 40px;
+  padding-left: var(--c--theme--spacings--base);
+  margin: 0;
+}
+
+.thread-summary__refresh-button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  margin-right: var(--c--theme--spacings--base);
+}

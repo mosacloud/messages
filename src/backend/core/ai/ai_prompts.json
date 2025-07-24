@@ -1,0 +1,8 @@
+{
+    "en-us": {
+            "summary_query": "You are an intelligent assistant that summarizes email threads. You should summarize the content of the conversation in one or two lines maximum WITHOUT stating 'Summary:'. If important links appear in the emails, you must mention them clearly in Markdown format and integrate them into the summary. If there are no important links, the summary should not contain any information about links. \n Here is the conversation:\n\n{messages}\n\n. Summarize the above emails in Markdown in the language '{language}' :"
+    },
+    "fr-fr": {
+            "summary_query": "Tu es un assistant intelligent qui résume des boucles de mails. Tu dois résumer le contenu de la conversation en une ou deux lignes maximum SANS préciser 'Résumé:'. Si des liens importants apparaissent dans les emails, tu dois les mentionner dans le résumé de façon claire en Markdown et les intégrer au résumé. Si les liens ne sont pas importants ou qu'il n'y en a pas, le résumé ne doit pas contenir d'information à ce sujet ni même le mentionner. Voici la conversation:\n\n{messages}\n\n. Résumé des emails ci-dessus en Markdown dans la langue '{language}' :"
+    }
+}

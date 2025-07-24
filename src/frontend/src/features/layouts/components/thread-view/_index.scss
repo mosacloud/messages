@@ -54,3 +54,9 @@
     display: flex;
     gap: var(--c--theme--spacings--sm);
 }
+
+.thread-view__subject {
+    font-weight: bold;
+    margin: var(--c--theme--spacings--base);
+}
+

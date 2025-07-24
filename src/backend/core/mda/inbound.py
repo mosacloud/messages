@@ -12,6 +12,8 @@ from django.db.utils import Error as DjangoDbError
 from django.utils import timezone
 
 from core import models
+from core.ai.thread_summarizer import summarize_thread
+from core.ai.utils import get_messages_from_thread, is_ai_summary_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,10 @@ GMAIL_LABELS_TO_IGNORE = [
     "Boîte de réception",
     "Inbox",
 ]
+
+
+TOKEN_THRESHOLD_FOR_SUMMARY = 200  # Minimum token count to trigger summarization
+MINIMUM_MESSAGES_FOR_SUMMARY = 3  # Minimum number of messages to trigger summarization
 
 
 def compute_labels_and_flags(
@@ -573,6 +579,21 @@ def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-stat
         if new_snippet:
             thread.snippet = new_snippet
             thread.save(update_fields=["snippet"])
+
+        # Update summary if needed is ai is enabled
+        if is_ai_summary_enabled():
+            messages = get_messages_from_thread(thread)
+            token_count = sum(message.get_tokens_count() for message in messages)
+
+            # Only summarize if the thread has enough content (more than 200 tokens or at least 3 messages)
+            if (
+                token_count >= TOKEN_THRESHOLD_FOR_SUMMARY
+                or len(messages) >= MINIMUM_MESSAGES_FOR_SUMMARY
+            ):
+                new_summary = summarize_thread(thread)
+                if new_summary:
+                    thread.summary = new_summary
+                    thread.save(update_fields=["summary"])
 
     except Exception as e:
         logger.exception(

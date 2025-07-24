@@ -203,7 +203,7 @@ class ThreadAdmin(admin.ModelAdmin):
     search_fields = ("subject", "snippet", "labels__name")
     list_filter = ("labels",)
     fieldsets = (
-        (None, {"fields": ("subject", "snippet", "display_labels")}),
+        (None, {"fields": ("subject", "snippet", "display_labels", "summary")}),
         (
             _("Statistics"),
             {
