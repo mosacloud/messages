@@ -167,8 +167,17 @@
         "message_deleted": "The message has been deleted",
         "thread_deleted": "The conversation has been deleted"
       },
-      "message_editor": {
-        "start_typing": "Start typing..."
+      "message_composer": {
+        "start_typing": "Start typing...",
+        "signature_template_selector": {
+          "forced_signature_tooltips": {
+            "main": "This signature is forced",
+            "secondary": "You cannot modify it."
+          },
+          "forced_signature_label": "Forced signature: {{name}}",
+          "no_signature": "No signature",
+          "signature_label": "Signature: {{name}}"
+        }
       },
       "search": {
         "placeholder": "Search in messages...",
@@ -256,14 +265,6 @@
             "imap_server_required": "The IMAP server is required.",
             "imap_port_required": "The IMAP port is required."
           }
-        },
-        "quoted-message-block": {
-          "replied-message": "In reply to",
-          "forwarded-message": "Forwarded message",
-          "from": "From",
-          "subject": "Subject",
-          "date": "Date",
-          "to": "To"
         }
       },
       "labels": {
@@ -304,6 +305,10 @@
         "subject": "Subject",
         "date": "Date",
         "to": "To"
+      },
+      "inline_template_variable": {
+        "label": "Variables",
+        "loading_tooltip": "Loading variables..."
       },
       "message_body": {
         "show_embedded_message": "Show embedded message"
@@ -479,7 +484,8 @@
           "manage_accesses": "Manage accesses",
           "new_address": "New address",
           "reset_password": "Reset password",
-          "more": "More"
+          "more": "More",
+          "new_signature": "New signature"
         },
         "loading": "Loading addresses...",
         "delete_modal": {
@@ -524,6 +530,49 @@
         "success_text": "Thank you for your feedback!",
         "success_text2": "In case of questions, we'll get back to you soon.",
         "close_label": "Close the feedback widget"
+      },
+      "admin_maildomains_signature": {
+        "loading": "Loading signatures...",
+        "no_signatures": "No signatures found",
+        "errors": {
+          "failed_to_load_signatures": "Error while loading signatures"
+        },
+        "actions": {
+          "modify": "Modify"
+        },
+        "datagrid_headers": {
+          "name": "Name",
+          "is_active": "Active",
+          "is_forced": "Forced",
+          "actions": "Actions"
+        },
+        "compose_modal": {
+          "title": "Create a new signature for {{domain}}",
+          "delete_modal": {
+            "title": "Delete signature \"{{signature}}\"",
+            "message": "Are you sure you want to delete this signature? This action is irreversible!"
+          },
+          "form": {
+            "labels": {
+              "name": "Name",
+              "is_active": "Active",
+              "is_forced": "Forced signature"
+            },
+            "errors": {
+              "name": "Name is required",
+              "content": "Content is required"
+            },
+            "helper_text": {
+              "is_active": "While the signature is disabled, it will not be available to the users.",
+              "is_forced": "The forced signature will be the only one usable for new messages."
+            }
+          }
+        },
+        "toasts": {
+          "success_create": "Signature created!",
+          "success_update": "Signature updated!",
+          "delete": "Signature deleted!"
+        }
       }
     }
   },
@@ -696,8 +745,17 @@
         "message_deleted": "Le message a bien été supprimé.",
         "thread_deleted": "La conversation a bien été supprimée."
       },
-      "message_editor": {
-        "start_typing": "Commencer à écrire..."
+      "message_composer": {
+        "start_typing": "Commencer à écrire...",
+        "signature_template_selector": {
+          "forced_signature_tooltips": {
+            "main": "Cette signature est forcée",
+            "secondary": "Vous ne pouvez pas la modifier."
+          },
+          "forced_signature_label": "Signature forcée : {{name}}",
+          "no_signature": "Aucune signature",
+          "signature_label": "Signature : {{name}}"
+        }
       },
       "search": {
         "placeholder": "Rechercher dans les messages...",
@@ -825,6 +883,10 @@
         "subject": "Sujet",
         "date": "Date",
         "to": "À"
+      },
+      "inline_template_variable": {
+        "label": "Variables",
+        "loading_tooltip": "Chargement des variables..."
       },
       "message_body": {
         "show_embedded_message": "Afficher le message inclus"
@@ -1000,7 +1062,8 @@
           "manage_accesses": "Gérer les accès",
           "new_address": "Nouvelle adresse",
           "reset_password": "Réinitialiser le mot de passe",
-          "more": "Plus"
+          "more": "Plus",
+          "new_signature": "Nouvelle signature"
         },
         "loading": "Chargement des adresses...",
         "delete_modal": {
@@ -1045,6 +1108,49 @@
         "success_text": "Merci pour votre message.",
         "success_text2": "En cas de questions, nous vous répondrons dans les meilleurs délais sur l'email renseigné.",
         "close_label": "Fermer le formulaire de retour"
+      },
+      "admin_maildomains_signature": {
+        "loading": "Chargement des signatures...",
+        "no_signatures": "Aucune signature trouvée",
+        "errors": {
+          "failed_to_load_signatures": "Erreur lors du chargement des signatures"
+        },
+        "actions": {
+          "modify": "Modifier"
+        },
+        "datagrid_headers": {
+          "name": "Nom",
+          "is_active": "Active",
+          "is_forced": "Forcée",
+          "actions": "Actions"
+        },
+        "compose_modal": {
+          "title": "Créer une nouvelle signature pour {{domain}}",
+          "delete_modal": {
+            "title": "Supprimer la signature \"{{signature}}\"",
+            "message": "Voulez-vous vraiment supprimer cette signature ? Cette action est irréversible!"
+          },
+          "form": {
+            "labels": {
+              "name": "Nom",
+              "is_active": "Active",
+              "is_forced": "Signature forcée"
+            },
+            "errors": {
+              "name": "Le nom est requis",
+              "content": "Un contenu est requis"
+            },
+            "helper_text": {
+              "is_active": "Tant que la signature est désactivée, elle ne sera pas disponible aux utilisateurs.",
+              "is_forced": "La signature forcée sera la seule utilisable pour les nouveaux messages."
+            }
+          }
+        },
+        "toasts": {
+          "success_create": "Signature créée !",
+          "success_update": "Signature mise à jour !",
+          "delete": "Signature supprimée !"
+        }
       }
     }
   }

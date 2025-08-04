@@ -44,6 +44,7 @@ def prepare_outbound_message(
     message: models.Message,
     text_body: str,
     html_body: str,
+    user: Optional[models.User] = None,
 ) -> bool:
     """Compose and sign an existing draft Message object before sending via SMTP.
 
@@ -63,6 +64,37 @@ def prepare_outbound_message(
 
     # Generate a MIME id
     message.mime_id = message.generate_mime_id()
+
+    # Insert the validated signature
+    validated_signature = mailbox_sender.get_validated_signature(
+        message.signature.id if message.signature else None
+    )
+    if message.signature != validated_signature:
+        message.signature = validated_signature
+        message.save(update_fields=["signature"])
+    if message.signature:
+        try:
+            signatures = message.signature.render_template(
+                mailbox=mailbox_sender, user=user
+            )
+            if signatures:
+                text_body = (
+                    text_body + "\n" + signatures["text_body"]
+                    if text_body
+                    else signatures["text_body"]
+                )
+                html_body = (
+                    html_body + "<p>" + signatures["html_body"] + "</p>"
+                    if html_body
+                    else signatures["html_body"]
+                )
+        except Exception as e:
+            logger.error(
+                "Failed to render signature %s for message %s: %s",
+                message.signature.id,
+                message.id,
+                e,
+            )
 
     # Handle reply and forward message embedding
     if message.parent:
