@@ -6,7 +6,7 @@ import rest_framework as drf
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.permissions import AllowAny
 
-from core.ai.utils import is_ai_enabled, is_ai_summary_enabled
+from core.ai.utils import is_ai_enabled, is_ai_summary_enabled, is_auto_labels_enabled
 
 
 class ConfigView(drf.views.APIView):
@@ -49,6 +49,10 @@ class ConfigView(drf.views.APIView):
                             "type": "boolean",
                             "readOnly": True,
                         },
+                        "AI_FEATURE_AUTOLABELS_ENABLED": {
+                            "type": "boolean",
+                            "readOnly": True,
+                        },
                         "DRIVE": {
                             "type": "object",
                             "description": "The URLs of the Drive external service.",
@@ -72,7 +76,7 @@ class ConfigView(drf.views.APIView):
                         "SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN": {
                             "type": "object",
                             "readOnly": True,
-                        },
+                        }
                     },
                     "required": [
                         "ENVIRONMENT",
@@ -83,6 +87,7 @@ class ConfigView(drf.views.APIView):
                         "LANGUAGE_CODE",
                         "AI_ENABLED",
                         "AI_FEATURE_SUMMARY_ENABLED",
+                        "AI_FEATURE_AUTOLABELS_ENABLED",
                         "SCHEMA_CUSTOM_ATTRIBUTES_USER",
                         "SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN",
                     ],
@@ -114,6 +119,7 @@ class ConfigView(drf.views.APIView):
         # AI Features
         dict_settings["AI_ENABLED"] = is_ai_enabled()
         dict_settings["AI_FEATURE_SUMMARY_ENABLED"] = is_ai_summary_enabled()
+        dict_settings["AI_FEATURE_AUTOLABELS_ENABLED"] = is_auto_labels_enabled()
 
         # Drive service
         if base_url := settings.DRIVE_CONFIG.get("base_url"):

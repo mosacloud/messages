@@ -126,6 +126,8 @@ class LabelViewSet(
                 "color": label.color,
                 "display_name": label.name.split("/")[-1],
                 "children": [],
+                "description": label.description,
+                "is_auto": label.is_auto,
             }
 
         # Second pass: build the tree structure

@@ -558,6 +558,10 @@ class Base(Configuration):
         default=False, environ_name="AI_FEATURE_SUMMARY_ENABLED", environ_prefix=None
     )
 
+    AI_FEATURE_AUTOLABELS_ENABLED = values.BooleanValue(
+        default=False, environ_name="AI_FEATURE_AUTOLABELS_ENABLED", environ_prefix=None
+    )
+
     # Logging
     # We want to make it easy to log to console but by default we log production
     # to Sentry and don't want to log to console.

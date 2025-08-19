@@ -25,6 +25,7 @@ pytestmark = pytest.mark.django_db
     AI_BASE_URL=None,
     AI_MODEL=None,
     AI_FEATURE_SUMMARY_ENABLED=False,
+    AI_FEATURE_AUTOLABELS_ENABLED=False,
     DRIVE_CONFIG={"base_url": None},
 )
 @pytest.mark.parametrize("is_authenticated", [False, True])
@@ -47,6 +48,7 @@ def test_api_config(is_authenticated):
         "POSTHOG_SURVEY_ID": "7890",
         "AI_ENABLED": False,
         "AI_FEATURE_SUMMARY_ENABLED": False,
+        "AI_FEATURE_AUTOLABELS_ENABLED": False,
         "SCHEMA_CUSTOM_ATTRIBUTES_USER": {},
         "SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN": {},
     }

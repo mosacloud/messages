@@ -276,6 +276,7 @@ The application uses a new environment file structure with `.defaults` and `.loc
 | `AI_API_KEY` | None| API Key used for AI features | Optional |
 | `AI_MODEL` | None | Default model used for AI features | Optional |
 | `AI_FEATURE_SUMMARY_ENABLED` | `False` | Default enabled mode for summary AI features | Required |
+| `AI_FEATURE_AUTOLABELS_ENABLED` | `False` | Default enabled mode for label AI features | Required |
 
 ### External Services
 

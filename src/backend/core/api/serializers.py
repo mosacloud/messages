@@ -354,7 +354,15 @@ class ThreadLabelSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Label
-        fields = ["id", "name", "slug", "color", "display_name"]
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "color",
+            "display_name",
+            "description",
+            "is_auto",
+        ]
         read_only_fields = ["id", "slug", "display_name"]
 
     def get_display_name(self, instance):
@@ -371,10 +379,21 @@ class TreeLabelSerializer(serializers.ModelSerializer):
     color = serializers.CharField(read_only=True)
     display_name = serializers.CharField(read_only=True)
     children = serializers.SerializerMethodField(read_only=True)
+    description = serializers.CharField(read_only=True)
+    is_auto = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = models.Label
-        fields = ["id", "name", "slug", "color", "display_name", "children"]
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "color",
+            "display_name",
+            "children",
+            "description",
+            "is_auto",
+        ]
         read_only_fields = fields
 
     @extend_schema_field(
@@ -392,7 +411,16 @@ class LabelSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Label
-        fields = ["id", "name", "slug", "color", "mailbox", "threads"]
+        fields = [
+            "id",
+            "name",
+            "slug",
+            "color",
+            "mailbox",
+            "threads",
+            "description",
+            "is_auto",
+        ]
         read_only_fields = ["id", "slug"]
 
     def validate_mailbox(self, value):

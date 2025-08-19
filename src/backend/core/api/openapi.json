@@ -182,6 +182,10 @@
                                             "type": "boolean",
                                             "readOnly": true
                                         },
+                                        "AI_FEATURE_AUTOLABELS_ENABLED": {
+                                            "type": "boolean",
+                                            "readOnly": true
+                                        },
                                         "DRIVE": {
                                             "type": "object",
                                             "description": "The URLs of the Drive external service.",
@@ -219,6 +223,7 @@
                                         "LANGUAGE_CODE",
                                         "AI_ENABLED",
                                         "AI_FEATURE_SUMMARY_ENABLED",
+                                        "AI_FEATURE_AUTOLABELS_ENABLED",
                                         "SCHEMA_CUSTOM_ATTRIBUTES_USER",
                                         "SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN"
                                     ]
@@ -4144,6 +4149,16 @@
                             "format": "uuid"
                         },
                         "description": "Threads that have this label"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Description of the label, used by AI to understand its purpose",
+                        "maxLength": 255
+                    },
+                    "is_auto": {
+                        "type": "boolean",
+                        "title": "Auto labeling",
+                        "description": "Whether this label should be automatically applied by AI"
                     }
                 },
                 "required": [
@@ -4181,6 +4196,16 @@
                             "format": "uuid"
                         },
                         "description": "Threads that have this label"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Description of the label, used by AI to understand its purpose",
+                        "maxLength": 255
+                    },
+                    "is_auto": {
+                        "type": "boolean",
+                        "title": "Auto labeling",
+                        "description": "Whether this label should be automatically applied by AI"
                     }
                 },
                 "required": [
@@ -5091,6 +5116,16 @@
                             "format": "uuid"
                         },
                         "description": "Threads that have this label"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Description of the label, used by AI to understand its purpose",
+                        "maxLength": 255
+                    },
+                    "is_auto": {
+                        "type": "boolean",
+                        "title": "Auto labeling",
+                        "description": "Whether this label should be automatically applied by AI"
                     }
                 }
             },
@@ -5469,6 +5504,16 @@
                     "display_name": {
                         "type": "string",
                         "readOnly": true
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Description of the label, used by AI to understand its purpose",
+                        "maxLength": 255
+                    },
+                    "is_auto": {
+                        "type": "boolean",
+                        "title": "Auto labeling",
+                        "description": "Whether this label should be automatically applied by AI"
                     }
                 },
                 "required": [
@@ -5509,13 +5554,23 @@
                             "$ref": "#/components/schemas/TreeLabel"
                         },
                         "readOnly": true
+                    },
+                    "description": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "is_auto": {
+                        "type": "boolean",
+                        "readOnly": true
                     }
                 },
                 "required": [
                     "children",
                     "color",
+                    "description",
                     "display_name",
                     "id",
+                    "is_auto",
                     "name",
                     "slug"
                 ]

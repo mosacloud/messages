@@ -1,4 +1,5 @@
 """Handles inbound email delivery logic: receiving messages and delivering to mailboxes."""
+
 # pylint: disable=broad-exception-caught
 
 import html
@@ -12,8 +13,13 @@ from django.db.utils import Error as DjangoDbError
 from django.utils import timezone
 
 from core import models
+from core.ai.call_label import assign_label_to_thread
 from core.ai.thread_summarizer import summarize_thread
-from core.ai.utils import get_messages_from_thread, is_ai_summary_enabled
+from core.ai.utils import (
+    get_messages_from_thread,
+    is_ai_summary_enabled,
+    is_auto_labels_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -679,6 +685,10 @@ def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-stat
                 if new_summary:
                     thread.summary = new_summary
                     thread.save(update_fields=["summary"])
+
+        # Assign labels to the thread
+        if is_auto_labels_enabled():
+            assign_label_to_thread(thread, mailbox.id)
 
     except Exception as e:
         logger.exception(

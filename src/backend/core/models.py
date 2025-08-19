@@ -796,6 +796,18 @@ class Label(BaseModel):
         help_text=_("Threads that have this label"),
         blank=True,
     )
+    description = models.CharField(
+        _("description"),
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=_("Description of the label, used by AI to understand its purpose"),
+    )
+    is_auto = models.BooleanField(
+        _("auto labeling"),
+        default=False,
+        help_text=_("Whether this label should be automatically applied by AI"),
+    )
 
     class Meta:
         db_table = "messages_label"
