@@ -281,7 +281,10 @@
           "fields": {
             "name": "Label name",
             "color": "Color: ",
-            "parent_label": "Select a parent label"
+            "parent_label": "Select a parent label",
+            "description": "Description",
+            "description_helper": "This description will be used by the AI to automatically assign this label to your messages.",
+            "auto_labeling": "Auto-labeling"
           },
           "submit_create": "Create",
           "submit_update": "Update",
@@ -730,7 +733,10 @@
           "fields": {
             "name": "Nom du libellé",
             "color": "Couleur : ",
-            "parent_label": "Sélectionnez un libellé parent"
+            "parent_label": "Sélectionnez un libellé parent",
+            "description": "Description",
+            "description_helper": "Cette description sera utilisée par l'IA pour assigner automatiquement ce label à vos messages.",
+            "auto_labeling": "Labellisation automatique"
           },
           "submit_create": "Créer",
           "submit_update": "Mettre à jour",

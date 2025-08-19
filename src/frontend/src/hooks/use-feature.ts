@@ -2,8 +2,8 @@ import { useConfig } from "@/features/providers/config";
 
 export enum FEATURE_KEYS {
     DRIVE = 'drive',
-    AI = 'ai',
     AI_SUMMARY = 'ai_summary',
+    AI_AUTOLABELS = 'ai_autolabels',
 }
 
 /**
@@ -19,10 +19,10 @@ export const useFeatureFlag = (featureKey: FEATURE_KEYS) => {
     switch (featureKey) {
         case FEATURE_KEYS.DRIVE:
             return config.DRIVE !== undefined;
-        case FEATURE_KEYS.AI:
-            return config.AI_ENABLED === true;
         case FEATURE_KEYS.AI_SUMMARY:
             return config.AI_ENABLED === true && config.AI_FEATURE_SUMMARY_ENABLED === true;
+        case FEATURE_KEYS.AI_AUTOLABELS:
+            return config.AI_ENABLED === true && config.AI_FEATURE_AUTOLABELS_ENABLED === true;
         default:
             throw new Error(`Unknown feature key: ${featureKey}`);
     }

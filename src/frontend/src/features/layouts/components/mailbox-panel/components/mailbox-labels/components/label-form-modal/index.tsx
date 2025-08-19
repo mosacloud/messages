@@ -1,6 +1,6 @@
 import { Label, TreeLabel } from "@/features/api/gen";
 import { useLabelsCreate, useLabelsList, useLabelsUpdate } from "@/features/api/gen/labels/labels";
-import { RhfInput, RhfSelect } from "@/features/forms/components/react-hook-form";
+import { RhfInput, RhfSelect, RhfCheckbox, RhfTextArea } from "@/features/forms/components/react-hook-form";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button, Modal, ModalSize } from "@openfun/cunningham-react";
@@ -11,6 +11,7 @@ import { FormProvider, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import z from "zod";
 import { RhfColorPaletteField } from "./components/color-palette-field";
+import { FEATURE_KEYS, useFeatureFlag } from "@/hooks/use-feature";
 
 export type SubLabelCreation = Partial<Pick<TreeLabel, 'name' | 'color' | 'display_name'>>;
 
@@ -25,6 +26,8 @@ const formSchema = z.object({
     name: z.string().min(1, { error: 'labels.form.errors.name_required' }),
     color: z.string().regex(/^#([0-9a-fA-F]{6})$/),
     parent_label: z.string().optional(),
+    description: z.string().max(255, { error: 'labels.form.errors.description_max_length' }).optional(),
+    is_auto: z.boolean().optional(),
 });
 
 type FormFields = z.infer<typeof formSchema>;
@@ -34,10 +37,14 @@ type FormFields = z.infer<typeof formSchema>;
  */
 export const LabelModal = ({ isOpen, onClose, label, onSuccess }: LabelModalProps) => {
     const { t } = useTranslation();
+    const isAutoLabelsEnabled = useFeatureFlag(FEATURE_KEYS.AI_AUTOLABELS);
+
     const defaultValues = useMemo(() => ({
-      name: (label as TreeLabel)?.display_name ?? '',
-      color: (label as TreeLabel)?.color ?? '#E3E3FD',
+      name: label?.display_name ?? '',
+      color: label?.color ?? '#E3E3FD',
       parent_label: label?.name?.split('/').slice(0, -1).join('/') ?? undefined,
+      description: (label as TreeLabel)?.description ?? '',
+      is_auto: (label as TreeLabel)?.is_auto ?? false,
     }), [label]);
     const isUpdate = (label as TreeLabel)?.id;
     const form = useForm({
@@ -53,6 +60,7 @@ export const LabelModal = ({ isOpen, onClose, label, onSuccess }: LabelModalProp
     const searchParams = useSearchParams();
     const queryClient = useQueryClient();
     const labelsQuery = useLabelsList({ mailbox_id: selectedMailbox!.id })
+    const autoLabelChecked = form.watch('is_auto');
     const flattenLabels = useMemo(() => {
       if (!labelsQuery.data) return [];
 
@@ -90,6 +98,8 @@ export const LabelModal = ({ isOpen, onClose, label, onSuccess }: LabelModalProp
           name: data.parent_label ? `${data.parent_label}/${data.name}` : data.name,
           color: data.color,
           mailbox: selectedMailbox!.id,
+          description: data.description,
+          is_auto: data.is_auto,
         }
       }, {
         onSuccess: async (data) => {
@@ -150,6 +160,29 @@ export const LabelModal = ({ isOpen, onClose, label, onSuccess }: LabelModalProp
             <div className="form-field-row">
               <RhfColorPaletteField name="color" />
             </div>
+            {isAutoLabelsEnabled && (
+              <>
+                <div className="form-field-row">
+                  <RhfCheckbox
+                    name="is_auto"
+                    label={t('labels.form.fields.auto_labeling')}
+                    text={form.formState.errors.is_auto?.message && t(form.formState.errors.is_auto.message)}
+                    fullWidth
+                  />
+                </div>
+                {autoLabelChecked && (
+                  <div className="form-field-row">
+                    <RhfTextArea
+                      name="description"
+                      label={t('labels.form.fields.description')}
+                      text={t('labels.form.fields.description_helper')}
+                      maxLength={255}
+                      fullWidth
+                    />
+                  </div>
+                )}
+              </>
+            )}
             <footer className="form-field-row">
               <Button type="button" color="secondary" size="medium" onClick={onClose}>
                 {t('actions.cancel')}
