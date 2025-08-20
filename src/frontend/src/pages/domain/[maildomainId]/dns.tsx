@@ -8,6 +8,7 @@ import { Banner } from "@/features/ui/components/banner";
 import { useMaildomainsCheckDnsCreate, useMaildomainsRetrieve } from "@/features/api/gen/maildomains/maildomains";
 import { useRouter } from "next/router";
 import { CopyableInput } from "@/features/ui/components/copyable-input";
+import { Icon } from "@gouvfr-lasuite/ui-kit";
 
 type DNSRecordWithId = DNSRecordCheck & { id: string };
 
@@ -20,6 +21,7 @@ type AdminDNSDataGridProps = {
 
 function AdminDNSDataGrid({ domain, dnsRecords, isLoading, error }: AdminDNSDataGridProps) {
   const { t } = useTranslation();
+  const [justCopied, setJustCopied] = useState(false);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -129,6 +131,19 @@ function AdminDNSDataGrid({ domain, dnsRecords, isLoading, error }: AdminDNSData
         columns={columns}
         rows={dnsRecords}
       />
+      <div style={{ marginTop: "1.5rem" }}>
+        <Button icon={justCopied?<Icon name="check" />:<Icon name="content_copy" />} color="secondary" onClick={() => {
+          const headerRow = t("admin_maildomains_dns.datagrid_headers.type") + "\t" + t("admin_maildomains_dns.datagrid_headers.target") + "\t" + t("admin_maildomains_dns.datagrid_headers.value") + "\n";
+          const records = headerRow + dnsRecords.map((record) => `${record.type.toUpperCase()}\t${record.target || "@"}\t${record.value}`).join("\n");
+          navigator.clipboard.writeText(records);
+          setJustCopied(true);
+          setTimeout(() => {
+            setJustCopied(false);
+          }, 2000);
+        }}>
+          {t("admin_maildomains_dns.actions.copy_dns_records")}
+        </Button>
+      </div>
     </div>
   );
 }

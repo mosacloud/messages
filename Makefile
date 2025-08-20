@@ -41,7 +41,7 @@ DOCKER_USER         = $(DOCKER_UID):$(DOCKER_GID)
 COMPOSE             = DOCKER_USER=$(DOCKER_USER) docker compose
 COMPOSE_EXEC        = $(COMPOSE) exec
 COMPOSE_EXEC_APP    = $(COMPOSE_EXEC) backend-dev
-COMPOSE_RUN         = $(COMPOSE) run --rm
+COMPOSE_RUN         = $(COMPOSE) run --rm --build
 COMPOSE_RUN_APP     = $(COMPOSE_RUN) backend-dev
 COMPOSE_RUN_APP_DB  = $(COMPOSE_RUN) backend-db
 COMPOSE_RUN_APP_TOOLS = $(COMPOSE_RUN) --no-deps backend-dev

@@ -446,7 +446,8 @@
           "status_unknown": "Unknown"
         },
         "actions": {
-          "check_dns": "Check DNS again"
+          "check_dns": "Check DNS again",
+          "copy_dns_records": "Copy all DNS records"
         },
         "loading": "Loading DNS records...",
         "checking": "Checking DNS records...",
@@ -901,7 +902,8 @@
           "status_unknown": "Inconnu"
         },
         "actions": {
-          "check_dns": "Revérifier"
+          "check_dns": "Revérifier",
+          "copy_dns_records": "Copier tous les enregistrements DNS"
         },
         "loading": "Chargement des enregistrements DNS...",
         "checking": "Vérification des enregistrements DNS...",
