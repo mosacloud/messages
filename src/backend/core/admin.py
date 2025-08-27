@@ -140,6 +140,7 @@ class MailDomainAccessInline(admin.TabularInline):
     """Inline class for the MailDomainAccess model"""
 
     model = models.MailDomainAccess
+    autocomplete_fields = ("user",)
 
 
 @admin.register(models.MailDomain)
@@ -155,12 +156,14 @@ class MailDomainAdmin(admin.ModelAdmin):
     )
     list_filter = ("identity_sync",)
     search_fields = ("name",)
+    autocomplete_fields = ("alias_of",)
 
 
 class MailboxAccessInline(admin.TabularInline):
     """Inline class for the MailboxAccess model"""
 
     model = models.MailboxAccess
+    autocomplete_fields = ("user",)
 
 
 @admin.register(models.Mailbox)
@@ -171,6 +174,7 @@ class MailboxAdmin(admin.ModelAdmin):
     list_display = ("__str__", "domain", "updated_at")
     search_fields = ("local_part", "domain__name")
     actions = [reset_keycloak_password_action]
+    autocomplete_fields = ("domain", "contact", "alias_of")
 
 
 @admin.register(models.MailboxAccess)
@@ -179,12 +183,14 @@ class MailboxAccessAdmin(admin.ModelAdmin):
 
     list_display = ("id", "mailbox", "user", "role")
     search_fields = ("mailbox__local_part", "mailbox__domain__name", "user__email")
+    autocomplete_fields = ("mailbox", "user")
 
 
 class ThreadAccessInline(admin.TabularInline):
     """Inline class for the ThreadAccess model"""
 
     model = models.ThreadAccess
+    autocomplete_fields = ("mailbox",)
 
 
 @admin.register(models.Thread)
@@ -281,6 +287,7 @@ class MessageRecipientInline(admin.TabularInline):
     """Inline class for the MessageRecipient model"""
 
     model = models.MessageRecipient
+    autocomplete_fields = ("contact",)
 
 
 @admin.register(models.Attachment)
@@ -289,12 +296,15 @@ class AttachmentAdmin(admin.ModelAdmin):
 
     list_display = ("id", "name", "mailbox", "created_at")
     search_fields = ("name", "mailbox__local_part", "mailbox__domain__name")
+    autocomplete_fields = ("mailbox",)
+    raw_id_fields = ("blob", "messages")
 
 
 class AttachmentInline(admin.TabularInline):
     """Inline class for the Attachment model"""
 
     model = models.Attachment.messages.through
+    raw_id_fields = ("attachment",)
 
 
 @admin.register(models.Message)
@@ -304,6 +314,8 @@ class MessageAdmin(admin.ModelAdmin):
     inlines = [MessageRecipientInline, AttachmentInline]
     list_display = ("id", "subject", "sender", "created_at", "sent_at")
     change_list_template = "admin/core/message/change_list.html"
+    raw_id_fields = ("thread", "blob", "draft_blob", "parent")
+    autocomplete_fields = ("sender",)
 
     def get_urls(self):
         urls = super().get_urls()
@@ -402,6 +414,8 @@ class ContactAdmin(admin.ModelAdmin):
 
     list_display = ("id", "name", "email", "mailbox")
     ordering = ("-created_at", "email")
+    search_fields = ("name", "email")
+    autocomplete_fields = ("mailbox",)
 
 
 @admin.register(models.MessageRecipient)
@@ -410,6 +424,8 @@ class MessageRecipientAdmin(admin.ModelAdmin):
 
     list_display = ("id", "message", "contact", "type")
     search_fields = ("message__subject", "contact__name", "contact__email")
+    autocomplete_fields = ("contact",)
+    raw_id_fields = ("message",)
 
 
 @admin.register(models.Label)
@@ -432,6 +448,8 @@ class LabelAdmin(admin.ModelAdmin):
         "parent_name",
     )
     list_filter = ("mailbox",)
+    autocomplete_fields = ("mailbox",)
+    raw_id_fields = ("threads",)
 
     def get_basename(self, obj):
         """Return the display name of the label."""
@@ -459,6 +477,7 @@ class BlobAdmin(admin.ModelAdmin):
     list_display = ("id", "mailbox", "content_type", "size", "created_at")
     search_fields = ("mailbox__local_part", "mailbox__domain__name")
     list_filter = ("mailbox", "content_type")
+    autocomplete_fields = ("mailbox",)
 
 
 @admin.register(models.MailDomainAccess)
@@ -468,6 +487,7 @@ class MailDomainAccessAdmin(admin.ModelAdmin):
     list_display = ("id", "maildomain", "user", "role")
     search_fields = ("maildomain__name", "user__email")
     list_filter = ("role",)
+    autocomplete_fields = ("maildomain", "user")
 
 
 @admin.register(models.DKIMKey)
@@ -486,6 +506,7 @@ class DKIMKeyAdmin(admin.ModelAdmin):
     search_fields = ("selector", "domain__name")
     list_filter = ("algorithm", "is_active", "domain")
     readonly_fields = ("public_key", "created_at", "updated_at")
+    autocomplete_fields = ("domain",)
     fieldsets = (
         (
             None,
