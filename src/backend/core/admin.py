@@ -129,7 +129,6 @@ class UserAdmin(auth_admin.UserAdmin):
         "id",
         "sub",
         "email",
-        "full_name",
         "created_at",
         "updated_at",
     )
