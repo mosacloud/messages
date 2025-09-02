@@ -1,14 +1,17 @@
 import { useEffect } from "react";
 import { DataGrid, usePagination } from "@openfun/cunningham-react";
 import { useRouter } from "next/router";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { Spinner } from "@gouvfr-lasuite/ui-kit";
 import { AdminLayout } from "@/features/layouts/components/admin/admin-layout";
 import Bar from "@/features/ui/components/bar";
-import { MailDomainAdmin } from "@/features/api/gen";
+import { getMaildomainsListQueryOptions, MailDomainAdmin, MailDomainAdminWrite } from "@/features/api/gen";
 import { useAdminMailDomain } from "@/features/providers/admin-maildomain";
 import useAbility, { Abilities } from "@/hooks/use-ability";
 import { Banner } from "@/features/ui/components/banner";
+import { CreateDomainAction } from "@/features/layouts/components/admin/domains-view/create-domain-action";
+import { useQueryClient } from "@tanstack/react-query";
+import { addToast, ToasterItem } from "@/features/ui/components/toaster";
 
 type AdminDataGridProps = {
   pagination: ReturnType<typeof usePagination>;
@@ -18,7 +21,6 @@ type AdminDataGridProps = {
 function AdminDataGrid({ domains, pagination }: AdminDataGridProps) {
   const router = useRouter();
   const { t, i18n } = useTranslation();
-
   const columns = [
     {
       id: "name",
@@ -104,8 +106,24 @@ const AdminPageContent = () => {
  * Admin page which list all mail domains.
  */
 export default function AdminPage() {
+  const queryClient = useQueryClient();
+
+  const handleCreateDomain = (domain: MailDomainAdminWrite) => {
+    queryClient.invalidateQueries({
+      queryKey: getMaildomainsListQueryOptions().queryKey,
+      exact: false,
+    });
+    addToast(
+      <ToasterItem>
+        <Trans i18nKey="admin_maildomains_list.creation_success" values={{ domain: domain.name }} components={{ strong: <strong /> }} />
+      </ToasterItem>, {
+        toastId: `create-domain-success:${domain.id}`,
+      }
+    )
+  };
+
   return (
-    <AdminLayout>
+    <AdminLayout actions={<CreateDomainAction onCreate={handleCreateDomain} />}>
       <AdminPageContent />
     </AdminLayout>
   );

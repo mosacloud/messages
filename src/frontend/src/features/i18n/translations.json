@@ -370,6 +370,26 @@
           "default": "An error occurred while creating the address."
         }
       },
+      "create_domain_modal": {
+        "title": "Add a domain",
+        "form": {
+          "labels": {
+            "name": "Name",
+            "oidc_autojoin": "Automatically create mailboxes according to OIDC emails",
+            "identity_sync": "Synchronize mailboxes with an identity provider"
+          },
+          "placeholders": {
+            "name": "Domain name..."
+          },
+          "errors": {
+            "name_required": "Name is required.",
+            "name_invalid": "Name must be a valid domain name."
+          }
+        },
+        "api_errors": {
+          "default": "An error occurred while creating the domain."
+        }
+      },
       "manage_accesses_modal": {
         "title": "Manage accesses",
         "roles": {
@@ -398,6 +418,11 @@
           "created_at": "Created at",
           "updated_at": "Updated at"
         },
+        "actions": {
+          "manage_access": "Manage access",
+          "new_domain": "New domain"
+        },
+        "creation_success": "The domain <strong>{{domain}}</strong> has been created successfully.",
         "loading": "Loading maildomains...",
         "loading_error": "An error occurred while loading maildomains."
       },
@@ -823,6 +848,26 @@
           "default": "Une erreur est survenue lors de la création de l'adresse."
         }
       },
+      "create_domain_modal": {
+        "title": "Ajout d'un domaine",
+        "form": {
+          "labels": {
+            "name": "Nom",
+            "oidc_autojoin": "Créer les boîtes aux lettres automatiquement selon les emails OIDC",
+            "identity_sync": "Synchroniser les boîtes aux lettres avec un fournisseur d'identité"
+          },
+          "placeholders": {
+            "name": "Nom du domaine..."
+          },
+          "errors": {
+            "name_required": "Le nom est requis.",
+            "name_invalid": "Le nom doit être un nom de domaine valide."
+          }
+        },
+        "api_errors": {
+          "default": "Une erreur est survenue lors de la création du domaine."
+        }
+      },
       "manage_accesses_modal": {
         "title": "Gérer les accès à {{mailbox}}",
         "roles": {
@@ -852,8 +897,10 @@
           "updated_at": "Modifié le"
         },
         "actions": {
-          "manage_access": "Gérer les accès"
+          "manage_access": "Gérer les accès",
+          "new_domain": "Nouveau domaine"
         },
+        "creation_success": "Le domaine <strong>{{domain}}</strong> a été créé avec succès.",
         "loading": "Chargement des domaines...",
         "loading_error": "Une erreur est survenue lors du chargement des domaines."
       },
