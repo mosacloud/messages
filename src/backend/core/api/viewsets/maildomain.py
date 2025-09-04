@@ -35,7 +35,10 @@ from core.services.identity.keycloak import reset_keycloak_user_password
 
 
 class AdminMailDomainViewSet(
-    mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
 ):
     """
     ViewSet for listing MailDomains the user administers.
@@ -215,9 +218,7 @@ class AdminMailDomainMailboxViewSet(
             )
 
         # --- Uniqueness Validation ---
-        if models.Mailbox.objects.filter(
-            domain=domain, local_part__iexact=local_part
-        ).exists():
+        if models.Mailbox.objects.filter(domain=domain, local_part=local_part).exists():
             return Response(
                 {
                     "local_part": [

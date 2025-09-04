@@ -73,7 +73,8 @@ create-env-files: \
 	env.d/development/backend.local \
 	env.d/development/frontend.local \
 	env.d/development/mta-in.local \
-	env.d/development/mta-out.local
+	env.d/development/mta-out.local \
+	env.d/development/socks-proxy.local
 .PHONY: create-env-files
 
 bootstrap: ## Prepare the project for local development
@@ -224,7 +225,8 @@ test: \
   back-test \
   front-test \
   mta-in-test \
-  mta-out-test
+  mta-out-test \
+  socks-proxy-test
 .PHONY: test
 
 back-test: ## run back-end tests
@@ -253,6 +255,9 @@ mta-out-test: ## run the mta-out tests
 	@$(COMPOSE) run --build --rm mta-out-test
 .PHONY: mta-out-test
 
+socks-proxy-test: ## run the socks-proxy tests
+	@$(COMPOSE) run --build --rm socks-proxy-test
+.PHONY: socks-proxy-test
 
 # -- Backend
 
@@ -300,6 +305,10 @@ back-poetry-lock: ## lock the dependencies
 	make pip-audit
 .PHONY: back-poetry-lock
 
+back-poetry-update-indirect: ## update indirect dependencies
+	rm src/backend/poetry.lock
+	make back-poetry-lock
+.PHONY: back-poetry-update-indirect
 back-poetry-check: ## check the dependencies
 	@$(COMPOSE) run --rm --build backend-poetry poetry check
 .PHONY: back-poetry-check
@@ -307,6 +316,10 @@ back-poetry-check: ## check the dependencies
 back-poetry-outdated: ## show outdated dependencies
 	@$(COMPOSE) run --rm --build backend-poetry poetry show --outdated
 .PHONY: back-poetry-outdated
+
+back-poetry-tree: ## show dependencies as a tree
+	@$(COMPOSE) run --rm --build backend-dev pipdeptree
+.PHONY: back-poetry-tree
 
 pip-audit: ## check the dependencies
 	@$(COMPOSE) run --rm --no-deps -e HOME=/tmp --build backend-dev pip-audit

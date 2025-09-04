@@ -34,12 +34,27 @@ def fixture_authenticated_user():
     return factories.UserFactory(full_name="Julie Dupont", email="julie@example.com")
 
 
+@pytest.fixture(name="authenticated_user2")
+def fixture_authenticated_user2():
+    """Create an authenticated user to authenticate."""
+    return factories.UserFactory(full_name="Paul Dupont", email="paul@example2.com")
+
+
 @pytest.fixture(name="mailbox")
 def fixture_mailbox(authenticated_user):
     """Create a mailbox for the authenticated user."""
     return factories.MailboxFactory(
         local_part=authenticated_user.email.split("@")[0],
         domain__name=authenticated_user.email.split("@")[1],
+    )
+
+
+@pytest.fixture(name="mailbox2")
+def fixture_mailbox2(authenticated_user2):
+    """Create a mailbox for the authenticated user."""
+    return factories.MailboxFactory(
+        local_part=authenticated_user2.email.split("@")[0],
+        domain__name=authenticated_user2.email.split("@")[1],
     )
 
 
@@ -346,11 +361,14 @@ class TestApiDraftAndSendMessage:
         """Test sending a draft message when the delivery service fails."""
 
         mock_send_outbound_message.side_effect = lambda recipient_emails, message: {
-            recipient_email: {
+            recipient_email: {"delivered": False, "error": "Custom error message"}
+            if recipient_email == "fail@external.com"
+            else {
                 "delivered": False,
                 "error": "Custom error message",
+                "retry": True,
             }
-            if recipient_email == "fail@external.com"
+            if recipient_email == "retry@external.com"
             else {
                 "delivered": True,
                 "error": None,
@@ -373,7 +391,11 @@ class TestApiDraftAndSendMessage:
                 "senderId": mailbox.id,
                 "subject": subject,
                 "draftBody": "test content",
-                "to": ["fail@external.com", "success@external.com"],
+                "to": [
+                    "fail@external.com",
+                    "retry@external.com",
+                    "success@external.com",
+                ],
             },
             format="json",
         )
@@ -400,10 +422,17 @@ class TestApiDraftAndSendMessage:
 
         fail_recipient = db_message.recipients.get(contact__email="fail@external.com")
         assert (
-            fail_recipient.delivery_status == enums.MessageDeliveryStatusChoices.RETRY
+            fail_recipient.delivery_status == enums.MessageDeliveryStatusChoices.FAILED
         )
-        assert fail_recipient.retry_at is not None
-        assert fail_recipient.retry_count == 1
+        assert fail_recipient.retry_at is None
+        assert fail_recipient.retry_count == 0
+
+        retry_recipient = db_message.recipients.get(contact__email="retry@external.com")
+        assert (
+            retry_recipient.delivery_status == enums.MessageDeliveryStatusChoices.RETRY
+        )
+        assert retry_recipient.retry_at is not None
+        assert retry_recipient.retry_count == 1
 
         success_recipient = db_message.recipients.get(
             contact__email="success@external.com"
@@ -460,8 +489,16 @@ class TestApiDraftAndSendMessage:
         # Assert the response is forbidden, there is no mailbox access
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_draft_message_unauthorized(self):
+    def test_draft_message_unauthorized(
+        self,
+        mailbox,
+        mailbox2,
+        draft_detail_url,
+        authenticated_user,
+        authenticated_user2,
+    ):
         """Test create draft message unauthorized."""
+
         # Create a client
         client = APIClient()
         # No one is authenticated
@@ -479,6 +516,130 @@ class TestApiDraftAndSendMessage:
         # Assert the response is unauthorized
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
+        client.force_authenticate(user=authenticated_user)
+
+        response = client.post(
+            reverse("draft-message"),
+            {
+                "senderId": mailbox.id,
+                "subject": "test",
+                "draftBody": "<p>test</p> or test",
+                "to": ["pierre@external.com"],
+            },
+            format="json",
+        )
+        # Assert the response is forbidden, there is no mailbox access
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=authenticated_user,
+            role=enums.MailboxRoleChoices.EDITOR,
+        )
+
+        # Then, authenticate and create a real draft
+        draft_response = client.post(
+            reverse("draft-message"),
+            {
+                "senderId": mailbox.id,
+                "subject": "test",
+                "draftBody": "Test content",
+                "to": ["pierre@external.com"],
+            },
+            format="json",
+        )
+
+        assert draft_response.status_code == status.HTTP_201_CREATED
+        draft_message_id = draft_response.data["id"]
+
+        # As a second user, we should not be able to update the draft
+        client.force_authenticate(user=authenticated_user2)
+        factories.MailboxAccessFactory(
+            mailbox=mailbox2,
+            user=authenticated_user2,
+            role=enums.MailboxRoleChoices.EDITOR,
+        )
+
+        update_response = client.put(
+            draft_detail_url(draft_message_id),
+            {
+                "senderId": mailbox.id,
+                "subject": "updated subject",
+                "draftBody": "updated content",
+                "to": ["pierre@example.com", "jacques@example.com"],
+                "cc": ["paul@example.com"],
+            },
+            format="json",
+        )
+
+        assert update_response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_draft_message_with_empty_body(
+        self, mailbox, authenticated_user, draft_detail_url
+    ):
+        """Test create draft message with empty body."""
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=authenticated_user,
+            role=enums.MailboxRoleChoices.EDITOR,
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=authenticated_user)
+
+        draft_response = client.post(
+            reverse("draft-message"),
+            {
+                "senderId": mailbox.id,
+                "subject": "test",
+                "draftBody": "",
+                "to": ["pierre@external.com"],
+            },
+            format="json",
+        )
+
+        assert draft_response.status_code == status.HTTP_201_CREATED
+        draft_message_id = draft_response.data["id"]
+
+        # Verify the message was created with empty subject
+        draft_message = models.Message.objects.get(id=draft_message_id)
+        assert draft_message.subject == "test"
+        assert draft_message.is_draft is True
+        assert draft_message.draft_blob is None
+
+        # We can then add a body
+        update_response = client.put(
+            draft_detail_url(draft_message.id),
+            {
+                "senderId": mailbox.id,
+                "draftBody": "Test content",
+            },
+            format="json",
+        )
+        assert update_response.status_code == status.HTTP_200_OK
+
+        draft_message = models.Message.objects.get(id=draft_message_id)
+        assert draft_message.subject == "test"
+        assert draft_message.is_draft is True
+        assert draft_message.draft_blob is not None
+        assert draft_message.draft_blob.get_content() == b"Test content"
+
+        # ... and remove it
+        update_response = client.put(
+            draft_detail_url(draft_message.id),
+            {
+                "senderId": mailbox.id,
+                "draftBody": "",
+            },
+            format="json",
+        )
+        assert update_response.status_code == status.HTTP_200_OK
+
+        draft_message = models.Message.objects.get(id=draft_message_id)
+        assert draft_message.subject == "test"
+        assert draft_message.is_draft is True
+        assert draft_message.draft_blob is None
+
     def test_draft_message_with_empty_subject(self, mailbox, authenticated_user):
         """Test create draft message with empty subject."""
         factories.MailboxAccessFactory(
@@ -494,7 +655,7 @@ class TestApiDraftAndSendMessage:
             reverse("draft-message"),
             {
                 "senderId": mailbox.id,
-                "subject": "",  # Empty subject should be allowed
+                "subject": "",
                 "draftBody": "Test content",
                 "to": ["pierre@external.com"],
             },

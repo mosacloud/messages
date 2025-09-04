@@ -11,6 +11,9 @@ os.environ.setdefault("DJANGO_CONFIGURATION", "Development")
 
 install(check_options=True)
 
+# Must be imported after install()
+from django.conf import settings  # pylint: disable=wrong-import-position
+
 app = Celery("messages")
 
 # Using a string here means the worker doesn't have to serialize
@@ -30,6 +33,11 @@ if not os.environ.get("DISABLE_CELERY_BEAT_SCHEDULE"):
         "retry-pending-messages": {
             "task": "core.mda.tasks.retry_messages_task",
             "schedule": 300.0,  # Every 5 minutes (300 seconds)
+            "options": {"queue": "default"},
+        },
+        "selfcheck": {
+            "task": "core.mda.tasks.selfcheck_task",
+            "schedule": settings.MESSAGES_SELFCHECK_INTERVAL,
             "options": {"queue": "default"},
         },
     }

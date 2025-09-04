@@ -152,19 +152,34 @@ class Base(Configuration):
         },
     }
 
-    # MDA/MTA settings
+    # MDA settings
     MDA_API_SECRET = values.Value(
-        "default-mda-api-secret", environ_name="MDA_API_SECRET", environ_prefix=None
+        "my-shared-secret-mda", environ_name="MDA_API_SECRET", environ_prefix=None
     )
-    MTA_OUT_HOST = values.Value(None, environ_name="MTA_OUT_HOST", environ_prefix=None)
+
+    # MTA settings
+
+    # "direct" or "relay"
+    MTA_OUT_MODE = values.Value(
+        "direct", environ_name="MTA_OUT_MODE", environ_prefix=None
+    )
+    # List of proxies for the direct outbound MTA
+    MTA_OUT_PROXIES = values.ListValue(
+        [], environ_name="MTA_OUT_PROXIES", environ_prefix=None
+    )
+    MTA_OUT_DIRECT_PORT = values.PositiveIntegerValue(
+        25, environ_name="MTA_OUT_DIRECT_PORT", environ_prefix=None
+    )
+
+    # SMTP settings for external SMTP servers, if MTA_OUT_MODE="relay"
+    MTA_OUT_SMTP_HOST = values.Value(
+        None, environ_name="MTA_OUT_SMTP_HOST", environ_prefix=None
+    )
     MTA_OUT_SMTP_USERNAME = values.Value(
         None, environ_name="MTA_OUT_SMTP_USERNAME", environ_prefix=None
     )
     MTA_OUT_SMTP_PASSWORD = values.Value(
         None, environ_name="MTA_OUT_SMTP_PASSWORD", environ_prefix=None
-    )
-    MTA_OUT_SMTP_USE_TLS = values.BooleanValue(
-        default=True, environ_name="MTA_OUT_SMTP_USE_TLS", environ_prefix=None
     )
 
     # Test domain settings
@@ -179,6 +194,51 @@ class Base(Configuration):
     MESSAGES_ACCEPT_ALL_EMAILS = values.BooleanValue(
         default=False,
         environ_name="MESSAGES_ACCEPT_ALL_EMAILS",
+        environ_prefix=None,
+    )
+
+    # Self-check settings
+    MESSAGES_SELFCHECK_FROM = values.Value(
+        None,
+        environ_name="MESSAGES_SELFCHECK_FROM",
+        environ_prefix=None,
+    )
+    MESSAGES_SELFCHECK_TO = values.Value(
+        None,
+        environ_name="MESSAGES_SELFCHECK_TO",
+        environ_prefix=None,
+    )
+    MESSAGES_SELFCHECK_SECRET = values.Value(
+        "self-check-secret-for-dev",
+        environ_name="MESSAGES_SELFCHECK_SECRET",
+        environ_prefix=None,
+    )
+    MESSAGES_SELFCHECK_INTERVAL = values.PositiveIntegerValue(
+        600,  # 10 minutes
+        environ_name="MESSAGES_SELFCHECK_INTERVAL",
+        environ_prefix=None,
+    )
+    MESSAGES_SELFCHECK_TIMEOUT = values.PositiveIntegerValue(
+        60,  # 60 seconds
+        environ_name="MESSAGES_SELFCHECK_TIMEOUT",
+        environ_prefix=None,
+    )
+
+    MESSAGES_SELFCHECK_PROMETHEUS_METRICS_ENABLED = values.BooleanValue(
+        default=False,
+        environ_name="MESSAGES_SELFCHECK_PROMETHEUS_METRICS_ENABLED",
+        environ_prefix=None,
+    )
+
+    MESSAGES_SELFCHECK_PROMETHEUS_METRICS_PUSHGATEWAY_URL = values.Value(
+        None,
+        environ_name="MESSAGES_SELFCHECK_PROMETHEUS_METRICS_PUSHGATEWAY_URL",
+        environ_prefix=None,
+    )
+
+    MESSAGES_SELFCHECK_PROMETHEUS_METRICS_PREFIX = values.Value(
+        "",
+        environ_name="MESSAGES_SELFCHECK_PROMETHEUS_METRICS_PREFIX",
         environ_prefix=None,
     )
 

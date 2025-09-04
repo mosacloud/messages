@@ -2,8 +2,6 @@
 # pylint: disable=broad-exception-caught
 
 import logging
-import smtplib
-from collections import defaultdict
 from typing import Any, Optional
 
 from django.conf import settings
@@ -12,6 +10,7 @@ from django.utils import timezone
 from core import models
 from core.enums import MessageDeliveryStatusChoices
 from core.mda.inbound import check_local_recipient, deliver_inbound_message
+from core.mda.outbound_direct import send_message_via_mx
 from core.mda.rfc5322 import (
     compose_email,
     create_forward_message,
@@ -19,6 +18,7 @@ from core.mda.rfc5322 import (
     parse_email_message,
 )
 from core.mda.signing import sign_message_dkim
+from core.mda.smtp import send_smtp_mail
 
 logger = logging.getLogger(__name__)
 
@@ -221,6 +221,7 @@ def send_message(message: models.Message, force_mta_out: bool = False):
         delivered: bool,
         internal: bool,
         error: Optional[str] = None,
+        retry: Optional[bool] = False,
     ) -> None:
         if delivered:
             # TODO also update message.updated_at?
@@ -234,7 +235,7 @@ def send_message(message: models.Message, force_mta_out: bool = False):
             envelope_to[recipient_email].save(
                 update_fields=["delivered_at", "delivery_message", "delivery_status"]
             )
-        elif envelope_to[recipient_email].retry_count < len(RETRY_INTERVALS):
+        elif retry and envelope_to[recipient_email].retry_count < len(RETRY_INTERVALS):
             envelope_to[recipient_email].retry_at = (
                 timezone.now()
                 + RETRY_INTERVALS[envelope_to[recipient_email].retry_count]
@@ -261,7 +262,7 @@ def send_message(message: models.Message, force_mta_out: bool = False):
                 update_fields=["delivery_status", "delivery_message"]
             )
 
-    external_recipients_by_domain = defaultdict(list)
+    external_recipients = set()
     for recipient_email in envelope_to:
         if (
             check_local_recipient(recipient_email, create_if_missing=True)
@@ -276,89 +277,85 @@ def send_message(message: models.Message, force_mta_out: bool = False):
                 logger.error(
                     "Failed to deliver internal message to %s: %s", recipient_email, e
                 )
-                _mark_delivered(recipient_email, False, True, str(e))
+                _mark_delivered(recipient_email, False, True, str(e), False)
 
         else:
-            # TODO: actual grouping should be by MX, not by email domain
-            # grouping_key = recipient_email.split("@")[1]
-            # For now we don't group at all.
-            grouping_key = "all"
-            external_recipients_by_domain[grouping_key].append(recipient_email)
+            external_recipients.add(recipient_email)
 
-    if len(external_recipients_by_domain) > 0:
-        for external_recipients in external_recipients_by_domain.values():
+    if external_recipients:
+        try:
             statuses = send_outbound_message(external_recipients, message)
             for recipient_email, status in statuses.items():
                 _mark_delivered(
-                    recipient_email, status["delivered"], False, status.get("error")
+                    recipient_email,
+                    status["delivered"],
+                    False,
+                    status.get("error"),
+                    status.get("retry", False),
+                )
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            logger.error("Failed to send outbound message: %s", e, exc_info=True)
+            for recipient_email in external_recipients:
+                _mark_delivered(
+                    recipient_email,
+                    False,
+                    False,
+                    "Internal error while delivering",
+                    True,
                 )
 
 
 def send_outbound_message(
-    recipient_emails: list[str], message: models.Message
+    recipient_emails: set[str], message: models.Message
 ) -> dict[str, Any]:
-    """Send an existing Message object via MTA out (SMTP)."""
+    """Send an existing Message object via MTA out (SMTP) or direct MX if not configured."""
 
-    def _global_error(error: str) -> dict[str, Any]:
-        return {
-            email: {
-                "error": error,
-                "delivered": False,
-            }
-            for email in recipient_emails
+    custom_attributes = message.sender.mailbox.domain.custom_attributes or {}
+
+    mta_out_mode = custom_attributes.get("_mta_out_mode") or settings.MTA_OUT_MODE
+
+    if mta_out_mode == "direct":
+        # Use direct MX delivery
+        envelope_from = message.sender.email
+
+        # Get all recipients that need delivery
+        envelope_to = {
+            recipient.contact.email: recipient
+            for recipient in message.recipients.select_related("contact").all()
+            if recipient.delivery_status in {None, MessageDeliveryStatusChoices.RETRY}
+            and (recipient.retry_at is None or recipient.retry_at <= timezone.now())
         }
 
-    # Send via SMTP
-    if not settings.MTA_OUT_HOST:
-        logger.warning(
-            "MTA_OUT_HOST is not set, skipping SMTP sending for %s", message.id
+        mime_data = message.blob.get_content()
+
+        return send_message_via_mx(envelope_from, envelope_to, mime_data)
+
+    if mta_out_mode == "relay":
+        mta_out_smtp_host = (
+            custom_attributes.get("_mta_out_smtp_host") or settings.MTA_OUT_SMTP_HOST
         )
-        return _global_error("MTA_OUT_HOST is not set")
-
-    smtp_host, smtp_port_str = settings.MTA_OUT_HOST.split(":")
-    smtp_port = int(smtp_port_str)
-    envelope_from = message.sender.email
-
-    statuses = {}
-
-    try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=60) as client:
-            client.ehlo()
-            if settings.MTA_OUT_SMTP_USE_TLS:
-                client.starttls()
-                client.ehlo()  # Re-EHLO after STARTTLS
-
-            # Authenticate if credentials provided
-            if settings.MTA_OUT_SMTP_USERNAME and settings.MTA_OUT_SMTP_PASSWORD:
-                client.login(
-                    settings.MTA_OUT_SMTP_USERNAME,
-                    settings.MTA_OUT_SMTP_PASSWORD,
-                )
-
-            smtp_response = client.sendmail(
-                envelope_from, recipient_emails, message.blob.get_content()
-            )
-            logger.info(
-                "Sent message %s via SMTP. Response: %s",
-                message.id,
-                smtp_response,
-            )
-            # Return delivery success for each recipient, looking at smtp_response
-            for recipient_email in recipient_emails:
-                if recipient_email not in smtp_response:
-                    statuses[recipient_email] = {"delivered": True}
-                else:
-                    statuses[recipient_email] = {
-                        "error": smtp_response[recipient_email],
-                        "delivered": False,
-                    }
-
-    except (smtplib.SMTPException, OSError) as e:
-        logger.error(
-            "SMTP error sending message %s: %s",
-            message.id,
-            e,
+        mta_out_smtp_username = (
+            custom_attributes.get("_mta_out_smtp_username")
+            or settings.MTA_OUT_SMTP_USERNAME
         )
-        return _global_error(str(e))
+        mta_out_smtp_password = (
+            custom_attributes.get("_mta_out_smtp_password")
+            or settings.MTA_OUT_SMTP_PASSWORD
+        )
 
-    return statuses
+        statuses = send_smtp_mail(
+            smtp_host=(mta_out_smtp_host or "").split(":")[0],
+            smtp_port=int(
+                (mta_out_smtp_host or "").split(":")[1]
+                if ":" in mta_out_smtp_host
+                else 587
+            ),
+            envelope_from=message.sender.email,
+            recipient_emails=recipient_emails,
+            message_content=message.blob.get_content(),
+            smtp_username=mta_out_smtp_username,
+            smtp_password=mta_out_smtp_password,
+        )
+        return statuses
+
+    raise ValueError(f"Invalid MTA out mode: {mta_out_mode}")

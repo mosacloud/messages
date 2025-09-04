@@ -104,6 +104,22 @@ def index_thread_post_save(sender, instance, created, **kwargs):
         )
 
 
+@receiver(pre_delete, sender=models.Message)
+def delete_message_blobs(sender, instance, **kwargs):
+    """Delete the blobs associated with a message."""
+    if instance.blob:
+        instance.blob.delete()
+    if instance.draft_blob:
+        instance.draft_blob.delete()
+
+
+# @receiver(post_delete, sender=models.Attachment)
+# def delete_attachments_blobs(sender, instance, **kwargs):
+#     """Delete the blob associated with an attachment."""
+#     if instance.blob:
+#         instance.blob.delete()
+
+
 @receiver(post_delete, sender=models.Message)
 def delete_message_from_index(sender, instance, **kwargs):
     """Remove a message from the index after it's deleted."""
@@ -116,7 +132,7 @@ def delete_message_from_index(sender, instance, **kwargs):
         es.delete(
             index=MESSAGE_INDEX,
             id=str(instance.id),
-            ignore=[404],  # Ignore if document doesn't exist
+            ignore=[404],  # Ignore if document doesn't exist or is already deleted
         )
 
     # pylint: disable=broad-exception-caught
@@ -150,7 +166,8 @@ def delete_thread_from_index(sender, instance, **kwargs):
         es.delete_by_query(
             index=MESSAGE_INDEX,
             body={"query": {"term": {"thread_id": str(instance.id)}}},
-            ignore=[404],  # Ignore if no documents match
+            ignore=[404, 409],  # Ignore if no documents match
+            conflicts="proceed",
         )
     # pylint: disable=broad-exception-caught
     except Exception as e:
@@ -173,9 +190,9 @@ def delete_orphan_draft_attachments(sender, instance, **kwargs):
             if attachment.messages.count() == 1:
                 attachment.blob.delete()  # this will cascade delete the attachment
 
-        if instance.draft_blob:
+        if instance.draft_blob and instance.draft_blob.pk:
             instance.draft_blob.delete()
 
-    if instance.blob:
+    if instance.blob and instance.blob.pk:
         if instance.blob.messages.count() == 1:
             instance.blob.delete()
