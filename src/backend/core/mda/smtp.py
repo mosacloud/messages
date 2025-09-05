@@ -93,12 +93,14 @@ def send_smtp_mail(
     proxy_username: Optional[str] = None,
     proxy_password: Optional[str] = None,
     sender_hostname: Optional[str] = None,
+    smtp_ip: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Send an email via SMTP.
 
     Args:
         smtp_host: SMTP server hostname
+        smtp_ip: SMTP server IP address (optional)
         smtp_port: SMTP server port
         envelope_from: Sender email address
         recipient_emails: Set of recipient email addresses
@@ -149,7 +151,11 @@ def send_smtp_mail(
             logger.debug("SMTP: QUIT failed %s", e)
 
     try:
-        (code, msg) = client.connect(smtp_host, smtp_port)
+        client._host = smtp_host  # noqa: SLF001 # pylint: disable=protected-access
+        (code, msg) = client.connect(smtp_ip or smtp_host, smtp_port)
+        logger.debug(
+            "SMTP: connected to %s:%s (%s %s)", smtp_host, smtp_port, code, msg
+        )
         if code != 220:
             _quit()
             return error_for_all_recipients(f"Connection failed: {code} {msg}", True)

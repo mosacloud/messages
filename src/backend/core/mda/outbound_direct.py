@@ -155,7 +155,8 @@ def send_message_via_mx(envelope_from, envelope_to, mime_data) -> Dict[str, Any]
 
             # Use direct SMTP, no auth
             smtp_statuses = send_smtp_mail(
-                smtp_host=mx_ip,
+                smtp_host=mx_hostname,
+                smtp_ip=mx_ip,
                 smtp_port=settings.MTA_OUT_DIRECT_PORT,
                 envelope_from=envelope_from,
                 recipient_emails=remaining_recipients.copy(),
