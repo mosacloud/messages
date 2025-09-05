@@ -2,11 +2,19 @@
 DNS checking functionality for mail domains.
 """
 
+import re
 from typing import Dict, List
 
 from core.models import MailDomain
 
 import dns.resolver
+
+
+def normalize_txt_value(value: str) -> str:
+    """
+    Normalize a TXT record value.
+    """
+    return re.sub(r"\s*\;\s*", ";", value.strip('"'))
 
 
 def check_single_record(
@@ -46,7 +54,10 @@ def check_single_record(
                     answer.to_text().strip('"').replace('" "', "") for answer in answers
                 ]
             else:
-                found_values = [answer.to_text().strip('"') for answer in answers]
+                found_values = [
+                    normalize_txt_value(answer.to_text()) for answer in answers
+                ]
+            expected_value = normalize_txt_value(expected_value)
         else:
             # For other record types, try to resolve them as-is
             answers = dns.resolver.resolve(query_name, record_type)

@@ -213,31 +213,72 @@ class TestDNSChecking:
                     "target": "@",
                     "value": "v=spf1 include:_spf.example.com -all",
                 },
+                {
+                    "type": "TXT",
+                    "target": "_dmarc",
+                    "value": "v=DMARC1; p=reject; adkim=s; aspf=s;",
+                },
+                {
+                    "type": "TXT",
+                    "target": "_dmarc_stripped",
+                    "value": "v=DMARC1;p=reject;adkim=s;aspf=s; ",
+                },
+                {
+                    "type": "TXT",
+                    "target": "_dmarc_missing",
+                    "value": "v=DMARC1;p=reject;adkim=s;aspf=s; ",
+                },
             ]
 
             with patch("core.services.dns.check.dns.resolver.resolve") as mock_resolve:
-                # Mock responses for both records
-                mock_mx_answer = MagicMock()
-                mock_mx_answer.preference = 10
-                mock_mx_answer.exchange = "mx1.example.com"
 
-                mock_txt_answer = MagicMock()
-                mock_txt_answer.to_text.return_value = (
-                    '"v=spf1 include:_spf.example.com -all"'
-                )
+                def resolve_side_effect(name, record_type):
+                    if name == "_dmarc_missing.example.com":
+                        raise NoAnswer()
 
-                mock_resolve.side_effect = [
-                    [mock_mx_answer],  # MX record response
-                    [mock_txt_answer],  # TXT record response
-                ]
+                    if record_type == "MX":
+                        mock_mx_answer = MagicMock()
+                        mock_mx_answer.preference = 10
+                        mock_mx_answer.exchange = "mx1.example.com"
+                        return [mock_mx_answer]
+
+                    if record_type == "TXT" and name == "@.example.com":
+                        mock_txt_answer = MagicMock()
+                        mock_txt_answer.to_text.return_value = (
+                            '"v=spf1 include:_spf.example.com -all"'
+                        )
+                        garbage = MagicMock()
+                        garbage.to_text.return_value = "some-garbage"
+                        return [garbage, mock_txt_answer, garbage]
+
+                    if (
+                        record_type == "TXT"
+                        and name == "_dmarc.example.com"
+                        or name == "_dmarc_stripped.example.com"
+                    ):
+                        mock_txt_dmarc_answer = MagicMock()
+                        mock_txt_dmarc_answer.to_text.return_value = (
+                            '"v=DMARC1; p=reject; adkim=s; aspf=s;"'
+                        )
+                        return [mock_txt_dmarc_answer]
+
+                    return []
+
+                mock_resolve.side_effect = resolve_side_effect
 
                 results = check_dns_records(maildomain)
 
-                assert len(results) == 2
+                assert len(results) == 5
                 assert results[0]["type"] == "MX"
-                assert results[0]["_check"]["status"] == "correct"
+                assert results[0]["_check"]["status"] == "correct", results[0]
                 assert results[1]["type"] == "TXT"
-                assert results[1]["_check"]["status"] == "correct"
+                assert results[1]["_check"]["status"] == "correct", results[1]
+                assert results[2]["type"] == "TXT"
+                assert results[2]["_check"]["status"] == "correct", results[2]
+                assert results[3]["type"] == "TXT"
+                assert results[3]["_check"]["status"] == "correct", results[3]
+                assert results[4]["type"] == "TXT"
+                assert results[4]["_check"]["status"] == "missing"
 
     def test_check_dns_records_mixed_status(self, maildomain_factory):
         """Test checking DNS records with mixed status (correct, incorrect, missing)."""
