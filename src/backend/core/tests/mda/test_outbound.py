@@ -260,7 +260,8 @@ class TestSendOutboundMessage:
 
         # Check first call - to@example.com, cc@example.com, cc2@example.com to mx1.example.com
         assert sorted_calls[0] == call(
-            smtp_host="1.1.0.9",
+            smtp_host="mx1.example.com",
+            smtp_ip="1.1.0.9",
             smtp_port=25,
             envelope_from=draft_message.sender.email,
             recipient_emails={"to@example.com", "cc@example.com", "cc2@example.com"},
@@ -274,7 +275,8 @@ class TestSendOutboundMessage:
 
         # Check second call - cc@example.com, to@example.com retry to mx2.example.com
         assert sorted_calls[1] == call(
-            smtp_host="1.2.0.9",
+            smtp_host="mx2.example.com",
+            smtp_ip="1.2.0.9",
             smtp_port=25,
             envelope_from=draft_message.sender.email,
             recipient_emails={"cc@example.com", "to@example.com"},
@@ -288,7 +290,8 @@ class TestSendOutboundMessage:
 
         # Check third call - bcc@example2.com to mx1.example2.com
         assert sorted_calls[2] == call(
-            smtp_host="2.1.0.9",
+            smtp_host="mx1.example2.com",
+            smtp_ip="2.1.0.9",
             smtp_port=25,
             envelope_from=draft_message.sender.email,
             recipient_emails={"bcc@example2.com"},
@@ -333,7 +336,8 @@ class TestSendOutboundMessage:
         outbound.send_message(draft_message)
 
         mock_smtp_send.assert_called_once_with(
-            smtp_host="1.2.0.8",
+            smtp_host="example2.com",
+            smtp_ip="1.2.0.8",
             smtp_port=25,
             envelope_from=draft_message.sender.email,
             recipient_emails={"bcc@example2.com"},
