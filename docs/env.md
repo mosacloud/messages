@@ -206,13 +206,12 @@ The application uses a new environment file structure with `.defaults` and `.loc
 | `LOGGING_LEVEL_LOGGERS_APP` | `INFO` | Application logger level | Optional |
 | `LOGGING_LEVEL_HANDLERS_CONSOLE` | `INFO` | Console handler level | Optional |
 
-## API Configuration
+### Prometheus
 
 | Variable | Default | Description | Required |
 |----------|---------|-------------|----------|
-| `API_USERS_LIST_LIMIT` | `5` | Default limit for user list API | Optional |
-| `API_USERS_LIST_THROTTLE_RATE_SUSTAINED` | `180/hour` | Sustained throttle rate | Optional |
-| `API_USERS_LIST_THROTTLE_RATE_BURST` | `30/minute` | Burst throttle rate | Optional |
+| `ENABLE_PROMETHEUS` | `False` | Enable Prometheus monitoring | Optional |
+| `PROMETHEUS_API_KEY` | None | Bearer token required to access metrics. If unset, the endpoint is public. Set this in production. | Optional |
 
 ### OpenAPI Schema
 

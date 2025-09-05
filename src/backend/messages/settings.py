@@ -607,6 +607,14 @@ class Base(Configuration):
         environ_prefix=None,
     )
 
+    ENABLE_PROMETHEUS = values.BooleanValue(
+        default=False, environ_name="ENABLE_PROMETHEUS", environ_prefix=None
+    )
+
+    PROMETHEUS_API_KEY = values.Value(
+        None, environ_name="PROMETHEUS_API_KEY", environ_prefix=None
+    )
+
     # AI
     AI_API_KEY = values.Value(None, environ_name="AI_API_KEY", environ_prefix=None)
     AI_BASE_URL = values.Value(None, environ_name="AI_BASE_URL", environ_prefix=None)
@@ -658,12 +666,6 @@ class Base(Configuration):
         },
     }
 
-    API_USERS_LIST_LIMIT = values.PositiveIntegerValue(
-        default=5,
-        environ_name="API_USERS_LIST_LIMIT",
-        environ_prefix=None,
-    )
-
     # External services
     # Settings related to the interoperability with external services
     # that messages is able to use
@@ -675,6 +677,18 @@ class Base(Configuration):
         "sdk_url": "/sdk",
         "api_url": "/api/v1.0",
     }
+
+    # pylint: disable=invalid-name
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.ENABLE_PROMETHEUS:
+            self.INSTALLED_APPS += ["django_prometheus"]
+            self.MIDDLEWARE = [
+                "core.middlewares.PrometheusAuthMiddleware",
+                "django_prometheus.middleware.PrometheusBeforeMiddleware",
+                *self.MIDDLEWARE,
+                "django_prometheus.middleware.PrometheusAfterMiddleware",
+            ]
 
     # pylint: disable=invalid-name
     @property
@@ -769,6 +783,9 @@ class Development(Base):
 
     SESSION_COOKIE_NAME = "st_messages_sessionid"
 
+    ENABLE_PROMETHEUS = True
+    PROMETHEUS_API_KEY = "local_api_key"
+
     USE_SWAGGER = True
     SESSION_CACHE_ALIAS = "session"
     CACHES = {
@@ -831,6 +848,9 @@ class Test(Base):
 
     SCHEMA_CUSTOM_ATTRIBUTES_USER = {}
     SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN = {}
+
+    ENABLE_PROMETHEUS = True
+    PROMETHEUS_API_KEY = "test_api_key"
 
     # pylint: disable=invalid-name
     def __init__(self):
