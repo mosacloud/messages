@@ -14,6 +14,7 @@ class CoreConfig(AppConfig):
     def ready(self):
         """Register signal handlers and prometheus collector when the app is ready."""
         # pylint: disable=unused-import, import-outside-toplevel
+
         from django.conf import settings
 
         if settings.ENABLE_PROMETHEUS:

@@ -7,7 +7,7 @@ to Prometheus via the /metrics endpoint.
 """
 
 from django.apps import apps
-from django.db import models
+from django.db.models import Count, Sum
 
 from prometheus_client.core import GaugeMetricFamily
 
@@ -28,7 +28,7 @@ class CustomDBPrometheusMetricsCollector:
         """
         messages_statuses_count = MessageRecipient.objects.values(
             "delivery_status"
-        ).annotate(count=models.Count("id"))
+        ).annotate(count=Count("id"))
         status_count_map = {
             row["delivery_status"]: row["count"] for row in messages_statuses_count
         }
@@ -62,8 +62,7 @@ class CustomDBPrometheusMetricsCollector:
         Yields a GaugeMetricFamily with the total size (in bytes) of all draft attachments.
         """
         total_size = (
-            Attachment.objects.aggregate(models.Sum("blob__size"))["blob__size__sum"]
-            or 0
+            Attachment.objects.aggregate(Sum("blob__size"))["blob__size__sum"] or 0
         )
         yield GaugeMetricFamily(
             "draft_attachments_total_size_bytes",

@@ -615,6 +615,10 @@ class Base(Configuration):
         None, environ_name="PROMETHEUS_API_KEY", environ_prefix=None
     )
 
+    METRICS_API_KEY = values.Value(
+        None, environ_name="METRICS_API_KEY", environ_prefix=None
+    )
+
     # AI
     AI_API_KEY = values.Value(None, environ_name="AI_API_KEY", environ_prefix=None)
     AI_BASE_URL = values.Value(None, environ_name="AI_BASE_URL", environ_prefix=None)

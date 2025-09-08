@@ -22,6 +22,7 @@ from core.api.viewsets.maildomain import (
     AdminMailDomainViewSet,
 )
 from core.api.viewsets.message import MessageViewSet
+from core.api.viewsets.metrics import MailDomainUsersMetricsApiView
 from core.api.viewsets.mta import MTAViewSet
 from core.api.viewsets.placeholder import PlaceholderView
 from core.api.viewsets.send import SendMessageView
@@ -137,4 +138,18 @@ urlpatterns = [
         PlaceholderView.as_view(),
         name="placeholders",
     ),
+    path(
+        f"api/{settings.API_VERSION}/metrics/maildomain_users/",
+        MailDomainUsersMetricsApiView.as_view(),
+        name="maildomain-users-metrics",
+    ),
 ]
+
+if settings.ENABLE_PROMETHEUS:
+    urlpatterns += [
+        path(
+            f"api/{settings.API_VERSION}/prometheus/",
+            include("django_prometheus.urls"),
+            name="prometheus-metrics",
+        ),
+    ]
