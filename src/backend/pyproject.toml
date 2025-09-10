@@ -27,7 +27,7 @@ dependencies = [
     "celery[redis]==5.5.2",
     "cryptography==45.0.5",
     "dj-database-url==2.3.0",
-    "django==5.1.11",
+    "django==5.1.12",
     "django-celery-beat==2.8.0",
     "django-celery-results==2.6.0",
     "django-configurations==2.5.1",
