@@ -28,7 +28,7 @@ app.autodiscover_tasks()
 # Configure beat schedule
 # This can be disabled manually, for example when pushing the application for the first time
 # to a PaaS service when no migration was applied yet.
-if not os.environ.get("DISABLE_CELERY_BEAT_SCHEDULE"):
+if not settings.DISABLE_CELERY_BEAT_SCHEDULE:
     app.conf.beat_schedule = {
         "retry-pending-messages": {
             "task": "core.mda.tasks.retry_messages_task",

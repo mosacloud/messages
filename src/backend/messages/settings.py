@@ -490,6 +490,10 @@ class Base(Configuration):
     CELERY_TASK_RESULT_EXPIRES = 60 * 60 * 24 * 30  # 30 days
     CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
+    DISABLE_CELERY_BEAT_SCHEDULE = values.BooleanValue(
+        default=False, environ_name="DISABLE_CELERY_BEAT_SCHEDULE", environ_prefix=None
+    )
+
     # Session
     SESSION_ENGINE = "django.contrib.sessions.backends.cache"
     SESSION_CACHE_ALIAS = "default"
