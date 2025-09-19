@@ -256,7 +256,7 @@ class TestSendOutboundMessage:
         # 3. cc@example.com to mx2.example.com (retry attempt)
         assert len(mock_smtp_send.mock_calls) == 3
 
-        sorted_calls = sorted(mock_smtp_send.mock_calls, key=lambda x: x.smtp_host)
+        sorted_calls = sorted(mock_smtp_send.mock_calls, key=lambda x: x[2]["smtp_ip"])
 
         # Check first call - to@example.com, cc@example.com, cc2@example.com to mx1.example.com
         assert sorted_calls[0] == call(
