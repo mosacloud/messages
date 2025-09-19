@@ -98,22 +98,25 @@ def compute_labels_and_flags(
     message_flags = {}
     thread_flags = {}
     labels_to_add = []
-    for label in all_labels:
+    for original_label in all_labels:
+        cleaned_label = original_label.strip()
+        if cleaned_label.startswith("INBOX/"):
+            cleaned_label = "/".join(cleaned_label.split("/")[1:]).strip()
         # Handle read/unread status
-        if label in IMAP_READ_UNREAD_LABELS:
-            if IMAP_READ_UNREAD_LABELS[label] == "read":
+        if cleaned_label in IMAP_READ_UNREAD_LABELS:
+            if IMAP_READ_UNREAD_LABELS[cleaned_label] == "read":
                 message_flags["is_unread"] = False
-            elif IMAP_READ_UNREAD_LABELS[label] == "unread":
+            elif IMAP_READ_UNREAD_LABELS[cleaned_label] == "unread":
                 message_flags["is_unread"] = True
             continue  # Skip further processing for this label
-        message_flag = IMAP_LABEL_TO_MESSAGE_FLAG.get(label)
-        thread_flag = IMAP_LABEL_TO_THREAD_FLAG.get(label)
+        message_flag = IMAP_LABEL_TO_MESSAGE_FLAG.get(cleaned_label)
+        thread_flag = IMAP_LABEL_TO_THREAD_FLAG.get(cleaned_label)
         if message_flag:
             message_flags[message_flag] = True
         elif thread_flag:
             thread_flags[thread_flag] = True
-        elif label not in IMAP_LABELS_TO_IGNORE:
-            labels_to_add.append(label)
+        elif cleaned_label not in IMAP_LABELS_TO_IGNORE:
+            labels_to_add.append(cleaned_label)
 
     # Handle read/unread status via IMAP flags
     if imap_flags:
