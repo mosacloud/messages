@@ -543,6 +543,7 @@ class BlobAdmin(admin.ModelAdmin):
         "mailbox",
         "content_type",
         "size",
+        "size_compressed",
         "compression",
         "created_at",
     )

@@ -1255,6 +1255,10 @@ class Blob(BaseModel):
         _("file size"), help_text=_("Size of the blob in bytes")
     )
 
+    size_compressed = models.PositiveIntegerField(
+        _("compressed size"), help_text=_("Size of the compressed blob in bytes")
+    )
+
     content_type = models.CharField(
         _("content type"), max_length=127, help_text=_("MIME type of the blob")
     )
@@ -1285,6 +1289,11 @@ class Blob(BaseModel):
 
     def __str__(self):
         return f"Blob {self.id} ({self.size} bytes)"
+
+    def save(self, *args, **kwargs):
+        """Compute size_compressed and save the blob."""
+        self.size_compressed = len(self.raw_content)
+        super().save(*args, **kwargs)
 
     def get_content(self) -> bytes:
         """
