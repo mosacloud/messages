@@ -168,10 +168,19 @@ class MailboxAdmin(admin.ModelAdmin):
     """Admin class for the Mailbox model"""
 
     inlines = [MailboxAccessInline]
-    list_display = ("__str__", "domain", "updated_at")
-    search_fields = ("local_part", "domain__name")
+    list_display = ("__str__", "is_identity", "contact", "alias_of", "updated_at")
+    list_filter = ("is_identity", "domain", "created_at", "updated_at")
+    search_fields = ("local_part", "domain__name", "contact__name", "contact__email")
     actions = [reset_keycloak_password_action]
     autocomplete_fields = ("domain", "contact", "alias_of")
+
+    def get_queryset(self, request):
+        """Optimize queryset with select_related for better performance"""
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("domain", "contact", "alias_of")
+        )
 
 
 @admin.register(models.MailboxAccess)
@@ -285,6 +294,14 @@ class MessageRecipientInline(admin.TabularInline):
 
     model = models.MessageRecipient
     autocomplete_fields = ("contact",)
+    fields = (
+        "contact",
+        "type",
+        "delivery_status",
+        "delivery_message",
+        "delivered_at",
+        "retry_count",
+    )
 
 
 @admin.register(models.Attachment)
@@ -309,10 +326,41 @@ class MessageAdmin(admin.ModelAdmin):
     """Admin class for the Message model"""
 
     inlines = [MessageRecipientInline, AttachmentInline]
-    list_display = ("id", "subject", "sender", "created_at", "sent_at")
+    list_display = (
+        "id",
+        "subject",
+        "sender",
+        "is_sender",
+        "is_draft",
+        "is_unread",
+        "has_attachments",
+        "created_at",
+        "sent_at",
+    )
+    list_filter = (
+        "is_sender",
+        "is_draft",
+        "is_starred",
+        "is_trashed",
+        "is_unread",
+        "is_spam",
+        "is_archived",
+        "has_attachments",
+        "created_at",
+        "sent_at",
+        "read_at",
+        "archived_at",
+        "trashed_at",
+    )
+    search_fields = ("subject", "sender__name", "sender__email", "mime_id")
     change_list_template = "admin/core/message/change_list.html"
     raw_id_fields = ("thread", "blob", "draft_blob", "parent")
     autocomplete_fields = ("sender",)
+    readonly_fields = ("mime_id", "created_at", "updated_at")
+
+    def get_queryset(self, request):
+        """Optimize queryset with select_related for better performance"""
+        return super().get_queryset(request).select_related("sender", "thread")
 
     def get_urls(self):
         urls = super().get_urls()
@@ -419,10 +467,29 @@ class ContactAdmin(admin.ModelAdmin):
 class MessageRecipientAdmin(admin.ModelAdmin):
     """Admin class for the MessageRecipient model"""
 
-    list_display = ("id", "message", "contact", "type")
-    search_fields = ("message__subject", "contact__name", "contact__email")
+    list_display = (
+        "id",
+        "message",
+        "contact",
+        "type",
+        "delivery_status",
+        "delivered_at",
+        "retry_count",
+        "delivery_message",
+    )
+    list_filter = ("delivery_status", "type", "delivered_at", "created_at")
+    search_fields = (
+        "message__subject",
+        "contact__name",
+        "contact__email",
+        "delivery_message",
+    )
     autocomplete_fields = ("contact",)
     raw_id_fields = ("message",)
+
+    def get_queryset(self, request):
+        """Optimize queryset with select_related for better performance"""
+        return super().get_queryset(request).select_related("message", "contact")
 
 
 @admin.register(models.Label)
@@ -471,10 +538,26 @@ class LabelAdmin(admin.ModelAdmin):
 class BlobAdmin(admin.ModelAdmin):
     """Admin class for the Blob model"""
 
-    list_display = ("id", "mailbox", "content_type", "size", "created_at")
-    search_fields = ("mailbox__local_part", "mailbox__domain__name")
-    list_filter = ("mailbox", "content_type")
+    list_display = (
+        "id",
+        "mailbox",
+        "content_type",
+        "size",
+        "compression",
+        "created_at",
+    )
+    search_fields = ("mailbox__local_part", "mailbox__domain__name", "content_type")
+    list_filter = ("content_type", "compression", "created_at", "updated_at")
     autocomplete_fields = ("mailbox",)
+
+    def get_queryset(self, request):
+        """Optimize queryset with select_related and exclude large binary content"""
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("mailbox", "mailbox__domain")
+            .defer("raw_content")  # Exclude large binary content from list view
+        )
 
 
 @admin.register(models.MailDomainAccess)
