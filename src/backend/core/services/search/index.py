@@ -56,13 +56,16 @@ def index_message(message: models.Message) -> bool:
 
     # Parse message content if it has a blob
     parsed_data = {}
-    if message.blob:
-        try:
+
+    try:
+        if message.blob:
             parsed_data = parse_email_message(message.blob.get_content())
-        # pylint: disable=broad-exception-caught
-        except Exception as e:
-            logger.error("Error parsing blob content for message %s: %s", message.id, e)
-            return False
+    except models.Blob.DoesNotExist:
+        pass
+    # pylint: disable=broad-exception-caught
+    except Exception as e:
+        logger.error("Error parsing blob content for message %s: %s", message.id, e)
+        return False
 
     # Extract text content from parsed data
     text_body = ""
