@@ -47,6 +47,8 @@ It features a [MTA](https://en.wikipedia.org/wiki/Message_transfer_agent) based 
 * 📩 Import emails from MBOX or IMAP
 * 🔎 Full-text search with advanced filters
 * ⏳️ Asynchronous, pluggable email processing (antispam, antivirus, ...)
+* 🤖 AI Summaries, AI message composer, AI auto-labelling
+* 🎨 Embeddable widgets for feedback
 
 ### Collaboration at the core
 * 👥 Share any inbox with multiple users
