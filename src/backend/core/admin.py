@@ -183,6 +183,32 @@ class MailboxAdmin(admin.ModelAdmin):
         )
 
 
+@admin.register(models.Channel)
+class ChannelAdmin(admin.ModelAdmin):
+    """Admin class for the Channel model"""
+
+    list_display = ("name", "type", "mailbox", "maildomain", "created_at")
+    list_filter = ("type", "created_at")
+    search_fields = ("name", "type")
+    readonly_fields = ("created_at", "updated_at")
+    autocomplete_fields = ("mailbox", "maildomain")
+
+    fieldsets = (
+        (None, {"fields": ("name", "type", "settings")}),
+        (
+            "Target",
+            {
+                "fields": ("mailbox", "maildomain"),
+                "description": "Specify either a mailbox or maildomain, but not both.",
+            },
+        ),
+        (
+            "Timestamps",
+            {"fields": ("created_at", "updated_at"), "classes": ("collapse",)},
+        ),
+    )
+
+
 @admin.register(models.MailboxAccess)
 class MailboxAccessAdmin(admin.ModelAdmin):
     """Admin class for the MailboxAccess model"""
@@ -354,7 +380,7 @@ class MessageAdmin(admin.ModelAdmin):
     )
     search_fields = ("subject", "sender__name", "sender__email", "mime_id")
     change_list_template = "admin/core/message/change_list.html"
-    raw_id_fields = ("thread", "blob", "draft_blob", "parent")
+    raw_id_fields = ("thread", "blob", "draft_blob", "parent", "channel")
     autocomplete_fields = ("sender",)
     readonly_fields = ("mime_id", "created_at", "updated_at")
 

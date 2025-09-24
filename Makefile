@@ -27,12 +27,6 @@ BOLD := \033[1m
 RESET := \033[0m
 GREEN := \033[1;32m
 
-
-# -- Database
-
-DB_HOST            = postgresql
-DB_PORT            = 5432
-
 # -- Docker
 # Get the current user ID to use for docker run and docker exec commands
 DOCKER_UID          = $(shell id -u)
@@ -74,7 +68,8 @@ create-env-files: \
 	env.d/development/frontend.local \
 	env.d/development/mta-in.local \
 	env.d/development/mta-out.local \
-	env.d/development/socks-proxy.local
+	env.d/development/socks-proxy.local \
+	env.d/development/widgets.local
 .PHONY: create-env-files
 
 bootstrap: ## Prepare the project for local development
@@ -118,6 +113,7 @@ update:  ## Update the project with latest changes
 	@$(MAKE) collectstatic
 	@$(MAKE) migrate
 	@$(MAKE) front-install-frozen
+	@$(MAKE) widgets-install
 	# @$(MAKE) back-i18n-compile
 .PHONY: update
 
@@ -245,7 +241,7 @@ front-test: ## run the frontend tests
 
 front-test-amd64: ## run the frontend tests in amd64
 	@$(COMPOSE) run --rm frontend-tools-amd64 npm run test
-.PHONY: front-test
+.PHONY: front-test-amd64
 
 mta-in-test: ## run the mta-in tests
 	@$(COMPOSE) run --build --rm mta-in-test
@@ -420,30 +416,30 @@ help:
 .PHONY: help
 
 front-shell: ## open a shell in the frontend container
-	@$(COMPOSE) run --rm frontend-tools /bin/sh
+	@$(COMPOSE) run --rm --build frontend-tools /bin/sh
 .PHONY: front-shell
 
 # Front
 front-install: ## install the frontend locally
 	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
-	$(COMPOSE) run --rm frontend-tools npm install $${args:-${1}}
+	$(COMPOSE) run --rm --build frontend-tools npm install $${args:-${1}}
 .PHONY: front-install
 
 front-install-frozen: ## install the frontend locally, following the frozen lockfile
 	@echo "Installing frontend dependencies, this might take a few minutes..."
-	@$(COMPOSE) run --rm frontend-tools npm ci
+	@$(COMPOSE) run --rm --build frontend-tools npm ci
 .PHONY: front-install-frozen
 
 front-install-frozen-amd64: ## install the frontend locally, following the frozen lockfile
-	@$(COMPOSE) run --rm frontend-tools-amd64 npm ci
+	@$(COMPOSE) run --rm --build frontend-tools-amd64 npm ci
 .PHONY: front-install-frozen-amd64
 
 front-build: ## build the frontend locally
-	@$(COMPOSE) run --rm frontend-tools npm run build
+	@$(COMPOSE) run --rm --build frontend-tools npm run build
 .PHONY: front-build
 
 front-i18n-extract: ## Extract the frontend translation inside a json to be used for crowdin
-	@$(COMPOSE) run --rm frontend-tools npm run i18n:extract
+	@$(COMPOSE) run --rm --build frontend-tools npm run i18n:extract
 .PHONY: front-i18n-extract
 
 front-i18n-generate: ## Generate the frontend json files used for crowdin
@@ -451,8 +447,8 @@ front-i18n-generate: ## Generate the frontend json files used for crowdin
 	front-i18n-extract
 .PHONY: front-i18n-generate
 
-front-i18n-compile: ## Format the crowin json files used deploy to the apps
-	@$(COMPOSE) run --rm frontend-tools npm run i18n:deploy
+front-i18n-compile: ## Format the crowdin json files used deploy to the apps
+	@$(COMPOSE) run --rm --build frontend-tools npm run i18n:deploy
 .PHONY: front-i18n-compile
 
 back-api-update: ## Update the OpenAPI schema
@@ -460,8 +456,40 @@ back-api-update: ## Update the OpenAPI schema
 .PHONY: back-api-update
 
 front-api-update: ## Update the frontend API client
-	@$(COMPOSE) run --rm frontend-tools npm run api:update
+	@$(COMPOSE) run --rm --build frontend-tools npm run api:update
 .PHONY: front-api-update
+
+# Widgets
+widgets-install: ## install the widgets locally
+	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
+	$(COMPOSE) run --build --rm widgets-dev npm install $${args:-${1}}
+.PHONY: widgets-install
+
+widgets-freeze-deps: ## freeze the widgets dependencies
+	rm -rf src/widgets/package-lock.json
+	@$(MAKE) widgets-install
+.PHONY: widgets-freeze-deps
+
+widgets-build: ## build the widgets
+	$(COMPOSE) run --build --rm widgets-dev npm run build
+.PHONY: widgets-build
+
+widgets-shell: ## open a shell in the widgets container
+	$(COMPOSE) run --build --rm widgets-dev /bin/sh
+.PHONY: widgets-shell
+
+widgets-start: ## start the widgets container
+	$(COMPOSE) up --force-recreate --build -d widgets-dev --wait
+.PHONY: widgets-start
+
+widgets-deploy: ## deploy the widgets to an S3 bucket
+	@## Error if the env vars MESSAGES_WIDGETS_S3_PATH is not set
+	@if [ -z "$$MESSAGES_WIDGETS_S3_PATH" ]; then \
+		echo "Error: MESSAGES_WIDGETS_S3_PATH is not set"; \
+		exit 1; \
+	fi; \
+	docker run --rm -ti -v .aws:/root/.aws -v `pwd`/src/widgets/dist:/aws amazon/aws-cli s3 cp --acl public-read --recursive . s3://$(MESSAGES_WIDGETS_S3_PATH)
+.PHONY: widgets-deploy
 
 api-update: ## Update the OpenAPI schema then frontend API client
 api-update: \

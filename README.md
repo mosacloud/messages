@@ -133,6 +133,7 @@ When running the project, the following services are available:
 | **Keycloak** | [http://localhost:8902](http://localhost:8902) | Identity provider admin | `admin` / `admin` |
 | **Celery UI** | [http://localhost:8903](http://localhost:8903) | Task queue monitoring | No auth required |
 | **Mailcatcher** | [http://localhost:8904](http://localhost:8904) | Email testing interface | No auth required |
+| **Widgets** | [http://localhost:8905](http://localhost:8905) | Widgets development server | No auth required |
 | **MTA-in (SMTP)** | 8910 | Incoming email server | No auth required |
 | **MTA-out (SMTP)** | 8911 | Outgoing email server | `user` / `pass` |
 | **PostgreSQL** | 8912 | Database server | `user` / `pass` |
@@ -200,6 +201,27 @@ MTA_OUT_MODE=relay MTA_OUT_RELAY_HOST=mailcatcher:1025 python manage.py send_mai
 
 > ⚠️ Most residential ISPs block the outgoing port 25, so you might not be able to send emails to outside
 > servers from your localhost. This is why the mailcatcher is so useful locally.
+
+### Developing Widgets
+
+We currently develop some embeddable widgets in the `src/widgets` directory in this repository.
+
+```
+$ make widgets-start
+```
+
+This will start the development server at [http://localhost:8905](http://localhost:8905).
+
+You can then build them with:
+
+```
+$ make widgets-build
+```
+
+And deploy them to an S3 bucket, with `.aws/{config|credentials}` files in the root of the repository.
+```
+$ MESSAGES_WIDGETS_S3_PATH=xxx make widgets-deploy
+```
 
 ## Feedback 🙋‍♂️🙋‍♀️
 

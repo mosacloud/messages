@@ -1139,3 +1139,39 @@ class ImportIMAPSerializer(ImportBaseSerializer):
     use_ssl = serializers.BooleanField(
         help_text="Use SSL for IMAP connection", required=False, default=True
     )
+
+
+class ChannelSerializer(AbilitiesModelSerializer):
+    """Serialize Channel model."""
+
+    class Meta:
+        model = models.Channel
+        fields = [
+            "id",
+            "name",
+            "type",
+            "settings",
+            "mailbox",
+            "maildomain",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        """Validate channel data."""
+        mailbox = attrs.get("mailbox")
+        maildomain = attrs.get("maildomain")
+
+        # Validate that either mailbox or maildomain is set, but not both
+        if not mailbox and not maildomain:
+            raise serializers.ValidationError(
+                "Either mailbox or maildomain must be specified."
+            )
+
+        if mailbox and maildomain:
+            raise serializers.ValidationError(
+                "Cannot specify both mailbox and maildomain."
+            )
+
+        return attrs

@@ -1,41 +1,39 @@
-"""DRF Views for MTA endpoints"""
+"""MTA channel implementation for handling email delivery."""
 
 import hashlib
 import logging
 import secrets
 
 from django.conf import settings
-from django.contrib.auth import get_user_model
 
 import jwt
-import rest_framework as drf
-from rest_framework import authentication, parsers, status, viewsets
+from drf_spectacular.utils import extend_schema
+from rest_framework import status, viewsets
+from rest_framework.authentication import BaseAuthentication
 from rest_framework.decorators import action
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from core import models
 from core.mda.inbound import check_local_recipient, deliver_inbound_message
 from core.mda.rfc5322 import EmailParseError, parse_email_message
 
 logger = logging.getLogger(__name__)
 
-User = get_user_model()
 
-
-class MTAJWTAuthentication(authentication.BaseAuthentication):
+class MTAJWTAuthentication(BaseAuthentication):
     """
     Custom authentication for MTA endpoints using JWT tokens with email hash validation.
     Returns None or (user, auth)
     """
 
     def authenticate(self, request):
-        # Get the auth header
         auth_header = request.headers.get("Authorization")
         if not auth_header:
             return None
 
         try:
-            # Extract and validate JWT
             jwt_token = auth_header.split(" ")[1]
             payload = jwt.decode(
                 jwt_token,
@@ -48,68 +46,67 @@ class MTAJWTAuthentication(authentication.BaseAuthentication):
                 },
             )
 
+            if not payload.get("exp"):
+                raise jwt.InvalidTokenError("Missing expiration time")
+
             # Validate email hash if there's a body
             if request.body:
                 body_hash = hashlib.sha256(request.body).hexdigest()
                 if not secrets.compare_digest(body_hash, payload["body_hash"]):
                     raise jwt.InvalidTokenError("Invalid email hash")
 
-            service_account = User()
+            service_account = models.User()
             return (service_account, payload)
 
         except (jwt.ExpiredSignatureError, jwt.InvalidTokenError) as e:
-            raise drf.exceptions.AuthenticationFailed("Invalid token") from e
+            raise AuthenticationFailed("Invalid token") from e
         except (IndexError, KeyError) as e:
-            # Handle cases where header is malformed or payload is missing keys
-            raise drf.exceptions.AuthenticationFailed(
-                "Invalid token header or payload"
-            ) from e
+            raise AuthenticationFailed("Invalid token header or payload") from e
 
     def authenticate_header(self, request):
         """Return the header to be used in the WWW-Authenticate response header."""
         return 'Bearer realm="MTA"'
 
 
-class MTAViewSet(viewsets.GenericViewSet):
-    """ViewSet for MTA-related endpoints"""
+class InboundMTAViewSet(viewsets.GenericViewSet):
+    """Handles incoming email messages from MTA (Mail Transfer Agent)."""
+
+    # Channel metadata
+    CHANNEL_TYPE = "mta"
+    CHANNEL_DESCRIPTION = "Mail Transfer Agent (email)"
 
     permission_classes = [IsAuthenticated]
     authentication_classes = [MTAJWTAuthentication]
 
+    @extend_schema(exclude=True)
     @action(
-        detail=False,
-        methods=["post"],
-        url_path="check-recipients",
-        parser_classes=[parsers.JSONParser],
+        detail=False, methods=["post"], url_path="check", url_name="inbound-mta-check"
     )
-    def check_recipients(self, request):
-        """Check if recipient email addresses exist for the MTA."""
-        # Get a list of email addresses from the request body
-        email_addresses = request.data.get("addresses")
-        if not email_addresses or not isinstance(email_addresses, list):
+    def check(self, request):
+        """Check recipients exist."""
+        data = request.data
+        addresses = data.get("addresses", [])
+        if not addresses or not isinstance(addresses, list):
             return Response(
                 {"detail": "Missing addresses"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Check if each address is locally deliverable
-        ret = {
-            email_address: check_local_recipient(email_address, create_if_missing=False)
-            for email_address in email_addresses
+        results = {
+            address: check_local_recipient(address, create_if_missing=False)
+            for address in addresses
         }
+        return Response(results)
 
-        return Response(ret)
-
+    @extend_schema(exclude=True)
     @action(
         detail=False,
         methods=["post"],
-        url_path="inbound-email",
-        # Use ByteParser to handle raw message/rfc822 directly
-        parser_classes=[parsers.BaseParser],  # Keep BaseParser if JWT needs body hash
+        url_path="deliver",
+        url_name="inbound-mta-deliver",
     )
-    def inbound_email(self, request):
+    def deliver(self, request):
         """Handle incoming raw email (message/rfc822) from MTA."""
 
-        # Authentication is handled by MTAJWTAuthentication
         # request.user will be the service account, request.auth the JWT payload
         mta_metadata = request.auth
         if not mta_metadata or "original_recipients" not in mta_metadata:

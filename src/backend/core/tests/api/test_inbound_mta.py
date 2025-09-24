@@ -117,8 +117,8 @@ def fixture_jwt_token_without_exp():
 class TestMTAInboundEmail:
     """Test the MTA inbound email endpoint."""
 
-    @patch("core.api.viewsets.mta.deliver_inbound_message")
-    @patch("core.api.viewsets.mta.parse_email_message")
+    @patch("core.api.viewsets.inbound.mta.deliver_inbound_message")
+    @patch("core.api.viewsets.inbound.mta.parse_email_message")
     @pytest.mark.django_db
     def test_valid_email_submission(
         self,
@@ -144,7 +144,7 @@ class TestMTAInboundEmail:
         token = valid_jwt_token(sample_email, {"original_recipients": recipients})
 
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=sample_email,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=f"Bearer {token}",
@@ -164,8 +164,8 @@ class TestMTAInboundEmail:
         assert first_call_args[1]["subject"] == "Test Email"
         assert second_call_args[1]["subject"] == "Test Email"
 
-    @patch("core.api.viewsets.mta.deliver_inbound_message")
-    @patch("core.api.viewsets.mta.parse_email_message")
+    @patch("core.api.viewsets.inbound.mta.deliver_inbound_message")
+    @patch("core.api.viewsets.inbound.mta.parse_email_message")
     def test_email_parse_failure(
         self,
         mock_parse,
@@ -181,7 +181,7 @@ class TestMTAInboundEmail:
         token = valid_jwt_token(sample_email, {"original_recipients": [email]})
 
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=sample_email,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=f"Bearer {token}",
@@ -192,8 +192,8 @@ class TestMTAInboundEmail:
         mock_parse.assert_called_once_with(sample_email)
         mock_deliver.assert_not_called()  # Delivery should not be attempted
 
-    @patch("core.api.viewsets.mta.deliver_inbound_message")
-    @patch("core.api.viewsets.mta.parse_email_message")
+    @patch("core.api.viewsets.inbound.mta.deliver_inbound_message")
+    @patch("core.api.viewsets.inbound.mta.parse_email_message")
     def test_delivery_partial_failure(
         self,
         mock_parse,
@@ -213,7 +213,7 @@ class TestMTAInboundEmail:
         token = valid_jwt_token(sample_email, {"original_recipients": recipients})
 
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=sample_email,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=f"Bearer {token}",
@@ -234,8 +234,8 @@ class TestMTAInboundEmail:
         mock_parse.assert_called_once_with(sample_email)
         assert mock_deliver.call_count == 2  # Called for both recipients
 
-    @patch("core.api.viewsets.mta.deliver_inbound_message")
-    @patch("core.api.viewsets.mta.parse_email_message")
+    @patch("core.api.viewsets.inbound.mta.deliver_inbound_message")
+    @patch("core.api.viewsets.inbound.mta.parse_email_message")
     def test_delivery_total_failure(
         self,
         mock_parse,
@@ -253,7 +253,7 @@ class TestMTAInboundEmail:
         token = valid_jwt_token(sample_email, {"original_recipients": recipients})
 
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=sample_email,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=f"Bearer {token}",
@@ -277,7 +277,7 @@ class TestMTAInboundEmail:
     ):
         """Test that submitting with an incorrect content type fails (415)."""
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=sample_email,  # Data format doesn't matter if content type rejected
             content_type="application/json",
             HTTP_AUTHORIZATION=(
@@ -290,7 +290,7 @@ class TestMTAInboundEmail:
     def test_missing_auth_header(self, api_client: APIClient, sample_email):
         """Test that submitting without an authorization header fails."""
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=sample_email,
             content_type="message/rfc822",
         )
@@ -299,7 +299,7 @@ class TestMTAInboundEmail:
     def test_invalid_jwt_token(self, api_client: APIClient, sample_email):
         """Test that submitting with an invalid JWT token fails."""
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=sample_email,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION="Bearer invalid_token",
@@ -315,7 +315,7 @@ class TestMTAInboundEmail:
             sample_email, {"original_recipients": ["recipient@example.com"]}
         )
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=sample_email,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=f"Bearer {http_token}",
@@ -327,7 +327,7 @@ class TestMTAInboundEmail:
     ):
         """Test that submitting with a JWT token whose hash doesn't match the body fails."""
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=sample_email + b"\n one more line",
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=(
@@ -363,7 +363,7 @@ class TestMTACheckRecipients:
         token = valid_jwt_token(body, {})
 
         response = api_client.post(
-            "/api/v1.0/mta/check-recipients/",
+            "/api/v1.0/inbound/mta/check/",
             data=body,
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {token}",
@@ -385,7 +385,7 @@ class TestMTACheckRecipients:
         token = valid_jwt_token(body, {}) + "invalid"
 
         response = api_client.post(
-            "/api/v1.0/mta/check-recipients/",
+            "/api/v1.0/inbound/mta/check/",
             data=body,
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {token}",
@@ -414,7 +414,7 @@ class TestEmailAddressParsing:
         ).exists()
 
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=formatted_email,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=(
@@ -552,7 +552,7 @@ class TestMTAInboundEmailThreading:
         )
 
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=reply_email_bytes,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=f"Bearer {token}",
@@ -588,7 +588,7 @@ class TestMTAInboundEmailThreading:
         )
 
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=reply_email_bytes,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=f"Bearer {token}",
@@ -622,7 +622,7 @@ class TestMTAInboundEmailThreading:
         )
 
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=reply_email_bytes,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=f"Bearer {token}",
@@ -656,7 +656,7 @@ class TestMTAInboundEmailThreading:
         )
 
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=reply_email_bytes,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=f"Bearer {token}",
@@ -692,7 +692,7 @@ class TestMTAInboundEmailThreading:
         )
 
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=reply_email_bytes,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=f"Bearer {token}",
@@ -777,7 +777,7 @@ class TestMTAInboundEmailThreading:
         )
 
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=reply_email_bytes,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=f"Bearer {token}",
@@ -821,7 +821,7 @@ class TestMTAInboundEmailThreading:
         )
 
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=reply_email_bytes,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=f"Bearer {token}",
@@ -857,7 +857,7 @@ class TestMTAInboundEmailThreading:
         )
 
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=reply_email_bytes,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=f"Bearer {token}",
@@ -914,7 +914,7 @@ class TestMTAInboundEmailThreading:
 
         # 4. Make the API call
         response = api_client.post(
-            "/api/v1.0/mta/inbound-email/",
+            "/api/v1.0/inbound/mta/deliver/",
             data=email_body_bytes,
             content_type="message/rfc822",
             HTTP_AUTHORIZATION=f"Bearer {token}",

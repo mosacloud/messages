@@ -91,6 +91,10 @@ class Base(Configuration):
     SECRET_KEY = values.Value(None)
     SERVER_TO_SERVER_API_TOKENS = values.ListValue([])
 
+    USE_X_FORWARDED_FOR = values.BooleanValue(
+        default=False, environ_name="USE_X_FORWARDED_FOR", environ_prefix=None
+    )
+
     # Application definition
     ROOT_URLCONF = "messages.urls"
     WSGI_APPLICATION = "messages.wsgi.application"
@@ -375,7 +379,7 @@ class Base(Configuration):
         "django.contrib.sessions.middleware.SessionMiddleware",
         "django.middleware.locale.LocaleMiddleware",
         "django.middleware.clickjacking.XFrameOptionsMiddleware",
-        "corsheaders.middleware.CorsMiddleware",
+        "core.middlewares.CustomCorsMiddleware",
         "django.middleware.common.CommonMiddleware",
         "django.middleware.csrf.CsrfViewMiddleware",
         "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -478,15 +482,6 @@ class Base(Configuration):
     # Frontend
     FRONTEND_THEME = values.Value(
         None, environ_name="FRONTEND_THEME", environ_prefix=None
-    )
-
-    # Posthog
-    POSTHOG_KEY = values.Value(None, environ_name="POSTHOG_KEY", environ_prefix=None)
-    POSTHOG_HOST = values.Value(
-        "https://eu.i.posthog.com", environ_name="POSTHOG_HOST", environ_prefix=None
-    )
-    POSTHOG_SURVEY_ID = values.Value(
-        None, environ_name="POSTHOG_SURVEY_ID", environ_prefix=None
     )
 
     # Celery
@@ -707,6 +702,9 @@ class Base(Configuration):
                 *self.MIDDLEWARE,
                 "django_prometheus.middleware.PrometheusAfterMiddleware",
             ]
+
+        if self.USE_X_FORWARDED_FOR:
+            self.MIDDLEWARE.insert(0, "core.middlewares.XForwardedForMiddleware")
 
         if os.environ.get("MTA_OUT_SMTP_HOST") and not self.MTA_OUT_RELAY_HOST:
             logger.warning(

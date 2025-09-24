@@ -1,6 +1,8 @@
 import { Html, Head, Main, NextScript } from "next/document";
 import { useTranslation } from "react-i18next";
 
+
+
 export default function Document() {
   const { t } = useTranslation();
 

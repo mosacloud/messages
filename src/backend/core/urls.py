@@ -9,8 +9,10 @@ from core.api.viewsets.blob import BlobViewSet
 from core.api.viewsets.config import ConfigView
 from core.api.viewsets.contacts import ContactViewSet
 from core.api.viewsets.draft import DraftMessageView
-from core.api.viewsets.flag import ChangeFlagViewSet
+from core.api.viewsets.flag import ChangeFlagView
 from core.api.viewsets.import_message import ImportViewSet
+from core.api.viewsets.inbound.mta import InboundMTAViewSet
+from core.api.viewsets.inbound.widget import InboundWidgetViewSet
 from core.api.viewsets.label import LabelViewSet
 from core.api.viewsets.mailbox import MailboxViewSet
 from core.api.viewsets.mailbox_access import MailboxAccessViewSet
@@ -23,7 +25,6 @@ from core.api.viewsets.maildomain import (
 from core.api.viewsets.maildomain_access import MaildomainAccessViewSet
 from core.api.viewsets.message import MessageViewSet
 from core.api.viewsets.metrics import MailDomainUsersMetricsApiView
-from core.api.viewsets.mta import MTAViewSet
 from core.api.viewsets.placeholder import PlaceholderView
 from core.api.viewsets.send import SendMessageView
 from core.api.viewsets.task import TaskDetailView
@@ -34,7 +35,6 @@ from core.authentication.urls import urlpatterns as oidc_urls
 
 # - Main endpoints
 router = DefaultRouter()
-router.register("mta", MTAViewSet, basename="mta")
 router.register("users", UserViewSet, basename="users")
 router.register("messages", MessageViewSet, basename="messages")
 router.register("blob", BlobViewSet, basename="blob")
@@ -69,6 +69,13 @@ maildomain_nested_router.register(
     r"accesses", MaildomainAccessViewSet, basename="admin-maildomains-access"
 )
 
+# Router for /inbound/
+inbound_nested_router = DefaultRouter()
+inbound_nested_router.register(r"mta", InboundMTAViewSet, basename="inbound-mta")
+inbound_nested_router.register(
+    r"widget", InboundWidgetViewSet, basename="inbound-widget"
+)
+
 urlpatterns = [
     path(
         f"api/{settings.API_VERSION}/",
@@ -91,6 +98,10 @@ urlpatterns = [
                     "maildomains/<uuid:maildomain_pk>/",
                     include(maildomain_nested_router.urls),
                 ),
+                path(
+                    "inbound/",
+                    include(inbound_nested_router.urls),
+                ),
                 *oidc_urls,
             ]
         ),
@@ -98,7 +109,7 @@ urlpatterns = [
     path(f"api/{settings.API_VERSION}/config/", ConfigView.as_view()),
     path(
         f"api/{settings.API_VERSION}/flag/",
-        ChangeFlagViewSet.as_view(),
+        ChangeFlagView.as_view(),
         name="change-flag",
     ),
     path(
@@ -140,6 +151,18 @@ urlpatterns = [
         f"api/{settings.API_VERSION}/metrics/maildomain_users/",
         MailDomainUsersMetricsApiView.as_view(),
         name="maildomain-users-metrics",
+    ),
+    # Alias for MTA check endpoint
+    path(
+        f"api/{settings.API_VERSION}/mta/check-recipients/",
+        InboundMTAViewSet.as_view({"post": "check"}),
+        name="mta-check-recipients",
+    ),
+    # Alias for MTA deliver endpoint
+    path(
+        f"api/{settings.API_VERSION}/mta/inbound-email/",
+        InboundMTAViewSet.as_view({"post": "deliver"}),
+        name="mta-inbound-email",
     ),
 ]
 
