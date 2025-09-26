@@ -236,7 +236,20 @@ def send_message(message: models.Message, force_mta_out: bool = False):
             internal: bool,
             error: Optional[str] = None,
             retry: Optional[bool] = False,
+            smtp_host: Optional[str] = None,
         ) -> None:
+            status = "delivered" if delivered else "failed"
+            relay = smtp_host if not internal else "internal"
+
+            logger.info(
+                "module=core.mda.outbound.send_message message_id=%s to=%s from=%s relay=%s status=%s error=(%s)",
+                message.id,
+                recipient_email,
+                message.sender.email,
+                relay,
+                status,
+                error or "nil",
+            )
             if delivered:
                 # TODO also update message.updated_at?
                 envelope_to[recipient_email].delivered_at = timezone.now()
@@ -314,6 +327,7 @@ def send_message(message: models.Message, force_mta_out: bool = False):
                         False,
                         status.get("error"),
                         status.get("retry", False),
+                        status.get("smtp_host"),
                     )
             except Exception as e:  # pylint: disable=broad-exception-caught
                 logger.error("Failed to send outbound message: %s", e, exc_info=True)

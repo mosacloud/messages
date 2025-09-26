@@ -130,7 +130,12 @@ def send_smtp_mail(
 
     def error_for_all_recipients(error: str, retry: bool) -> Dict[str, Any]:
         return {
-            email: {"delivered": False, "error": error, "retry": retry}
+            email: {
+                "delivered": False,
+                "error": error,
+                "retry": retry,
+                "smtp_host": smtp_host,
+            }
             for email in recipient_emails
         }
 
@@ -269,6 +274,7 @@ def send_smtp_mail(
                 "delivered": False,
                 "error": f"Recipient refused: {code_msg[0]} {code_msg[1]}",  # (code, msg)
                 "retry": 400 <= code_msg[0] <= 499,
+                "smtp_host": smtp_host,
             }
         return statuses
     except Exception as e:  # pylint: disable=broad-exception-caught
@@ -285,13 +291,14 @@ def send_smtp_mail(
 
     for recipient_email in recipient_emails:
         if recipient_email not in recipient_errors:
-            statuses[recipient_email] = {"delivered": True}
+            statuses[recipient_email] = {"delivered": True, "smtp_host": smtp_host}
         else:
             code_msg = recipient_errors[recipient_email]
             statuses[recipient_email] = {
                 "delivered": False,
                 "error": f"Recipient refused: {code_msg[0]} {code_msg[1]}",  # (code, msg)
                 "retry": 400 <= code_msg[0] <= 499,
+                "smtp_host": smtp_host,
             }
 
     return statuses
