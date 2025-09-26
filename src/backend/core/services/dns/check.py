@@ -51,7 +51,8 @@ def check_single_record(
             answers = dns.resolver.resolve(query_name, "TXT")
             if target.endswith("._domainkey"):
                 found_values = [
-                    answer.to_text().strip('"').replace('" "', "") for answer in answers
+                    normalize_txt_value(answer.to_text().strip('"').replace('" "', ""))
+                    for answer in answers
                 ]
             else:
                 found_values = [

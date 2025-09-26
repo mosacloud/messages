@@ -23,7 +23,6 @@ export function FeedbackWidget({
   const successText: string = t("feedback_widget.success_text");
   const successText2: string = t("feedback_widget.success_text2");
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     if (!channel || !apiUrl || !widgetPath) return;
 
