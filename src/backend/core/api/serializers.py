@@ -623,6 +623,7 @@ class MessageSerializer(serializers.ModelSerializer):
                         "name": attachment["name"],
                         "size": attachment["size"],
                         "type": attachment["type"],
+                        "cid": attachment.get("cid"),
                     }
                 )
             return stripped_attachments

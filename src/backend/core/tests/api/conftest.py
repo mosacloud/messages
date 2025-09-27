@@ -28,7 +28,9 @@ def thread(mailbox):
 @pytest.fixture
 def message(thread):
     """Create a message for a thread."""
-    return factories.MessageFactory(thread=thread, read_at=None)
+    return factories.MessageFactory(
+        thread=thread, read_at=None, raw_mime=b"raw email content"
+    )
 
 
 @pytest.fixture
