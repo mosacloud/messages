@@ -67,6 +67,8 @@ It features a [MTA](https://en.wikipedia.org/wiki/Message_transfer_agent) based 
 * 🚀 Messages is designed to be installed on the cloud or on your own servers.
 * 🛠️ Configuration through environment variables for most settings
 
+<img src="/docs/assets/architecture-high-level.png" alt="Messages architecture" width="100%" align="center"/>
+
 ## Getting started 🔧
 
 ### Prerequisite
