@@ -87,7 +87,7 @@ The application uses a new environment file structure with `.defaults` and `.loc
 | `MTA_OUT_DIRECT_PORT` | `25` | TCP port for direct mode on remote MX servers | Optional |
 | `MTA_OUT_SMTP_TLS_SECURITY_LEVEL` | `may` | SMTP TLS security level ("none", "may") | Optional |
 | `MDA_API_SECRET` | `my-shared-secret-mda` | Shared secret for MDA API | Required |
-| `MDA_API_BASE_URL` | `http://backend-dev:8000/api/v1.0/mta/` | Base URL for MDA API | Dev |
+| `MDA_API_BASE_URL` | `http://backend-dev:8000/api/v1.0/` | Base URL for MDA API | Dev |
 
 ### Email Domain Configuration
 
