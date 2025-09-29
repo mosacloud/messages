@@ -3061,6 +3061,44 @@
                 }
             }
         },
+        "/api/v1.0/messages/{id}/eml/": {
+            "get": {
+                "operationId": "messages_eml_retrieve",
+                "description": "Return the EML file for a message.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "description": "primary key for the record as UUID"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "messages"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Message"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
         "/api/v1.0/placeholders/": {
             "get": {
                 "operationId": "placeholders_retrieve",

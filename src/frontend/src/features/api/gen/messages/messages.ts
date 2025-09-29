@@ -1048,6 +1048,186 @@ export const useMessagesDestroy = <TError = unknown, TContext = unknown>(
   return useMutation(mutationOptions, queryClient);
 };
 /**
+ * Return the EML file for a message.
+ */
+export type messagesEmlRetrieveResponse200 = {
+  data: Message;
+  status: 200;
+};
+
+export type messagesEmlRetrieveResponseComposite =
+  messagesEmlRetrieveResponse200;
+
+export type messagesEmlRetrieveResponse =
+  messagesEmlRetrieveResponseComposite & {
+    headers: Headers;
+  };
+
+export const getMessagesEmlRetrieveUrl = (id: string) => {
+  return `/api/v1.0/messages/${id}/eml/`;
+};
+
+export const messagesEmlRetrieve = async (
+  id: string,
+  options?: RequestInit,
+): Promise<messagesEmlRetrieveResponse> => {
+  return fetchAPI<messagesEmlRetrieveResponse>(getMessagesEmlRetrieveUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getMessagesEmlRetrieveQueryKey = (id: string) => {
+  return [`/api/v1.0/messages/${id}/eml/`] as const;
+};
+
+export const getMessagesEmlRetrieveQueryOptions = <
+  TData = Awaited<ReturnType<typeof messagesEmlRetrieve>>,
+  TError = unknown,
+>(
+  id: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof messagesEmlRetrieve>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getMessagesEmlRetrieveQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof messagesEmlRetrieve>>
+  > = ({ signal }) => messagesEmlRetrieve(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof messagesEmlRetrieve>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type MessagesEmlRetrieveQueryResult = NonNullable<
+  Awaited<ReturnType<typeof messagesEmlRetrieve>>
+>;
+export type MessagesEmlRetrieveQueryError = unknown;
+
+export function useMessagesEmlRetrieve<
+  TData = Awaited<ReturnType<typeof messagesEmlRetrieve>>,
+  TError = unknown,
+>(
+  id: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof messagesEmlRetrieve>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof messagesEmlRetrieve>>,
+          TError,
+          Awaited<ReturnType<typeof messagesEmlRetrieve>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useMessagesEmlRetrieve<
+  TData = Awaited<ReturnType<typeof messagesEmlRetrieve>>,
+  TError = unknown,
+>(
+  id: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof messagesEmlRetrieve>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof messagesEmlRetrieve>>,
+          TError,
+          Awaited<ReturnType<typeof messagesEmlRetrieve>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useMessagesEmlRetrieve<
+  TData = Awaited<ReturnType<typeof messagesEmlRetrieve>>,
+  TError = unknown,
+>(
+  id: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof messagesEmlRetrieve>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+
+export function useMessagesEmlRetrieve<
+  TData = Awaited<ReturnType<typeof messagesEmlRetrieve>>,
+  TError = unknown,
+>(
+  id: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof messagesEmlRetrieve>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions = getMessagesEmlRetrieveQueryOptions(id, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
  * 
     Send a previously created draft message.
 

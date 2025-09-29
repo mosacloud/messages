@@ -72,4 +72,4 @@ class TestRetrieveMessage:
         client.force_authenticate(user=mailbox_access.user)
         response = client.get(message_url_eml)
         assert response.status_code == status.HTTP_200_OK
-        assert response.data == message.blob.get_content()
+        assert response.content == message.blob.get_content()
