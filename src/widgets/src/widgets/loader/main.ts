@@ -5,8 +5,17 @@ import { injectScript, installHook, getLoaded, setLoaded, STATE_LOADED, STATE_LO
 import { triggerEvent, listenEvent } from '../../shared/events'
 const widgetName = "loader";
 
+type LoaderWidgetArgs = {
+    widget: string;
+    closeLabel: string;
+    label: string;
+    params: any;
+    script: string;
+    scriptType: string;
+}
+
 // The init event is sent from the embedding code
-listenEvent(widgetName, 'init', null, false, (args) => {
+listenEvent(widgetName, 'init', null, false, (args: LoaderWidgetArgs) => {
 
     const targetWidget = args.widget || 'feedback';
 
@@ -56,7 +65,9 @@ listenEvent(widgetName, 'init', null, false, (args) => {
         const loadedCallback = () => {
             clearTimeout(loadTimeout)
             btn.classList.remove('loading')
-            window._stmsg_widget.push([targetWidget, "init", args.params]);
+            const params = Object.assign({}, args.params);
+            params.bottomOffset = btn.offsetHeight + 20;
+            window._stmsg_widget.push([targetWidget, "init", params]);
         }
 
         if (getLoaded(targetWidget) === STATE_LOADED) {

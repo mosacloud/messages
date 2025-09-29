@@ -22,6 +22,7 @@ export function FeedbackWidget({
   const submitText: string = t("feedback_widget.submit_text");
   const successText: string = t("feedback_widget.success_text");
   const successText2: string = t("feedback_widget.success_text2");
+  const closeLabel: string = t("feedback_widget.close_label");
 
   useEffect(() => {
     if (!channel || !apiUrl || !widgetPath) return;
@@ -50,12 +51,14 @@ export function FeedbackWidget({
             submitText,
             successText,
             successText2,
+            closeLabel,
             // Add email parameter if user is logged in
             ...(user?.email && { email: user.email }),
           },
           script: feedbackScript,
           widget,
           label: title,
+          closeLabel,
         },
       ]);
 
