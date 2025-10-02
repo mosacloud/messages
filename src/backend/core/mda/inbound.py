@@ -426,8 +426,13 @@ def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-stat
             else:
                 snippet = "(No snippet available)"  # Absolute fallback
 
+            # Truncate subject to 255 characters if it exceeds max_length
+            thread_subject = parsed_email.get("subject")
+            if thread_subject and len(thread_subject) > 255:
+                thread_subject = thread_subject[:255]
+
             thread = models.Thread.objects.create(
-                subject=parsed_email.get("subject"),
+                subject=thread_subject,
                 snippet=snippet,
             )
             # Create a thread access for the sender mailbox
@@ -541,10 +546,15 @@ def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-stat
             content_type="message/rfc822",
         )
 
+        # Truncate subject to 255 characters if it exceeds max_length
+        subject = parsed_email.get("subject")
+        if subject and len(subject) > 255:
+            subject = subject[:255]
+
         message = models.Message.objects.create(
             thread=thread,
             sender=sender_contact,
-            subject=parsed_email.get("subject"),
+            subject=subject,
             blob=blob,
             mime_id=parsed_email.get("messageId", parsed_email.get("message_id"))
             or None,
