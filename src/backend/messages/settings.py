@@ -211,6 +211,14 @@ class Base(Configuration):
         environ_prefix=None,
     )
 
+    # IMAP importer settings
+    IMAP_TIMEOUT = values.PositiveIntegerValue(
+        60, environ_name="IMAP_TIMEOUT", environ_prefix=None
+    )
+    IMAP_MAX_RETRIES = values.PositiveIntegerValue(
+        3, environ_name="IMAP_MAX_RETRIES", environ_prefix=None
+    )
+
     # Self-check settings
     MESSAGES_SELFCHECK_FROM = values.Value(
         None,

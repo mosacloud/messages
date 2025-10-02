@@ -4,7 +4,11 @@ import base64
 import codecs
 import imaplib
 import re
+import socket
+import time
 from typing import Any, Dict, List, Optional, Tuple
+
+from django.conf import settings
 
 from celery.utils.log import get_task_logger
 
@@ -51,9 +55,13 @@ class IMAPConnectionManager:
     def __enter__(self):
         try:
             if self.use_ssl:
-                self.connection = imaplib.IMAP4_SSL(self.server, self.port, timeout=30)
+                self.connection = imaplib.IMAP4_SSL(
+                    self.server, self.port, timeout=settings.IMAP_TIMEOUT
+                )
             else:
-                self.connection = imaplib.IMAP4(self.server, self.port, timeout=30)
+                self.connection = imaplib.IMAP4(
+                    self.server, self.port, timeout=settings.IMAP_TIMEOUT
+                )
 
             # Set UTF-8 encoding for the IMAP connection
             self.connection._encoding = "utf-8"  # noqa: SLF001
@@ -350,6 +358,37 @@ def _fetch_message_with_flags(
     return flags, raw_email
 
 
+def _fetch_message_with_flags_retry(
+    imap_connection, msg_num: bytes
+) -> Tuple[List[str], Optional[bytes]]:
+    """Fetch a message with retry logic for timeout errors."""
+    max_retries = settings.IMAP_MAX_RETRIES
+    for attempt in range(max_retries):
+        try:
+            return _fetch_message_with_flags(imap_connection, msg_num)
+        except socket.timeout:
+            if attempt < max_retries - 1:
+                logger.warning(
+                    "Timeout fetching message %s (attempt %d/%d), retrying...",
+                    msg_num,
+                    attempt + 1,
+                    max_retries,
+                )
+                # Exponential backoff
+                time.sleep(2**attempt)
+                continue
+            else:
+                logger.error(
+                    "Failed to fetch message %s after %d attempts",
+                    msg_num,
+                    max_retries,
+                )
+                raise
+        except Exception as e:
+            logger.error("Unexpected error fetching message %s: %s", msg_num, e)
+            raise
+
+
 def _process_folder_messages(  # pylint: disable=too-many-arguments
     imap_connection: Any,
     folder: str,
@@ -372,8 +411,8 @@ def _process_folder_messages(  # pylint: disable=too-many-arguments
     for msg_num in message_list:
         current_message += 1
         try:
-            # Fetch message with flags
-            flags, raw_email = _fetch_message_with_flags(imap_connection, msg_num)
+            # Fetch message with flags using retry logic
+            flags, raw_email = _fetch_message_with_flags_retry(imap_connection, msg_num)
 
             # Parse message
             parsed_email = parse_email_message(raw_email)
