@@ -598,11 +598,23 @@ def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-stat
         return False
 
     # --- 6. Create Recipient Contacts and Links --- #
-    recipient_types_to_process = [
-        (models.MessageRecipientTypeChoices.TO, parsed_email.get("to", [])),
-        (models.MessageRecipientTypeChoices.CC, parsed_email.get("cc", [])),
-        (models.MessageRecipientTypeChoices.BCC, parsed_email.get("bcc", [])),
-    ]
+    # deduplicate recipients
+    recipient_types_to_process = []
+    for type_choice, type_name in [
+        (models.MessageRecipientTypeChoices.TO, "to"),
+        (models.MessageRecipientTypeChoices.CC, "cc"),
+        (models.MessageRecipientTypeChoices.BCC, "bcc"),
+    ]:
+        recipients = list(
+            {
+                frozenset(recipient.items())
+                for recipient in parsed_email.get(type_name, [])
+            }
+        )
+        recipient_types_to_process.append(
+            (type_choice, [dict(recipient) for recipient in recipients])
+        )
+
     for recipient_type, recipients_list in recipient_types_to_process:
         for recipient_data in recipients_list:
             email = recipient_data.get("email")
