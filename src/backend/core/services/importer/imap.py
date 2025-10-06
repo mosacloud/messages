@@ -118,7 +118,7 @@ def _parse_imap_folder_info(folder_info: str) -> Optional[str]:
     return None
 
 
-def _get_selectable_folders(
+def get_selectable_folders(
     imap_connection, username: str, imap_server: str
 ) -> List[str]:
     """Get list of selectable folders from IMAP server."""
@@ -135,7 +135,7 @@ def _get_selectable_folders(
     return selectable_folders
 
 
-def _create_folder_mapping(
+def create_folder_mapping(
     folders: List[str], username: str, imap_server: str
 ) -> Dict[str, str]:
     """Create mapping between technical folder names and display names
@@ -161,7 +161,7 @@ def _create_folder_mapping(
     return folder_mapping
 
 
-def _select_imap_folder(imap_connection, folder: str) -> bool:
+def select_imap_folder(imap_connection, folder: str) -> bool:
     """Select an IMAP folder with proper encoding handling."""
     try:
         # Try different folder name variations for compatibility
@@ -216,7 +216,7 @@ def _select_imap_folder(imap_connection, folder: str) -> bool:
         return False
 
 
-def _get_message_numbers(
+def get_message_numbers(
     imap_connection, folder: str, username: str, imap_server: str
 ) -> List[bytes]:
     """Get message numbers from the selected folder."""
@@ -389,7 +389,7 @@ def _fetch_message_with_flags_retry(
             raise
 
 
-def _process_folder_messages(  # pylint: disable=too-many-arguments
+def process_folder_messages(  # pylint: disable=too-many-arguments
     imap_connection: Any,
     folder: str,
     display_name: str,
