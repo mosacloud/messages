@@ -356,12 +356,13 @@ class AdminMailDomainMessageTemplateViewSet(
             maildomain_id=self.kwargs.get("maildomain_pk")
         )
         # filter by type if provided
-        template_type = self.request.query_params.get("type")
-        if template_type:
-            queryset = queryset.filter(
-                type=MessageTemplateTypeChoices[template_type.upper()]
-            )
-
+        template_types = [
+            MessageTemplateTypeChoices[template_type.upper()]
+            for template_type in self.request.query_params.getlist("type")
+            if template_type.upper() in MessageTemplateTypeChoices.names
+        ]
+        if template_types:
+            queryset = queryset.filter(type__in=template_types)
         return queryset
 
     def get_serializer_context(self):

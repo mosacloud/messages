@@ -105,22 +105,54 @@ class TestAdminMailDomainMessageTemplateList:
         client = APIClient()
         client.force_authenticate(user=user)
 
+        # Test listing all templates
         response = client.get(admin_list_url)
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 3
-        assert response.data[2]["type"] == "reply"
-        assert response.data[2]["id"] == str(reply_template.id)
-        assert response.data[1]["type"] == "new_message"
-        assert response.data[1]["id"] == str(new_message_template.id)
-        assert response.data[0]["type"] == "signature"
-        assert response.data[0]["id"] == str(signature_template.id)
+        templates_by_type = {t["type"]: t for t in response.data}
+        assert templates_by_type["signature"]["id"] == str(signature_template.id)
+        assert templates_by_type["reply"]["id"] == str(reply_template.id)
+        assert templates_by_type["new_message"]["id"] == str(new_message_template.id)
 
-        # now filter by type
-        response = client.get(admin_list_url, {"type": "signature"})
+        # Test filtering by single type
+        response = client.get(admin_list_url, {"type": ["signature"]})
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 1
         assert response.data[0]["type"] == "signature"
         assert response.data[0]["id"] == str(signature_template.id)
+
+        # Test filtering by multiple types
+        response = client.get(admin_list_url, {"type": ["signature", "reply"]})
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 2
+        templates_by_type = {t["type"]: t for t in response.data}
+        assert "signature" in templates_by_type
+        assert "reply" in templates_by_type
+        assert templates_by_type["signature"]["id"] == str(signature_template.id)
+        assert templates_by_type["reply"]["id"] == str(reply_template.id)
+
+        # Test filtering by multiple types with some invalid types (should be ignored)
+        response = client.get(
+            admin_list_url, {"type": ["signature", "invalid_type", "new_message"]}
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 2
+        templates_by_type = {t["type"]: t for t in response.data}
+        assert "signature" in templates_by_type
+        assert "new_message" in templates_by_type
+        assert templates_by_type["signature"]["id"] == str(signature_template.id)
+        assert templates_by_type["new_message"]["id"] == str(new_message_template.id)
+
+        # Test filtering by all valid types
+        response = client.get(
+            admin_list_url, {"type": ["signature", "reply", "new_message"]}
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 3
+        templates_by_type = {t["type"]: t for t in response.data}
+        assert templates_by_type["signature"]["id"] == str(signature_template.id)
+        assert templates_by_type["reply"]["id"] == str(reply_template.id)
+        assert templates_by_type["new_message"]["id"] == str(new_message_template.id)
 
 
 class TestAdminMailDomainMessageTemplateCreate:
