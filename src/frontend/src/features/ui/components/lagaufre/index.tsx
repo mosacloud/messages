@@ -12,8 +12,8 @@ export const LagaufreButton = () => {
   const apiUrl = process.env.NEXT_PUBLIC_LAGAUFRE_WIDGET_API_URL; 
   const widgetPath = process.env.NEXT_PUBLIC_LAGAUFRE_WIDGET_PATH;
 
-  const label: string = t("lagaufre_widget.label");
-  const closeLabel: string = t("lagaufre_widget.close_label");
+  const label: string = t("Other services...");
+  const closeLabel: string = t("Close the menu");
 
   // Initialize widget on component mount
   useEffect(() => {
@@ -90,7 +90,7 @@ export const LagaufreButton = () => {
             <use href="#square" transform="translate(6.5, 13)"/>
             <use href="#square" transform="translate(13, 13)"/>
           </svg>}
-          aria-label={t("lagaufre_widget.label")}
+          aria-label={label}
           color="tertiary-text"
           className="lagaufre-button"
      />

@@ -33,9 +33,12 @@ export const AnonymousHeader = ({
       </div>
       <div className="c__header__right">
         {isDesktop && (
+          <>
             <LanguagePicker />
+            <LagaufreButton />
+          </>
         )}
-        <LagaufreButton />
+        
       </div>
     </div>
   );
