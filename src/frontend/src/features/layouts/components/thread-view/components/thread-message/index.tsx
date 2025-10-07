@@ -179,7 +179,7 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
                     <div className="thread-message__header-rows" style={{ marginBlock: 'var(--c--theme--spacings--xs)' }}>
                         <Banner type="warning" compact fullWidth>
                             <div className="thread-message__header-banner__content">
-                                <p>{t(t('The sender of this message cannot be trusted. Be careful when interacting with it.'))}</p>
+                                <p>{t("This contact's identity could not be verified. Proceed with caution.")}</p>
                                 </div>
                             </Banner>
                         </div>

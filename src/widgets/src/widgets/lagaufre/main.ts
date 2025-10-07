@@ -153,7 +153,7 @@ listenEvent(widgetName, "init", null, false, async (args: GaufreWidgetArgs) => {
       /* prettier-ignore */
       serviceCard.innerHTML =
         `<a href="${service.url}" target="_blank">` +
-            `<img src="${service.logo}" alt="${service.name} logo" class="service-logo" onerror="this.style.display='none'">` +
+            `<img src="${service.logo}" alt="${service.name} logo" class="service-logo" aria-hidden="true" onerror="this.style.display='none'">` +
             (service.maturity && service.maturity !== "stable"
               ? `<div class="maturity-badge">${service.maturity}</div>`
               : "") +

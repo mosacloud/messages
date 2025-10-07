@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next"
-import { useState, useEffect } from "react"
-import { Button } from "@openfun/cunningham-react";
+import { useState, useEffect, useRef } from "react"
+import { Button, ButtonElement } from "@openfun/cunningham-react";
 
 /**
  * A button that opens the lagaufre widget
@@ -8,7 +8,7 @@ import { Button } from "@openfun/cunningham-react";
 export const LagaufreButton = () => {
   const { t } = useTranslation()
   const [isWidgetInitialized, setIsWidgetInitialized] = useState(false)
-  
+  const buttonRef = useRef<ButtonElement>(null);
   const apiUrl = process.env.NEXT_PUBLIC_LAGAUFRE_WIDGET_API_URL; 
   const widgetPath = process.env.NEXT_PUBLIC_LAGAUFRE_WIDGET_PATH;
 
@@ -27,7 +27,12 @@ export const LagaufreButton = () => {
 
     document.addEventListener("stmsg-widget-lagaufre-closed", () => {
         // Focus the button
-        (document.querySelector(".lagaufre-button") as HTMLElement)?.focus();
+        buttonRef.current?.focus();
+        buttonRef.current?.setAttribute("aria-expanded", "false");
+    });
+
+    document.addEventListener("stmsg-widget-lagaufre-opened", () => {
+        buttonRef.current?.setAttribute("aria-expanded", "true");
     });
 
     // Load the loader script if not already loaded
@@ -76,6 +81,7 @@ export const LagaufreButton = () => {
   return (
     <Button
           onClick={toggleWidget}
+          ref={buttonRef}
           icon={<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <path id="square" d="M2.7959 0.5C3.26483 0.5 3.49956 0.49985 3.68848 0.564453C4.03934 0.684581 4.31542 0.960658 4.43555 1.31152C4.50015 1.50044 4.5 1.73517 4.5 2.2041V2.7959C4.5 3.26483 4.50015 3.49956 4.43555 3.68848C4.31542 4.03934 4.03934 4.31542 3.68848 4.43555C3.49956 4.50015 3.26483 4.5 2.7959 4.5H2.2041C1.73517 4.5 1.50044 4.50015 1.31152 4.43555C0.960658 4.31542 0.684581 4.03934 0.564453 3.68848C0.49985 3.49956 0.5 3.26483 0.5 2.7959V2.2041C0.5 1.73517 0.49985 1.50044 0.564453 1.31152C0.684581 0.960658 0.960658 0.684581 1.31152 0.564453C1.50044 0.49985 1.73517 0.5 2.2041 0.5H2.7959Z" />
@@ -91,6 +97,7 @@ export const LagaufreButton = () => {
             <use href="#square" transform="translate(13, 13)"/>
           </svg>}
           aria-label={label}
+          aria-expanded="false"
           color="tertiary-text"
           className="lagaufre-button"
      />
