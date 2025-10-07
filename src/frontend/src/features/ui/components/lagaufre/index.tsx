@@ -69,6 +69,9 @@ export const LagaufreButton = () => {
     ]);
   }
 
+  if (!widgetPath || !apiUrl) {
+    return null;
+  }
 
   return (
     <Button
