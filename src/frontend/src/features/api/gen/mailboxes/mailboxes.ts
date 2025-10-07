@@ -5,15 +5,18 @@
  * This is the messages API schema.
  * OpenAPI spec version: 1.0.0 (v1.0)
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
   DataTag,
   DefinedInitialDataOptions,
   DefinedUseQueryResult,
+  MutationFunction,
   QueryClient,
   QueryFunction,
   QueryKey,
   UndefinedInitialDataOptions,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
@@ -24,6 +27,9 @@ import type {
   MailboxesMessageTemplatesAvailableListParams,
   MailboxesMessageTemplatesRenderRetrieve200,
   MailboxesSearchListParams,
+  MessageTemplate,
+  MessageTemplateRequest,
+  PatchedMessageTemplateRequest,
   ReadOnlyMessageTemplate,
 } from ".././models";
 
@@ -179,8 +185,303 @@ export function useMailboxesList<
 /**
  * ViewSet for retrieving and rendering message templates for a mailbox.
  */
+export type mailboxesMessageTemplatesListResponse200 = {
+  data: MessageTemplate[];
+  status: 200;
+};
+
+export type mailboxesMessageTemplatesListResponseComposite =
+  mailboxesMessageTemplatesListResponse200;
+
+export type mailboxesMessageTemplatesListResponse =
+  mailboxesMessageTemplatesListResponseComposite & {
+    headers: Headers;
+  };
+
+export const getMailboxesMessageTemplatesListUrl = (mailboxId: string) => {
+  return `/api/v1.0/mailboxes/${mailboxId}/message-templates/`;
+};
+
+export const mailboxesMessageTemplatesList = async (
+  mailboxId: string,
+  options?: RequestInit,
+): Promise<mailboxesMessageTemplatesListResponse> => {
+  return fetchAPI<mailboxesMessageTemplatesListResponse>(
+    getMailboxesMessageTemplatesListUrl(mailboxId),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getMailboxesMessageTemplatesListQueryKey = (mailboxId: string) => {
+  return [`/api/v1.0/mailboxes/${mailboxId}/message-templates/`] as const;
+};
+
+export const getMailboxesMessageTemplatesListQueryOptions = <
+  TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
+  TError = unknown,
+>(
+  mailboxId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getMailboxesMessageTemplatesListQueryKey(mailboxId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>
+  > = ({ signal }) =>
+    mailboxesMessageTemplatesList(mailboxId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!mailboxId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type MailboxesMessageTemplatesListQueryResult = NonNullable<
+  Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>
+>;
+export type MailboxesMessageTemplatesListQueryError = unknown;
+
+export function useMailboxesMessageTemplatesList<
+  TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
+  TError = unknown,
+>(
+  mailboxId: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
+          TError,
+          Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useMailboxesMessageTemplatesList<
+  TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
+  TError = unknown,
+>(
+  mailboxId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
+          TError,
+          Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useMailboxesMessageTemplatesList<
+  TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
+  TError = unknown,
+>(
+  mailboxId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+
+export function useMailboxesMessageTemplatesList<
+  TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
+  TError = unknown,
+>(
+  mailboxId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions = getMailboxesMessageTemplatesListQueryOptions(
+    mailboxId,
+    options,
+  );
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * ViewSet for retrieving and rendering message templates for a mailbox.
+ */
+export type mailboxesMessageTemplatesCreateResponse201 = {
+  data: MessageTemplate;
+  status: 201;
+};
+
+export type mailboxesMessageTemplatesCreateResponseComposite =
+  mailboxesMessageTemplatesCreateResponse201;
+
+export type mailboxesMessageTemplatesCreateResponse =
+  mailboxesMessageTemplatesCreateResponseComposite & {
+    headers: Headers;
+  };
+
+export const getMailboxesMessageTemplatesCreateUrl = (mailboxId: string) => {
+  return `/api/v1.0/mailboxes/${mailboxId}/message-templates/`;
+};
+
+export const mailboxesMessageTemplatesCreate = async (
+  mailboxId: string,
+  messageTemplateRequest: MessageTemplateRequest,
+  options?: RequestInit,
+): Promise<mailboxesMessageTemplatesCreateResponse> => {
+  return fetchAPI<mailboxesMessageTemplatesCreateResponse>(
+    getMailboxesMessageTemplatesCreateUrl(mailboxId),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(messageTemplateRequest),
+    },
+  );
+};
+
+export const getMailboxesMessageTemplatesCreateMutationOptions = <
+  TError = unknown,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mailboxesMessageTemplatesCreate>>,
+    TError,
+    { mailboxId: string; data: MessageTemplateRequest },
+    TContext
+  >;
+  request?: SecondParameter<typeof fetchAPI>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof mailboxesMessageTemplatesCreate>>,
+  TError,
+  { mailboxId: string; data: MessageTemplateRequest },
+  TContext
+> => {
+  const mutationKey = ["mailboxesMessageTemplatesCreate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof mailboxesMessageTemplatesCreate>>,
+    { mailboxId: string; data: MessageTemplateRequest }
+  > = (props) => {
+    const { mailboxId, data } = props ?? {};
+
+    return mailboxesMessageTemplatesCreate(mailboxId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MailboxesMessageTemplatesCreateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof mailboxesMessageTemplatesCreate>>
+>;
+export type MailboxesMessageTemplatesCreateMutationBody =
+  MessageTemplateRequest;
+export type MailboxesMessageTemplatesCreateMutationError = unknown;
+
+export const useMailboxesMessageTemplatesCreate = <
+  TError = unknown,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof mailboxesMessageTemplatesCreate>>,
+      TError,
+      { mailboxId: string; data: MessageTemplateRequest },
+      TContext
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof mailboxesMessageTemplatesCreate>>,
+  TError,
+  { mailboxId: string; data: MessageTemplateRequest },
+  TContext
+> => {
+  const mutationOptions =
+    getMailboxesMessageTemplatesCreateMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * ViewSet for retrieving and rendering message templates for a mailbox.
+ */
 export type mailboxesMessageTemplatesRetrieveResponse200 = {
-  data: ReadOnlyMessageTemplate;
+  data: MessageTemplate;
   status: 200;
 };
 
@@ -381,6 +682,337 @@ export function useMailboxesMessageTemplatesRetrieve<
   return query;
 }
 
+/**
+ * ViewSet for retrieving and rendering message templates for a mailbox.
+ */
+export type mailboxesMessageTemplatesUpdateResponse200 = {
+  data: MessageTemplate;
+  status: 200;
+};
+
+export type mailboxesMessageTemplatesUpdateResponseComposite =
+  mailboxesMessageTemplatesUpdateResponse200;
+
+export type mailboxesMessageTemplatesUpdateResponse =
+  mailboxesMessageTemplatesUpdateResponseComposite & {
+    headers: Headers;
+  };
+
+export const getMailboxesMessageTemplatesUpdateUrl = (
+  mailboxId: string,
+  id: string,
+) => {
+  return `/api/v1.0/mailboxes/${mailboxId}/message-templates/${id}/`;
+};
+
+export const mailboxesMessageTemplatesUpdate = async (
+  mailboxId: string,
+  id: string,
+  messageTemplateRequest: MessageTemplateRequest,
+  options?: RequestInit,
+): Promise<mailboxesMessageTemplatesUpdateResponse> => {
+  return fetchAPI<mailboxesMessageTemplatesUpdateResponse>(
+    getMailboxesMessageTemplatesUpdateUrl(mailboxId, id),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(messageTemplateRequest),
+    },
+  );
+};
+
+export const getMailboxesMessageTemplatesUpdateMutationOptions = <
+  TError = unknown,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mailboxesMessageTemplatesUpdate>>,
+    TError,
+    { mailboxId: string; id: string; data: MessageTemplateRequest },
+    TContext
+  >;
+  request?: SecondParameter<typeof fetchAPI>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof mailboxesMessageTemplatesUpdate>>,
+  TError,
+  { mailboxId: string; id: string; data: MessageTemplateRequest },
+  TContext
+> => {
+  const mutationKey = ["mailboxesMessageTemplatesUpdate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof mailboxesMessageTemplatesUpdate>>,
+    { mailboxId: string; id: string; data: MessageTemplateRequest }
+  > = (props) => {
+    const { mailboxId, id, data } = props ?? {};
+
+    return mailboxesMessageTemplatesUpdate(mailboxId, id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MailboxesMessageTemplatesUpdateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof mailboxesMessageTemplatesUpdate>>
+>;
+export type MailboxesMessageTemplatesUpdateMutationBody =
+  MessageTemplateRequest;
+export type MailboxesMessageTemplatesUpdateMutationError = unknown;
+
+export const useMailboxesMessageTemplatesUpdate = <
+  TError = unknown,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof mailboxesMessageTemplatesUpdate>>,
+      TError,
+      { mailboxId: string; id: string; data: MessageTemplateRequest },
+      TContext
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof mailboxesMessageTemplatesUpdate>>,
+  TError,
+  { mailboxId: string; id: string; data: MessageTemplateRequest },
+  TContext
+> => {
+  const mutationOptions =
+    getMailboxesMessageTemplatesUpdateMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * ViewSet for retrieving and rendering message templates for a mailbox.
+ */
+export type mailboxesMessageTemplatesPartialUpdateResponse200 = {
+  data: MessageTemplate;
+  status: 200;
+};
+
+export type mailboxesMessageTemplatesPartialUpdateResponseComposite =
+  mailboxesMessageTemplatesPartialUpdateResponse200;
+
+export type mailboxesMessageTemplatesPartialUpdateResponse =
+  mailboxesMessageTemplatesPartialUpdateResponseComposite & {
+    headers: Headers;
+  };
+
+export const getMailboxesMessageTemplatesPartialUpdateUrl = (
+  mailboxId: string,
+  id: string,
+) => {
+  return `/api/v1.0/mailboxes/${mailboxId}/message-templates/${id}/`;
+};
+
+export const mailboxesMessageTemplatesPartialUpdate = async (
+  mailboxId: string,
+  id: string,
+  patchedMessageTemplateRequest: PatchedMessageTemplateRequest,
+  options?: RequestInit,
+): Promise<mailboxesMessageTemplatesPartialUpdateResponse> => {
+  return fetchAPI<mailboxesMessageTemplatesPartialUpdateResponse>(
+    getMailboxesMessageTemplatesPartialUpdateUrl(mailboxId, id),
+    {
+      ...options,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(patchedMessageTemplateRequest),
+    },
+  );
+};
+
+export const getMailboxesMessageTemplatesPartialUpdateMutationOptions = <
+  TError = unknown,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mailboxesMessageTemplatesPartialUpdate>>,
+    TError,
+    { mailboxId: string; id: string; data: PatchedMessageTemplateRequest },
+    TContext
+  >;
+  request?: SecondParameter<typeof fetchAPI>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof mailboxesMessageTemplatesPartialUpdate>>,
+  TError,
+  { mailboxId: string; id: string; data: PatchedMessageTemplateRequest },
+  TContext
+> => {
+  const mutationKey = ["mailboxesMessageTemplatesPartialUpdate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof mailboxesMessageTemplatesPartialUpdate>>,
+    { mailboxId: string; id: string; data: PatchedMessageTemplateRequest }
+  > = (props) => {
+    const { mailboxId, id, data } = props ?? {};
+
+    return mailboxesMessageTemplatesPartialUpdate(
+      mailboxId,
+      id,
+      data,
+      requestOptions,
+    );
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MailboxesMessageTemplatesPartialUpdateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof mailboxesMessageTemplatesPartialUpdate>>
+>;
+export type MailboxesMessageTemplatesPartialUpdateMutationBody =
+  PatchedMessageTemplateRequest;
+export type MailboxesMessageTemplatesPartialUpdateMutationError = unknown;
+
+export const useMailboxesMessageTemplatesPartialUpdate = <
+  TError = unknown,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof mailboxesMessageTemplatesPartialUpdate>>,
+      TError,
+      { mailboxId: string; id: string; data: PatchedMessageTemplateRequest },
+      TContext
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof mailboxesMessageTemplatesPartialUpdate>>,
+  TError,
+  { mailboxId: string; id: string; data: PatchedMessageTemplateRequest },
+  TContext
+> => {
+  const mutationOptions =
+    getMailboxesMessageTemplatesPartialUpdateMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * ViewSet for retrieving and rendering message templates for a mailbox.
+ */
+export type mailboxesMessageTemplatesDestroyResponse204 = {
+  data: void;
+  status: 204;
+};
+
+export type mailboxesMessageTemplatesDestroyResponseComposite =
+  mailboxesMessageTemplatesDestroyResponse204;
+
+export type mailboxesMessageTemplatesDestroyResponse =
+  mailboxesMessageTemplatesDestroyResponseComposite & {
+    headers: Headers;
+  };
+
+export const getMailboxesMessageTemplatesDestroyUrl = (
+  mailboxId: string,
+  id: string,
+) => {
+  return `/api/v1.0/mailboxes/${mailboxId}/message-templates/${id}/`;
+};
+
+export const mailboxesMessageTemplatesDestroy = async (
+  mailboxId: string,
+  id: string,
+  options?: RequestInit,
+): Promise<mailboxesMessageTemplatesDestroyResponse> => {
+  return fetchAPI<mailboxesMessageTemplatesDestroyResponse>(
+    getMailboxesMessageTemplatesDestroyUrl(mailboxId, id),
+    {
+      ...options,
+      method: "DELETE",
+    },
+  );
+};
+
+export const getMailboxesMessageTemplatesDestroyMutationOptions = <
+  TError = unknown,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mailboxesMessageTemplatesDestroy>>,
+    TError,
+    { mailboxId: string; id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof fetchAPI>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof mailboxesMessageTemplatesDestroy>>,
+  TError,
+  { mailboxId: string; id: string },
+  TContext
+> => {
+  const mutationKey = ["mailboxesMessageTemplatesDestroy"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof mailboxesMessageTemplatesDestroy>>,
+    { mailboxId: string; id: string }
+  > = (props) => {
+    const { mailboxId, id } = props ?? {};
+
+    return mailboxesMessageTemplatesDestroy(mailboxId, id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MailboxesMessageTemplatesDestroyMutationResult = NonNullable<
+  Awaited<ReturnType<typeof mailboxesMessageTemplatesDestroy>>
+>;
+
+export type MailboxesMessageTemplatesDestroyMutationError = unknown;
+
+export const useMailboxesMessageTemplatesDestroy = <
+  TError = unknown,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof mailboxesMessageTemplatesDestroy>>,
+      TError,
+      { mailboxId: string; id: string },
+      TContext
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof mailboxesMessageTemplatesDestroy>>,
+  TError,
+  { mailboxId: string; id: string },
+  TContext
+> => {
+  const mutationOptions =
+    getMailboxesMessageTemplatesDestroyMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
 /**
  * Render a template with the provided context variables.
  */

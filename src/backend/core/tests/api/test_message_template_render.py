@@ -1,5 +1,6 @@
 """Test render action for MessageTemplateViewSet."""
 
+import uuid
 from unittest.mock import patch
 
 from django.urls import reverse
@@ -162,6 +163,22 @@ class TestMessageTemplateRender:
         assert response.status_code == status.HTTP_200_OK
         assert "Cordialement, John Doe - Adjointe" in response.data["html_body"]
         assert "Cordialement, John Doe - Adjointe" in response.data["text_body"]
+
+    def test_render_template_no_access_mailbox(self, user, mailbox):
+        """Test rendering a template from a mailbox that doesn't exist."""
+        client = APIClient()
+        client.force_authenticate(user=user)
+        mailbox_template = factories.MessageTemplateFactory(
+            name="Mailbox Test Template",
+            mailbox=mailbox,
+        )
+        response = client.get(
+            reverse(
+                "mailbox-message-templates-render-template",
+                kwargs={"mailbox_id": uuid.uuid4(), "pk": mailbox_template.id},
+            )
+        )
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_render_template_not_found(self, user, mailbox):
         """Test rendering a non-existent template."""

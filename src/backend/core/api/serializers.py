@@ -1260,10 +1260,6 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         """Validate template data."""
-        if not self.context.get("domain"):
-            raise serializers.ValidationError(
-                "Domain is required in serializer context."
-            )
         # For creation or update, all content fields must be provided
         # if one of fields html_body, text_body, raw_body is provided, all must be provided
         if any(field in attrs for field in ["html_body", "text_body", "raw_body"]):
@@ -1282,6 +1278,8 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
         text_body = validated_data.pop("text_body", "")
         raw_body = validated_data.pop("raw_body", "")
         validated_data["maildomain"] = self.context.get("domain")
+        validated_data["mailbox"] = self.context.get("mailbox")
+
         # Use atomic transaction to ensure all content fields are created together
         with transaction.atomic():
             # Create content blob with all content
@@ -1302,6 +1300,7 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
                 content=content.encode("utf-8"),
                 content_type="application/json",
                 maildomain=self.context.get("domain"),
+                mailbox=self.context.get("mailbox"),
             )
             validated_data["blob"] = blob
             template = super().create(validated_data)

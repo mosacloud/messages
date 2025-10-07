@@ -407,6 +407,39 @@ class TestAdminMailDomainMessageTemplateCreate:
         assert content["raw"] == RAW_DATA_STRUCT
         assert template.maildomain == maildomain
 
+    def test_create_with_mailbox_and_maildomain_in_payload(
+        self, user, maildomain, mailbox, admin_list_url
+    ):
+        """Test creating a template with mailbox and maildomain in payload
+        but only maildomain is used from the context."""
+        factories.MailDomainAccessFactory(
+            maildomain=maildomain,
+            user=user,
+            role=enums.MailDomainAccessRoleChoices.ADMIN,
+        )
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.ADMIN,
+        )
+        client = APIClient()
+        client.force_authenticate(user=user)
+        data = {
+            "name": "Test Template",
+            "html_body": "<p>Content</p>",
+            "text_body": "Content",
+            "raw_body": RAW_DATA,
+            "type": "signature",
+            "mailbox": str(mailbox.id),
+            "maildomain": str(maildomain.id),
+        }
+        response = client.post(admin_list_url, data, format="json")
+        assert response.status_code == status.HTTP_201_CREATED
+        assert models.MessageTemplate.objects.exists()
+        # maildomain is used from the context
+        assert models.MessageTemplate.objects.get().maildomain == maildomain
+        assert not models.MessageTemplate.objects.get().mailbox
+
 
 class TestAdminMailDomainMessageTemplateUpdate:
     """Test admin maildomain update operations for MessageTemplateViewSet."""
@@ -464,6 +497,58 @@ class TestAdminMailDomainMessageTemplateUpdate:
         # Verify template was not updated
         maildomain_template.refresh_from_db()
         assert maildomain_template.name == "Mailbox Test Template"
+
+    def test_cannot_change_maildomain(self, user, maildomain, admin_detail_url):
+        """Test that we cannot change the maildomain of a template."""
+        factories.MailDomainAccessFactory(
+            maildomain=maildomain,
+            user=user,
+            role=enums.MailDomainAccessRoleChoices.ADMIN,
+        )
+
+        # Create another maildomain
+        other_maildomain = factories.MailDomainFactory()
+        factories.MailDomainAccessFactory(
+            maildomain=other_maildomain,
+            user=user,
+            role=enums.MailDomainAccessRoleChoices.ADMIN,
+        )
+
+        # Create a template in the first maildomain
+        template = factories.MessageTemplateFactory(
+            name="Original Template",
+            html_body="<p>Original content</p>",
+            text_body="Original content",
+            type=enums.MessageTemplateTypeChoices.REPLY,
+            maildomain=maildomain,
+            raw_body=RAW_DATA_STRUCT,
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        data = {
+            "name": "Updated Template",
+            "html_body": "<p>Updated content</p>",
+            "text_body": "Updated content",
+            "raw_body": RAW_DATA,
+            "type": "reply",
+            "is_active": False,
+            "is_forced": False,
+            "maildomain": str(other_maildomain.id),
+        }
+
+        response = client.put(
+            admin_detail_url(template.id),
+            data,
+            format="json",
+        )
+        assert response.status_code == status.HTTP_200_OK
+
+        # Verify template was not updated
+        template.refresh_from_db()
+        assert template.maildomain == maildomain
+        assert template.name == "Updated Template"
 
     def test_success(self, user, maildomain, admin_detail_url):
         """Test updating an email template."""
