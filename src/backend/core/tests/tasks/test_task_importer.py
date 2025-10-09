@@ -166,9 +166,7 @@ class TestProcessMboxFileTask:
                 assert messages[1].subject == "Test Message 2"
                 assert messages[2].subject == "Test Message 1"
 
-    def test_task_process_mbox_file_partial_success(
-        self, mailbox, sample_mbox_content
-    ):
+    def test_task_process_mbox_file_partial_success(self, mailbox, sample_mbox_content):
         """Test MBOX processing with some messages failing."""
 
         # Mock deliver_inbound_message to fail for the second message
@@ -323,9 +321,7 @@ class TestProcessMboxFileTask:
             # Verify no messages were created
             assert Message.objects.count() == 0
 
-    def test_task_process_mbox_file_parse_error(
-        self, mailbox, sample_mbox_content
-    ):
+    def test_task_process_mbox_file_parse_error(self, mailbox, sample_mbox_content):
         """Test MBOX processing with message parsing error."""
 
         # Mock parse_email_message to raise an exception for all messages

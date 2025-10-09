@@ -73,12 +73,21 @@ class TestMailboxMessageTemplateList:
         response = client.get(list_url)
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_list_templates(self, user, mailbox, list_url):
+    @pytest.mark.parametrize(
+        "role",
+        [
+            models.MailboxRoleChoices.EDITOR,
+            models.MailboxRoleChoices.SENDER,
+            models.MailboxRoleChoices.VIEWER,
+            models.MailboxRoleChoices.ADMIN,
+        ],
+    )
+    def test_list_templates(self, user, mailbox, list_url, role):
         """Test listing all templates."""
         factories.MailboxAccessFactory(
             mailbox=mailbox,
             user=user,
-            role=enums.MailboxRoleChoices.ADMIN,
+            role=role,
         )
 
         reply_template = factories.MessageTemplateFactory(
@@ -200,26 +209,34 @@ class TestMailboxMessageTemplateCreate:
         )
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_forbidden(self, user, list_url):
+    def test_forbidden_no_access(self, user, list_url, mailbox):
+        """Test that users without access cannot create templates."""
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.post(list_url)
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert not models.MessageTemplate.objects.filter(mailbox=mailbox).exists()
+
+    @pytest.mark.parametrize(
+        "role",
+        [
+            models.MailboxRoleChoices.EDITOR,
+            models.MailboxRoleChoices.SENDER,
+            models.MailboxRoleChoices.VIEWER,
+        ],
+    )
+    def test_forbidden_role(self, user, list_url, mailbox, role):
         """Test that users without proper role cannot create templates."""
         client = APIClient()
         client.force_authenticate(user=user)
-
-        data = {
-            "name": "Test Template",
-            "html_body": "<p>Hello {recipient_name}</p>",
-            "text_body": "Hello {recipient_name}",
-            "raw_body": RAW_DATA,
-            "type": "reply",
-            "is_active": True,
-        }
-
-        response = client.post(
-            list_url,
-            data,
-            format="json",
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=role,
         )
+        response = client.post(list_url)
         assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert not models.MessageTemplate.objects.filter(mailbox=mailbox).exists()
 
     def test_success(self, user, mailbox, list_url):
         """Test creating a new template."""
@@ -316,20 +333,40 @@ class TestMailboxMessageTemplateUpdate:
         mailbox_template.refresh_from_db()
         assert mailbox_template.name != "Updated Template"
 
-    def test_forbidden(self, user, mailbox_template, detail_url):
-        """Test that users without proper role cannot update templates."""
+    def test_forbidden_no_access(self, user, mailbox_template, detail_url):
+        """Test that users without mailbox access cannot update templates."""
         client = APIClient()
         client.force_authenticate(user=user)
-
         data = {
             "name": "Updated Template",
         }
+        response = client.put(detail_url(mailbox_template.id), data, format="json")
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        # Verify template was not updated
+        mailbox_template.refresh_from_db()
+        assert mailbox_template.name != "Updated Template"
 
-        response = client.put(
-            detail_url(mailbox_template.id),
-            data,
-            format="json",
+    @pytest.mark.parametrize(
+        "role",
+        [
+            models.MailboxRoleChoices.EDITOR,
+            models.MailboxRoleChoices.SENDER,
+            models.MailboxRoleChoices.VIEWER,
+        ],
+    )
+    def test_forbidden_role(self, user, mailbox_template, detail_url, role):
+        """Test that users without proper role cannot update templates."""
+        client = APIClient()
+        client.force_authenticate(user=user)
+        factories.MailboxAccessFactory(
+            mailbox=mailbox_template.mailbox,
+            user=user,
+            role=role,
         )
+        data = {
+            "name": "Updated Template",
+        }
+        response = client.put(detail_url(mailbox_template.id), data, format="json")
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
         # Verify template was not updated
@@ -430,14 +467,33 @@ class TestMailboxMessageTemplateDelete:
         # Verify template still exists
         assert models.MessageTemplate.objects.filter(id=mailbox_template.id).exists()
 
-    def test_forbidden(self, user, mailbox_template, detail_url):
+    def test_forbidden_no_access(self, user, mailbox_template, detail_url):
+        """Test that users without mailbox access cannot delete templates."""
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.delete(detail_url(mailbox_template.id))
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        # Verify template still exists
+        assert models.MessageTemplate.objects.filter(id=mailbox_template.id).exists()
+
+    @pytest.mark.parametrize(
+        "role",
+        [
+            models.MailboxRoleChoices.EDITOR,
+            models.MailboxRoleChoices.SENDER,
+            models.MailboxRoleChoices.VIEWER,
+        ],
+    )
+    def test_forbidden_role(self, user, mailbox_template, detail_url, role):
         """Test that users without proper role cannot delete templates."""
         client = APIClient()
         client.force_authenticate(user=user)
-
-        response = client.delete(
-            detail_url(mailbox_template.id),
+        factories.MailboxAccessFactory(
+            mailbox=mailbox_template.mailbox,
+            user=user,
+            role=role,
         )
+        response = client.delete(detail_url(mailbox_template.id), format="json")
         assert response.status_code == status.HTTP_403_FORBIDDEN
         assert models.MessageTemplate.objects.filter(id=mailbox_template.id).exists()
 
@@ -509,10 +565,34 @@ class TestMailboxMessageTemplatePartialUpdate:
         )
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_forbidden(self, user, mailbox_template, detail_url):
+    def test_forbidden_no_access(self, user, mailbox_template, detail_url):
+        """Test that users without mailbox access cannot partially update templates."""
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.patch(
+            detail_url(mailbox_template.id), {"name": "Patched Name"}, format="json"
+        )
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        mailbox_template.refresh_from_db()
+        assert mailbox_template.name != "Patched Name"
+
+    @pytest.mark.parametrize(
+        "role",
+        [
+            models.MailboxRoleChoices.EDITOR,
+            models.MailboxRoleChoices.SENDER,
+            models.MailboxRoleChoices.VIEWER,
+        ],
+    )
+    def test_forbidden_role(self, user, mailbox_template, detail_url, role):
         """Test that users without proper role cannot partially update templates."""
         client = APIClient()
         client.force_authenticate(user=user)
+        factories.MailboxAccessFactory(
+            mailbox=mailbox_template.mailbox,
+            user=user,
+            role=role,
+        )
         response = client.patch(
             detail_url(mailbox_template.id), {"name": "Patched Name"}, format="json"
         )

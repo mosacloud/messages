@@ -36,10 +36,16 @@ class MailboxMessageTemplateViewSet(
 ):
     """ViewSet for retrieving and rendering message templates for a mailbox."""
 
-    permission_classes = [permissions.HasAccessToMailbox]
+    permission_classes = [permissions.IsMailboxAdmin]
     serializer_class = MessageTemplateSerializer
     lookup_field = "pk"
     pagination_class = None
+
+    def get_permissions(self):
+        """Get permissions for the viewset."""
+        if self.action in ["render_template", "list", "retrieve"]:
+            return [permissions.HasAccessToMailbox()]
+        return super().get_permissions()
 
     @cached_property
     def mailbox(self):
