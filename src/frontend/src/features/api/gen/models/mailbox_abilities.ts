@@ -28,4 +28,6 @@ export type MailboxAbilities = {
   readonly send_messages: boolean;
   /** Can manage mailbox labels */
   readonly manage_labels: boolean;
+  /** Can manage mailbox message templates */
+  readonly manage_message_templates: boolean;
 };

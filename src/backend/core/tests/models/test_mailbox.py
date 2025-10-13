@@ -116,6 +116,7 @@ class TestMailboxModelAbilities:
         assert abilities["view_messages"] is False
         assert abilities["send_messages"] is False
         assert abilities["manage_labels"] is False
+        assert abilities["manage_message_templates"] is False
 
     def test_mailbox_get_abilities_viewer(self, user, mailbox):
         """Test Mailbox.get_abilities when user has viewer access."""
@@ -136,6 +137,7 @@ class TestMailboxModelAbilities:
         assert abilities["view_messages"] is True
         assert abilities["send_messages"] is False
         assert abilities["manage_labels"] is False
+        assert abilities["manage_message_templates"] is False
 
     def test_mailbox_get_abilities_editor(self, user, mailbox):
         """Test Mailbox.get_abilities when user has editor access."""
@@ -156,6 +158,7 @@ class TestMailboxModelAbilities:
         assert abilities["view_messages"] is True
         assert abilities["send_messages"] is False
         assert abilities["manage_labels"] is True
+        assert abilities["manage_message_templates"] is False
 
     def test_mailbox_get_abilities_admin(self, user, mailbox):
         """Test Mailbox.get_abilities when user has admin access."""
@@ -176,6 +179,7 @@ class TestMailboxModelAbilities:
         assert abilities["view_messages"] is True
         assert abilities["send_messages"] is True
         assert abilities["manage_labels"] is True
+        assert abilities["manage_message_templates"] is True
 
     def test_mailbox_get_abilities_sender(self, user, mailbox):
         """Test Mailbox.get_abilities when user has sender access."""
@@ -196,3 +200,4 @@ class TestMailboxModelAbilities:
         assert abilities["view_messages"] is True
         assert abilities["send_messages"] is True
         assert abilities["manage_labels"] is True
+        assert abilities["manage_message_templates"] is False

@@ -5501,6 +5501,10 @@
                             "manage_labels": {
                                 "type": "boolean",
                                 "description": "Can manage mailbox labels"
+                            },
+                            "manage_message_templates": {
+                                "type": "boolean",
+                                "description": "Can manage mailbox message templates"
                             }
                         },
                         "required": [
@@ -5512,7 +5516,8 @@
                             "manage_accesses",
                             "view_messages",
                             "send_messages",
-                            "manage_labels"
+                            "manage_labels",
+                            "manage_message_templates"
                         ],
                         "readOnly": true
                     }

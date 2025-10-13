@@ -611,6 +611,7 @@ class Mailbox(BaseModel):
                 "view_messages": False,
                 "send_messages": False,
                 "manage_labels": False,
+                "manage_message_templates": False,
             }
 
         is_admin = role == MailboxRoleChoices.ADMIN
@@ -629,6 +630,7 @@ class Mailbox(BaseModel):
             MailboxAbilities.CAN_VIEW_MESSAGES: has_access,
             MailboxAbilities.CAN_SEND_MESSAGES: can_send,
             MailboxAbilities.CAN_MANAGE_LABELS: can_modify,
+            MailboxAbilities.CAN_MANAGE_MESSAGE_TEMPLATES: is_admin,
         }
 
     def get_validated_signature(self, signature_id: str):
