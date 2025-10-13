@@ -5505,6 +5505,10 @@
                             "manage_message_templates": {
                                 "type": "boolean",
                                 "description": "Can manage mailbox message templates"
+                            },
+                            "import_messages": {
+                                "type": "boolean",
+                                "description": "Can import messages"
                             }
                         },
                         "required": [
@@ -5517,7 +5521,8 @@
                             "view_messages",
                             "send_messages",
                             "manage_labels",
-                            "manage_message_templates"
+                            "manage_message_templates",
+                            "import_messages"
                         ],
                         "readOnly": true
                     }

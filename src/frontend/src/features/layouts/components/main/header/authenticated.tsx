@@ -8,6 +8,7 @@ import useAbility, { Abilities } from "@/hooks/use-ability";
 import { useAuth, logout } from "@/features/auth";
 import { LanguagePicker } from "@/features/layouts/components/main/language-picker";
 import { LagaufreButton } from "@/features/ui/components/lagaufre";
+import { useMailboxContext } from "@/features/providers/mailbox";
 
 
 type AuthenticatedHeaderProps = HeaderProps & {
@@ -58,6 +59,8 @@ export const HeaderRight = () => {
   const { t } = useTranslation();
   const router = useRouter();
   const canAccessDomainAdmin = useAbility(Abilities.CAN_VIEW_DOMAIN_ADMIN);
+  const { selectedMailbox } = useMailboxContext();
+  const canImportMessages = useAbility(Abilities.CAN_IMPORT_MESSAGES, selectedMailbox);
 
   return (
     <>
@@ -70,13 +73,13 @@ export const HeaderRight = () => {
                 icon: <Icon name="domain" />,
                 callback: () => router.push("/domain"),
               }] : []),
-              {
+              ...(canImportMessages ? [{
                   label: t("Import messages"),
                   icon: <Icon name="archive" type={IconType.OUTLINED} />,
                   callback: () => {
                       window.location.hash = `#modal-message-importer`;
                   }
-              },
+              }] : []),
           ]}
       >
       <Button

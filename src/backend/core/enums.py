@@ -111,6 +111,7 @@ class MailboxAbilities(models.TextChoices):
         "manage_message_templates",
         "Can manage mailbox message templates",
     )
+    CAN_IMPORT_MESSAGES = "import_messages", "Can import messages"
 
 
 class MessageTemplateTypeChoices(models.IntegerChoices):

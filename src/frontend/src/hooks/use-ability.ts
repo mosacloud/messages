@@ -10,6 +10,7 @@ enum MailboxAbilities {
   CAN_SEND_MESSAGES = "send_messages",
   CAN_WRITE_MESSAGES = "patch",
   CAN_MANAGE_MAILBOX_LABELS = "manage_labels",
+  CAN_IMPORT_MESSAGES = "import_messages",
 }
 
 enum UserAbilities {
@@ -73,6 +74,7 @@ function useAbility(
     case Abilities.CAN_VIEW_DOMAIN_ADMIN:
     case Abilities.CAN_CREATE_MAILDOMAINS:
     case Abilities.CAN_MANAGE_MAILBOX_LABELS:
+    case Abilities.CAN_IMPORT_MESSAGES:
     case Abilities.CAN_MANAGE_MAILDOMAIN_MAILBOXES:
     case Abilities.CAN_MANAGE_MAILDOMAIN_ACCESSES:
     case Abilities.CAN_MANAGE_SOME_MAILDOMAIN_ACCESSES:

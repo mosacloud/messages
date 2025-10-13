@@ -30,4 +30,6 @@ export type MailboxAbilities = {
   readonly manage_labels: boolean;
   /** Can manage mailbox message templates */
   readonly manage_message_templates: boolean;
+  /** Can import messages */
+  readonly import_messages: boolean;
 };

@@ -389,6 +389,7 @@ class TestMailboxAbilitiesAPI:
         assert abilities["send_messages"] is True
         assert abilities["manage_labels"] is True
         assert abilities["manage_message_templates"] is True
+        assert abilities["import_messages"] is True
 
     def test_mailbox_list_with_abilities(self, api_client, user, mailbox):
         """Test that mailbox list includes abilities for each mailbox."""
@@ -418,6 +419,7 @@ class TestMailboxAbilitiesAPI:
         assert abilities["send_messages"] is False
         assert abilities["manage_labels"] is True
         assert abilities["manage_message_templates"] is False
+        assert abilities["import_messages"] is False
 
     def test_mailbox_detail_no_access_abilities(self, api_client, user, mailbox):
         """Test that abilities are correctly set when user has no access to detail."""
@@ -464,6 +466,7 @@ class TestMailboxAbilitiesAPI:
         assert abilities["send_messages"] is False
         assert abilities["manage_labels"] is False
         assert abilities["manage_message_templates"] is False
+        assert abilities["import_messages"] is False
 
     def test_mailbox_user_role_annotation(self, api_client, user, mailbox):
         """Test that the user_role annotation works correctly."""
