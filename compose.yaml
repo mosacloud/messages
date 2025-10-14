@@ -248,21 +248,6 @@ services:
       - ./src/backend/core/api/openapi.json:/home/backend/core/api/openapi.json
       - ./src/frontend/:/home/frontend/
 
-
-  widgets-dev:
-    user: "${DOCKER_USER:-1000}"
-    build:
-      context: ./src/widgets
-      dockerfile: Dockerfile
-    env_file:
-      - env.d/development/widgets.defaults
-      - env.d/development/widgets.local
-    command: ["npm", "run", "dev"]
-    volumes:
-      - ./src/widgets/:/home/widgets/
-    ports:
-      - "8905:8905"
-
   crowdin:
     image: crowdin/cli:4.11.0
     volumes:

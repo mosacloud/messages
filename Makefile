@@ -68,8 +68,7 @@ create-env-files: \
 	env.d/development/frontend.local \
 	env.d/development/mta-in.local \
 	env.d/development/mta-out.local \
-	env.d/development/socks-proxy.local \
-	env.d/development/widgets.local
+	env.d/development/socks-proxy.local
 .PHONY: create-env-files
 
 bootstrap: ## Prepare the project for local development
@@ -114,7 +113,6 @@ update:  ## Update the project with latest changes
 	@$(MAKE) collectstatic
 	@$(MAKE) migrate
 	@$(MAKE) front-install-frozen
-	@$(MAKE) widgets-install
 	@$(MAKE) i18n-compile
 .PHONY: update
 
@@ -174,7 +172,6 @@ lint: \
   back-lint \
   front-lint \
   front-ts-check \
-  widgets-lint \
   mta-in-lint \
   mta-out-lint
 .PHONY: lint
@@ -458,62 +455,6 @@ back-api-update: ## Update the OpenAPI schema
 front-api-update: ## Update the frontend API client
 	@$(COMPOSE) run --rm --build frontend-tools npm run api:update
 .PHONY: front-api-update
-
-# Widgets
-widgets-install: ## install the widgets locally
-	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
-	$(COMPOSE) run --build --rm widgets-dev npm install $${args:-${1}}
-.PHONY: widgets-install
-
-widgets-freeze-deps: ## freeze the widgets dependencies
-	rm -rf src/widgets/package-lock.json
-	@$(MAKE) widgets-install
-.PHONY: widgets-freeze-deps
-
-widgets-build: ## build the widgets
-	$(COMPOSE) run --build --rm widgets-dev npm run build
-.PHONY: widgets-build
-
-widgets-lint: ## lint the widgets
-	$(COMPOSE) run --build --rm widgets-dev npm run lint
-.PHONY: widgets-lint
-
-widgets-shell: ## open a shell in the widgets container
-	$(COMPOSE) run --build --rm widgets-dev /bin/sh
-.PHONY: widgets-shell
-
-widgets-start: ## start the widgets container
-	$(COMPOSE) up --force-recreate --build -d widgets-dev --wait
-	@echo "$(BOLD)"
-	@echo "╔══════════════════════════════════════════════════════════════════════════════╗"
-	@echo "║                                                                              ║"
-	@echo "║  🚀 Widgets development server with Live Reload is started! 🚀               ║"
-	@echo "║                                                                              ║"
-	@echo "║  Open your browser at http://localhost:8905                                  ║"
-	@echo "║                                                                              ║"
-	@echo "╚══════════════════════════════════════════════════════════════════════════════╝"
-	@echo "$(RESET)"
-.PHONY: widgets-start
-
-widgets-stop: ## stop the widgets container
-	$(COMPOSE) stop widgets-dev
-.PHONY: widgets-stop
-
-widgets-restart: ## restart the widgets container and rebuild
-widgets-restart: \
-	widgets-stop \
-	widgets-build \
-	widgets-start
-.PHONY: widgets-restart
-
-widgets-deploy: ## deploy the widgets to an S3 bucket
-	@## Error if the env vars MESSAGES_WIDGETS_S3_PATH is not set
-	@if [ -z "$$MESSAGES_WIDGETS_S3_PATH" ]; then \
-		echo "Error: MESSAGES_WIDGETS_S3_PATH is not set"; \
-		exit 1; \
-	fi; \
-	docker run --rm -ti -v .aws:/root/.aws -v `pwd`/src/widgets/dist:/aws amazon/aws-cli s3 cp --acl public-read --recursive . s3://$(MESSAGES_WIDGETS_S3_PATH)
-.PHONY: widgets-deploy
 
 api-update: ## Update the OpenAPI schema then frontend API client
 api-update: \
