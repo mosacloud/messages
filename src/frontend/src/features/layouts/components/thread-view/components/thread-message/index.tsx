@@ -15,6 +15,8 @@ import { MessageFormMode } from "@/features/forms/components/message-form";
 import MailHelper from "@/features/utils/mail-helper";
 import useAbility, { Abilities } from "@/hooks/use-ability";
 import { ContactChip } from "@/features/ui/components/contact-chip";
+import { getMessagesEmlRetrieveUrl } from "@/features/api/gen/messages/messages";
+import { getRequestUrl } from "@/features/api/utils";
 
 type ThreadMessageProps = {
     message: Message,
@@ -157,6 +159,19 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
                                             label: hasSiblingMessages ? t('Mark as unread from here') : t('Mark as unread'),
                                             icon: <span className="material-icons">mark_email_unread</span>,
                                             callback: () => markAsUnreadFrom(message.id)
+                                        },
+                                        {
+                                            label: t('Download raw email'),
+                                            icon: <span className="material-icons">download</span>,
+                                            callback: () => {
+                                                const downloadUrl = getRequestUrl(getMessagesEmlRetrieveUrl(message.id));
+                                                const link = document.createElement('a');
+                                                link.href = downloadUrl;
+                                                link.download = `message-${message.id}.eml`;
+                                                document.body.appendChild(link);
+                                                link.click();
+                                                document.body.removeChild(link);
+                                            }
                                         },
                                         ...(message.is_trashed ? [] : [{
                                             label: t('Delete'),
