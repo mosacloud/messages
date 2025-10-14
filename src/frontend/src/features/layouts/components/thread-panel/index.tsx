@@ -9,20 +9,23 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { MAILBOX_FOLDERS } from "../mailbox-panel/components/mailbox-list";
 import Image from "next/image";
+import useAbility, { Abilities } from "@/hooks/use-ability";
 
 export const ThreadPanel = () => {
-    const { threads, queryStates, refetchMailboxes, unselectThread, loadNextThreads, selectedThread } = useMailboxContext();
+    const { threads, queryStates, refetchMailboxes, unselectThread, loadNextThreads, selectedThread, selectedMailbox } = useMailboxContext();
     const { markAsRead, markAsUnread } = useRead();
     const searchParams = useSearchParams();
     const { t } = useTranslation();
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const loaderRef = useRef<HTMLDivElement>(null);
+    const canImportMessages = useAbility(Abilities.CAN_IMPORT_MESSAGES, selectedMailbox);
     const showImportButton = useMemo(() => {
-        // Only show import button if there are no threads in inbox or all messages folders
+        // Only show import button if there are no threads in inbox or all messages folders and user has ability to import messages
+        if (!canImportMessages) return false;
         if (threads?.results.length) return false;
         const importableMessageFolders = MAILBOX_FOLDERS.filter((folder) => ['inbox', 'all_messages'].includes(folder.id));
         return importableMessageFolders.some((folder) => searchParams.toString() === new URLSearchParams(folder.filter).toString());
-    }, [threads?.results, searchParams]);
+    }, [canImportMessages, threads?.results, searchParams]);
 
     const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
         const target = entries[0];
