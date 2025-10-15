@@ -2746,8 +2746,7 @@
                         "schema": {
                             "type": "string",
                             "enum": [
-                                "new_message",
-                                "reply",
+                                "message",
                                 "signature"
                             ]
                         }
@@ -3521,8 +3520,7 @@
                         "schema": {
                             "type": "string",
                             "enum": [
-                                "new_message",
-                                "reply",
+                                "message",
                                 "signature"
                             ]
                         }
@@ -6475,8 +6473,7 @@
             "MessageTemplateTypeChoices": {
                 "type": "string",
                 "enum": [
-                    "reply",
-                    "new_message",
+                    "message",
                     "signature"
                 ]
             },

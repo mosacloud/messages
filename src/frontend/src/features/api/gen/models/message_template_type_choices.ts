@@ -11,7 +11,6 @@ export type MessageTemplateTypeChoices =
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const MessageTemplateTypeChoices = {
-  reply: "reply",
-  new_message: "new_message",
+  message: "message",
   signature: "signature",
 } as const;

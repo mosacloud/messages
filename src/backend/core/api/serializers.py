@@ -598,7 +598,9 @@ class MessageRecipientSerializer(serializers.ModelSerializer):
 
     contact = ContactSerializer(read_only=True)
     delivery_status = IntegerChoicesField(
-        choices_class=models.MessageDeliveryStatusChoices, read_only=True, allow_null=True
+        choices_class=models.MessageDeliveryStatusChoices,
+        read_only=True,
+        allow_null=True,
     )
     retry_at = serializers.DateTimeField(read_only=True, allow_null=True)
     delivered_at = serializers.DateTimeField(read_only=True, allow_null=True)

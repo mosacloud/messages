@@ -80,18 +80,11 @@ class TestAdminMailDomainMessageTemplateList:
             user=user,
             role=enums.MailDomainAccessRoleChoices.ADMIN,
         )
-        reply_template = factories.MessageTemplateFactory(
-            name="Reply Template",
-            html_body="<p>Reply content</p>",
-            text_body="Reply content",
-            type=enums.MessageTemplateTypeChoices.REPLY,
-            maildomain=maildomain,
-        )
-        new_message_template = factories.MessageTemplateFactory(
-            name="New Message Template",
-            html_body="<p>New message content</p>",
-            text_body="New message content",
-            type=enums.MessageTemplateTypeChoices.NEW_MESSAGE,
+        message_template = factories.MessageTemplateFactory(
+            name="Message Template",
+            html_body="<p>Message content</p>",
+            text_body="Message content",
+            type=enums.MessageTemplateTypeChoices.MESSAGE,
             maildomain=maildomain,
         )
         signature_template = factories.MessageTemplateFactory(
@@ -108,11 +101,10 @@ class TestAdminMailDomainMessageTemplateList:
         # Test listing all templates
         response = client.get(admin_list_url)
         assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) == 3
+        assert len(response.data) == 2
         templates_by_type = {t["type"]: t for t in response.data}
+        assert templates_by_type["message"]["id"] == str(message_template.id)
         assert templates_by_type["signature"]["id"] == str(signature_template.id)
-        assert templates_by_type["reply"]["id"] == str(reply_template.id)
-        assert templates_by_type["new_message"]["id"] == str(new_message_template.id)
 
         # Test filtering by single type
         response = client.get(admin_list_url, {"type": ["signature"]})
@@ -122,37 +114,22 @@ class TestAdminMailDomainMessageTemplateList:
         assert response.data[0]["id"] == str(signature_template.id)
 
         # Test filtering by multiple types
-        response = client.get(admin_list_url, {"type": ["signature", "reply"]})
+        response = client.get(admin_list_url, {"type": ["signature", "message"]})
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 2
         templates_by_type = {t["type"]: t for t in response.data}
         assert "signature" in templates_by_type
-        assert "reply" in templates_by_type
+        assert "message" in templates_by_type
         assert templates_by_type["signature"]["id"] == str(signature_template.id)
-        assert templates_by_type["reply"]["id"] == str(reply_template.id)
+        assert templates_by_type["message"]["id"] == str(message_template.id)
 
         # Test filtering by multiple types with some invalid types (should be ignored)
-        response = client.get(
-            admin_list_url, {"type": ["signature", "invalid_type", "new_message"]}
-        )
+        response = client.get(admin_list_url, {"type": ["signature", "invalid_type"]})
         assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) == 2
+        assert len(response.data) == 1
         templates_by_type = {t["type"]: t for t in response.data}
         assert "signature" in templates_by_type
-        assert "new_message" in templates_by_type
         assert templates_by_type["signature"]["id"] == str(signature_template.id)
-        assert templates_by_type["new_message"]["id"] == str(new_message_template.id)
-
-        # Test filtering by all valid types
-        response = client.get(
-            admin_list_url, {"type": ["signature", "reply", "new_message"]}
-        )
-        assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) == 3
-        templates_by_type = {t["type"]: t for t in response.data}
-        assert templates_by_type["signature"]["id"] == str(signature_template.id)
-        assert templates_by_type["reply"]["id"] == str(reply_template.id)
-        assert templates_by_type["new_message"]["id"] == str(new_message_template.id)
 
 
 class TestAdminMailDomainMessageTemplateCreate:
@@ -164,7 +141,7 @@ class TestAdminMailDomainMessageTemplateCreate:
 
         data = {
             "name": "Test Template",
-            "type": "reply",
+            "type": "message",
             "html_body": "<p>Hello {recipient_name}</p>",
             "text_body": "Hello {recipient_name}",
             "raw_body": RAW_DATA,
@@ -189,7 +166,7 @@ class TestAdminMailDomainMessageTemplateCreate:
             "html_body": "<p>Hello {recipient_name}</p>",
             "text_body": "Hello {recipient_name}",
             "raw_body": RAW_DATA,
-            "type": "reply",
+            "type": "message",
             "is_active": True,
             "is_forced": False,
         }
@@ -519,7 +496,7 @@ class TestAdminMailDomainMessageTemplateUpdate:
             name="Original Template",
             html_body="<p>Original content</p>",
             text_body="Original content",
-            type=enums.MessageTemplateTypeChoices.REPLY,
+            type=enums.MessageTemplateTypeChoices.MESSAGE,
             maildomain=maildomain,
             raw_body=RAW_DATA_STRUCT,
         )
@@ -532,7 +509,7 @@ class TestAdminMailDomainMessageTemplateUpdate:
             "html_body": "<p>Updated content</p>",
             "text_body": "Updated content",
             "raw_body": RAW_DATA,
-            "type": "reply",
+            "type": "message",
             "is_active": False,
             "is_forced": False,
             "maildomain": str(other_maildomain.id),
@@ -604,11 +581,11 @@ class TestAdminMailDomainMessageTemplateUpdate:
         )
 
         # Create a template with valid content
-        reply_template = factories.MessageTemplateFactory(
+        message_template = factories.MessageTemplateFactory(
             name="Original Template",
             html_body="<p>Original content</p>",
             text_body="Original content",
-            type=enums.MessageTemplateTypeChoices.REPLY,
+            type=enums.MessageTemplateTypeChoices.MESSAGE,
             maildomain=maildomain,
             raw_body=RAW_DATA_STRUCT,
         )
@@ -620,18 +597,18 @@ class TestAdminMailDomainMessageTemplateUpdate:
             "name": "Partially Updated Template",
         }
 
-        response = client.patch(admin_detail_url(reply_template.id), data)
+        response = client.patch(admin_detail_url(message_template.id), data)
         assert response.status_code == status.HTTP_200_OK
         # only name should have been updated
         assert response.data["name"] == "Partially Updated Template"
-        assert response.data["type"] == "reply"
+        assert response.data["type"] == "message"
         assert response.data["html_body"] == "<p>Original content</p>"
         assert response.data["text_body"] == "Original content"
         assert response.data["is_active"]
 
         # check that the template has been updated
-        reply_template.refresh_from_db()
-        assert reply_template.name == "Partially Updated Template"
+        message_template.refresh_from_db()
+        assert message_template.name == "Partially Updated Template"
 
     def test_content_fields_atomic_validation(self, user, maildomain, admin_detail_url):
         """Test that content fields must be updated together atomically."""

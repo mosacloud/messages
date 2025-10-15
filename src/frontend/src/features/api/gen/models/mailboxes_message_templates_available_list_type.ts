@@ -11,7 +11,6 @@ export type MailboxesMessageTemplatesAvailableListType =
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const MailboxesMessageTemplatesAvailableListType = {
-  new_message: "new_message",
-  reply: "reply",
+  message: "message",
   signature: "signature",
 } as const;

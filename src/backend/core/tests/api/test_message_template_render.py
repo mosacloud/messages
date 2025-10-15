@@ -216,7 +216,7 @@ class TestMessageTemplateRender:
             name="Placeholder Template",
             html_body="<p>Hello {name}!</p>",
             text_body="Hello {name}!",
-            type=enums.MessageTemplateTypeChoices.REPLY,
+            type=enums.MessageTemplateTypeChoices.MESSAGE,
             mailbox=mailbox,
         )
 

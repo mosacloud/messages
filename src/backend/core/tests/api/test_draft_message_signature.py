@@ -242,11 +242,11 @@ class TestDraftMessageSignature:
         self, user, mailbox_sender, mailbox_access
     ):
         """Test creating a draft message with a non-signature template."""
-        reply_template = factories.MessageTemplateFactory(
-            name="Reply Template",
-            html_body="<p>Reply content</p>",
-            text_body="Reply content",
-            type=enums.MessageTemplateTypeChoices.REPLY,
+        message_template = factories.MessageTemplateFactory(
+            name="Message Template",
+            html_body="<p>Message content</p>",
+            text_body="Message content",
+            type=enums.MessageTemplateTypeChoices.MESSAGE,
             mailbox=mailbox_sender,
             is_active=True,
         )
@@ -260,7 +260,7 @@ class TestDraftMessageSignature:
                 "senderId": str(mailbox_sender.id),
                 "subject": "Test Message",
                 "draftBody": "Test body",
-                "signatureId": str(reply_template.id),
+                "signatureId": str(message_template.id),
             },
         )
 

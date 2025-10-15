@@ -94,21 +94,12 @@ class TestAvailableMailboxMessageTemplateList:
             maildomain=mailbox.domain,
         )
 
-        # Create reply template for the mailbox
-        reply = factories.MessageTemplateFactory(
-            name="Reply Template",
-            html_body="<p>Reply content</p>",
-            text_body="Reply content",
-            type=enums.MessageTemplateTypeChoices.REPLY,
-            mailbox=mailbox,
-        )
-
-        # Create new message template for the mailbox
-        new_message = factories.MessageTemplateFactory(
-            name="New Message Template",
-            html_body="<p>New message content</p>",
-            text_body="New message content",
-            type=enums.MessageTemplateTypeChoices.NEW_MESSAGE,
+        # Create message template for the mailbox
+        message_template = factories.MessageTemplateFactory(
+            name="Message Template",
+            html_body="<p>Message content</p>",
+            text_body="Message content",
+            type=enums.MessageTemplateTypeChoices.MESSAGE,
             mailbox=mailbox,
         )
 
@@ -121,7 +112,7 @@ class TestAvailableMailboxMessageTemplateList:
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
         # Then try with mailbox access. Should return templates of this mailbox
-        # and maildomain of this mailbox (new message, reply, signature)
+        # and maildomain of this mailbox (message, signature)
         factories.MailboxAccessFactory(
             mailbox=mailbox,
             user=user,
@@ -129,13 +120,12 @@ class TestAvailableMailboxMessageTemplateList:
         )
         response = client.get(available_mailbox_message_template_url)
         assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) == 3
-        assert response.data[0]["name"] == "New Message Template"
-        assert response.data[1]["name"] == "Reply Template"
-        assert response.data[2]["name"] == "Signature Template"
-        assert response.data[0]["id"] == str(new_message.id)
-        assert response.data[1]["id"] == str(reply.id)
-        assert response.data[2]["id"] == str(signature.id)
+        assert len(response.data) == 2
+        template_types = {t["type"]: t for t in response.data}
+        assert template_types["message"]["name"] == "Message Template"
+        assert template_types["signature"]["name"] == "Signature Template"
+        assert template_types["message"]["id"] == str(message_template.id)
+        assert template_types["signature"]["id"] == str(signature.id)
 
     @pytest.mark.parametrize(
         "role",
@@ -177,12 +167,12 @@ class TestAvailableMailboxMessageTemplateList:
             user=user,
             role=models.MailboxRoleChoices.VIEWER,
         )
-        # Create reply template for the mailbox
-        reply_template = factories.MessageTemplateFactory(
-            name="Reply Template",
-            html_body="<p>Reply content</p>",
-            text_body="Reply content",
-            type=enums.MessageTemplateTypeChoices.REPLY,
+        # Create message template for the mailbox
+        message_template = factories.MessageTemplateFactory(
+            name="Message Template",
+            html_body="<p>Message content</p>",
+            text_body="Message content",
+            type=enums.MessageTemplateTypeChoices.MESSAGE,
             mailbox=mailbox,
         )
 
@@ -198,16 +188,16 @@ class TestAvailableMailboxMessageTemplateList:
         client = APIClient()
         client.force_authenticate(user=user)
 
-        # Filter by reply type
+        # Filter by message type
         response = client.get(
             available_mailbox_message_template_url,
-            {"type": "reply"},
+            {"type": "message"},
         )
         assert response.status_code == status.HTTP_200_OK
-        # Should find our reply template for this mailbox
+        # Should find our message template for this mailbox
         assert len(response.data) == 1
-        assert response.data[0]["type"] == "reply"
-        assert response.data[0]["id"] == str(reply_template.id)
+        assert response.data[0]["type"] == "message"
+        assert response.data[0]["id"] == str(message_template.id)
 
     def test_filter_by_forced_status(
         self, user, mailbox, available_mailbox_message_template_url

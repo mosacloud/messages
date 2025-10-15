@@ -1683,8 +1683,8 @@ class MessageTemplate(BaseModel):
     type = models.SmallIntegerField(
         _("type"),
         choices=MessageTemplateTypeChoices.choices,
-        default=MessageTemplateTypeChoices.REPLY,
-        help_text=_("Type of template (reply, new_message, signature)"),
+        default=MessageTemplateTypeChoices.MESSAGE,
+        help_text=_("Type of template (message, signature)"),
     )
 
     is_active = models.BooleanField(

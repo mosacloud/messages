@@ -30,29 +30,29 @@ class TestMessageTemplateRetrieve:
 
     def test_unauthorized(self, mailbox):
         """Test that unauthorized users cannot retrieve templates."""
-        reply_template = factories.MessageTemplateFactory(
+        message_template = factories.MessageTemplateFactory(
             name="Unauthorized Template",
             html_body="<p>Test content</p>",
             text_body="Test content",
-            type=enums.MessageTemplateTypeChoices.REPLY,
+            type=enums.MessageTemplateTypeChoices.MESSAGE,
             mailbox=mailbox,
         )
         client = APIClient()
         response = client.get(
             reverse(
                 "mailbox-message-templates-detail",
-                kwargs={"mailbox_id": mailbox.id, "pk": reply_template.id},
+                kwargs={"mailbox_id": mailbox.id, "pk": message_template.id},
             )
         )
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_no_access(self, user, mailbox):
         """Test that users without access cannot retrieve templates."""
-        reply_template = factories.MessageTemplateFactory(
+        message_template = factories.MessageTemplateFactory(
             name="No Access Template",
             html_body="<p>Test content</p>",
             text_body="Test content",
-            type=enums.MessageTemplateTypeChoices.REPLY,
+            type=enums.MessageTemplateTypeChoices.MESSAGE,
             mailbox=mailbox,
         )
         client = APIClient()
@@ -61,7 +61,7 @@ class TestMessageTemplateRetrieve:
         response = client.get(
             reverse(
                 "mailbox-message-templates-detail",
-                kwargs={"mailbox_id": mailbox.id, "pk": reply_template.id},
+                kwargs={"mailbox_id": mailbox.id, "pk": message_template.id},
             )
         )
         assert response.status_code == status.HTTP_403_FORBIDDEN

@@ -117,9 +117,8 @@ class MailboxAbilities(models.TextChoices):
 class MessageTemplateTypeChoices(models.IntegerChoices):
     """Defines the possible types of message templates."""
 
-    REPLY = 1, "reply"
-    NEW_MESSAGE = 2, "new_message"
-    SIGNATURE = 3, "signature"
+    MESSAGE = 1, "message"
+    SIGNATURE = 2, "signature"
 
 
 EML_SUPPORTED_MIME_TYPES = ["message/rfc822", "application/eml"]

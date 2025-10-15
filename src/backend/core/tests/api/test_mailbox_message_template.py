@@ -90,18 +90,11 @@ class TestMailboxMessageTemplateList:
             role=role,
         )
 
-        reply_template = factories.MessageTemplateFactory(
+        message_template = factories.MessageTemplateFactory(
             name="Reply Template",
-            html_body="<p>Reply content</p>",
-            text_body="Reply content",
-            type=enums.MessageTemplateTypeChoices.REPLY,
-            mailbox=mailbox,
-        )
-        new_message_template = factories.MessageTemplateFactory(
-            name="New Message Template",
-            html_body="<p>New message content</p>",
-            text_body="New message content",
-            type=enums.MessageTemplateTypeChoices.NEW_MESSAGE,
+            html_body="<p>Message content</p>",
+            text_body="Message content",
+            type=enums.MessageTemplateTypeChoices.MESSAGE,
             mailbox=mailbox,
         )
         signature_template = factories.MessageTemplateFactory(
@@ -117,11 +110,10 @@ class TestMailboxMessageTemplateList:
 
         response = client.get(list_url)
         assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) == 3
+        assert len(response.data) == 2
         templates_by_type = {t["type"]: t for t in response.data}
         assert templates_by_type["signature"]["id"] == str(signature_template.id)
-        assert templates_by_type["reply"]["id"] == str(reply_template.id)
-        assert templates_by_type["new_message"]["id"] == str(new_message_template.id)
+        assert templates_by_type["message"]["id"] == str(message_template.id)
 
     def test_filter_by_type(self, user, mailbox, list_url):
         """Test filtering list by template type."""
@@ -130,20 +122,14 @@ class TestMailboxMessageTemplateList:
             user=user,
             role=enums.MailboxRoleChoices.ADMIN,
         )
-        reply_template = factories.MessageTemplateFactory(
-            name="Reply Template",
-            html_body="<p>Reply content</p>",
-            text_body="Reply content",
-            type=enums.MessageTemplateTypeChoices.REPLY,
+        message_template = factories.MessageTemplateFactory(
+            name="Message Template",
+            html_body="<p>Message content</p>",
+            text_body="Message content",
+            type=enums.MessageTemplateTypeChoices.MESSAGE,
             mailbox=mailbox,
         )
-        new_message_template = factories.MessageTemplateFactory(
-            name="New Message Template",
-            html_body="<p>New message content</p>",
-            text_body="New message content",
-            type=enums.MessageTemplateTypeChoices.NEW_MESSAGE,
-            mailbox=mailbox,
-        )
+
         signature_template = factories.MessageTemplateFactory(
             name="Signature Template",
             html_body="<p>Signature content</p>",
@@ -153,17 +139,11 @@ class TestMailboxMessageTemplateList:
         )
         client = APIClient()
         client.force_authenticate(user=user)
-        response = client.get(list_url, {"type": "reply"})
+        response = client.get(list_url, {"type": "message"})
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 1
-        assert response.data[0]["type"] == "reply"
-        assert response.data[0]["id"] == str(reply_template.id)
-
-        response = client.get(list_url, {"type": ["new_message"]})
-        assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) == 1
-        assert response.data[0]["type"] == "new_message"
-        assert response.data[0]["id"] == str(new_message_template.id)
+        assert response.data[0]["type"] == "message"
+        assert response.data[0]["id"] == str(message_template.id)
 
         response = client.get(list_url, {"type": ["signature"]})
         assert response.status_code == status.HTTP_200_OK
@@ -171,20 +151,19 @@ class TestMailboxMessageTemplateList:
         assert response.data[0]["type"] == "signature"
         assert response.data[0]["id"] == str(signature_template.id)
 
-        response = client.get(list_url, {"type": ["reply", "new_message", "signature"]})
+        response = client.get(list_url, {"type": ["message", "signature"]})
         assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) == 3
+        assert len(response.data) == 2
         templates_by_type = {t["type"]: t for t in response.data}
         assert templates_by_type["signature"]["id"] == str(signature_template.id)
-        assert templates_by_type["reply"]["id"] == str(reply_template.id)
-        assert templates_by_type["new_message"]["id"] == str(new_message_template.id)
+        assert templates_by_type["message"]["id"] == str(message_template.id)
 
         # test with invalid type
-        response = client.get(list_url, {"type": ["reply", "invalid_type"]})
+        response = client.get(list_url, {"type": ["message", "invalid_type"]})
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 1
-        assert response.data[0]["type"] == "reply"
-        assert response.data[0]["id"] == str(reply_template.id)
+        assert response.data[0]["type"] == "message"
+        assert response.data[0]["id"] == str(message_template.id)
 
 
 class TestMailboxMessageTemplateCreate:
@@ -193,20 +172,7 @@ class TestMailboxMessageTemplateCreate:
     def test_unauthorized(self, list_url):
         """Test that unauthorized users cannot create templates."""
         client = APIClient()
-
-        data = {
-            "name": "Test Template",
-            "type": "reply",
-            "html_body": "<p>Hello {recipient_name}</p>",
-            "text_body": "Hello {recipient_name}",
-            "raw_body": RAW_DATA,
-            "is_active": True,
-        }
-        response = client.post(
-            list_url,
-            data,
-            format="json",
-        )
+        response = client.post(list_url)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_forbidden_no_access(self, user, list_url, mailbox):
@@ -397,7 +363,7 @@ class TestMailboxMessageTemplateUpdate:
             "html_body": "<p>Updated content</p>",
             "text_body": "Updated content",
             "raw_body": RAW_DATA,
-            "type": "reply",
+            "type": "message",
             "is_active": False,
             "is_forced": False,
             "mailbox": str(other_mailbox.id),
@@ -431,7 +397,7 @@ class TestMailboxMessageTemplateUpdate:
             "html_body": "<p>Updated content</p>",
             "text_body": "Updated content",
             "raw_body": RAW_DATA,
-            "type": "reply",
+            "type": "message",
             "is_active": False,
             "is_forced": False,
         }
@@ -443,7 +409,7 @@ class TestMailboxMessageTemplateUpdate:
         )
         assert response.status_code == status.HTTP_200_OK
         assert response.data["name"] == "Updated Template"
-        assert response.data["type"] == "reply"
+        assert response.data["type"] == "message"
         assert response.data["is_active"] is False
 
         # check that the blob was updated
