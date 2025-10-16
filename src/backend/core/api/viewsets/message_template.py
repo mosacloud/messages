@@ -103,6 +103,23 @@ class MailboxMessageTemplateViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+    @extend_schema(
+        responses=MessageTemplateSerializer(many=True),
+        description="List message templates for a mailbox.",
+        parameters=[
+            OpenApiParameter(
+                name="type",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                enum=[c[1] for c in MessageTemplateTypeChoices.choices],
+                many=True,
+            ),
+        ],
+    )
+    def list(self, request, *args, **kwargs):
+        """List message templates for a mailbox."""
+        return super().list(request, *args, **kwargs)
+
 
 class AvailableMailboxMessageTemplateViewSet(
     mixins.ListModelMixin, viewsets.GenericViewSet

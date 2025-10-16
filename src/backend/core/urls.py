@@ -97,7 +97,7 @@ maildomain_message_template_nested_router.register(
 )
 
 # Router for /mailboxes/{mailbox_id}/message-templates/available/
-# allow to insert the template into editor (new message, reply, signature)
+# allow to insert the template into editor (message, signature)
 mailbox_message_template_nested_router = DefaultRouter()
 mailbox_message_template_nested_router.register(
     r"message-templates/available",

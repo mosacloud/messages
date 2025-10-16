@@ -743,10 +743,8 @@ msgstr ""
 "{html: str, text: str, raw: any}"
 
 #: core/models.py:1687
-#, fuzzy
-#| msgid "Type of template (reply, new_message, signature)"
 msgid "Type of template (message, signature)"
-msgstr "Type de modèle (réponse, nouveau message, signature)"
+msgstr "Type de modèle (message, signature)"
 
 #: core/models.py:1693
 msgid "Whether this template is available for use"

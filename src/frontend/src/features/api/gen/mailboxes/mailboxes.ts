@@ -25,6 +25,7 @@ import type {
   Mailbox,
   MailboxLight,
   MailboxesMessageTemplatesAvailableListParams,
+  MailboxesMessageTemplatesListParams,
   MailboxesMessageTemplatesRenderRetrieve200,
   MailboxesSearchListParams,
   MessageTemplate,
@@ -183,7 +184,7 @@ export function useMailboxesList<
 }
 
 /**
- * ViewSet for retrieving and rendering message templates for a mailbox.
+ * List message templates for a mailbox.
  */
 export type mailboxesMessageTemplatesListResponse200 = {
   data: MessageTemplate[];
@@ -198,16 +199,32 @@ export type mailboxesMessageTemplatesListResponse =
     headers: Headers;
   };
 
-export const getMailboxesMessageTemplatesListUrl = (mailboxId: string) => {
-  return `/api/v1.0/mailboxes/${mailboxId}/message-templates/`;
+export const getMailboxesMessageTemplatesListUrl = (
+  mailboxId: string,
+  params?: MailboxesMessageTemplatesListParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/v1.0/mailboxes/${mailboxId}/message-templates/?${stringifiedParams}`
+    : `/api/v1.0/mailboxes/${mailboxId}/message-templates/`;
 };
 
 export const mailboxesMessageTemplatesList = async (
   mailboxId: string,
+  params?: MailboxesMessageTemplatesListParams,
   options?: RequestInit,
 ): Promise<mailboxesMessageTemplatesListResponse> => {
   return fetchAPI<mailboxesMessageTemplatesListResponse>(
-    getMailboxesMessageTemplatesListUrl(mailboxId),
+    getMailboxesMessageTemplatesListUrl(mailboxId, params),
     {
       ...options,
       method: "GET",
@@ -215,8 +232,14 @@ export const mailboxesMessageTemplatesList = async (
   );
 };
 
-export const getMailboxesMessageTemplatesListQueryKey = (mailboxId: string) => {
-  return [`/api/v1.0/mailboxes/${mailboxId}/message-templates/`] as const;
+export const getMailboxesMessageTemplatesListQueryKey = (
+  mailboxId: string,
+  params?: MailboxesMessageTemplatesListParams,
+) => {
+  return [
+    `/api/v1.0/mailboxes/${mailboxId}/message-templates/`,
+    ...(params ? [params] : []),
+  ] as const;
 };
 
 export const getMailboxesMessageTemplatesListQueryOptions = <
@@ -224,6 +247,7 @@ export const getMailboxesMessageTemplatesListQueryOptions = <
   TError = unknown,
 >(
   mailboxId: string,
+  params?: MailboxesMessageTemplatesListParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -239,12 +263,15 @@ export const getMailboxesMessageTemplatesListQueryOptions = <
 
   const queryKey =
     queryOptions?.queryKey ??
-    getMailboxesMessageTemplatesListQueryKey(mailboxId);
+    getMailboxesMessageTemplatesListQueryKey(mailboxId, params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>
   > = ({ signal }) =>
-    mailboxesMessageTemplatesList(mailboxId, { signal, ...requestOptions });
+    mailboxesMessageTemplatesList(mailboxId, params, {
+      signal,
+      ...requestOptions,
+    });
 
   return {
     queryKey,
@@ -268,6 +295,7 @@ export function useMailboxesMessageTemplatesList<
   TError = unknown,
 >(
   mailboxId: string,
+  params: undefined | MailboxesMessageTemplatesListParams,
   options: {
     query: Partial<
       UseQueryOptions<
@@ -295,6 +323,7 @@ export function useMailboxesMessageTemplatesList<
   TError = unknown,
 >(
   mailboxId: string,
+  params?: MailboxesMessageTemplatesListParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -322,6 +351,7 @@ export function useMailboxesMessageTemplatesList<
   TError = unknown,
 >(
   mailboxId: string,
+  params?: MailboxesMessageTemplatesListParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -342,6 +372,7 @@ export function useMailboxesMessageTemplatesList<
   TError = unknown,
 >(
   mailboxId: string,
+  params?: MailboxesMessageTemplatesListParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -358,6 +389,7 @@ export function useMailboxesMessageTemplatesList<
 } {
   const queryOptions = getMailboxesMessageTemplatesListQueryOptions(
     mailboxId,
+    params,
     options,
   );
 

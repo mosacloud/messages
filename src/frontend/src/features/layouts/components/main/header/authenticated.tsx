@@ -84,6 +84,7 @@ const ApplicationMenu = () => {
   const { selectedMailbox } = useMailboxContext();
   const canAccessDomainAdmin = useAbility(Abilities.CAN_VIEW_DOMAIN_ADMIN);
   const canImportMessages = useAbility(Abilities.CAN_IMPORT_MESSAGES, selectedMailbox);
+  const canManageMessageTemplates = useAbility(Abilities.CAN_MANAGE_MESSAGE_TEMPLATES, selectedMailbox);
   const { t } = useTranslation();
   const router = useRouter();
   const taskId = useMemo(() => {
@@ -132,6 +133,15 @@ const ApplicationMenu = () => {
                 callback: () => router.push("/domain"),
               }] : []),
               ...(canImportMessages ? [importMessageOption] : []),
+              ...(canManageMessageTemplates ? [{
+                label: t("Message templates"),
+                icon: <Icon name="description" />,
+                callback: () => {
+                    if (selectedMailbox) {
+                        router.push(`/mailbox/${selectedMailbox.id}/message-templates`);
+                    }
+                }
+            }] : []),
           ]}
       >
       <Button
