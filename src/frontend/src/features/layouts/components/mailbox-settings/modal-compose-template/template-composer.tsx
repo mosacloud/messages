@@ -1,5 +1,6 @@
 import { BlockNoteViewField } from "@/features/blocknote/blocknote-view-field";
 import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from "@blocknote/core";
+import { InlineTemplateVariable, TemplateVariableSelector } from "@/features/blocknote/inline-template-variable";
 import * as locales from '@blocknote/core/locales';
 import { useCreateBlockNote } from "@blocknote/react";
 import { FieldProps } from "@openfun/cunningham-react";
@@ -9,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import { Toolbar } from "@/features/blocknote/toolbar";
 import MailHelper from "@/features/utils/mail-helper";
 import { BlockSignature, BlockSignatureConfigProps, SignatureTemplateSelector } from "@/features/blocknote/signature-block";
-import { MessageTemplateTypeChoices, useMailboxesMessageTemplatesAvailableList } from "@/features/api/gen";
+import { MessageTemplateTypeChoices, useMailboxesMessageTemplatesAvailableList, usePlaceholdersRetrieve } from "@/features/api/gen";
 import { useMailboxContext } from "@/features/providers/mailbox";
 
 const TEMPLATE_BLOCKNOTE_SCHEMA = BlockNoteSchema.create({
@@ -19,6 +20,7 @@ const TEMPLATE_BLOCKNOTE_SCHEMA = BlockNoteSchema.create({
     },
     inlineContentSpecs: {
         ...defaultInlineContentSpecs,
+        'template-variable': InlineTemplateVariable,
     }
 });
 
@@ -40,6 +42,13 @@ export const TemplateComposer = ({ blockNoteOptions, defaultValue, disabled = fa
     const { t, i18n } = useTranslation();
     const form = useFormContext();
     const { selectedMailbox } = useMailboxContext();
+
+    const { data: { data: placeholders = {} } = {}, isLoading: isLoadingPlaceholders } = usePlaceholdersRetrieve({
+        query: {
+            refetchOnMount: true,
+            refetchOnWindowFocus: true,
+        }
+    });
 
     const { data: { data: activeSignatures = [] } = {}, isLoading: isLoadingSignatures } = useMailboxesMessageTemplatesAvailableList(
         selectedMailbox?.id || "",
@@ -166,6 +175,10 @@ export const TemplateComposer = ({ blockNoteOptions, defaultValue, disabled = fa
                         templates={activeSignatures}
                         isLoading={isLoadingSignatures}
                         mailboxId={selectedMailbox?.id}
+                    />
+                    <TemplateVariableSelector
+                        variables={placeholders}
+                        isLoading={isLoadingPlaceholders}
                     />
                 </Toolbar>
             </BlockNoteViewField>
