@@ -122,5 +122,9 @@ class MessageTemplateTypeChoices(models.IntegerChoices):
 
 
 EML_SUPPORTED_MIME_TYPES = ["message/rfc822", "application/eml", "text/plain"]
-MBOX_SUPPORTED_MIME_TYPES = ["application/octet-stream", "text/plain", "application/mbox"]
+MBOX_SUPPORTED_MIME_TYPES = [
+    "application/octet-stream",
+    "text/plain",
+    "application/mbox",
+]
 ARCHIVE_SUPPORTED_MIME_TYPES = EML_SUPPORTED_MIME_TYPES + MBOX_SUPPORTED_MIME_TYPES

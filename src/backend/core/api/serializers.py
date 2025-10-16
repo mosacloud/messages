@@ -608,7 +608,13 @@ class MessageRecipientSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.MessageRecipient
-        fields = ["contact", "delivery_status", "delivery_message", "retry_at", "delivered_at"]
+        fields = [
+            "contact",
+            "delivery_status",
+            "delivery_message",
+            "retry_at",
+            "delivered_at",
+        ]
 
 
 class MessageSerializer(serializers.ModelSerializer):

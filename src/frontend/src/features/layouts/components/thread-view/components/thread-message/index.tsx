@@ -28,10 +28,9 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
     ({ message, isLatest, draftMessage, ...props }, ref) => {
         const { t, i18n } = useTranslation()
         const getReplyFormMode = () => {
+            if (draftMessage?.is_draft) return 'reply';
             if (!message.is_draft || message.is_trashed) return null;
-            if (!draftMessage) return 'new';
-            if (draftMessage.is_draft) return 'reply';
-            return null;
+            return 'new';
         }
         const [replyFormMode, setReplyFormMode] = useState<MessageFormMode | null>(getReplyFormMode)
         const showReplyForm = replyFormMode !== null;
