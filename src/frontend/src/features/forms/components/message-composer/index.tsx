@@ -3,6 +3,7 @@ import * as locales from '@blocknote/core/locales';
 import { useCreateBlockNote } from "@blocknote/react";
 import { useTranslation } from "react-i18next";
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, PartialBlock } from '@blocknote/core';
+import { MessageTemplateSelector } from '@/features/blocknote/message-template-block';
 import MailHelper from '@/features/utils/mail-helper';
 import { FieldProps } from '@openfun/cunningham-react';
 import { useFormContext } from 'react-hook-form';
@@ -32,7 +33,7 @@ export type PartialMessageComposerBlockSchema = PartialBlock<MessageComposerBloc
 export type QuoteType = "reply" | "forward";
 
 type MessageComposerProps = FieldProps & {
-    mailboxId?: string;
+    mailboxId: string;
     blockNoteOptions?: Partial<MessageComposerBlockNoteSchema>
     defaultValue?: string;
     disabled?: boolean;
@@ -57,7 +58,7 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
     const form = useFormContext();
     const { t, i18n } = useTranslation();
     const { data: { data: activeSignatures = [] } = {}, isLoading: isLoadingSignatures } = useMailboxesMessageTemplatesAvailableList(
-        mailboxId || "",
+        mailboxId,
         {
             type: MessageTemplateTypeChoices.signature,
         },
@@ -209,6 +210,9 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
                 }}
             >
                 <Toolbar>
+                    <MessageTemplateSelector
+                        mailboxId={mailboxId}
+                    />
                     <SignatureTemplateSelector
                         templates={activeSignatures}
                         isLoading={isLoadingSignatures}

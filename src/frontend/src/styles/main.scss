@@ -64,6 +64,7 @@
 @use "./../features/blocknote/blocknote-view-field";
 @use "./../features/blocknote/inline-template-variable";
 @use "./../features/blocknote/signature-block";
+@use "./../features/blocknote/message-template-block";
 
 // Application views
 @use "./../pages";
