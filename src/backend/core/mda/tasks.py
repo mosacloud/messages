@@ -23,7 +23,6 @@ def send_message_task(self, message_id, force_mta_out=False, must_archive=False)
 
     Args:
         message_id: The ID of the message to send
-        mime_data: The MIME data dictionary
         force_mta_out: Whether to force sending via MTA
 
     Returns:
@@ -149,12 +148,19 @@ def retry_messages_task(self, message_id=None, force_mta_out=False, batch_size=1
         total_messages = 1
     else:
         # Bulk mode - find all messages with retryable recipients that are ready for retry
-        message_filter_q = Q(
-            is_draft=False,
-            recipients__delivery_status=MessageDeliveryStatusChoices.RETRY,
-        ) & (
-            Q(recipients__retry_at__isnull=True)
-            | Q(recipients__retry_at__lte=timezone.now())
+        message_filter_q = (
+            Q(
+                is_draft=False,
+                is_sender=True,
+            )
+            & (
+                Q(recipients__delivery_status=MessageDeliveryStatusChoices.RETRY)
+                | Q(recipients__delivery_status__isnull=True)
+            )
+            & (
+                Q(recipients__retry_at__isnull=True)
+                | Q(recipients__retry_at__lte=timezone.now())
+            )
         )
 
         messages_to_process = list(
@@ -197,10 +203,10 @@ def retry_messages_task(self, message_id=None, force_mta_out=False, batch_size=1
         for message in batch_messages:
             try:
                 # Get recipients with retry status that are ready for retry
-                retry_filter_q = Q(
-                    delivery_status=MessageDeliveryStatusChoices.RETRY
+                retry_filter_q = (
+                    Q(delivery_status=MessageDeliveryStatusChoices.RETRY)
+                    | Q(delivery_status__isnull=True)
                 ) & (Q(retry_at__isnull=True) | Q(retry_at__lte=timezone.now()))
-
                 retry_recipients = message.recipients.filter(retry_filter_q)
 
                 if retry_recipients.exists():
