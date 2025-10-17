@@ -163,6 +163,7 @@ class TestMailboxModelAbilities:
         assert abilities["manage_message_templates"] is False
         assert abilities["import_messages"] is False
 
+    @override_settings(FEATURE_MESSAGE_TEMPLATES=True, FEATURE_IMPORT_MESSAGES=True)
     def test_mailbox_get_abilities_admin(self, user, mailbox):
         """Test Mailbox.get_abilities when user has admin access."""
         models.MailboxAccess.objects.create(

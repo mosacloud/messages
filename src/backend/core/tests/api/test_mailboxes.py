@@ -1,5 +1,6 @@
 """Test the MailboxViewSet."""
 
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -364,6 +365,7 @@ class TestMailboxViewSet:
 class TestMailboxAbilitiesAPI:
     """Test the abilities field in Mailbox API responses."""
 
+    @override_settings(FEATURE_MESSAGE_TEMPLATES=True, FEATURE_IMPORT_MESSAGES=True)
     def test_mailbox_abilities_in_response(self, api_client, user, mailbox):
         """Test that abilities are included in mailbox API response."""
         models.MailboxAccess.objects.create(
