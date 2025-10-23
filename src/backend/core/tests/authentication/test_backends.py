@@ -2,14 +2,14 @@
 
 import random
 import re
-from logging import Logger
-from unittest import mock
 
 from django.core.exceptions import SuspiciousOperation
 from django.test.utils import override_settings
 
 import pytest
 import responses
+from cryptography.fernet import Fernet
+from lasuite.oidc_login.backends import get_oidc_refresh_token
 
 from core import models
 from core.authentication.backends import OIDCAuthenticationBackend
@@ -84,6 +84,71 @@ def test_authentication_getter_email_none(monkeypatch):
     # Since the sub and email didn't match, it shouldn't create a new user
     assert models.User.objects.count() == 1
     assert user is None
+
+
+@override_settings(
+    OIDC_FALLBACK_TO_EMAIL_FOR_IDENTIFICATION=False,
+    OIDC_ALLOW_DUPLICATE_EMAILS=True,
+    OIDC_CREATE_USER=True,
+)
+def test_authentication_getter_existing_user_no_fallback_to_email_allow_duplicate(
+    monkeypatch,
+):
+    """
+    When the "OIDC_FALLBACK_TO_EMAIL_FOR_IDENTIFICATION" setting is set to False,
+    the system should not match users by email, even if the email matches.
+    """
+
+    klass = OIDCAuthenticationBackend()
+    db_user = UserFactory()
+
+    def get_userinfo_mocked(*args):
+        return {"sub": "123", "email": db_user.email}
+
+    monkeypatch.setattr(OIDCAuthenticationBackend, "get_userinfo", get_userinfo_mocked)
+
+    user = klass.get_or_create_user(
+        access_token="test-token", id_token=None, payload=None
+    )
+
+    # Since the sub doesn't match, it should create a new user
+    assert models.User.objects.count() == 2
+    assert user != db_user
+    assert user.sub == "123"
+
+
+@override_settings(
+    OIDC_FALLBACK_TO_EMAIL_FOR_IDENTIFICATION=False,
+    OIDC_ALLOW_DUPLICATE_EMAILS=False,
+    OIDC_CREATE_USER=True,
+)
+def test_authentication_getter_existing_user_no_fallback_to_email_no_duplicate(
+    monkeypatch,
+):
+    """
+    When the "OIDC_FALLBACK_TO_EMAIL_FOR_IDENTIFICATION" setting is set to False,
+    the system should not match users by email, even if the email matches.
+    """
+
+    klass = OIDCAuthenticationBackend()
+    db_user = UserFactory()
+
+    def get_userinfo_mocked(*args):
+        return {"sub": "123", "email": db_user.email}
+
+    monkeypatch.setattr(OIDCAuthenticationBackend, "get_userinfo", get_userinfo_mocked)
+
+    with pytest.raises(
+        SuspiciousOperation,
+        match=(
+            "We couldn't find a user with this sub but the email is already associated "
+            "with a registered user."
+        ),
+    ):
+        klass.get_or_create_user(access_token="test-token", id_token=None, payload=None)
+
+    # Since the sub doesn't match, it should not create a new user
+    assert models.User.objects.count() == 1
 
 
 @override_settings(MESSAGES_TESTDOMAIN=None)
@@ -208,6 +273,7 @@ def test_authentication_getter_new_user_no_email(monkeypatch):
     assert user is None
 
 
+@override_settings(MESSAGES_TESTDOMAIN="example.local")
 def test_authentication_getter_new_user_with_email(monkeypatch):
     """
     If no user matches the user's info sub, a user should be created.
@@ -216,7 +282,7 @@ def test_authentication_getter_new_user_with_email(monkeypatch):
     """
     klass = OIDCAuthenticationBackend()
 
-    email = "drive@example.com"
+    email = "messages@example.local"
 
     def get_userinfo_mocked(*args):
         return {"sub": "123", "email": email, "first_name": "John", "last_name": "Doe"}
@@ -230,105 +296,7 @@ def test_authentication_getter_new_user_with_email(monkeypatch):
     assert user.sub == "123"
     assert user.email == email
     assert user.full_name == "John Doe"
-    assert user.password == "!"
-    assert models.User.objects.count() == 1
-
-
-@override_settings(OIDC_OP_USER_ENDPOINT="http://oidc.endpoint.test/userinfo")
-@responses.activate
-def test_authentication_get_userinfo_json_response():
-    """Test get_userinfo method with a JSON response."""
-
-    responses.add(
-        responses.GET,
-        re.compile(r".*/userinfo"),
-        json={
-            "first_name": "John",
-            "last_name": "Doe",
-            "email": "john.doe@example.com",
-        },
-        status=200,
-    )
-
-    oidc_backend = OIDCAuthenticationBackend()
-    result = oidc_backend.get_userinfo("fake_access_token", None, None)
-
-    assert result["first_name"] == "John"
-    assert result["last_name"] == "Doe"
-    assert result["email"] == "john.doe@example.com"
-
-
-@override_settings(OIDC_OP_USER_ENDPOINT="http://oidc.endpoint.test/userinfo")
-@responses.activate
-def test_authentication_get_userinfo_token_response(monkeypatch):
-    """Test get_userinfo method with a token response."""
-
-    responses.add(
-        responses.GET, re.compile(r".*/userinfo"), body="fake.jwt.token", status=200
-    )
-
-    def mock_verify_token(self, token):  # pylint: disable=unused-argument
-        return {
-            "first_name": "Jane",
-            "last_name": "Doe",
-            "email": "jane.doe@example.com",
-        }
-
-    monkeypatch.setattr(OIDCAuthenticationBackend, "verify_token", mock_verify_token)
-
-    oidc_backend = OIDCAuthenticationBackend()
-    result = oidc_backend.get_userinfo("fake_access_token", None, None)
-
-    assert result["first_name"] == "Jane"
-    assert result["last_name"] == "Doe"
-    assert result["email"] == "jane.doe@example.com"
-
-
-@override_settings(OIDC_OP_USER_ENDPOINT="http://oidc.endpoint.test/userinfo")
-@responses.activate
-def test_authentication_get_userinfo_invalid_response():
-    """
-    Test get_userinfo method with an invalid JWT response that
-    causes verify_token to raise an error.
-    """
-
-    responses.add(
-        responses.GET, re.compile(r".*/userinfo"), body="fake.jwt.token", status=200
-    )
-
-    oidc_backend = OIDCAuthenticationBackend()
-
-    with pytest.raises(
-        SuspiciousOperation,
-        match="Invalid response format or token verification failed",
-    ):
-        oidc_backend.get_userinfo("fake_access_token", None, None)
-
-
-def test_authentication_getter_existing_disabled_user_via_sub(monkeypatch):
-    """
-    If an existing user matches the sub but is disabled,
-    an error should be raised and a user should not be created.
-    """
-
-    klass = OIDCAuthenticationBackend()
-    db_user = UserFactory(is_active=False)
-
-    def get_userinfo_mocked(*args):
-        return {
-            "sub": db_user.sub,
-            "email": db_user.email,
-            "first_name": "John",
-            "last_name": "Doe",
-        }
-
-    monkeypatch.setattr(OIDCAuthenticationBackend, "get_userinfo", get_userinfo_mocked)
-
-    with (
-        pytest.raises(SuspiciousOperation, match="User account is disabled"),
-    ):
-        klass.get_or_create_user(access_token="test-token", id_token=None, payload=None)
-
+    assert user.password.startswith("!")
     assert models.User.objects.count() == 1
 
 
@@ -359,103 +327,9 @@ def test_authentication_getter_existing_disabled_user_via_email(monkeypatch):
     assert models.User.objects.count() == 1
 
 
-# Essential claims
-
-
-def test_authentication_verify_claims_default(monkeypatch):
-    """The sub claim should be mandatory by default."""
-    klass = OIDCAuthenticationBackend()
-
-    def get_userinfo_mocked(*args):
-        return {
-            "test": "123",
-        }
-
-    monkeypatch.setattr(OIDCAuthenticationBackend, "get_userinfo", get_userinfo_mocked)
-
-    with (
-        pytest.raises(
-            KeyError,
-            match="sub",
-        ),
-    ):
-        klass.get_or_create_user(access_token="test-token", id_token=None, payload=None)
-
-    assert models.User.objects.exists() is False
-
-
-@pytest.mark.parametrize(
-    "essential_claims, missing_claims",
-    [
-        (["email", "sub"], ["email"]),
-        (["Email", "sub"], ["Email"]),  # Case sensitivity
-    ],
-)
-@override_settings(OIDC_OP_USER_ENDPOINT="http://oidc.endpoint.test/userinfo")
-@mock.patch.object(Logger, "error")
-def test_authentication_verify_claims_essential_missing(
-    mock_logger,
-    essential_claims,
-    missing_claims,
-    monkeypatch,
-):
-    """Ensure SuspiciousOperation is raised if essential claims are missing."""
-
-    klass = OIDCAuthenticationBackend()
-
-    def get_userinfo_mocked(*args):
-        return {
-            "sub": "123",
-            "last_name": "Doe",
-        }
-
-    monkeypatch.setattr(OIDCAuthenticationBackend, "get_userinfo", get_userinfo_mocked)
-
-    with (
-        pytest.raises(
-            SuspiciousOperation,
-            match="Claims verification failed",
-        ),
-        override_settings(USER_OIDC_ESSENTIAL_CLAIMS=essential_claims),
-    ):
-        klass.get_or_create_user(access_token="test-token", id_token=None, payload=None)
-
-    assert models.User.objects.exists() is False
-    mock_logger.assert_called_once_with("Missing essential claims: %s", missing_claims)
-
-
 @override_settings(
     OIDC_OP_USER_ENDPOINT="http://oidc.endpoint.test/userinfo",
-    USER_OIDC_ESSENTIAL_CLAIMS=["email", "last_name"],
-)
-def test_authentication_verify_claims_success(monkeypatch):
-    """Ensure user is authenticated when all essential claims are present."""
-
-    klass = OIDCAuthenticationBackend()
-
-    def get_userinfo_mocked(*args):
-        return {
-            "email": "john.doe@example.com",
-            "last_name": "Doe",
-            "sub": "123",
-        }
-
-    monkeypatch.setattr(OIDCAuthenticationBackend, "get_userinfo", get_userinfo_mocked)
-
-    user = klass.get_or_create_user(
-        access_token="test-token", id_token=None, payload=None
-    )
-
-    assert models.User.objects.filter(id=user.id).exists()
-
-    assert user.sub == "123"
-    assert user.full_name == "Doe"
-    assert user.email == "john.doe@example.com"
-
-
-@override_settings(
-    OIDC_OP_USER_ENDPOINT="http://oidc.endpoint.test/userinfo",
-    USER_OIDC_ESSENTIAL_CLAIMS=["email", "last_name"],
+    OIDC_USERINFO_ESSENTIAL_CLAIMS=["email", "last_name"],
     MESSAGES_TESTDOMAIN="testdomain.bzh",
     MESSAGES_TESTDOMAIN_MAPPING_BASEDOMAIN="gouv.fr",
 )
@@ -503,7 +377,7 @@ def test_authentication_getter_new_user_with_testdomain(monkeypatch):
 
 @override_settings(
     OIDC_OP_USER_ENDPOINT="http://oidc.endpoint.test/userinfo",
-    USER_OIDC_ESSENTIAL_CLAIMS=["email", "last_name"],
+    OIDC_USERINFO_ESSENTIAL_CLAIMS=["email", "last_name"],
     MESSAGES_TESTDOMAIN="testdomain.bzh",
     MESSAGES_TESTDOMAIN_MAPPING_BASEDOMAIN="gouv.fr",
 )
@@ -530,3 +404,55 @@ def test_authentication_getter_new_user_with_testdomain_no_mapping(monkeypatch):
     assert user is None
 
     assert models.User.objects.count() == 0
+
+
+@responses.activate
+@override_settings(
+    OIDC_OP_TOKEN_ENDPOINT="http://oidc.endpoint.test/token",
+    OIDC_OP_USER_ENDPOINT="http://oidc.endpoint.test/userinfo",
+    OIDC_OP_JWKS_ENDPOINT="http://oidc.endpoint.test/jwks",
+    OIDC_STORE_ACCESS_TOKEN=True,
+    OIDC_STORE_REFRESH_TOKEN=True,
+    OIDC_STORE_REFRESH_TOKEN_KEY=Fernet.generate_key(),
+    MESSAGES_TESTDOMAIN="example.local",
+)
+def test_authentication_session_tokens(monkeypatch, rf, settings):
+    """
+    Test that the session contains oidc_refresh_token and oidc_access_token after authentication.
+    """
+    klass = OIDCAuthenticationBackend()
+    request = rf.get("/some-url", {"state": "test-state", "code": "test-code"})
+    request.session = {}
+
+    def verify_token_mocked(*args, **kwargs):
+        return {"sub": "123", "email": "test@example.local"}
+
+    monkeypatch.setattr(OIDCAuthenticationBackend, "verify_token", verify_token_mocked)
+
+    responses.add(
+        responses.POST,
+        re.compile(settings.OIDC_OP_TOKEN_ENDPOINT),
+        json={
+            "access_token": "test-access-token",
+            "refresh_token": "test-refresh-token",
+        },
+        status=200,
+    )
+
+    responses.add(
+        responses.GET,
+        re.compile(settings.OIDC_OP_USER_ENDPOINT),
+        json={"sub": "123", "email": "test@example.local"},
+        status=200,
+    )
+
+    user = klass.authenticate(
+        request,
+        code="test-code",
+        nonce="test-nonce",
+        code_verifier="test-code-verifier",
+    )
+
+    assert user is not None
+    assert request.session["oidc_access_token"] == "test-access-token"
+    assert get_oidc_refresh_token(request.session) == "test-refresh-token"

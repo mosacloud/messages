@@ -987,6 +987,35 @@ files = [
 Django = ">=4.2"
 
 [[package]]
+name = "django-lasuite"
+version = "0.0.19"
+description = "Django La Suite - A Django library"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "django_lasuite-0.0.19-py3-none-any.whl", hash = "sha256:6eb8c157d80d9661647dac143e1c56c4553c9e050a051f1ac6e58f6d630f640e"},
+    {file = "django_lasuite-0.0.19.tar.gz", hash = "sha256:342b441411d7bf6d57001bb03383ba280b4eda1533aedbf0324937ca7195c367"},
+]
+
+[package.dependencies]
+celery = {version = ">=5.0", optional = true, markers = "extra == \"all\""}
+django = ">=5.0"
+django-configurations = {version = ">=2.5.1", optional = true, markers = "extra == \"all\""}
+djangorestframework = ">=3.15.2"
+joserfc = ">=1.4.0"
+mozilla-django-oidc = ">=4.0.1"
+requests = ">=2.32.3"
+requests-toolbelt = ">=1.0.0"
+
+[package.extras]
+all = ["celery (>=5.0)", "django-configurations (>=2.5.1)"]
+build = ["setuptools", "wheel"]
+configuration = ["django-configurations (>=2.5.1)"]
+dev = ["celery (>=5.0)", "django-configurations (>=2.5.1)", "factory-boy", "pytest", "pytest-django", "responses", "ruff"]
+malware-detection = ["celery (>=5.0)"]
+
+[[package]]
 name = "django-parler"
 version = "2.3"
 description = "Simple Django model translations without nasty hacks, featuring nice admin integration."
@@ -1580,6 +1609,24 @@ cryptography = ">=1.5"
 
 [package.extras]
 docs = ["sphinx (>=4.3.0)", "sphinx-rtd-theme (>=1.0)"]
+
+[[package]]
+name = "joserfc"
+version = "1.4.0"
+description = "The ultimate Python library for JOSE RFCs, including JWS, JWE, JWK, JWA, JWT"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "joserfc-1.4.0-py3-none-any.whl", hash = "sha256:46917e6b53f1ec0c7e20d34d6f3e6c27da0fa43d0d4ebfb89aada7c86582933a"},
+    {file = "joserfc-1.4.0.tar.gz", hash = "sha256:e8c2f327bf10a937d284d57e9f8aec385381e5e5850469b50a7dade1aba59759"},
+]
+
+[package.dependencies]
+cryptography = "*"
+
+[package.extras]
+drafts = ["pycryptodome"]
 
 [[package]]
 name = "jsonschema"
@@ -3649,4 +3696,4 @@ dev = ["django-extensions", "drf-spectacular-sidecar", "flower", "pip-audit", "p
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13,<4.0"
-content-hash = "b02eb7943a2f100953cbb14c779c0d3ac8c65e26bbbc4c5bf8e48f401680ed7e"
+content-hash = "1368f88a6a94e33c455c8c881db7f79ec4cd29c6a44e63e90d13134c9cfb92e4"

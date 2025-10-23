@@ -487,8 +487,6 @@ class Base(Configuration):
         "django.contrib.sites",
         "django.contrib.messages",
         "django.contrib.staticfiles",
-        # OIDC third party
-        "mozilla_django_oidc",
     ]
 
     # Cache
@@ -652,17 +650,12 @@ class Base(Configuration):
         environ_prefix=None,
     )
 
-    USER_OIDC_ESSENTIAL_CLAIMS = values.ListValue(
-        default=[], environ_name="USER_OIDC_ESSENTIAL_CLAIMS", environ_prefix=None
+    OIDC_USERINFO_ESSENTIAL_CLAIMS = values.ListValue(
+        default=[], environ_name="OIDC_USERINFO_ESSENTIAL_CLAIMS", environ_prefix=None
     )
-    USER_OIDC_FIELDS_TO_FULLNAME = values.ListValue(
+    OIDC_USERINFO_FULLNAME_FIELDS = values.ListValue(
         default=["first_name", "last_name"],
-        environ_name="USER_OIDC_FIELDS_TO_FULLNAME",
-        environ_prefix=None,
-    )
-    USER_OIDC_FIELD_TO_SHORTNAME = values.Value(
-        default="first_name",
-        environ_name="USER_OIDC_FIELD_TO_SHORTNAME",
+        environ_name="OIDC_USERINFO_FULLNAME_FIELDS",
         environ_prefix=None,
     )
 
@@ -803,7 +796,7 @@ class Base(Configuration):
 
         if os.environ.get("MTA_OUT_SMTP_HOST") and not self.MTA_OUT_RELAY_HOST:
             logger.warning(
-                "MTA_OUT_SMTP_HOST is deprecated, use MTA_OUT_RELAY_HOST instead"
+                "[DEPRECATED] MTA_OUT_SMTP_HOST is deprecated, use MTA_OUT_RELAY_HOST instead"
             )
             self.MTA_OUT_RELAY_HOST = os.environ.get("MTA_OUT_SMTP_HOST")
             self.MTA_OUT_RELAY_USERNAME = os.environ.get("MTA_OUT_SMTP_USERNAME")
@@ -813,6 +806,40 @@ class Base(Configuration):
             raise ValueError(
                 f"Invalid MTA_OUT_SMTP_TLS_SECURITY_LEVEL: {self.MTA_OUT_SMTP_TLS_SECURITY_LEVEL}"
             )
+
+        # OIDC Deprecated fields mapping
+        deprecated_settings_mapping = (
+            (
+                "USER_OIDC_ESSENTIAL_CLAIMS",
+                "OIDC_USERINFO_ESSENTIAL_CLAIMS",
+                values.ListValue(),
+            ),
+            (
+                "USER_OIDC_FIELDS_TO_FULLNAME",
+                "OIDC_USERINFO_FULLNAME_FIELDS",
+                values.ListValue(),
+            ),
+            ("USER_OIDC_FIELD_TO_SHORTNAME", None, None),
+        )
+
+        for deprecated_setting, new_setting, Parser in deprecated_settings_mapping:
+            if value := os.environ.get(deprecated_setting):
+                if new_setting is None:
+                    logger.warning(
+                        (
+                            "[DEPRECATED] %s is deprecated, "
+                            "it is unused and will be removed in the future"
+                        ),
+                        deprecated_setting,
+                    )
+                    continue
+                if os.environ.get(new_setting) is None:
+                    setattr(self, new_setting, Parser.to_python(value=value))
+                logger.warning(
+                    "[DEPRECATED] %s is deprecated, use %s instead",
+                    deprecated_setting,
+                    new_setting,
+                )
 
     # pylint: disable=invalid-name
     @property
@@ -869,6 +896,12 @@ class Base(Configuration):
             raise ValueError(
                 "Both OIDC_FALLBACK_TO_EMAIL_FOR_IDENTIFICATION and "
                 "OIDC_ALLOW_DUPLICATE_EMAILS cannot be set to True simultaneously. "
+            )
+
+        if cls.OIDC_STORE_REFRESH_TOKEN and not cls.OIDC_STORE_REFRESH_TOKEN_KEY:
+            raise ValueError(
+                "OIDC_STORE_REFRESH_TOKEN_KEY must be set when "
+                "OIDC_STORE_REFRESH_TOKEN is enabled."
             )
 
 

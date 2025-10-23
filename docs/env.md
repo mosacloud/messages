@@ -154,6 +154,9 @@ The application uses a new environment file structure with `.defaults` and `.loc
 | `OIDC_OP_TOKEN_ENDPOINT` | `http://keycloak:8000/realms/messages/protocol/openid-connect/token` | OIDC token endpoint | Required |
 | `OIDC_OP_USER_ENDPOINT` | `http://keycloak:8000/realms/messages/protocol/openid-connect/userinfo` | OIDC user info endpoint | Required |
 | `OIDC_OP_LOGOUT_ENDPOINT` | None | OIDC logout endpoint | Optional |
+| `OIDC_USERINFO_ESSENTIAL_CLAIMS` | `[]` | Essential OIDC claims | Optional |
+| `OIDC_USERINFO_FULLNAME_FIELDS` | `["first_name", "last_name"]` | Fields to use for full name | Optional |
+
 
 ### OIDC Advanced Settings
 
@@ -167,6 +170,15 @@ The application uses a new environment file structure with `.defaults` and `.loc
 | `OIDC_ALLOW_DUPLICATE_EMAILS` | `False` | Allow duplicate emails (⚠️ Security risk) | Optional |
 | `OIDC_AUTH_REQUEST_EXTRA_PARAMS` | `{"acr_values": "eidas1"}` | Extra parameters for auth requests | Optional |
 
+### User Mapping (⚠️ DEPRECATED)
+_Those settings are deprecated and will be removed in the future._
+
+| Variable | Default | Description | Required | ⚠️ Deprecated |
+|----------|---------|-------------|----------|----------|
+| `USER_OIDC_ESSENTIAL_CLAIMS` | `[]` | Essential OIDC claims | Optional | Renamed to `OIDC_USERINFO_ESSENTIAL_CLAIMS` |
+| `USER_OIDC_FIELDS_TO_FULLNAME` | `["first_name", "last_name"]` | Fields for full name | Optional | Renamed to `OIDC_USERINFO_FULLNAME_FIELDS` |
+| `USER_OIDC_FIELD_TO_SHORTNAME` | `first_name` | Field for short name | Optional | Unused, will be removed in the future |
+
 ### Authentication URLs
 
 | Variable | Default | Description | Required |
@@ -175,14 +187,6 @@ The application uses a new environment file structure with `.defaults` and `.loc
 | `LOGIN_REDIRECT_URL_FAILURE` | `http://localhost:8900` | Login failure redirect URL | Optional |
 | `LOGOUT_REDIRECT_URL` | `http://localhost:8900` | Post-logout redirect URL | Optional |
 | `ALLOW_LOGOUT_GET_METHOD` | `True` | Allow GET method for logout | Optional |
-
-### User Mapping
-
-| Variable | Default | Description | Required |
-|----------|---------|-------------|----------|
-| `USER_OIDC_ESSENTIAL_CLAIMS` | `[]` | Essential OIDC claims | Optional |
-| `USER_OIDC_FIELDS_TO_FULLNAME` | `["first_name", "last_name"]` | Fields for full name | Optional |
-| `USER_OIDC_FIELD_TO_SHORTNAME` | `first_name` | Field for short name | Optional |
 
 ## Security & CORS
 

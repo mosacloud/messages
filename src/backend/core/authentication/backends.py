@@ -7,9 +7,8 @@ from django.conf import settings
 from django.core.exceptions import SuspiciousOperation
 from django.utils.translation import gettext_lazy as _
 
-import requests
-from mozilla_django_oidc.auth import (
-    OIDCAuthenticationBackend as MozillaOIDCAuthenticationBackend,
+from lasuite.oidc_login.backends import (
+    OIDCAuthenticationBackend as LaSuiteOIDCAuthenticationBackend,
 )
 
 from core.enums import MailboxRoleChoices
@@ -25,88 +24,52 @@ from core.models import (
 logger = logging.getLogger(__name__)
 
 
-class OIDCAuthenticationBackend(MozillaOIDCAuthenticationBackend):
+class OIDCAuthenticationBackend(LaSuiteOIDCAuthenticationBackend):
     """Custom OpenID Connect (OIDC) Authentication Backend.
 
     This class overrides the default OIDC Authentication Backend to accommodate differences
     in the User and Identity models, and handles signed and/or encrypted UserInfo response.
     """
 
-    def get_userinfo(self, access_token, id_token, payload):
-        """Return user details dictionary.
+    def get_or_create_user(self, access_token, id_token, payload):
+        """
+        Return a User based on userinfo. Create a new user if no match is found.
 
-        Parameters:
-        - access_token (str): The access token.
-        - id_token (str): The id token (unused).
-        - payload (dict): The token payload (unused).
-
-        Note: The id_token and payload parameters are unused in this implementation,
-        but were kept to preserve base method signature.
-
-        Note: It handles signed and/or encrypted UserInfo Response. It is required by
-        Agent Connect, which follows the OIDC standard. It forces us to override the
-        base method, which deal with 'application/json' response.
+        Args:
+          access_token (str): The access token.
+          id_token (str): The ID token.
+          payload (dict): The user payload.
 
         Returns:
-        - dict: User details dictionary obtained from the OpenID Connect user endpoint.
+          User: An existing or newly created User instance.
+
+        Raises:
+          Exception: Raised when user creation is not allowed and no existing user is found.
+
         """
-
-        user_response = requests.get(
-            self.OIDC_OP_USER_ENDPOINT,
-            headers={"Authorization": f"Bearer {access_token}"},
-            verify=self.get_settings("OIDC_VERIFY_SSL", True),
-            timeout=self.get_settings("OIDC_TIMEOUT", None),
-            proxies=self.get_settings("OIDC_PROXY", None),
-        )
-        user_response.raise_for_status()
-
-        try:
-            userinfo = user_response.json()
-        except ValueError:
-            try:
-                userinfo = self.verify_token(user_response.text)
-            except Exception as e:
-                raise SuspiciousOperation(
-                    _("Invalid response format or token verification failed")
-                ) from e
-
-        return userinfo
-
-    def verify_claims(self, claims):
-        """
-        Verify the presence of essential claims and the "sub" (which is mandatory as defined
-        by the OIDC specification) to decide if authentication should be allowed.
-        """
-        essential_claims = settings.USER_OIDC_ESSENTIAL_CLAIMS
-        missing_claims = [claim for claim in essential_claims if claim not in claims]
-
-        if missing_claims:
-            logger.error("Missing essential claims: %s", missing_claims)
-            return False
-
-        return True
-
-    def get_or_create_user(self, access_token, id_token, payload):
-        """Return a User based on userinfo. Create a new user if no match is found."""
-
+        _user_created = False
         user_info = self.get_userinfo(access_token, id_token, payload)
 
         if not self.verify_claims(user_info):
-            raise SuspiciousOperation("Claims verification failed.")
+            msg = "Claims verification failed"
+            raise SuspiciousOperation(msg)
 
         sub = user_info["sub"]
+        if not sub:
+            raise SuspiciousOperation(
+                "User info contained no recognizable user identification"
+            )
+
         email = user_info.get("email")
 
-        # Get user's full name from OIDC fields defined in settings
-        full_name = self.compute_full_name(user_info)
+        claims = {
+            self.OIDC_USER_SUB_FIELD: sub,
+            "email": email,
+        }
+        claims.update(**self.get_extra_claims(user_info))
 
-        claims = {"email": email, "full_name": full_name}
-
-        try:
-            user = User.objects.get_user_by_sub_or_email(sub, email)
-        except DuplicateEmailError as err:
-            raise SuspiciousOperation(err.message) from err
-
+        # if sub is absent, try matching on email
+        user = self.get_existing_user(sub, email)
         self.create_testdomain()
 
         if user:
@@ -115,30 +78,29 @@ class OIDCAuthenticationBackend(MozillaOIDCAuthenticationBackend):
             self.update_user_if_needed(user, claims)
 
         elif self.should_create_user(email):
-            user = User.objects.create(sub=sub, password="!", **claims)  # noqa: S106
+            user = self.create_user(claims)
+            _user_created = True
 
+        self.post_get_or_create_user(user, claims, _user_created)
+        return user
+
+    def post_get_or_create_user(self, user, claims, _user_created):
+        """Post-get or create user."""
         if user:
             self.autojoin_mailbox(user)
-            return user
 
-        return None
+    def get_extra_claims(self, user_info):
+        """Get extra claims."""
+        return {
+            "full_name": self.compute_full_name(user_info),
+        }
 
-    def compute_full_name(self, user_info):
-        """Compute user's full name based on OIDC fields in settings."""
-        name_fields = settings.USER_OIDC_FIELDS_TO_FULLNAME
-        full_name = " ".join(
-            user_info[field] for field in name_fields if user_info.get(field)
-        )
-        return full_name or None
-
-    def update_user_if_needed(self, user, claims):
-        """Update user claims if they have changed."""
-        has_changed = any(
-            value and value != getattr(user, key) for key, value in claims.items()
-        )
-        if has_changed:
-            updated_claims = {key: value for key, value in claims.items() if value}
-            self.UserModel.objects.filter(id=user.id).update(**updated_claims)
+    def get_existing_user(self, sub, email):
+        """Get an existing user by sub or email."""
+        try:
+            return User.objects.get_user_by_sub_or_email(sub, email)
+        except DuplicateEmailError as err:
+            raise SuspiciousOperation(err.message) from err
 
     def create_testdomain(self):
         """Create the test domain if it doesn't exist."""

@@ -28,3 +28,26 @@ def test_invalid_settings_oidc_email_configuration():
         "Both OIDC_FALLBACK_TO_EMAIL_FOR_IDENTIFICATION and "
         "OIDC_ALLOW_DUPLICATE_EMAILS cannot be set to True simultaneously. "
     )
+
+
+def test_invalid_settings_oidc_refresh_token_configuration():
+    """
+    The OIDC_STORE_REFRESH_TOKEN_KEY setting must be set when
+    OIDC_STORE_REFRESH_TOKEN is enabled.
+    """
+
+    class TestSettings(Base):
+        """Fake test settings."""
+
+        OIDC_STORE_REFRESH_TOKEN = True
+        OIDC_STORE_REFRESH_TOKEN_KEY = None
+
+    # The validation is performed during post_setup
+    with pytest.raises(ValueError) as excinfo:
+        TestSettings().post_setup()
+
+    # Check the exception message
+    assert str(excinfo.value) == (
+        "OIDC_STORE_REFRESH_TOKEN_KEY must be set when "
+        "OIDC_STORE_REFRESH_TOKEN is enabled."
+    )
