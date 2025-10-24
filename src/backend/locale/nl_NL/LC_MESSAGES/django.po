@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: lasuite-messages\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-10-21 09:02+0000\n"
+"POT-Creation-Date: 2025-10-24 09:54+0000\n"
 "PO-Revision-Date: 2025-10-16 14:11\n"
 "Last-Translator: \n"
 "Language-Team: Dutch\n"
@@ -62,8 +62,12 @@ msgstr ""
 msgid "A mailbox with this local part already exists in this domain."
 msgstr ""
 
-#: core/api/viewsets/placeholder.py:48
+#: core/api/viewsets/placeholder.py:49
 msgid "Name"
+msgstr ""
+
+#: core/api/viewsets/placeholder.py:50
+msgid "Recipient name"
 msgstr ""
 
 #: core/apps.py:12
