@@ -212,6 +212,11 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
                 <Toolbar>
                     <MessageTemplateSelector
                         mailboxId={mailboxId}
+                        context={{
+                            recipient_name: draft
+                                ? draft.to.map(to => to.contact.name).join(", ")
+                                : quotedMessage?.sender?.name || ""
+                        }}
                     />
                     <SignatureTemplateSelector
                         templates={activeSignatures}

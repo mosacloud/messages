@@ -2690,6 +2690,19 @@
                 "description": "Render a template with the provided context variables.",
                 "parameters": [
                     {
+                        "in": "query",
+                        "name": "*",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Any other parameter will be available in the template context",
+                        "examples": {
+                            "Example": {
+                                "value": "value"
+                            }
+                        }
+                    },
+                    {
                         "in": "path",
                         "name": "id",
                         "schema": {

@@ -154,6 +154,7 @@ export const BlockSignature = createReactBlockSpec(
             const { data: { data: preview = null } = {}, isLoading } = useMailboxesMessageTemplatesRenderRetrieve(
                 props.mailboxId,
                 props.templateId,
+                {},
                 {
                     query: {
                         enabled: !!props.mailboxId && !!props.templateId,
