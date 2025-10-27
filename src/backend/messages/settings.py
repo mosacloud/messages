@@ -87,6 +87,14 @@ class Base(Configuration):
         None, environ_name="OPENSEARCH_CA_CERTS", environ_prefix=None
     )
 
+    # Image Proxy
+    PROXY_EXTERNAL_IMAGES = values.BooleanValue(
+        False, environ_name="PROXY_EXTERNAL_IMAGES", environ_prefix=None
+    )
+    PROXY_MAX_IMAGE_SIZE_MB = values.PositiveIntegerValue(
+        5, environ_name="PROXY_MAX_IMAGE_SIZE_MB", environ_prefix=None
+    )
+
     # Security
     ALLOWED_HOSTS = values.ListValue([])
     SECRET_KEY = values.Value(None)
