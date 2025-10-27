@@ -87,6 +87,11 @@ class Base(Configuration):
         None, environ_name="OPENSEARCH_CA_CERTS", environ_prefix=None
     )
 
+    # Upload limits
+    DATA_UPLOAD_MAX_MEMORY_SIZE = values.PositiveIntegerValue(
+        2621440, environ_name="DATA_UPLOAD_MAX_MEMORY_SIZE", environ_prefix=None
+    )  # Default 2.5MB, can be overridden via environment variable
+
     # Security
     ALLOWED_HOSTS = values.ListValue([])
     SECRET_KEY = values.Value(None)
