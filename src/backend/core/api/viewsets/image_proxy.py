@@ -4,6 +4,7 @@ import logging
 from urllib.parse import unquote
 
 import requests
+from django.conf import settings
 from django.http import HttpResponse
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import status
@@ -33,7 +34,7 @@ class ImageProxyViewSet(ViewSet):
 
         This endpoint fetches images from external sources and serves them
         through the application to protect user privacy. Requires the
-        _proxy_external_images setting to be enabled for the mailbox domain.
+        PROXY_EXTERNAL_IMAGES environment variable to be set to true.
         """,
         parameters=[
             OpenApiParameter(
@@ -73,10 +74,9 @@ class ImageProxyViewSet(ViewSet):
                 {"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN
             )
 
-        custom_attrs = mailbox.domain.custom_attributes or {}
-        if not custom_attrs.get("_proxy_external_images"):
+        if not settings.PROXY_EXTERNAL_IMAGES:
             return Response(
-                {"error": "Image proxy not enabled for this domain"},
+                {"error": "Image proxy not enabled"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -88,7 +88,7 @@ class ImageProxyViewSet(ViewSet):
 
         url = unquote(url)
 
-        max_size = custom_attrs.get("_proxy_max_image_size_mb", 5) * 1024 * 1024
+        max_size = settings.PROXY_MAX_IMAGE_SIZE_MB * 1024 * 1024
 
         try:
             response = requests.get(

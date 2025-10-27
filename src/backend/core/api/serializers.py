@@ -3,7 +3,10 @@
 # pylint: disable=too-many-lines
 
 import json
+from urllib.parse import quote
 
+from bs4 import BeautifulSoup
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q
 from django.utils.translation import gettext_lazy as _
@@ -674,17 +677,13 @@ class MessageSerializer(serializers.ModelSerializer):
         if not mailbox:
             return html_body_parts
 
-        custom_attrs = mailbox.mailbox.domain.custom_attributes or {}
-        if custom_attrs.get("_proxy_external_images"):
+        if settings.PROXY_EXTERNAL_IMAGES:
             html_body_parts = self._proxy_images_in_html(html_body_parts, instance, mailbox.mailbox)
 
         return html_body_parts
 
     def _proxy_images_in_html(self, html_body_parts, instance, mailbox):
         """Rewrite external image URLs and CID references to use proxy."""
-        from bs4 import BeautifulSoup
-        from urllib.parse import quote
-
         attachments = instance.get_parsed_field("attachments") or []
         cid_map = {att.get("cid"): idx for idx, att in enumerate(attachments) if att.get("cid")}
 
@@ -708,7 +707,6 @@ class MessageSerializer(serializers.ModelSerializer):
                         img["src"] = f"/api/messages/{instance.id}/attachments/{cid_map[cid]}"
 
                 elif src.startswith(("http://", "https://")):
-                    from django.conf import settings
                     img["src"] = f"/api/{settings.API_VERSION}/mailboxes/{mailbox.id}/image-proxy/?url={quote(src)}"
 
             part["content"] = str(soup)
