@@ -5,7 +5,7 @@ from urllib.parse import unquote
 
 import requests
 from django.http import HttpResponse
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -52,15 +52,14 @@ class ImageProxyViewSet(ViewSet):
             ),
         ],
         responses={
-            200: OpenApiParameter(description="Image content"),
-            400: OpenApiParameter(description="Invalid request"),
-            403: OpenApiParameter(description="Forbidden"),
-            413: OpenApiParameter(description="Image too large"),
-            502: OpenApiParameter(description="Failed to fetch external image"),
+            200: OpenApiResponse(description="Image content"),
+            400: OpenApiResponse(description="Invalid request"),
+            403: OpenApiResponse(description="Forbidden"),
+            413: OpenApiResponse(description="Image too large"),
+            502: OpenApiResponse(description="Failed to fetch external image"),
         },
     )
-    @action(detail=False, methods=["get"], url_path="")
-    def proxy(self, request, mailbox_id=None):
+    def list(self, request, mailbox_id=None):
         """Proxy an external image through the server."""
         try:
             mailbox = models.Mailbox.objects.get(pk=mailbox_id)

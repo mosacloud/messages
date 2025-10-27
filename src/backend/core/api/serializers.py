@@ -708,7 +708,8 @@ class MessageSerializer(serializers.ModelSerializer):
                         img["src"] = f"/api/messages/{instance.id}/attachments/{cid_map[cid]}"
 
                 elif src.startswith(("http://", "https://")):
-                    img["src"] = f"/api/mailboxes/{mailbox.id}/image-proxy/?url={quote(src)}"
+                    from django.conf import settings
+                    img["src"] = f"/api/{settings.API_VERSION}/mailboxes/{mailbox.id}/image-proxy/?url={quote(src)}"
 
             part["content"] = str(soup)
             proxified_parts.append(part)
