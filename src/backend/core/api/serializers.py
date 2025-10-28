@@ -704,7 +704,7 @@ class MessageSerializer(serializers.ModelSerializer):
                 if src.startswith("cid:"):
                     cid = src[4:]
                     if cid in cid_map:
-                        img["src"] = f"/api/messages/{instance.id}/attachments/{cid_map[cid]}"
+                        img["src"] = f"/api/{settings.API_VERSION}/blob/msg_{instance.id}_{cid_map[cid]}/download/"
 
                 elif src.startswith(("http://", "https://")):
                     img["src"] = f"/api/{settings.API_VERSION}/mailboxes/{mailbox.id}/image-proxy/?url={quote(src)}"
