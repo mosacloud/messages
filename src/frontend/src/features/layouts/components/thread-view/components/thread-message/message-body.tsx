@@ -59,7 +59,7 @@ const MessageBody = ({ rawHtmlBody, rawTextBody = '', attachments = [], isHidden
         const instance = DomPurify();
         instance.addHook(
             'afterSanitizeAttributes',
-            function (node) {
+            function (node: Element) {
                 // Allow anchor tags to be opened in the parent window if the href is an anchor
                 // Other links are opened in a new tab and safe rel attributes is set
 
@@ -70,15 +70,20 @@ const MessageBody = ({ rawHtmlBody, rawTextBody = '', attachments = [], isHidden
                     node.setAttribute('rel', 'noopener noreferrer');
                 }
 
-                // Transform CID references in img src attributes
-                if (node.tagName === 'IMG' && cidToBlobUrlMap.size > 0) {
-                    const src = node.getAttribute('src');
-                    if (src && src.startsWith('cid:')) {
-                        const cid = src.substring(4); // Remove 'cid:' prefix
-                        const blobUrl = cidToBlobUrlMap.get(cid);
-                        if (blobUrl) {
-                            node.setAttribute('src', blobUrl);
-                            node.setAttribute('loading', 'lazy');
+                // Transform CID references in img src attributes and add lazy loading to all images
+                if (node.tagName === 'IMG') {
+                    // Add lazy loading to all images for better performance
+                    node.setAttribute('loading', 'lazy');
+
+                    // Transform CID references if applicable
+                    if (cidToBlobUrlMap.size > 0) {
+                        const src = node.getAttribute('src');
+                        if (src && src.startsWith('cid:')) {
+                            const cid = src.substring(4); // Remove 'cid:' prefix
+                            const blobUrl = cidToBlobUrlMap.get(cid);
+                            if (blobUrl) {
+                                node.setAttribute('src', blobUrl);
+                            }
                         }
                     }
                 }
