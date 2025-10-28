@@ -6,8 +6,8 @@ upstream backend_server {
 }
 
 server {
-	
-	listen <%= ENV["PORT"] %>;
+
+	listen <%= ENV["PORT"] %> http2;
 	server_name _;
     server_tokens off;
 
