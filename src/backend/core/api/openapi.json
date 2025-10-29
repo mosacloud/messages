@@ -220,7 +220,7 @@
         "/api/v1.0/contacts/": {
             "get": {
                 "operationId": "contacts_list",
-                "description": "List contacts with optional filtering by mailbox and search query.\n\nQuery parameters:\n- mailbox_id: Optional UUID to filter contacts by mailbox\n- q: Optional search query for name or email (case insensitive)",
+                "description": "List contacts with optional filtering by mailbox and search query.\nFor a mailbox, it returns all contacts in the mailbox and all contacts\nin the same domain as the mailbox.\n\nQuery parameters:\n- mailbox_id: Optional UUID to filter contacts by mailbox\n- q: Optional search query for name or email (case insensitive)",
                 "parameters": [
                     {
                         "in": "query",

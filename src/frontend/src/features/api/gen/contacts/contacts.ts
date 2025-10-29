@@ -26,6 +26,8 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 /**
  * List contacts with optional filtering by mailbox and search query.
+For a mailbox, it returns all contacts in the mailbox and all contacts
+in the same domain as the mailbox.
 
 Query parameters:
 - mailbox_id: Optional UUID to filter contacts by mailbox
