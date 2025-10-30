@@ -1,9 +1,9 @@
 """API ViewSet for proxying external images."""
 
-import imghdr
 import logging
 from urllib.parse import unquote
 
+import magic
 import requests
 from django.conf import settings
 from django.http import HttpResponse
@@ -165,9 +165,9 @@ class ImageProxyViewSet(ViewSet):
             image_content = b"".join(chunks)
 
             # Validate that content is actually an image (defense in depth)
-            image_type = imghdr.what(None, h=image_content)
-            if not image_type:
-                logger.warning("Content from %s is not a valid image", url)
+            mime_type = magic.from_buffer(image_content, mime=True)
+            if not mime_type.startswith("image/"):
+                logger.warning("Content from %s is not a valid image: %s", url, mime_type)
                 # Return placeholder image for invalid content
                 svg_placeholder = """<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100" viewBox="0 0 400 100">
   <rect width="100%" height="100%" fill="#f8f9fa"/>
