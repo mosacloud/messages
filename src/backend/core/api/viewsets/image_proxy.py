@@ -1,5 +1,6 @@
 """API ViewSet for proxying external images."""
 
+import imghdr
 import logging
 from urllib.parse import unquote
 
@@ -14,6 +15,7 @@ from rest_framework.viewsets import ViewSet
 
 from core import models
 from core.api import permissions
+from core.utils import validate_url_safety
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +90,24 @@ class ImageProxyViewSet(ViewSet):
 
         url = unquote(url)
 
+        # SSRF protection: validate URL before making any request
+        is_safe, error_message = validate_url_safety(url)
+        if not is_safe:
+            logger.warning("Blocked unsafe URL: %s - %s", url, error_message)
+            # Return placeholder image instead of JSON error for better UX
+            svg_placeholder = """<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100" viewBox="0 0 400 100">
+  <rect width="100%" height="100%" fill="#f8f9fa"/>
+  <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle"
+        font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#6c757d">
+    🚫 Image blocked for security reasons
+  </text>
+</svg>"""
+            return HttpResponse(
+                svg_placeholder,
+                content_type="image/svg+xml",
+                status=403,
+            )
+
         max_size = settings.PROXY_MAX_IMAGE_SIZE_MB * 1024 * 1024
 
         try:
@@ -96,6 +116,7 @@ class ImageProxyViewSet(ViewSet):
                 timeout=10,
                 stream=True,
                 headers={"User-Agent": "Messages-ImageProxy/1.0"},
+                allow_redirects=False,  # Prevent redirect-based SSRF bypass
             )
             response.raise_for_status()
 
@@ -105,18 +126,60 @@ class ImageProxyViewSet(ViewSet):
                     {"error": "Not an image"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            content_length = int(response.headers.get("content-length", 0))
-            if content_length > max_size:
+            # Safely parse Content-Length header
+            try:
+                content_length = int(response.headers.get("content-length", 0))
+            except (TypeError, ValueError):
+                content_length = 0
+
+            # Use Content-Length as a hint, but don't trust it completely
+            if content_length and content_length > max_size:
                 return Response(
                     {"error": "Image too large"},
                     status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 )
 
-            image_content = response.content
-            if len(image_content) > max_size:
-                return Response(
-                    {"error": "Image too large"},
-                    status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            # Stream content in chunks to prevent memory exhaustion
+            chunks = []
+            total_size = 0
+            chunk_size = 8192  # 8KB chunks
+
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if not chunk:
+                    continue
+
+                total_size += len(chunk)
+
+                # Enforce size limit while streaming
+                if total_size > max_size:
+                    logger.warning(
+                        "Image from %s exceeds size limit: %d bytes", url, total_size
+                    )
+                    return Response(
+                        {"error": "Image too large"},
+                        status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    )
+
+                chunks.append(chunk)
+
+            image_content = b"".join(chunks)
+
+            # Validate that content is actually an image (defense in depth)
+            image_type = imghdr.what(None, h=image_content)
+            if not image_type:
+                logger.warning("Content from %s is not a valid image", url)
+                # Return placeholder image for invalid content
+                svg_placeholder = """<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100" viewBox="0 0 400 100">
+  <rect width="100%" height="100%" fill="#f8f9fa"/>
+  <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle"
+        font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#6c757d">
+    🚫 Image blocked for security reasons
+  </text>
+</svg>"""
+                return HttpResponse(
+                    svg_placeholder,
+                    content_type="image/svg+xml",
+                    status=400,
                 )
 
             return HttpResponse(
