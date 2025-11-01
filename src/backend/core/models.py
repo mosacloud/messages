@@ -1,7 +1,7 @@
 """
 Declare and configure the models for the messages core application
 """
-# pylint: disable=too-many-lines,too-many-instance-attributes,dangerous-default-value
+# pylint: disable=too-many-lines,too-many-instance-attributes
 
 import base64
 import hashlib
@@ -1825,7 +1825,7 @@ class MessageTemplate(BaseModel):
         self,
         mailbox: Mailbox = None,
         user: User = None,
-        context: Dict[str, Any] = {},  # noqa: B006
+        context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, str]:
         """
         Render the template with the given context.
@@ -1837,7 +1837,7 @@ class MessageTemplate(BaseModel):
         Returns:
             Dictionary with 'html_body' and 'text_body' keys containing rendered content
         """
-        context = context.copy()
+        context = context.copy() if context else {}
         context["name"] = (
             mailbox.contact.name
             if mailbox and mailbox.contact
