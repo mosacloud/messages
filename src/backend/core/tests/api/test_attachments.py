@@ -344,7 +344,7 @@ class TestDraftWithAttachments:
         client, _ = api_client
 
         # Set a small attachment size limit for testing (1 KB)
-        with override_settings(MAX_OUTGOING_EMAIL_SIZE=1024):
+        with override_settings(MAX_OUTGOING_ATTACHMENT_SIZE=1024):
             # Create a large blob (2 KB) that exceeds the limit
             large_content = b"x" * 2048
             blob = user_mailbox.create_blob(
@@ -383,7 +383,7 @@ class TestDraftWithAttachments:
         client, _ = api_client
 
         # Set attachment size limit to 2 KB
-        with override_settings(MAX_OUTGOING_EMAIL_SIZE=2048):
+        with override_settings(MAX_OUTGOING_ATTACHMENT_SIZE=2048):
             # Create first blob (1 KB)
             blob1_content = b"x" * 1024
             blob1 = user_mailbox.create_blob(
@@ -455,7 +455,7 @@ class TestDraftWithAttachments:
         client, _ = api_client
 
         # Set attachment size limit to 10 KB
-        with override_settings(MAX_OUTGOING_EMAIL_SIZE=10240):
+        with override_settings(MAX_OUTGOING_ATTACHMENT_SIZE=10240):
             # Create two blobs totaling 8 KB (within limit)
             blob1_content = b"x" * 4096
             blob1 = user_mailbox.create_blob(
@@ -507,7 +507,7 @@ class TestDraftWithAttachments:
         client, _ = api_client
 
         # Set attachment size limit to 2 KB
-        with override_settings(MAX_OUTGOING_EMAIL_SIZE=2048):
+        with override_settings(MAX_OUTGOING_ATTACHMENT_SIZE=2048):
             # Create first blob (1.5 KB)
             blob1_content = b"x" * 1536
             blob1 = user_mailbox.create_blob(
@@ -576,7 +576,7 @@ class TestDraftWithAttachments:
         client, _ = api_client
 
         # Set a small attachment size limit for testing (1 KB)
-        with override_settings(MAX_OUTGOING_EMAIL_SIZE=1024):
+        with override_settings(MAX_OUTGOING_ATTACHMENT_SIZE=1024):
             # Create a large blob (2 KB) that exceeds the limit
             large_content = b"x" * 2048
             blob = user_mailbox.create_blob(
@@ -624,4 +624,5 @@ class TestDraftWithAttachments:
             # Should fail because the total message size exceeds the limit
             assert send_response.status_code == status.HTTP_400_BAD_REQUEST
             assert "message" in send_response.data
-            assert "exceeds maximum allowed size" in str(send_response.data["message"])
+            assert "exceeds the" in str(send_response.data["message"])
+            assert "MB limit" in str(send_response.data["message"])
