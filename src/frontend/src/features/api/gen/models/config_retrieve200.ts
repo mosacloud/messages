@@ -20,4 +20,8 @@ export type ConfigRetrieve200 = {
   readonly DRIVE?: ConfigRetrieve200DRIVE;
   readonly SCHEMA_CUSTOM_ATTRIBUTES_USER: ConfigRetrieve200SCHEMACUSTOMATTRIBUTESUSER;
   readonly SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN: ConfigRetrieve200SCHEMACUSTOMATTRIBUTESMAILDOMAIN;
+  /** Maximum size in bytes for outgoing email attachments */
+  readonly MAX_OUTGOING_ATTACHMENT_SIZE: number;
+  /** Maximum size in bytes for outgoing email body (text + HTML) */
+  readonly MAX_OUTGOING_BODY_SIZE: number;
 };

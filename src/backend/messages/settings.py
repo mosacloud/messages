@@ -99,9 +99,15 @@ class Base(Configuration):
         environ_prefix=None,
     )
 
-    MAX_OUTGOING_EMAIL_SIZE = values.PositiveIntegerValue(
-        10485760,  # Default 10MB
-        environ_name="MAX_OUTGOING_EMAIL_SIZE",
+    MAX_OUTGOING_ATTACHMENT_SIZE = values.PositiveIntegerValue(
+        20971520,  # Default 20MB
+        environ_name="MAX_OUTGOING_ATTACHMENT_SIZE",
+        environ_prefix=None,
+    )
+
+    MAX_OUTGOING_BODY_SIZE = values.PositiveIntegerValue(
+        5242880,  # Default 5MB
+        environ_name="MAX_OUTGOING_BODY_SIZE",
         environ_prefix=None,
     )
 
@@ -763,11 +769,13 @@ class Base(Configuration):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Ensure Django's upload limit accommodates the larger of the two email size limits
+        # Ensure Django's upload limit accommodates the larger of the email size limits
+        # For outgoing, we need to accommodate both body + attachments together
+        max_outgoing_total = self.MAX_OUTGOING_ATTACHMENT_SIZE + self.MAX_OUTGOING_BODY_SIZE
         self.DATA_UPLOAD_MAX_MEMORY_SIZE = max(
             self.DATA_UPLOAD_MAX_MEMORY_SIZE,
             self.MAX_INCOMING_EMAIL_SIZE,
-            self.MAX_OUTGOING_EMAIL_SIZE,
+            max_outgoing_total,
         )
 
         if self.ENABLE_PROMETHEUS:

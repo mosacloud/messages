@@ -24,6 +24,7 @@ import type {
 import type {
   Mailbox,
   MailboxLight,
+  MailboxesImageProxyListParams,
   MailboxesMessageTemplatesAvailableListParams,
   MailboxesMessageTemplatesListParams,
   MailboxesMessageTemplatesRenderRetrieve200,
@@ -172,6 +173,234 @@ export function useMailboxesList<
   queryKey: DataTag<QueryKey, TData, TError>;
 } {
   const queryOptions = getMailboxesListQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey;
+
+  return query;
+}
+
+/**
+ * Proxy an external image through the server.
+
+        This endpoint fetches images from external sources and serves them
+        through the application to protect user privacy. Requires the
+        PROXY_EXTERNAL_IMAGES environment variable to be set to true.
+        
+ */
+export type mailboxesImageProxyListResponse200 = {
+  data: void;
+  status: 200;
+};
+
+export type mailboxesImageProxyListResponse400 = {
+  data: void;
+  status: 400;
+};
+
+export type mailboxesImageProxyListResponseComposite =
+  | mailboxesImageProxyListResponse200
+  | mailboxesImageProxyListResponse400;
+
+export type mailboxesImageProxyListResponse =
+  mailboxesImageProxyListResponseComposite & {
+    headers: Headers;
+  };
+
+export const getMailboxesImageProxyListUrl = (
+  mailboxId: string,
+  params: MailboxesImageProxyListParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/v1.0/mailboxes/${mailboxId}/image-proxy/?${stringifiedParams}`
+    : `/api/v1.0/mailboxes/${mailboxId}/image-proxy/`;
+};
+
+export const mailboxesImageProxyList = async (
+  mailboxId: string,
+  params: MailboxesImageProxyListParams,
+  options?: RequestInit,
+): Promise<mailboxesImageProxyListResponse> => {
+  return fetchAPI<mailboxesImageProxyListResponse>(
+    getMailboxesImageProxyListUrl(mailboxId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getMailboxesImageProxyListQueryKey = (
+  mailboxId: string,
+  params: MailboxesImageProxyListParams,
+) => {
+  return [
+    `/api/v1.0/mailboxes/${mailboxId}/image-proxy/`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getMailboxesImageProxyListQueryOptions = <
+  TData = Awaited<ReturnType<typeof mailboxesImageProxyList>>,
+  TError = void,
+>(
+  mailboxId: string,
+  params: MailboxesImageProxyListParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof mailboxesImageProxyList>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getMailboxesImageProxyListQueryKey(mailboxId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof mailboxesImageProxyList>>
+  > = ({ signal }) =>
+    mailboxesImageProxyList(mailboxId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!mailboxId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof mailboxesImageProxyList>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type MailboxesImageProxyListQueryResult = NonNullable<
+  Awaited<ReturnType<typeof mailboxesImageProxyList>>
+>;
+export type MailboxesImageProxyListQueryError = void;
+
+export function useMailboxesImageProxyList<
+  TData = Awaited<ReturnType<typeof mailboxesImageProxyList>>,
+  TError = void,
+>(
+  mailboxId: string,
+  params: MailboxesImageProxyListParams,
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof mailboxesImageProxyList>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof mailboxesImageProxyList>>,
+          TError,
+          Awaited<ReturnType<typeof mailboxesImageProxyList>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useMailboxesImageProxyList<
+  TData = Awaited<ReturnType<typeof mailboxesImageProxyList>>,
+  TError = void,
+>(
+  mailboxId: string,
+  params: MailboxesImageProxyListParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof mailboxesImageProxyList>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof mailboxesImageProxyList>>,
+          TError,
+          Awaited<ReturnType<typeof mailboxesImageProxyList>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useMailboxesImageProxyList<
+  TData = Awaited<ReturnType<typeof mailboxesImageProxyList>>,
+  TError = void,
+>(
+  mailboxId: string,
+  params: MailboxesImageProxyListParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof mailboxesImageProxyList>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+
+export function useMailboxesImageProxyList<
+  TData = Awaited<ReturnType<typeof mailboxesImageProxyList>>,
+  TError = void,
+>(
+  mailboxId: string,
+  params: MailboxesImageProxyListParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof mailboxesImageProxyList>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions = getMailboxesImageProxyListQueryOptions(
+    mailboxId,
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<
     TData,

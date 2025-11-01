@@ -222,8 +222,28 @@ def update_draft(
         except models.Blob.DoesNotExist:
             pass
         if update_data["draftBody"]:
+            draft_body_bytes = update_data["draftBody"].encode("utf-8")
+
+            # Validate body size before creating blob
+            if len(draft_body_bytes) > settings.MAX_OUTGOING_BODY_SIZE:
+                body_mb = len(draft_body_bytes) / 1_000_000
+                max_body_mb = settings.MAX_OUTGOING_BODY_SIZE / 1_000_000
+
+                raise drf.exceptions.ValidationError(
+                    {
+                        "draftBody": _(
+                            "Message body size (%(body_size)s MB) exceeds the %(max_size)s MB limit. "
+                            "Please reduce message content."
+                        )
+                        % {
+                            "body_size": f"{body_mb:.1f}",
+                            "max_size": f"{max_body_mb:.0f}",
+                        }
+                    }
+                )
+
             message.draft_blob = mailbox.create_blob(
-                content=update_data["draftBody"].encode("utf-8"),
+                content=draft_body_bytes,
                 content_type="application/json",
             )
         updated_fields.append("draft_blob")
@@ -308,20 +328,27 @@ def update_draft(
                 ).select_related("blob")
                 new_total_size = sum(att.blob.size for att in new_attachments_objs)
 
-                # Check if adding these would exceed the limit
-                total_size = current_total_size + new_total_size
-                if total_size > settings.MAX_OUTGOING_EMAIL_SIZE:
+                # Check if adding these would exceed the attachment limit
+                total_attachment_size = current_total_size + new_total_size
+                if total_attachment_size > settings.MAX_OUTGOING_ATTACHMENT_SIZE:
+                    # Convert to MB for better readability
+                    total_mb = total_attachment_size / 1_000_000
+                    max_mb = settings.MAX_OUTGOING_ATTACHMENT_SIZE / 1_000_000
+                    current_mb = current_total_size / 1_000_000
+                    new_mb = new_total_size / 1_000_000
+
                     raise drf.exceptions.ValidationError(
                         {
                             "attachments": _(
-                                "Total attachment size (%(total_size)s bytes) exceeds maximum "
-                                "allowed size of %(max_size)s bytes. Current attachments: "
-                                "%(current_size)s bytes."
+                                "Cannot add attachment(s) (%(new_size)s MB). "
+                                "Total attachments would be %(total_size)s MB, exceeding the %(max_size)s MB limit. "
+                                "Current attachments: %(current_size)s MB."
                             )
                             % {
-                                "total_size": total_size,
-                                "max_size": settings.MAX_OUTGOING_EMAIL_SIZE,
-                                "current_size": current_total_size,
+                                "new_size": f"{new_mb:.1f}",
+                                "total_size": f"{total_mb:.1f}",
+                                "max_size": f"{max_mb:.0f}",
+                                "current_size": f"{current_mb:.1f}",
                             }
                         }
                     )
