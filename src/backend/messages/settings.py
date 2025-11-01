@@ -100,6 +100,19 @@ class Base(Configuration):
         2621440, environ_name="DATA_UPLOAD_MAX_MEMORY_SIZE", environ_prefix=None
     )  # Default 2.5MB, can be overridden via environment variable
 
+    # Email size limits
+    MAX_INCOMING_EMAIL_SIZE = values.PositiveIntegerValue(
+        10485760,  # Default 10MB
+        environ_name="MAX_INCOMING_EMAIL_SIZE",
+        environ_prefix=None,
+    )
+
+    MAX_OUTGOING_EMAIL_SIZE = values.PositiveIntegerValue(
+        10485760,  # Default 10MB
+        environ_name="MAX_OUTGOING_EMAIL_SIZE",
+        environ_prefix=None,
+    )
+
     # Security
     ALLOWED_HOSTS = values.ListValue([])
     SECRET_KEY = values.Value(None)
@@ -757,6 +770,14 @@ class Base(Configuration):
     # pylint: disable=invalid-name
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # Ensure Django's upload limit accommodates the larger of the two email size limits
+        self.DATA_UPLOAD_MAX_MEMORY_SIZE = max(
+            self.DATA_UPLOAD_MAX_MEMORY_SIZE,
+            self.MAX_INCOMING_EMAIL_SIZE,
+            self.MAX_OUTGOING_EMAIL_SIZE,
+        )
+
         if self.ENABLE_PROMETHEUS:
             self.INSTALLED_APPS += ["django_prometheus"]
             self.MIDDLEWARE = [

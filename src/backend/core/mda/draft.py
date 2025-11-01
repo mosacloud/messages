@@ -4,7 +4,9 @@ import logging
 import uuid
 from typing import Optional
 
+from django.conf import settings
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 import rest_framework as drf
 
@@ -48,7 +50,7 @@ def create_draft(
 
     # Get or create sender contact
     mailbox_email = f"{mailbox.local_part}@{mailbox.domain.name}"
-    sender_contact, _ = models.Contact.objects.get_or_create(
+    sender_contact, _created = models.Contact.objects.get_or_create(
         email=mailbox_email,
         mailbox=mailbox,
         defaults={
@@ -195,7 +197,7 @@ def update_draft(
             # Create new recipients
             emails = update_data.get(recipient_type) or []
             for email in emails:
-                contact, _ = models.Contact.objects.get_or_create(
+                contact, _created = models.Contact.objects.get_or_create(
                     email=email,
                     mailbox=mailbox,
                     defaults={
@@ -291,6 +293,38 @@ def update_draft(
             # Add new attachments and remove old ones
             to_add = new_attachments - current_attachment_ids
             to_remove = current_attachment_ids - new_attachments
+
+            # Validate total attachment size before adding
+            if to_add:
+                # Calculate current total (excluding attachments about to be removed)
+                current_attachments = message.attachments.exclude(id__in=to_remove)
+                current_total_size = sum(
+                    att.blob.size for att in current_attachments.select_related("blob")
+                )
+
+                # Calculate size of new attachments being added
+                new_attachments_objs = models.Attachment.objects.filter(
+                    id__in=to_add
+                ).select_related("blob")
+                new_total_size = sum(att.blob.size for att in new_attachments_objs)
+
+                # Check if adding these would exceed the limit
+                total_size = current_total_size + new_total_size
+                if total_size > settings.MAX_OUTGOING_EMAIL_SIZE:
+                    raise drf.exceptions.ValidationError(
+                        {
+                            "attachments": _(
+                                "Total attachment size (%(total_size)s bytes) exceeds maximum "
+                                "allowed size of %(max_size)s bytes. Current attachments: "
+                                "%(current_size)s bytes."
+                            )
+                            % {
+                                "total_size": total_size,
+                                "max_size": settings.MAX_OUTGOING_EMAIL_SIZE,
+                                "current_size": current_total_size,
+                            }
+                        }
+                    )
 
             # Remove attachments no longer in the list
             if to_remove:

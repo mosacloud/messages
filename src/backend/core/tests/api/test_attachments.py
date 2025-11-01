@@ -336,3 +336,292 @@ class TestDraftWithAttachments:
         assert parts[4].get_payload(decode=True).decode() == blob.get_content().decode()
         assert parts[4].get_content_disposition() == "attachment"
         assert parts[4].get_filename() == "test_attachment.txt"
+
+    def test_draft_attachment_size_limit_exceeded(self, api_client, user_mailbox):
+        """Test that adding attachments exceeding the size limit raises ValidationError."""
+        from django.test import override_settings
+
+        client, _ = api_client
+
+        # Set a small attachment size limit for testing (1 KB)
+        with override_settings(MAX_OUTGOING_EMAIL_SIZE=1024):
+            # Create a large blob (2 KB) that exceeds the limit
+            large_content = b"x" * 2048
+            blob = user_mailbox.create_blob(
+                content=large_content,
+                content_type="text/plain",
+            )
+
+            # Try to create a draft with the large attachment
+            url = reverse("draft-message")
+            response = client.post(
+                url,
+                {
+                    "senderId": str(user_mailbox.id),
+                    "subject": "Draft with large attachment",
+                    "draftBody": json.dumps({"text": "Test"}),
+                    "to": ["recipient@example.com"],
+                    "attachments": [
+                        {
+                            "partId": "att-1",
+                            "blobId": str(blob.id),
+                            "name": "large_file.txt",
+                        }
+                    ],
+                },
+                format="json",
+            )
+
+            # Should fail with validation error
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+            assert "attachments" in response.data
+
+    def test_draft_attachment_cumulative_size_limit(self, api_client, user_mailbox):
+        """Test that cumulative attachment size is validated when adding multiple attachments."""
+        from django.test import override_settings
+
+        client, _ = api_client
+
+        # Set attachment size limit to 2 KB
+        with override_settings(MAX_OUTGOING_EMAIL_SIZE=2048):
+            # Create first blob (1 KB)
+            blob1_content = b"x" * 1024
+            blob1 = user_mailbox.create_blob(
+                content=blob1_content,
+                content_type="text/plain",
+            )
+
+            # Create draft with first attachment
+            url = reverse("draft-message")
+            response = client.post(
+                url,
+                {
+                    "senderId": str(user_mailbox.id),
+                    "subject": "Draft with attachments",
+                    "draftBody": json.dumps({"text": "Test"}),
+                    "to": ["recipient@example.com"],
+                    "attachments": [
+                        {
+                            "partId": "att-1",
+                            "blobId": str(blob1.id),
+                            "name": "file1.txt",
+                        }
+                    ],
+                },
+                format="json",
+            )
+
+            # Should succeed
+            assert response.status_code == status.HTTP_201_CREATED
+            draft_id = response.data["id"]
+
+            # Create second blob (1.5 KB)
+            blob2_content = b"y" * 1536
+            blob2 = user_mailbox.create_blob(
+                content=blob2_content,
+                content_type="text/plain",
+            )
+
+            # Try to add second attachment (total would be 2.5 KB > 2 KB limit)
+            url = reverse("draft-message-detail", kwargs={"message_id": draft_id})
+            response = client.put(
+                url,
+                {
+                    "senderId": str(user_mailbox.id),
+                    "attachments": [
+                        {
+                            "partId": "att-1",
+                            "blobId": str(blob1.id),
+                            "name": "file1.txt",
+                        },
+                        {
+                            "partId": "att-2",
+                            "blobId": str(blob2.id),
+                            "name": "file2.txt",
+                        },
+                    ],
+                },
+                format="json",
+            )
+
+            # Should fail with validation error
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+            assert "attachments" in response.data
+
+    def test_draft_attachment_within_size_limit(self, api_client, user_mailbox):
+        """Test that attachments within the size limit are accepted."""
+        from django.test import override_settings
+
+        client, _ = api_client
+
+        # Set attachment size limit to 10 KB
+        with override_settings(MAX_OUTGOING_EMAIL_SIZE=10240):
+            # Create two blobs totaling 8 KB (within limit)
+            blob1_content = b"x" * 4096
+            blob1 = user_mailbox.create_blob(
+                content=blob1_content,
+                content_type="text/plain",
+            )
+
+            blob2_content = b"y" * 4096
+            blob2 = user_mailbox.create_blob(
+                content=blob2_content,
+                content_type="text/plain",
+            )
+
+            # Create draft with both attachments
+            url = reverse("draft-message")
+            response = client.post(
+                url,
+                {
+                    "senderId": str(user_mailbox.id),
+                    "subject": "Draft with multiple attachments",
+                    "draftBody": json.dumps({"text": "Test"}),
+                    "to": ["recipient@example.com"],
+                    "attachments": [
+                        {
+                            "partId": "att-1",
+                            "blobId": str(blob1.id),
+                            "name": "file1.txt",
+                        },
+                        {
+                            "partId": "att-2",
+                            "blobId": str(blob2.id),
+                            "name": "file2.txt",
+                        },
+                    ],
+                },
+                format="json",
+            )
+
+            # Should succeed
+            assert response.status_code == status.HTTP_201_CREATED
+            assert len(response.data["attachments"]) == 2
+
+    def test_draft_replace_attachment_allows_new_within_limit(
+        self, api_client, user_mailbox
+    ):
+        """Test that removing an attachment allows adding a new one within the limit."""
+        from django.test import override_settings
+
+        client, _ = api_client
+
+        # Set attachment size limit to 2 KB
+        with override_settings(MAX_OUTGOING_EMAIL_SIZE=2048):
+            # Create first blob (1.5 KB)
+            blob1_content = b"x" * 1536
+            blob1 = user_mailbox.create_blob(
+                content=blob1_content,
+                content_type="text/plain",
+            )
+
+            # Create draft with first attachment
+            url = reverse("draft-message")
+            response = client.post(
+                url,
+                {
+                    "senderId": str(user_mailbox.id),
+                    "subject": "Draft",
+                    "draftBody": json.dumps({"text": "Test"}),
+                    "to": ["recipient@example.com"],
+                    "attachments": [
+                        {
+                            "partId": "att-1",
+                            "blobId": str(blob1.id),
+                            "name": "file1.txt",
+                        }
+                    ],
+                },
+                format="json",
+            )
+
+            assert response.status_code == status.HTTP_201_CREATED
+            draft_id = response.data["id"]
+
+            # Create second blob (1.5 KB)
+            blob2_content = b"y" * 1536
+            blob2 = user_mailbox.create_blob(
+                content=blob2_content,
+                content_type="text/plain",
+            )
+
+            # Replace first attachment with second (removing first, adding second)
+            url = reverse("draft-message-detail", kwargs={"message_id": draft_id})
+            response = client.put(
+                url,
+                {
+                    "senderId": str(user_mailbox.id),
+                    "attachments": [
+                        {
+                            "partId": "att-2",
+                            "blobId": str(blob2.id),
+                            "name": "file2.txt",
+                        }
+                    ],
+                },
+                format="json",
+            )
+
+            # Should succeed since we're replacing, not adding
+            assert response.status_code == status.HTTP_200_OK
+            assert len(response.data["attachments"]) == 1
+            assert response.data["attachments"][0]["blobId"] == str(blob2.id)
+
+    def test_send_draft_with_attachments_exceeding_size_limit(
+        self, api_client, user_mailbox
+    ):
+        """Test that sending a draft with attachments exceeding the size limit fails."""
+        from django.test import override_settings
+
+        client, _ = api_client
+
+        # Set a small attachment size limit for testing (1 KB)
+        with override_settings(MAX_OUTGOING_EMAIL_SIZE=1024):
+            # Create a large blob (2 KB) that exceeds the limit
+            large_content = b"x" * 2048
+            blob = user_mailbox.create_blob(
+                content=large_content,
+                content_type="text/plain",
+            )
+
+            # Create attachment
+            attachment = models.Attachment.objects.create(
+                mailbox=user_mailbox, name="large_file.txt", blob=blob
+            )
+
+            # Create a draft thread and message
+            thread = factories.ThreadFactory()
+            factories.ThreadAccessFactory(
+                thread=thread,
+                mailbox=user_mailbox,
+                role=ThreadAccessRoleChoices.EDITOR,
+            )
+
+            sender_email = f"{user_mailbox.local_part}@{user_mailbox.domain.name}"
+            sender = factories.ContactFactory(
+                mailbox=user_mailbox, email=sender_email, name=user_mailbox.local_part
+            )
+
+            draft = factories.MessageFactory(
+                thread=thread, sender=sender, is_draft=True, subject="Test draft"
+            )
+
+            # Manually add the attachment (bypassing the validation in draft.py)
+            draft.attachments.add(attachment)
+
+            # Try to send the draft
+            send_response = client.post(
+                reverse("send-message"),
+                {
+                    "messageId": draft.id,
+                    "textBody": "Test email body",
+                    "htmlBody": "<p>Test email body</p>",
+                    "senderId": user_mailbox.id,
+                },
+                format="json",
+            )
+
+            # Should fail because the total message size exceeds the limit
+            assert send_response.status_code == status.HTTP_400_BAD_REQUEST
+            assert "message" in send_response.data
+            assert "exceeds maximum allowed size" in str(send_response.data["message"])

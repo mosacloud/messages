@@ -106,18 +106,14 @@ class SendMessageView(APIView):
 
         self.check_object_permissions(request, message)
 
-        prepared = prepare_outbound_message(
+        # Prepare the message (raises ValidationError if size limits exceeded)
+        prepare_outbound_message(
             mailbox_sender,
             message,
             request.data.get("textBody"),
             request.data.get("htmlBody"),
             request.user,
         )
-        if not prepared:
-            raise drf_exceptions.APIException(
-                "Failed to prepare message for sending.",
-                code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
         # Launch async task for sending the message
         task = send_message_task.delay(str(message.id), must_archive=must_archive)

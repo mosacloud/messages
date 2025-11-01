@@ -7,6 +7,9 @@ from typing import Any, Optional
 from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
+
+import rest_framework as drf
 
 from core import models
 from core.enums import MessageDeliveryStatusChoices
@@ -150,9 +153,12 @@ def prepare_outbound_message(
     # Add attachments if present
     if message.attachments.exists():
         attachments = []
+        total_attachment_size = 0
+
         for attachment in message.attachments.select_related("blob").all():
             # Get the blob data
             blob = attachment.blob
+            total_attachment_size += blob.size
 
             # Add the attachment to the MIME data
             attachments.append(
@@ -178,7 +184,9 @@ def prepare_outbound_message(
         )
     except Exception as e:
         logger.error("Failed to compose MIME for message %s: %s", message.id, e)
-        return False
+        raise drf.exceptions.APIException(
+            _("Failed to compose email message.")
+        ) from e
 
     # Sign the message with DKIM
     dkim_signature_header: Optional[bytes] = sign_message_dkim(
@@ -189,6 +197,28 @@ def prepare_outbound_message(
     if dkim_signature_header:
         # Prepend the signature header
         raw_mime_signed = dkim_signature_header + b"\r\n" + raw_mime
+
+    # Validate total outgoing email size against configured limit
+    total_message_size = len(raw_mime_signed)
+    if total_message_size > settings.MAX_OUTGOING_EMAIL_SIZE:
+        logger.error(
+            "Total message size for message %s exceeds limit: %d bytes (limit: %d bytes)",
+            message.id,
+            total_message_size,
+            settings.MAX_OUTGOING_EMAIL_SIZE,
+        )
+        raise drf.exceptions.ValidationError(
+            {
+                "message": _(
+                    "Total message size (%(total_size)s bytes) exceeds maximum "
+                    "allowed size of %(max_size)s bytes."
+                )
+                % {
+                    "total_size": total_message_size,
+                    "max_size": settings.MAX_OUTGOING_EMAIL_SIZE,
+                }
+            }
+        )
 
     # Create a blob to store the raw MIME content
     blob = mailbox_sender.create_blob(
