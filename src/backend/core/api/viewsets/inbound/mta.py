@@ -139,6 +139,21 @@ class InboundMTAViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Validate incoming email size against configured limit
+        if len(raw_data) > settings.MAX_INCOMING_EMAIL_SIZE:
+            logger.error(
+                "Incoming email exceeds size limit: %d bytes (limit: %d bytes)",
+                len(raw_data),
+                settings.MAX_INCOMING_EMAIL_SIZE,
+            )
+            return Response(
+                {
+                    "status": "error",
+                    "detail": f"Email size exceeds maximum allowed size of {settings.MAX_INCOMING_EMAIL_SIZE} bytes",
+                },
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+
         logger.info(
             "Raw email received: %d bytes for %s",
             len(raw_data),
