@@ -14,7 +14,7 @@ import { DropZone } from './dropzone';
 import { DriveAttachmentPicker, DriveFile } from './drive-attachment-picker';
 import { Icon } from '@gouvfr-lasuite/ui-kit';
 import clsx from 'clsx';
-import { toast } from 'react-toastify';
+import { addToast, ToasterItem } from '@/features/ui/components/toaster';
 
 interface AttachmentUploaderProps {
     initialAttachments?: (DriveFile | Attachment)[];
@@ -48,13 +48,15 @@ export const AttachmentUploader = ({
             const totalSize = currentTotalSize + newFilesSize;
 
             if (totalSize > MAX_ATTACHMENT_SIZE) {
-                toast.error(
-                    t("Cannot add attachment(s) ({{newSize}}). Total would be {{totalSize}}, exceeding the {{maxSize}} limit. Current attachments: {{currentSize}}.", {
-                        newSize: AttachmentHelper.getFormattedSize(newFilesSize, i18n.language),
-                        totalSize: AttachmentHelper.getFormattedSize(totalSize, i18n.language),
-                        maxSize: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language),
-                        currentSize: AttachmentHelper.getFormattedSize(currentTotalSize, i18n.language)
-                    })
+                addToast(
+                    <ToasterItem type="error">
+                        <span>{t("Cannot add attachment(s) ({{newSize}}). Total would be {{totalSize}}, exceeding the {{maxSize}} limit. Current attachments: {{currentSize}}.", {
+                            newSize: AttachmentHelper.getFormattedSize(newFilesSize, i18n.language),
+                            totalSize: AttachmentHelper.getFormattedSize(totalSize, i18n.language),
+                            maxSize: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language),
+                            currentSize: AttachmentHelper.getFormattedSize(currentTotalSize, i18n.language)
+                        })}</span>
+                    </ToasterItem>
                 );
                 return;
             }
@@ -64,17 +66,19 @@ export const AttachmentUploader = ({
         maxSize: MAX_ATTACHMENT_SIZE,
     });
 
-    // Show toast for files rejected by dropzone (too large individually)
+    // Show notification for files rejected by dropzone (too large individually)
     useEffect(() => {
         if (fileRejections.length > 0) {
             const tooLargeFiles = fileRejections.filter(rejection =>
                 rejection.errors.some(err => err.code === 'file-too-large')
             );
             if (tooLargeFiles.length > 0) {
-                toast.error(
-                    t("The file is too large. It must be less than {{size}}.", {
-                        size: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language)
-                    })
+                addToast(
+                    <ToasterItem type="error">
+                        <span>{t("The file is too large. It must be less than {{size}}.", {
+                            size: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language)
+                        })}</span>
+                    </ToasterItem>
                 );
             }
         }
