@@ -64,7 +64,21 @@ export const AttachmentUploader = ({
         maxSize: MAX_ATTACHMENT_SIZE,
     });
 
-    const isFileTooLarge = fileRejections.some(rejection => rejection.errors[0].code === 'file-too-large');
+    // Show toast for files rejected by dropzone (too large individually)
+    useEffect(() => {
+        if (fileRejections.length > 0) {
+            const tooLargeFiles = fileRejections.filter(rejection =>
+                rejection.errors.some(err => err.code === 'file-too-large')
+            );
+            if (tooLargeFiles.length > 0) {
+                toast.error(
+                    t("The file is too large. It must be less than {{size}}.", {
+                        size: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language)
+                    })
+                );
+            }
+        }
+    }, [fileRejections, t, i18n.language, MAX_ATTACHMENT_SIZE]);
 
     const addToUploadingQueue = (attachments: File[]) => setUploadingQueue(queue => [...queue, ...attachments]);
     const addToFailedQueue = (attachments: File[]) => setFailedQueue(queue => [...queue, ...attachments]);
