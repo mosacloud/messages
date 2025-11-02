@@ -1,101 +1,109 @@
-import { AttachmentHelper } from './index';
-import { Attachment } from '@/features/api/gen/models';
-import { DriveFile } from '@/features/forms/components/message-form/drive-attachment-picker';
+import { describe, it, expect, vi } from 'vitest';
+import { Attachment } from "@/features/api/gen/models";
+import { AttachmentHelper } from "./index";
+import { MimeCategory } from "./constants";
+import { getBlobDownloadRetrieveUrl } from "@/features/api/gen/blob/blob";
+import { getRequestUrl } from "@/features/api/utils";
+
+// Mock the external dependencies
+vi.mock("@/features/api/gen/blob/blob");
+vi.mock("@/features/api/utils");
 
 describe("AttachmentHelper", () => {
-    describe("getRequestUrl", () => {
-        beforeEach(() => {
-            delete (global as any).window;
+    describe("getExtension", () => {
+        it("should return undefined when attachment has no name", () => {
+            const attachment = { name: '' } as Attachment;
+            expect(AttachmentHelper.getExtension(attachment)).toBeUndefined();
         });
 
-        it("should return undefined if window is not defined", () => {
-            expect(AttachmentHelper.getRequestUrl("https://example.com")).toBeUndefined();
-        });
-
-        it("should return the same URL if window location origin matches", () => {
-            (global as any).window = { location: { origin: "https://example.com" } };
-            expect(AttachmentHelper.getRequestUrl("https://example.com/path")).toBe("https://example.com/path");
-        });
-
-        it("should return the same URL if NEXT_PUBLIC_API_ORIGIN is not set", () => {
-            (global as any).window = { location: { origin: "https://frontend.com" } };
-            delete process.env.NEXT_PUBLIC_API_ORIGIN;
-
-            expect(AttachmentHelper.getRequestUrl("https://api.com/path")).toBe("https://api.com/path");
-        });
-
-        it("should replace origin with NEXT_PUBLIC_API_ORIGIN if different", () => {
-            (global as any).window = { location: { origin: "https://frontend.com" } };
-            process.env.NEXT_PUBLIC_API_ORIGIN = "https://backend.com";
-
-            expect(AttachmentHelper.getRequestUrl("https://api.com/path")).toBe("https://backend.com/path");
+        it.each([
+            { name: 'document.pdf', expected: 'pdf' },
+            { name: 'document.pdf.zip', expected: 'zip' },
+            { name: 'document', expected: undefined },
+        ])("should return the correct extension from filename", ({ name, expected }) => {
+            const attachment = { name } as Attachment;
+            expect(AttachmentHelper.getExtension(attachment)).toBe(expected);
         });
     });
 
-    describe("getDisplayName", () => {
-        it("should return the name property", () => {
-            const attachment: Attachment = { name: "file.txt", blobId: "123", size: 100, state: "idle" };
-            expect(AttachmentHelper.getDisplayName(attachment)).toBe("file.txt");
+    describe("getMimeCategory", () => {
+        it("should return CALC category for calc files with zip mimetype", () => {
+            const attachment = { type: "application/zip", name: "spreadsheet.xlsx" } as Attachment;
+            expect(AttachmentHelper.getMimeCategory(attachment)).toBe(MimeCategory.CALC);
+        });
+
+        it("should return PDF category for pdf mimetype", () => {
+            const attachment = { type: "application/pdf", name: "document.pdf" } as Attachment;
+            expect(AttachmentHelper.getMimeCategory(attachment)).toBe(MimeCategory.PDF);
+        });
+
+        it("should return DOC category for doc mimetype", () => {
+            const attachment = {
+                type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                name: "document.docx"
+            } as Attachment;
+            expect(AttachmentHelper.getMimeCategory(attachment)).toBe(MimeCategory.DOC);
+        });
+        
+
+        it("should return IMAGE category for image mimetypes", () => {
+            const attachment = { type: "image/jpeg", name: "image.jpg" } as Attachment;
+            expect(AttachmentHelper.getMimeCategory(attachment)).toBe(MimeCategory.IMAGE);
+        });
+
+        it("should return AUDIO category for audio mimetypes", () => {
+            const attachment = { type: "audio/mp3", name: "audio.mp3" } as Attachment;
+            expect(AttachmentHelper.getMimeCategory(attachment)).toBe(MimeCategory.AUDIO);
+        });
+
+        it("should return VIDEO category for video mimetypes", () => {
+            const attachment = { type: "video/mp4", name: "video.mp4" } as Attachment;
+            expect(AttachmentHelper.getMimeCategory(attachment)).toBe(MimeCategory.VIDEO);
+        });
+
+        it("should return OTHER category for unknown mimetypes", () => {
+            const attachment = { type: "application/unknown", name: "file.unknown" } as Attachment;
+            expect(AttachmentHelper.getMimeCategory(attachment)).toBe(MimeCategory.OTHER);
         });
     });
 
-    describe("getSize", () => {
-        it("should return the size property", () => {
-            const attachment: Attachment = { name: "file.txt", blobId: "123", size: 1024, state: "idle" };
-            expect(AttachmentHelper.getSize(attachment)).toBe(1024);
+    describe("getIcon", () => {
+        it("should return mini icon when mini parameter is true", () => {
+            const attachment = { type: "application/pdf", name: "document.pdf" } as Attachment;
+            const result = AttachmentHelper.getIcon(attachment, true);
+            expect(result).toMatchInlineSnapshot(`"/images/files/icons/mime-pdf-mini.svg"`);
+        });
+
+        it("should return regular icon when mini parameter is false", () => {
+            const attachment = { type: "application/pdf", name: "document.pdf" } as Attachment;
+            const result = AttachmentHelper.getIcon(attachment, false);
+            expect(result).toMatchInlineSnapshot(`"/images/files/icons/mime-pdf.svg"`);
         });
     });
 
-    describe("getMimeType", () => {
-        it("should return the mime type if available", () => {
-            const attachment: Attachment = { name: "file.txt", blobId: "123", size: 100, mimeType: "text/plain", state: "idle" };
-            expect(AttachmentHelper.getMimeType(attachment)).toBe("text/plain");
-        });
-
-        it("should return undefined if mime type is not available", () => {
-            const attachment: Attachment = { name: "file.txt", blobId: "123", size: 100, state: "idle" };
-            expect(AttachmentHelper.getMimeType(attachment)).toBeUndefined();
+    describe("getFormatTranslationKey", () => {
+        it("should return correct translation key for attachment category", () => {
+            const attachment = { type: "application/pdf", name: "document.pdf" } as Attachment;
+            const result = AttachmentHelper.getFormatTranslationKey(attachment);
+            expect(result).toMatchInlineSnapshot(`"mime.pdf"`);
         });
     });
 
-    describe("isImage", () => {
-        it("should return true for image mime types", () => {
-            const attachment: Attachment = { name: "image.png", blobId: "123", size: 100, mimeType: "image/png", state: "idle" };
-            expect(AttachmentHelper.isImage(attachment)).toBe(true);
-        });
+    describe("getDownloadUrl", () => {
+        it("should return correct download URL", () => {
+            const mockUrl = "http://example.com/api/v1.0/blob/123/download/";
+            const attachment = {
+                type: "application/pdf",
+                name: "document.pdf",
+                blobId: "123"
+            } as Attachment;
 
-        it("should return false for non-image mime types", () => {
-            const attachment: Attachment = { name: "file.txt", blobId: "123", size: 100, mimeType: "text/plain", state: "idle" };
-            expect(AttachmentHelper.isImage(attachment)).toBe(false);
-        });
+            vi.mocked(getBlobDownloadRetrieveUrl).mockReturnValue(mockUrl);
+            vi.mocked(getRequestUrl).mockReturnValue(mockUrl);
 
-        it("should return false if mime type is not available", () => {
-            const attachment: Attachment = { name: "file.txt", blobId: "123", size: 100, state: "idle" };
-            expect(AttachmentHelper.isImage(attachment)).toBe(false);
-        });
-    });
-
-    describe("getUrl", () => {
-        const getRequestUrl = jest.spyOn(AttachmentHelper, 'getRequestUrl');
-        const getBlobDownloadRetrieveUrl = require('@/features/api/gen/blob/blob').getBlobDownloadRetrieveUrl;
-
-        beforeEach(() => {
-            jest.clearAllMocks();
-        });
-
-        it("should return the url property if it exists on a DriveFile", () => {
-            const driveFile: DriveFile = { name: "file.txt", size: 100, url: "https://drive.com/file.txt" };
-            expect(AttachmentHelper.getUrl(driveFile)).toBe("https://drive.com/file.txt");
-        });
-
-        it("should construct URL from blobId if url property doesn't exist", () => {
-            const attachment: Attachment = { name: "file.txt", blobId: "123", size: 100, state: "idle" };
-            const mockUrl = "https://api.com/blob/123";
-
-            getRequestUrl.mockReturnValue(mockUrl);
-
-            const result = AttachmentHelper.getUrl(attachment);
-
+            const result = AttachmentHelper.getDownloadUrl(attachment);
+            
+            expect(getBlobDownloadRetrieveUrl).toHaveBeenCalledWith(attachment.blobId);
             expect(getRequestUrl).toHaveBeenCalledWith(mockUrl);
             expect(result).toBe(mockUrl);
         });
@@ -107,38 +115,41 @@ describe("AttachmentHelper", () => {
         });
 
         it("should format size in kilobytes (binary)", () => {
-            expect(AttachmentHelper.getFormattedSize(1536)).toBe("1.5 KB"); // 1.5 * 1024
-        });
-
-        it("should format whole kilobytes without decimals", () => {
+            expect(AttachmentHelper.getFormattedSize(1536)).toBe("1.5 KB");
             expect(AttachmentHelper.getFormattedSize(1024)).toBe("1 KB");
         });
 
         it("should format size in megabytes (binary)", () => {
-            expect(AttachmentHelper.getFormattedSize(5242880)).toBe("5 MB"); // 5 * 1024 * 1024
+            expect(AttachmentHelper.getFormattedSize(5242880)).toBe("5 MB");
+            expect(AttachmentHelper.getFormattedSize(1572864)).toBe("1.5 MB");
         });
 
-        it("should format fractional megabytes with 1 decimal", () => {
-            expect(AttachmentHelper.getFormattedSize(1572864)).toBe("1.5 MB"); // 1.5 * 1024 * 1024
-        });
-
-        it("should format whole megabytes without decimals", () => {
-            expect(AttachmentHelper.getFormattedSize(10485760)).toBe("10 MB"); // 10 * 1024 * 1024
-            expect(AttachmentHelper.getFormattedSize(20971520)).toBe("20 MB"); // 20 * 1024 * 1024
+        it("should format exact megabyte limits without decimals", () => {
+            expect(AttachmentHelper.getFormattedSize(10485760)).toBe("10 MB");
+            expect(AttachmentHelper.getFormattedSize(20971520)).toBe("20 MB");
         });
     });
 
     describe("getFormattedTotalSize", () => {
         it("should calculate total size of multiple attachments", () => {
-            const attachments: Attachment[] = [
-                { name: "file1.txt", blobId: "1", size: 1024, state: "idle" },
-                { name: "file2.txt", blobId: "2", size: 2048, state: "idle" },
+            const attachments = [
+                { size: 1000 } as Attachment,
+                { size: 2000 } as Attachment,
+                { size: 3000 } as Attachment
             ];
-            expect(AttachmentHelper.getFormattedTotalSize(attachments)).toBe("3 KB");
+            expect(AttachmentHelper.getFormattedTotalSize(attachments)).toBe("6KB");
         });
 
-        it("should return 0 B for empty array", () => {
-            expect(AttachmentHelper.getFormattedTotalSize([])).toBe("0 B");
+        it("should handle empty array of attachments", () => {
+            expect(AttachmentHelper.getFormattedTotalSize([])).toBe("0B");
+        });
+
+        it("should use specified language for formatting", () => {
+            const attachments = [
+                { size: 1500 } as Attachment,
+                { size: 2500 } as Attachment
+            ];
+            expect(AttachmentHelper.getFormattedTotalSize(attachments, 'fr')).toBe("4 ko");
         });
     });
-});
+}); 
