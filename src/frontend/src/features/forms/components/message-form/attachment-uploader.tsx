@@ -14,6 +14,7 @@ import { DropZone } from './dropzone';
 import { DriveAttachmentPicker, DriveFile } from './drive-attachment-picker';
 import { Icon } from '@gouvfr-lasuite/ui-kit';
 import clsx from 'clsx';
+import { toast } from 'react-toastify';
 
 interface AttachmentUploaderProps {
     initialAttachments?: (DriveFile | Attachment)[];
@@ -34,7 +35,6 @@ export const AttachmentUploader = ({
     const [attachments, setAttachments] = useState<(DriveFile | Attachment)[]>(initialAttachments.map((a) => ({ ...a, state: 'idle' })));
     const [uploadingQueue, setUploadingQueue] = useState<File[]>([]);
     const [failedQueue, setFailedQueue] = useState<File[]>([]);
-    const [cumulativeSizeError, setCumulativeSizeError] = useState<string | null>(null);
     const { mutateAsync: uploadBlob } = useBlobUploadCreate();
     const debouncedOnChange = useDebounceCallback(onChange, 1000);
 
@@ -48,23 +48,16 @@ export const AttachmentUploader = ({
             const totalSize = currentTotalSize + newFilesSize;
 
             if (totalSize > MAX_ATTACHMENT_SIZE) {
-                const totalMB = (totalSize / 1_000_000).toFixed(1);
-                const maxMB = (MAX_ATTACHMENT_SIZE / 1_000_000).toFixed(0);
-                const currentMB = (currentTotalSize / 1_000_000).toFixed(1);
-                const newMB = (newFilesSize / 1_000_000).toFixed(1);
-
-                setCumulativeSizeError(
-                    t("Cannot add attachment(s) ({{newSize}} MB). Total would be {{totalSize}} MB, exceeding the {{maxSize}} MB limit. Current attachments: {{currentSize}} MB.", {
-                        newSize: newMB,
-                        totalSize: totalMB,
-                        maxSize: maxMB,
-                        currentSize: currentMB
+                toast.error(
+                    t("Cannot add attachment(s) ({{newSize}}). Total would be {{totalSize}}, exceeding the {{maxSize}} limit. Current attachments: {{currentSize}}.", {
+                        newSize: AttachmentHelper.getFormattedSize(newFilesSize, i18n.language),
+                        totalSize: AttachmentHelper.getFormattedSize(totalSize, i18n.language),
+                        maxSize: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language),
+                        currentSize: AttachmentHelper.getFormattedSize(currentTotalSize, i18n.language)
                     })
                 );
                 return;
             }
-
-            setCumulativeSizeError(null);
             await Promise.all(acceptedFiles.map(uploadFile));
         },
         disabled,
@@ -153,23 +146,15 @@ export const AttachmentUploader = ({
         if (form.formState.dirtyFields.attachments) {
             debouncedOnChange();
         }
-
-        // Clear cumulative size error if we're back under the limit
-        if (cumulativeSizeError && currentTotalSize <= MAX_ATTACHMENT_SIZE) {
-            setCumulativeSizeError(null);
-        }
     }, [attachments]);
 
-    // Determine error state and message
-    const hasError = isFileTooLarge || cumulativeSizeError !== null;
-    const errorText = cumulativeSizeError ||
-        (isFileTooLarge ? t("The file is too large. It must be less than {{size}}.", { size: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language) }) :
-        t("Attachments must be less than {{size}}.", { size: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language) }));
+    // Show informational text about the limit
+    const infoText = t("Attachments must be less than {{size}}.", { size: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language) });
 
     return (
         <Field
-            text={errorText}
-            state={hasError ? 'error' : 'default'}
+            text={infoText}
+            state='default'
             fullWidth
         >
         <section className={clsx("attachment-uploader", { 'attachment-uploader--disabled': disabled })} {...getRootProps()} onClick={handleClick}>

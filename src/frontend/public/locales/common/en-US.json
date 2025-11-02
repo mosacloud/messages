@@ -52,6 +52,7 @@
   "Are you sure you want to reset the password?": "Are you sure you want to reset the password?",
   "At least one recipient is required.": "At least one recipient is required.",
   "Attachments must be less than {{size}}.": "Attachments must be less than {{size}}.",
+  "Cannot add attachment(s) ({{newSize}}). Total would be {{totalSize}}, exceeding the {{maxSize}} limit. Current attachments: {{currentSize}}.": "Cannot add attachment(s) ({{newSize}}). Total would be {{totalSize}}, exceeding the {{maxSize}} limit. Current attachments: {{currentSize}}.",
   "Authentication failed. Please check your credentials and ensure you have enabled IMAP connections in your account.": "Authentication failed. Please check your credentials and ensure you have enabled IMAP connections in your account.",
   "Auto-labeling": "Auto-labeling",
   "Automatically create mailboxes according to OIDC emails": "Automatically create mailboxes according to OIDC emails",
