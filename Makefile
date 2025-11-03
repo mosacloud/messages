@@ -290,7 +290,7 @@ back-i18n-compile: ## compile the gettext files
 .PHONY: back-i18n-compile
 
 back-i18n-generate: ## create the .pot files used for i18n
-	@$(MANAGE) makemessages -a --keep-pot --all
+	@$(MANAGE) makemessages -a --keep-pot --all --no-location
 .PHONY: back-i18n-generate
 
 back-shell: ## open a shell in the backend container
