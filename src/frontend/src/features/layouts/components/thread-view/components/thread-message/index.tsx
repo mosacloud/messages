@@ -65,7 +65,7 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
 
         const getRecipientDeliveryStatus = (recipient: MessageRecipient): ContactChipDeliveryStatus | undefined => {
             // If the message has just been sent, it has not delivery status but for the sender it is useful to show that the message is being delivered
-            if (message.is_sender && recipient.delivery_status === null) {
+            if (message.is_sender && recipient.delivery_status === null && !message.is_draft) {
                 return { 'status': 'delivering', 'timestamp': null, 'message': null };
             }
             switch (recipient.delivery_status) {
