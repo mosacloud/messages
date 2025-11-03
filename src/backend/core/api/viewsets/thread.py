@@ -405,6 +405,7 @@ class ThreadViewSet(
                 size=page_size,
             )
 
+            # Retrieve and order threads from database
             ordered_threads = []
             if len(results["threads"]) > 0:
                 # Get the thread IDs from the search results
@@ -421,15 +422,21 @@ class ThreadViewSet(
                     if thread_id in thread_dict
                 ]
 
-            # Use the paginator to create a paginated response
-            page = self.paginate_queryset(ordered_threads)
-            if page is not None:
-                serializer = self.get_serializer(page, many=True)
-                return self.get_paginated_response(serializer.data)
-
+            # Return a response with minimal pagination info
+            # (only page numbers for next/previous, not full URLs)
+            # OpenSearch has already handled pagination, so we can't use the default DRF paginator.
+            # The frontend only needs: total count, and non-null next/previous values
+            # to determine if there are more pages available.
             serializer = self.get_serializer(ordered_threads, many=True)
-            return drf.response.Response(serializer.data)
-
+            total_count = results.get("total", 0)
+            return drf.response.Response(
+                {
+                    "count": total_count,
+                    "next": page + 1 if (page * page_size) < total_count else None,
+                    "previous": page - 1 if page > 1 else None,
+                    "results": serializer.data,
+                }
+            )
         # Fall back to regular DB query if no search query or OpenSearch not available
         return super().list(request, *args, **kwargs)
 
