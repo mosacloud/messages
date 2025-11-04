@@ -658,6 +658,22 @@ class Base(Configuration):
         environ_name="OIDC_USERINFO_FULLNAME_FIELDS",
         environ_prefix=None,
     )
+    # Store OIDC tokens in the session
+    OIDC_STORE_ACCESS_TOKEN = values.BooleanValue(
+        default=False,
+        environ_name="OIDC_STORE_ACCESS_TOKEN",
+        environ_prefix=None,
+    )  # Store the access token in the session
+    OIDC_STORE_REFRESH_TOKEN = values.BooleanValue(
+        default=False,
+        environ_name="OIDC_STORE_REFRESH_TOKEN",
+        environ_prefix=None,
+    )  # Store the encrypted refresh token in the session
+
+    # Required for refresh token encryption
+    OIDC_STORE_REFRESH_TOKEN_KEY = values.Value(
+        None, environ_name="OIDC_STORE_REFRESH_TOKEN_KEY", environ_prefix=None
+    )
 
     ALLOW_LOGOUT_GET_METHOD = values.BooleanValue(
         default=True, environ_name="ALLOW_LOGOUT_GET_METHOD", environ_prefix=None
@@ -755,13 +771,13 @@ class Base(Configuration):
     }
 
     # External services
-    # Settings related to the interoperability with external services
-    # that messages is able to use
+    # Settings related to the third-party services that messages is able to use
     # 1. Drive - https://github.com/suitenumerique/drive
     DRIVE_CONFIG = {
         "base_url": values.Value(
             default=None, environ_name="DRIVE_BASE_URL", environ_prefix=None
         ),
+        "file_url": "/explorer/items/files",
         "sdk_url": "/sdk",
         "api_url": "/api/v1.0",
     }
@@ -1024,6 +1040,13 @@ class Test(Base):
 
     ENABLE_PROMETHEUS = True
     PROMETHEUS_API_KEY = "test_api_key"
+
+    DRIVE_CONFIG = {
+        "base_url": "http://drive.test",
+        "file_url": "/explorer/items/files",
+        "sdk_url": "/sdk",
+        "api_url": "/api/v1.0",
+    }
 
     # pylint: disable=invalid-name
     def __init__(self):

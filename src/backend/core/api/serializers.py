@@ -388,7 +388,6 @@ class AttachmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Attachment
         fields = [
-            "id",
             "blobId",
             "name",
             "size",
@@ -1464,6 +1463,29 @@ class SendMessageSerializer(serializers.Serializer):
 
     class Meta:
         fields = ["messageId", "senderId", "archive", "textBody", "htmlBody"]
+
+    def create(self, validated_data):
+        """This serializer is only used to validate the data, not to create or update."""
+
+    def update(self, instance, validated_data):
+        """This serializer is only used to validate the data, not to create or update."""
+
+
+class PartialDriveItemSerializer(serializers.Serializer):
+    """
+    Serializer for Drive Item resource (OpenAPI purpose only...).
+    It supports partially the Drive Item resource response structure.
+    We declare only fields that are useful in the Messages context.
+    """
+
+    id = serializers.UUIDField(required=True)
+    filename = serializers.CharField(required=True)
+    mimetype = serializers.CharField(required=True)
+    size = serializers.IntegerField(required=True)
+
+    class Meta:
+        fields = ["id", "filename", "mimetype", "size"]
+        read_only_fields = fields
 
     def create(self, validated_data):
         """This serializer is only used to validate the data, not to create or update."""

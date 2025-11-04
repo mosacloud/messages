@@ -43,7 +43,7 @@ export const AttachmentUploader = ({
     const uploadingQueueSize = uploadingQueue.reduce((acc, file) => acc + file.size, 0);
     const currentTotalSize = attachmentsSize + uploadingQueueSize;
 
-    const { getRootProps, getInputProps, isDragActive, fileRejections } = useDropzone({
+    const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop: async (acceptedFiles) => {
             // Check cumulative size before uploading
             const newFilesSize = acceptedFiles.reduce((acc, file) => acc + file.size, 0);
@@ -65,24 +65,6 @@ export const AttachmentUploader = ({
         maxSize: MAX_ATTACHMENT_SIZE,
     });
 
-    // Show notification for files rejected by dropzone (too large individually)
-    useEffect(() => {
-        if (fileRejections.length > 0) {
-            const tooLargeFiles = fileRejections.filter(rejection =>
-                rejection.errors.some(err => err.code === 'file-too-large')
-            );
-            if (tooLargeFiles.length > 0) {
-                modals.messageModal({
-                    title: <span className="c__modal__text--centered">{t("File too large")}</span>,
-                    children: <span className="c__modal__text--centered">{t("The file is too large. It must be less than {{size}}.", {
-                        size: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.resolvedLanguage)
-                    })}</span>,
-                    messageType: VariantType.INFO,
-                });
-            }
-        }
-    }, [fileRejections, t, i18n.resolvedLanguage, MAX_ATTACHMENT_SIZE, modals]);
-
     const addToUploadingQueue = (attachments: File[]) => setUploadingQueue(queue => [...queue, ...attachments]);
     const addToFailedQueue = (attachments: File[]) => setFailedQueue(queue => [...queue, ...attachments]);
     const removeToQueue = (queue: File[], attachments: File[]) => {
@@ -100,7 +82,8 @@ export const AttachmentUploader = ({
     const removeToAttachments = (entries: (DriveFile | Attachment)[]) => {
         setAttachments(attachments => attachments.filter((a) => !entries.some(e => {
             if ('blobId' in a && 'blobId' in e) return e.blobId === a.blobId;
-            return e.id === a.id;
+            if ('id' in e && 'id' in a) return e.id === a.id;
+            return false;
         })));
     }
 
@@ -145,24 +128,8 @@ export const AttachmentUploader = ({
     }
 
     const handleDriveAttachmentPick = (newAttachments: DriveFile[]) => {
-        // Check cumulative size before adding drive attachments
-        const newAttachmentsSize = newAttachments.reduce((acc, attachment) => acc + attachment.size, 0);
-        const newTotalSize = currentTotalSize + newAttachmentsSize;
-
-        if (newTotalSize > MAX_ATTACHMENT_SIZE) {
-            modals.messageModal({
-                title: <span className="c__modal__text--centered">{t("Attachment size limit exceeded")}</span>,
-                children: <span className="c__modal__text--centered">{t("Cannot add attachment(s). Total size would be more than {{maxSize}}.", {
-                    maxSize: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.resolvedLanguage)
-                })}</span>,
-                messageType: VariantType.INFO,
-            });
-            return;
-        }
-
         appendToAttachments(newAttachments);
     }
-
     /**
      * Update the form value when the attachments change.
      */
@@ -234,6 +201,7 @@ export const AttachmentUploader = ({
                         {attachments.map((entry) => (
                             <AttachmentItem
                                 key={'blobId' in entry ? entry.blobId : entry.id}
+                                canDownload={false}
                                 attachment={entry}
                                 onDelete={() => removeToAttachments([entry])}
                             />

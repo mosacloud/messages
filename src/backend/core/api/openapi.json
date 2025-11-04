@@ -182,12 +182,17 @@
                                                 "api_url": {
                                                     "type": "string",
                                                     "readOnly": true
+                                                },
+                                                "file_url": {
+                                                    "type": "string",
+                                                    "readOnly": true
                                                 }
                                             },
                                             "readOnly": true,
                                             "required": [
                                                 "sdk_url",
-                                                "api_url"
+                                                "api_url",
+                                                "file_url"
                                             ]
                                         },
                                         "SCHEMA_CUSTOM_ATTRIBUTES_USER": {
@@ -4176,6 +4181,82 @@
                 }
             }
         },
+        "/api/v1.0/third-party/drive/": {
+            "get": {
+                "operationId": "third_party_drive_retrieve",
+                "description": "Search for files created by the current user.",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "title",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Search files by title.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "third-party/drive"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PaginatedDriveItemResponse"
+                                }
+                            }
+                        },
+                        "description": "Files found"
+                    }
+                }
+            },
+            "post": {
+                "operationId": "third_party_drive_create",
+                "description": "Create a new file in the main workspace.",
+                "tags": [
+                    "third-party/drive"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/DriveUploadAttachmentRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/DriveUploadAttachmentRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PartialDriveItem"
+                                }
+                            }
+                        },
+                        "description": "File created successfully"
+                    }
+                }
+            }
+        },
         "/api/v1.0/threads/": {
             "get": {
                 "operationId": "threads_list",
@@ -4990,12 +5071,6 @@
                 "type": "object",
                 "description": "Serialize attachments.",
                 "properties": {
-                    "id": {
-                        "type": "string",
-                        "format": "uuid",
-                        "readOnly": true,
-                        "description": "primary key for the record as UUID"
-                    },
                     "blobId": {
                         "type": "string",
                         "format": "uuid",
@@ -5038,7 +5113,6 @@
                     "blobId",
                     "cid",
                     "created_at",
-                    "id",
                     "name",
                     "sha256",
                     "size",
@@ -5241,6 +5315,19 @@
                 },
                 "required": [
                     "senderId"
+                ]
+            },
+            "DriveUploadAttachmentRequest": {
+                "type": "object",
+                "properties": {
+                    "blob_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "ID of the attachment to upload (format: msg_{message_id}_{attachment_index})"
+                    }
+                },
+                "required": [
+                    "blob_id"
                 ]
             },
             "FlagEnum": {
@@ -6528,6 +6615,34 @@
                     "signature"
                 ]
             },
+            "PaginatedDriveItemResponse": {
+                "type": "object",
+                "properties": {
+                    "count": {
+                        "type": "integer"
+                    },
+                    "next": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "previous": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PartialDriveItem"
+                        }
+                    }
+                },
+                "required": [
+                    "count",
+                    "next",
+                    "previous",
+                    "results"
+                ]
+            },
             "PaginatedMailDomainAdminList": {
                 "type": "object",
                 "required": [
@@ -6713,6 +6828,31 @@
                         }
                     }
                 }
+            },
+            "PartialDriveItem": {
+                "type": "object",
+                "description": "Serializer for Drive Item resource (OpenAPI purpose only...).\nIt supports partially the Drive Item resource response structure.\nWe declare only fields that are useful in the Messages context.",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "filename": {
+                        "type": "string"
+                    },
+                    "mimetype": {
+                        "type": "string"
+                    },
+                    "size": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "filename",
+                    "id",
+                    "mimetype",
+                    "size"
+                ]
             },
             "PatchedLabelRequest": {
                 "type": "object",

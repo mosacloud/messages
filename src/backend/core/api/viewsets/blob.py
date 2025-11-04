@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
 from core import models
-from core.api import permissions
+from core.api import permissions, utils
 
 # Define logger
 logger = logging.getLogger(__name__)
@@ -164,23 +164,16 @@ class BlobViewSet(ViewSet):
             # Blob IDs in the form msg_[message_id]_[attachment_number] are looked up
             # directly in the message's attachments.
             if pk.startswith("msg_"):
-                message_id = pk.split("_")[1]
-                attachment_number = pk.split("_")[2]
-                message = models.Message.objects.get(id=message_id)
-
-                # Does the user have access to the message via its thread?
-                if not models.ThreadAccess.objects.filter(
-                    thread=message.thread, mailbox__accesses__user=request.user
-                ).exists():
-                    raise models.Blob.DoesNotExist()
-
-                # Does the message have any attachments?
-                if not message.has_attachments:
-                    raise models.Blob.DoesNotExist()
-
-                # Parse the raw mime message to get the attachment
-                parsed_email = message.get_parsed_data()
-                attachment = parsed_email.get("attachments", [])[int(attachment_number)]
+                try:
+                    attachment = utils.get_attachment_from_blob_id(pk, request.user)
+                except ValueError as e:
+                    return Response(
+                        status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)}
+                    )
+                except models.Blob.DoesNotExist as e:
+                    return Response(
+                        status=status.HTTP_404_NOT_FOUND, data={"error": str(e)}
+                    )
 
                 # Create response with decompressed content
                 response = HttpResponse(

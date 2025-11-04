@@ -97,6 +97,6 @@ AI_MODEL=
 FEATURE_AI_SUMMARY=False
 FEATURE_AI_AUTOLABELS=False
 
-# Interoperability
+# Third-party services
 # Drive - https://github.com/suitenumerique/drive
 DRIVE_BASE_URL=

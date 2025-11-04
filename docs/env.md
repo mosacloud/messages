@@ -156,6 +156,9 @@ The application uses a new environment file structure with `.defaults` and `.loc
 | `OIDC_OP_LOGOUT_ENDPOINT` | None | OIDC logout endpoint | Optional |
 | `OIDC_USERINFO_ESSENTIAL_CLAIMS` | `[]` | Essential OIDC claims | Optional |
 | `OIDC_USERINFO_FULLNAME_FIELDS` | `["first_name", "last_name"]` | Fields to use for full name | Optional |
+| `OIDC_STORE_ACCESS_TOKEN` | `False` | Store access token | Optional |
+| `OIDC_STORE_REFRESH_TOKEN` | `False` | Store refresh token | Optional |
+| `OIDC_STORE_REFRESH_TOKEN_KEY` | `None` | Refresh token encryption key (Must be a valid Fernet key) | Optional |
 
 
 ### OIDC Advanced Settings
@@ -281,7 +284,7 @@ _Those settings are deprecated and will be removed in the future._
 | `FEATURE_AI_SUMMARY` | `False` | Default enabled mode for summary AI features | Required |
 | `FEATURE_AI_AUTOLABELS` | `False` | Default enabled mode for label AI features | Required |
 
-### External Services
+### Third-party Services
 
 #### Drive
 

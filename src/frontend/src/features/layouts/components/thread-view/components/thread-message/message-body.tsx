@@ -186,6 +186,10 @@ const MessageBody = ({ rawHtmlBody, rawTextBody = '', attachments = [], isHidden
                     border-color: #eee !important;
                 }
 
+                img {
+                    max-width: 100vw;
+                }
+
                 pre {
                     background-color: #f6f8fa;
                     border-radius: 3px;

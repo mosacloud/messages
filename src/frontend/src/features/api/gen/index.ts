@@ -11,6 +11,7 @@ export * from "./maildomains/maildomains";
 export * from "./maildomain-accesses/maildomain-accesses";
 export * from "./placeholders/placeholders";
 export * from "./tasks/tasks";
+export * from "./third-party-drive/third-party-drive";
 export * from "./threads/threads";
 export * from "./thread-access/thread-access";
 export * from "./admin-users-list/admin-users-list";

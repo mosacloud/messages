@@ -6,6 +6,8 @@ import { Attachment } from "@/features/api/gen/models"
 import { AttachmentHelper } from "@/features/utils/attachment-helper";
 import { DriveIcon } from "@/features/forms/components/message-form/drive-icon";
 import { DriveFile } from "@/features/forms/components/message-form/drive-attachment-picker";
+import { DriveUploadButton } from "./drive-upload-button";
+import { DrivePreviewLink } from "./drive-preview-link";
 
 type AttachmentItemProps = {
     attachment: Attachment | File | DriveFile;
@@ -33,9 +35,9 @@ export const AttachmentItem = ({ attachment, isLoading = false, canDownload = tr
         <div className={clsx("attachment-item", { "attachment-item--loading": isLoading, "attachment-item--error": variant === "error" })} title={attachment.name}>
             <div className="attachment-item-metadata">
                 <div className="attachment-item-icon-container">
-                    { variant === "error" ?
+                    {variant === "error" ?
                         <Icon name="error" className="attachment-item-icon attachment-item-icon--error" />
-                    :
+                        :
                         (
                             <>
                                 <img className="attachment-item-icon" src={icon} alt="" />
@@ -67,17 +69,22 @@ export const AttachmentItem = ({ attachment, isLoading = false, canDownload = tr
                             />
                         }
                         {
-                            canDownload && downloadUrl &&
-                            <Button
-                                aria-label={t("Download")}
-                                title={t("Download")}
-                                size="medium"
-                                icon={<Icon name="download" />}
-                                color="tertiary-text"
-                                href={downloadUrl}
-                                download={attachment.name}
-                            />
+                            canDownload && downloadUrl && (
+                                <>
+                                    <Button
+                                        aria-label={t("Download")}
+                                        title={t("Download")}
+                                        size="medium"
+                                        icon={<Icon name="download" />}
+                                        color="tertiary-text"
+                                        href={downloadUrl}
+                                        download={attachment.name}
+                                    />
+                                    {isAttachment(attachment) && <DriveUploadButton attachment={attachment} />}
+                                </>
+                            )
                         }
+                        {isDriveFile(attachment) && <DrivePreviewLink fileId={attachment.id} />}
                         {
                             onDelete &&
                             <Button

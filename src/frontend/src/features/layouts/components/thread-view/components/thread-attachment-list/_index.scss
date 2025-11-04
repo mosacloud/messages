@@ -19,7 +19,8 @@
     align-items: center;
     gap: var(--c--theme--spacings--base);
     background-color: var(--c--theme--colors--greyscale-050);
-    padding: var(--c--theme--spacings--xs) var(--c--theme--spacings--base);
+    padding: var(--c--theme--spacings--xs);
+    padding-right: var(--c--theme--spacings--2xs);
     border-radius: var(--c--theme--spacings--3xs);
     border: 1px solid var(--c--theme--colors--greyscale-200);
     transition: opacity var(--c--theme--transitions--duration) var(--c--theme--transitions--ease-out);
@@ -38,7 +39,7 @@
 .attachment-item-actions {
     display: flex;
     flex-direction: row;
-    gap: var(--c--theme--spacings--2xs);
+    // gap: var(--c--theme--spacings--2xs);
     flex-wrap: nowrap;
     flex: 0 0 auto;
 }
@@ -137,5 +138,44 @@
     margin: 0;
 }
 
+.attachment-item-drive-upload-button-container {
+    position: relative;
+}
 
+.attachment-item--drive-upload-tooltip {
+    position: absolute;
+    right: -20%;
+    top: 50%;
+    transform: translateY(0%);
+    background-color: var(--c--theme--colors--primary-050);
+    border: thin solid var(--c--theme--colors--primary-200);
+    font-size: var(--c--theme--font--sizes--sm);
+    color: var(--c--theme--colors--primary-600);
+    width: max-content;
+    max-width: 300px;
+    border-radius: var(--c--theme--spacings--3xs);
+    padding: var(--c--theme--spacings--3xs) var(--c--theme--spacings--2xs);
+    box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.1);
+    visibility: hidden;
+    opacity: 0;
+    z-index: 1000;
+    transition-property: transform, all;
+    transition-delay: 0.1s, 0s;
+    transition-duration: 0.25s, 0.4s;
+    transition-timing-function: var(--c--theme--transitions--ease-out);
+
+    &--error {
+        background-color: var(--c--theme--colors--danger-050);
+        border: thin solid var(--c--theme--colors--danger-200);
+        color: var(--c--theme--colors--danger-600);
+    }
+
+    &--visible {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(50%);
+        transition-delay: 0s, 0.1s;
+        transition-duration: 0.4s, 0.25s;
+    }
+}
 

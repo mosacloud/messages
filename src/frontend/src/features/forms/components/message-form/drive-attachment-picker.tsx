@@ -8,7 +8,7 @@ import { FEATURE_KEYS, useFeatureFlag } from "@/hooks/use-feature";
 import { DriveIcon } from "./drive-icon";
 import { Attachment } from "@/features/api/gen/models/attachment";
 
-export type DriveFile = { url: string } & Omit<Attachment, 'sha256' | 'blobId' | 'cid'>;
+export type DriveFile = { id: string, url: string } & Omit<Attachment, 'sha256' | 'blobId' | 'cid'>;
 
 type DriveAttachmentPickerProps = {
     onPick: (attachments: DriveFile[]) => void;

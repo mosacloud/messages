@@ -1,11 +1,14 @@
 """Util to generate S3 authorization headers for object storage access control"""
 
 import hashlib
+import uuid
 
 from django.conf import settings
 
 import boto3
 import botocore
+
+from core import models
 
 
 def flat_to_nested(items):
@@ -66,6 +69,56 @@ def generate_presigned_url(storage, *args, **kwargs):
         s3_client = storage.connection.meta.client
 
     return s3_client.generate_presigned_url(*args, **kwargs)
+
+
+def get_attachment_from_blob_id(blob_id, user):
+    """
+    Parse a given blob ID to get the attachment data from the related message raw mime.
+    Blob IDs in the form msg_[message_id]_[attachment_number] are looked up
+    directly in the message's attachments.
+    """
+    if not blob_id.startswith("msg_"):
+        raise ValueError("Invalid blob ID")
+
+    blob_id_parts = blob_id.split("_")
+
+    if len(blob_id_parts) != 3:
+        raise ValueError("Invalid blob ID")
+
+    try:
+        message_id = uuid.UUID(blob_id_parts[1])
+    except ValueError as exc:
+        raise ValueError("Invalid message ID") from exc
+
+    try:
+        attachment_number = int(blob_id_parts[2])
+    except ValueError as exc:
+        raise ValueError("Invalid attachment number") from exc
+
+    # Does the message exist?
+    try:
+        message = models.Message.objects.get(id=message_id)
+    except models.Message.DoesNotExist as exc:
+        raise models.Blob.DoesNotExist() from exc
+
+    # Does the user have access to the message via its thread?
+    if not models.ThreadAccess.objects.filter(
+        thread=message.thread, mailbox__accesses__user=user
+    ).exists():
+        raise models.Blob.DoesNotExist()
+
+    # Does the message have any attachments?
+    if not message.has_attachments:
+        raise models.Blob.DoesNotExist()
+
+    # Parse the raw mime message to get the attachment
+    parsed_email = message.get_parsed_data()
+    attachment = parsed_email.get("attachments", [])[attachment_number]
+
+    if not attachment:
+        raise models.Blob.DoesNotExist()
+
+    return attachment
 
 
 # def generate_s3_authorization_headers(key):

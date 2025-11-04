@@ -10,8 +10,6 @@
  * Serialize attachments.
  */
 export interface Attachment {
-  /** primary key for the record as UUID */
-  readonly id: string;
   readonly blobId: string;
   /** Original filename of the attachment */
   readonly name: string;

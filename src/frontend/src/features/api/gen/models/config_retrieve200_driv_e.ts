@@ -12,4 +12,5 @@
 export type ConfigRetrieve200DRIVE = {
   readonly sdk_url: string;
   readonly api_url: string;
+  readonly file_url: string;
 };

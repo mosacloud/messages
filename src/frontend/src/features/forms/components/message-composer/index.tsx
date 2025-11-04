@@ -139,9 +139,6 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
         handleChange(editor,false);
     }, [editor])
 
-    /**
-     * Add signature to editor after signatures are loaded
-     */
     useEffect(() => {
         if (!editor || isLoadingSignatures) return;
 

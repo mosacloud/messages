@@ -59,6 +59,7 @@ def test_api_config(is_authenticated):
         "base_url": "http://localhost:8902",
         "sdk_url": "/sdk",
         "api_url": "/api/v1.0",
+        "file_url": "/explorer/items/files",
     }
 )
 def test_api_config_with_external_services():
@@ -70,4 +71,5 @@ def test_api_config_with_external_services():
     assert response.json().get("DRIVE") == {
         "sdk_url": "http://localhost:8902/sdk",
         "api_url": "http://localhost:8902/api/v1.0",
+        "file_url": "http://localhost:8902/explorer/items/files",
     }

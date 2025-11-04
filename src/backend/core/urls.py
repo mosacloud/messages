@@ -9,6 +9,7 @@ from core.api.viewsets.blob import BlobViewSet
 from core.api.viewsets.config import ConfigView
 from core.api.viewsets.contacts import ContactViewSet
 from core.api.viewsets.draft import DraftMessageView
+from core.api.viewsets.drive import DriveAPIView
 from core.api.viewsets.flag import ChangeFlagView
 from core.api.viewsets.import_message import ImportViewSet, MessagesArchiveUploadViewSet
 from core.api.viewsets.inbound.mta import InboundMTAViewSet
@@ -109,7 +110,6 @@ mailbox_message_template_nested_router.register(
     MailboxMessageTemplateViewSet,
     basename="mailbox-message-templates",
 )
-
 
 urlpatterns = [
     path(
@@ -212,6 +212,15 @@ urlpatterns = [
         name="mta-inbound-email",
     ),
 ]
+
+if settings.DRIVE_CONFIG.get("base_url"):
+    urlpatterns += [
+        path(
+            f"api/{settings.API_VERSION}/third-party/drive/",
+            DriveAPIView.as_view(),
+            name="drive",
+        ),
+    ]
 
 if settings.ENABLE_PROMETHEUS:
     urlpatterns += [

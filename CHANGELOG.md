@@ -7,3 +7,11 @@ and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+
+- Inherit OIDC Authentication backend from django-lasuite #408
+
+### Added
+
+- Allow to save an attachment into Drive workspace #408
