@@ -33,6 +33,7 @@ IMAP_LABEL_TO_MESSAGE_FLAG = {
     "[Gmail]/Brouillons": "is_draft",
     "DRAFT": "is_draft",
     "Draft": "is_draft",
+    "INBOX.INBOX.Drafts": "is_draft",
     "Sent": "is_sender",
     "Messages envoyés": "is_sender",
     "[Gmail]/Sent Mail": "is_sender",
@@ -40,6 +41,7 @@ IMAP_LABEL_TO_MESSAGE_FLAG = {
     "[Gmail]/Messages envoyés": "is_sender",
     "Sent Mail": "is_sender",
     "Mails envoyés": "is_sender",
+    "INBOX.INBOX.Sent": "is_sender",
     "Archived": "is_archived",
     "Messages archivés": "is_archived",
     "Starred": "is_starred",
@@ -50,6 +52,7 @@ IMAP_LABEL_TO_MESSAGE_FLAG = {
     "TRASH": "is_trashed",
     "[Gmail]/Corbeille": "is_trashed",
     "Corbeille": "is_trashed",
+    "INBOX.INBOX.Trash": "is_trashed",
     # TODO: '[Gmail]/Important'
     "OUTBOX": "is_sender",
 }
@@ -57,6 +60,7 @@ IMAP_LABEL_TO_MESSAGE_FLAG = {
 IMAP_LABEL_TO_THREAD_FLAG = {
     "Spam": "is_spam",
     "QUARANTAINE": "is_spam",
+    "INBOX.INBOX.Junk": "is_spam",
 }
 
 IMAP_READ_UNREAD_LABELS = {
@@ -102,6 +106,8 @@ def compute_labels_and_flags(
         cleaned_label = original_label.strip()
         if cleaned_label.startswith("INBOX/"):
             cleaned_label = "/".join(cleaned_label.split("/")[1:]).strip()
+        if cleaned_label.startswith("INBOX."):
+            cleaned_label = ".".join(cleaned_label.split(".")[1:]).strip()
         # Handle read/unread status
         if cleaned_label in IMAP_READ_UNREAD_LABELS:
             if IMAP_READ_UNREAD_LABELS[cleaned_label] == "read":
