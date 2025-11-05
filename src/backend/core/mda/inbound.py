@@ -124,6 +124,10 @@ def compute_labels_and_flags(
         is_seen = "\\Seen" in imap_flags
         message_flags["is_unread"] = not is_seen
 
+        # Handle \\Draft flag
+        if "\\Draft" in imap_flags:
+            message_flags["is_draft"] = True
+
     # Special case: if message is sender or draft, it should not be unread
     if message_flags.get("is_sender") or message_flags.get("is_draft"):
         message_flags["is_unread"] = False
@@ -643,11 +647,14 @@ def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-stat
                     )
 
                 # Create the link between message and contact
-                models.MessageRecipient.objects.create(
-                    message=message,
-                    contact=recipient_contact,
-                    type=recipient_type,
-                )
+                data = {
+                    "message": message,
+                    "contact": recipient_contact,
+                    "type": recipient_type,
+                }
+                if is_import and not message.is_draft:
+                    data["delivery_status"] = enums.MessageDeliveryStatusChoices.SENT
+                models.MessageRecipient.objects.create(**data)
             except ValidationError as e:
                 logger.error(
                     "Validation error creating recipient contact/link (%s) for message %s: %s",
