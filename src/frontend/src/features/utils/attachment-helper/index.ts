@@ -69,18 +69,26 @@ export class AttachmentHelper {
     static getFormattedSize(size: number, language: string = 'en') {
         // Use binary (1024) conversion for user-friendly display
         // This matches file system conventions and gives clean numbers
-        const MB = 1024 * 1024;
-        const KB = 1024;
+        const formatter = (value: number, unit: string) => {
+            return new Intl.NumberFormat(language, {
+                style: 'unit',
+                unit: unit,
+                maximumFractionDigits: 1
+            }).format(value);
+        };
 
-        if (size >= MB) {
-            const mb = size / MB;
-            // Show whole number if it's exact, otherwise 1 decimal
-            return mb % 1 === 0 ? `${mb} MB` : `${mb.toFixed(1)} MB`;
-        } else if (size >= KB) {
-            const kb = size / KB;
-            return kb % 1 === 0 ? `${kb} KB` : `${kb.toFixed(1)} KB`;
+        const KB = 1024;
+        const MB = 1024 * 1024;
+        const GB = 1024 * 1024 * 1024;
+
+        if (size < KB) {
+            return formatter(size, 'byte');
+        } else if (size < MB) {
+            return formatter(size / KB, 'kilobyte');
+        } else if (size < GB) {
+            return formatter(size / MB, 'megabyte');
         } else {
-            return `${size} B`;
+            return formatter(size / GB, 'gigabyte');
         }
     }
 

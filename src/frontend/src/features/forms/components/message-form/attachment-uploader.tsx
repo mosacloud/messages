@@ -4,7 +4,7 @@ import { useBlobUploadCreate } from "@/features/api/gen/blob/blob";
 import { useMailboxContext } from '@/features/providers/mailbox';
 import { useConfig } from '@/features/providers/config';
 import { useFormContext } from 'react-hook-form';
-import { Button, Field } from '@openfun/cunningham-react';
+import { Button, Field, useModals, VariantType } from '@openfun/cunningham-react';
 import { AttachmentItem } from '@/features/layouts/components/thread-view/components/thread-attachment-list/attachment-item';
 import { useTranslation } from 'react-i18next';
 import { useDropzone } from 'react-dropzone';
@@ -14,7 +14,6 @@ import { DropZone } from './dropzone';
 import { DriveAttachmentPicker, DriveFile } from './drive-attachment-picker';
 import { Icon } from '@gouvfr-lasuite/ui-kit';
 import clsx from 'clsx';
-import { addToast, ToasterItem } from '@/features/ui/components/toaster';
 
 interface AttachmentUploaderProps {
     initialAttachments?: (DriveFile | Attachment)[];
@@ -31,6 +30,7 @@ export const AttachmentUploader = ({
     const { t, i18n } = useTranslation();
     const { selectedMailbox } = useMailboxContext();
     const config = useConfig();
+    const modals = useModals();
     const MAX_ATTACHMENT_SIZE = config.MAX_OUTGOING_ATTACHMENT_SIZE;
     const [attachments, setAttachments] = useState<(DriveFile | Attachment)[]>(initialAttachments.map((a) => ({ ...a, state: 'idle' })));
     const [uploadingQueue, setUploadingQueue] = useState<File[]>([]);
@@ -38,8 +38,10 @@ export const AttachmentUploader = ({
     const { mutateAsync: uploadBlob } = useBlobUploadCreate();
     const debouncedOnChange = useDebounceCallback(onChange, 1000);
 
-    // Calculate current total size of attachments
-    const currentTotalSize = attachments.reduce((acc, attachment) => acc + attachment.size, 0);
+    // Calculate current total size of attachments and pending uploads
+    const attachmentsSize = attachments.reduce((acc, attachment) => acc + attachment.size, 0);
+    const uploadingQueueSize = uploadingQueue.reduce((acc, file) => acc + file.size, 0);
+    const currentTotalSize = attachmentsSize + uploadingQueueSize;
 
     const { getRootProps, getInputProps, isDragActive, fileRejections } = useDropzone({
         onDrop: async (acceptedFiles) => {
@@ -48,16 +50,13 @@ export const AttachmentUploader = ({
             const totalSize = currentTotalSize + newFilesSize;
 
             if (totalSize > MAX_ATTACHMENT_SIZE) {
-                addToast(
-                    <ToasterItem type="error">
-                        <span>{t("Cannot add attachment(s) ({{newSize}}). Total would be {{totalSize}}, exceeding the {{maxSize}} limit. Current attachments: {{currentSize}}.", {
-                            newSize: AttachmentHelper.getFormattedSize(newFilesSize, i18n.language),
-                            totalSize: AttachmentHelper.getFormattedSize(totalSize, i18n.language),
-                            maxSize: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language),
-                            currentSize: AttachmentHelper.getFormattedSize(currentTotalSize, i18n.language)
-                        })}</span>
-                    </ToasterItem>
-                );
+                modals.messageModal({
+                    title: t("Attachment size limit exceeded"),
+                    children: t("Cannot add attachment(s). Total size would be more than {{maxSize}}.", {
+                        maxSize: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language)
+                    }),
+                    messageType: VariantType.ERROR,
+                });
                 return;
             }
             await Promise.all(acceptedFiles.map(uploadFile));
@@ -73,16 +72,16 @@ export const AttachmentUploader = ({
                 rejection.errors.some(err => err.code === 'file-too-large')
             );
             if (tooLargeFiles.length > 0) {
-                addToast(
-                    <ToasterItem type="error">
-                        <span>{t("The file is too large. It must be less than {{size}}.", {
-                            size: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language)
-                        })}</span>
-                    </ToasterItem>
-                );
+                modals.messageModal({
+                    title: t("File too large"),
+                    children: t("The file is too large. It must be less than {{size}}.", {
+                        size: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language)
+                    }),
+                    messageType: VariantType.ERROR,
+                });
             }
         }
-    }, [fileRejections, t, i18n.language, MAX_ATTACHMENT_SIZE]);
+    }, [fileRejections, t, i18n.language, MAX_ATTACHMENT_SIZE, modals]);
 
     const addToUploadingQueue = (attachments: File[]) => setUploadingQueue(queue => [...queue, ...attachments]);
     const addToFailedQueue = (attachments: File[]) => setFailedQueue(queue => [...queue, ...attachments]);
