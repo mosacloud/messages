@@ -28,6 +28,7 @@ import type {
   MailboxesMessageTemplatesAvailableListParams,
   MailboxesMessageTemplatesListParams,
   MailboxesMessageTemplatesRenderRetrieve200,
+  MailboxesMessageTemplatesRenderRetrieveParams,
   MailboxesSearchListParams,
   MessageTemplate,
   MessageTemplateRequest,
@@ -1299,17 +1300,31 @@ export type mailboxesMessageTemplatesRenderRetrieveResponse =
 export const getMailboxesMessageTemplatesRenderRetrieveUrl = (
   mailboxId: string,
   id: string,
+  params?: MailboxesMessageTemplatesRenderRetrieveParams,
 ) => {
-  return `/api/v1.0/mailboxes/${mailboxId}/message-templates/${id}/render/`;
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/v1.0/mailboxes/${mailboxId}/message-templates/${id}/render/?${stringifiedParams}`
+    : `/api/v1.0/mailboxes/${mailboxId}/message-templates/${id}/render/`;
 };
 
 export const mailboxesMessageTemplatesRenderRetrieve = async (
   mailboxId: string,
   id: string,
+  params?: MailboxesMessageTemplatesRenderRetrieveParams,
   options?: RequestInit,
 ): Promise<mailboxesMessageTemplatesRenderRetrieveResponse> => {
   return fetchAPI<mailboxesMessageTemplatesRenderRetrieveResponse>(
-    getMailboxesMessageTemplatesRenderRetrieveUrl(mailboxId, id),
+    getMailboxesMessageTemplatesRenderRetrieveUrl(mailboxId, id, params),
     {
       ...options,
       method: "GET",
@@ -1320,9 +1335,11 @@ export const mailboxesMessageTemplatesRenderRetrieve = async (
 export const getMailboxesMessageTemplatesRenderRetrieveQueryKey = (
   mailboxId: string,
   id: string,
+  params?: MailboxesMessageTemplatesRenderRetrieveParams,
 ) => {
   return [
     `/api/v1.0/mailboxes/${mailboxId}/message-templates/${id}/render/`,
+    ...(params ? [params] : []),
   ] as const;
 };
 
@@ -1332,6 +1349,7 @@ export const getMailboxesMessageTemplatesRenderRetrieveQueryOptions = <
 >(
   mailboxId: string,
   id: string,
+  params?: MailboxesMessageTemplatesRenderRetrieveParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -1347,12 +1365,12 @@ export const getMailboxesMessageTemplatesRenderRetrieveQueryOptions = <
 
   const queryKey =
     queryOptions?.queryKey ??
-    getMailboxesMessageTemplatesRenderRetrieveQueryKey(mailboxId, id);
+    getMailboxesMessageTemplatesRenderRetrieveQueryKey(mailboxId, id, params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof mailboxesMessageTemplatesRenderRetrieve>>
   > = ({ signal }) =>
-    mailboxesMessageTemplatesRenderRetrieve(mailboxId, id, {
+    mailboxesMessageTemplatesRenderRetrieve(mailboxId, id, params, {
       signal,
       ...requestOptions,
     });
@@ -1380,6 +1398,7 @@ export function useMailboxesMessageTemplatesRenderRetrieve<
 >(
   mailboxId: string,
   id: string,
+  params: undefined | MailboxesMessageTemplatesRenderRetrieveParams,
   options: {
     query: Partial<
       UseQueryOptions<
@@ -1408,6 +1427,7 @@ export function useMailboxesMessageTemplatesRenderRetrieve<
 >(
   mailboxId: string,
   id: string,
+  params?: MailboxesMessageTemplatesRenderRetrieveParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -1436,6 +1456,7 @@ export function useMailboxesMessageTemplatesRenderRetrieve<
 >(
   mailboxId: string,
   id: string,
+  params?: MailboxesMessageTemplatesRenderRetrieveParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -1457,6 +1478,7 @@ export function useMailboxesMessageTemplatesRenderRetrieve<
 >(
   mailboxId: string,
   id: string,
+  params?: MailboxesMessageTemplatesRenderRetrieveParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -1474,6 +1496,7 @@ export function useMailboxesMessageTemplatesRenderRetrieve<
   const queryOptions = getMailboxesMessageTemplatesRenderRetrieveQueryOptions(
     mailboxId,
     id,
+    params,
     options,
   );
 

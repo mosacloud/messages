@@ -38,14 +38,15 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
         const replyFormRef = useRef<HTMLDivElement>(null);
         const threadViewContext = useThreadViewContext()
         const isMessageReady = threadViewContext.isMessageReady(message.id);
+        const [isMessageBodyLoaded, setIsMessageBodyLoaded] = useState(false);
         const [isFolded, setIsFolded] = useState(!isLatest && !message.is_unread && !draftMessage?.is_draft);
         const [replyFormMode, setReplyFormMode] = useState<MessageFormMode | null>(getReplyFormMode)
         const previousReplyFormMode = usePrevious<MessageFormMode | null>(replyFormMode);
+        const { unselectThread, selectedThread, messages, selectedMailbox, queryStates } = useMailboxContext()
         const showReplyForm = replyFormMode !== null;
         const isSuspiciousSender = Boolean(message.stmsg_headers?.['sender-auth'] === 'none');
         const { markAsUnread } = useRead()
         const { markAsTrashed, markAsUntrashed } = useTrash()
-        const { unselectThread, selectedThread, messages, selectedMailbox } = useMailboxContext()
         const [isDropdownOpen, setIsDropdownOpen] = useState(false)
         const canSendMessages = useAbility(Abilities.CAN_SEND_MESSAGES, selectedMailbox);
         const hasSiblingMessages = useMemo(() => {
@@ -65,7 +66,7 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
 
         const getRecipientDeliveryStatus = (recipient: MessageRecipient): ContactChipDeliveryStatus | undefined => {
             // If the message has just been sent, it has not delivery status but for the sender it is useful to show that the message is being delivered
-            if (message.is_sender && recipient.delivery_status === null) {
+            if (message.is_sender && recipient.delivery_status === null && !message.is_draft) {
                 return { 'status': 'delivering', 'timestamp': null, 'message': null };
             }
             switch (recipient.delivery_status) {
@@ -109,6 +110,12 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
                 }
             }
         }, [showReplyForm, threadViewContext.isReady]);
+
+        useEffect(() => {
+            if (isMessageBodyLoaded && !queryStates.messages.isFetching) {
+                threadViewContext.setMessageReadiness(message.id, true);
+            }
+        }, [isMessageBodyLoaded, queryStates.messages.isFetching, message.id]);
 
         return (
             <section id={`thread-message-${message.id}`} className={clsx("thread-message", {
@@ -331,7 +338,7 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
                     attachments={message.attachments}
                     isHidden={isFolded || !isMessageReady}
                     onLoad={() => {
-                        threadViewContext.setMessageReadiness(message.id, true)
+                        setIsMessageBodyLoaded(true);
                     }}
                 />
                 <footer className="thread-message__footer">
@@ -371,7 +378,7 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
                         )
                     }
                 </footer>
-                {showReplyForm &&
+                {isMessageReady && showReplyForm &&
                     <section className="thread-message__reply-form" ref={replyFormRef}>
                         <MessageReplyForm
                             mode={replyFormMode}

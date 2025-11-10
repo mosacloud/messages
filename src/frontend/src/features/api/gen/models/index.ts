@@ -71,6 +71,7 @@ export * from "./mailboxes_message_templates_available_list_type";
 export * from "./mailboxes_message_templates_list_params";
 export * from "./mailboxes_message_templates_list_type_item";
 export * from "./mailboxes_message_templates_render_retrieve200";
+export * from "./mailboxes_message_templates_render_retrieve_params";
 export * from "./mailboxes_search_list_params";
 export * from "./maildomain_access_read";
 export * from "./maildomain_access_write";

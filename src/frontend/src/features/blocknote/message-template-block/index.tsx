@@ -2,19 +2,20 @@ import { useBlockNoteEditor, useComponentsContext } from "@blocknote/react";
 import { useTranslation } from "react-i18next";
 import { Icon, IconSize, Spinner } from "@gouvfr-lasuite/ui-kit";
 import { Modal, ModalSize } from "@openfun/cunningham-react";
-import { MessageTemplateTypeChoices, ReadOnlyMessageTemplate, useMailboxesMessageTemplatesAvailableList, mailboxesMessageTemplatesRenderRetrieve } from "@/features/api/gen";
+import { MessageTemplateTypeChoices, ReadOnlyMessageTemplate, useMailboxesMessageTemplatesAvailableList, mailboxesMessageTemplatesRenderRetrieve, MailboxesMessageTemplatesRenderRetrieveParams } from "@/features/api/gen";
 import { MessageComposerBlockSchema, MessageComposerInlineContentSchema, MessageComposerStyleSchema, PartialMessageComposerBlockSchema } from "@/features/forms/components/message-composer";
 import { useModal } from "@openfun/cunningham-react";
 
 type MessageTemplateSelectorProps = {
     mailboxId: string;
+    context?: Record<string, string>;
 }
 
 /**
  * A BlockNote toolbar selector which allows the user to select a message template
  * from all active templates for a given mailbox.
  */
-export const MessageTemplateSelector = ({ mailboxId }: MessageTemplateSelectorProps) => {
+export const MessageTemplateSelector = ({ mailboxId, context = {} }: MessageTemplateSelectorProps) => {
     const { t } = useTranslation();
     const editor = useBlockNoteEditor<MessageComposerBlockSchema, MessageComposerInlineContentSchema, MessageComposerStyleSchema>();
     const Components = useComponentsContext()!;
@@ -35,7 +36,8 @@ export const MessageTemplateSelector = ({ mailboxId }: MessageTemplateSelectorPr
             // Get rendered template content (allows to use placeholders)
             const { data: renderedTemplate } = await mailboxesMessageTemplatesRenderRetrieve(
                 mailboxId,
-                template.id
+                template.id,
+                context as MailboxesMessageTemplatesRenderRetrieveParams,
             );
             if (!renderedTemplate?.html_body) {
                 console.error("Failed to render template");

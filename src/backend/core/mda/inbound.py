@@ -33,6 +33,7 @@ IMAP_LABEL_TO_MESSAGE_FLAG = {
     "[Gmail]/Brouillons": "is_draft",
     "DRAFT": "is_draft",
     "Draft": "is_draft",
+    "INBOX.INBOX.Drafts": "is_draft",
     "Sent": "is_sender",
     "Messages envoyés": "is_sender",
     "[Gmail]/Sent Mail": "is_sender",
@@ -40,6 +41,7 @@ IMAP_LABEL_TO_MESSAGE_FLAG = {
     "[Gmail]/Messages envoyés": "is_sender",
     "Sent Mail": "is_sender",
     "Mails envoyés": "is_sender",
+    "INBOX.INBOX.Sent": "is_sender",
     "Archived": "is_archived",
     "Messages archivés": "is_archived",
     "Starred": "is_starred",
@@ -50,6 +52,7 @@ IMAP_LABEL_TO_MESSAGE_FLAG = {
     "TRASH": "is_trashed",
     "[Gmail]/Corbeille": "is_trashed",
     "Corbeille": "is_trashed",
+    "INBOX.INBOX.Trash": "is_trashed",
     # TODO: '[Gmail]/Important'
     "OUTBOX": "is_sender",
 }
@@ -57,6 +60,7 @@ IMAP_LABEL_TO_MESSAGE_FLAG = {
 IMAP_LABEL_TO_THREAD_FLAG = {
     "Spam": "is_spam",
     "QUARANTAINE": "is_spam",
+    "INBOX.INBOX.Junk": "is_spam",
 }
 
 IMAP_READ_UNREAD_LABELS = {
@@ -102,6 +106,8 @@ def compute_labels_and_flags(
         cleaned_label = original_label.strip()
         if cleaned_label.startswith("INBOX/"):
             cleaned_label = "/".join(cleaned_label.split("/")[1:]).strip()
+        if cleaned_label.startswith("INBOX."):
+            cleaned_label = ".".join(cleaned_label.split(".")[1:]).strip()
         # Handle read/unread status
         if cleaned_label in IMAP_READ_UNREAD_LABELS:
             if IMAP_READ_UNREAD_LABELS[cleaned_label] == "read":
@@ -123,6 +129,10 @@ def compute_labels_and_flags(
         # If the \\Seen flag is present, the message is read
         is_seen = "\\Seen" in imap_flags
         message_flags["is_unread"] = not is_seen
+
+        # Handle \\Draft flag
+        if "\\Draft" in imap_flags:
+            message_flags["is_draft"] = True
 
     # Special case: if message is sender or draft, it should not be unread
     if message_flags.get("is_sender") or message_flags.get("is_draft"):
@@ -643,11 +653,14 @@ def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-stat
                     )
 
                 # Create the link between message and contact
-                models.MessageRecipient.objects.create(
-                    message=message,
-                    contact=recipient_contact,
-                    type=recipient_type,
-                )
+                data = {
+                    "message": message,
+                    "contact": recipient_contact,
+                    "type": recipient_type,
+                }
+                if is_import and not message.is_draft:
+                    data["delivery_status"] = enums.MessageDeliveryStatusChoices.SENT
+                models.MessageRecipient.objects.create(**data)
             except ValidationError as e:
                 logger.error(
                     "Validation error creating recipient contact/link (%s) for message %s: %s",
