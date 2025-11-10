@@ -144,8 +144,23 @@ export const AttachmentUploader = ({
         }
     }
 
-    const handleDriveAttachmentPick = (attachments: DriveFile[]) => {
-        appendToAttachments(attachments);
+    const handleDriveAttachmentPick = (newAttachments: DriveFile[]) => {
+        // Check cumulative size before adding drive attachments
+        const newAttachmentsSize = newAttachments.reduce((acc, attachment) => acc + attachment.size, 0);
+        const newTotalSize = currentTotalSize + newAttachmentsSize;
+
+        if (newTotalSize > MAX_ATTACHMENT_SIZE) {
+            modals.messageModal({
+                title: <span className="c__modal__text--centered">{t("Attachment size limit exceeded")}</span>,
+                children: <span className="c__modal__text--centered">{t("Cannot add attachment(s). Total size would be more than {{maxSize}}.", {
+                    maxSize: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language)
+                })}</span>,
+                messageType: VariantType.INFO,
+            });
+            return;
+        }
+
+        appendToAttachments(newAttachments);
     }
 
     /**
