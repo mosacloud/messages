@@ -53,7 +53,7 @@ export const AttachmentUploader = ({
                 modals.messageModal({
                     title: <span className="c__modal__text--centered">{t("Attachment size limit exceeded")}</span>,
                     children: <span className="c__modal__text--centered">{t("Cannot add attachment(s). Total size would be more than {{maxSize}}.", {
-                        maxSize: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language)
+                        maxSize: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.resolvedLanguage)
                     })}</span>,
                     messageType: VariantType.INFO,
                 });
@@ -75,13 +75,13 @@ export const AttachmentUploader = ({
                 modals.messageModal({
                     title: <span className="c__modal__text--centered">{t("File too large")}</span>,
                     children: <span className="c__modal__text--centered">{t("The file is too large. It must be less than {{size}}.", {
-                        size: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language)
+                        size: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.resolvedLanguage)
                     })}</span>,
                     messageType: VariantType.INFO,
                 });
             }
         }
-    }, [fileRejections, t, i18n.language, MAX_ATTACHMENT_SIZE, modals]);
+    }, [fileRejections, t, i18n.resolvedLanguage, MAX_ATTACHMENT_SIZE, modals]);
 
     const addToUploadingQueue = (attachments: File[]) => setUploadingQueue(queue => [...queue, ...attachments]);
     const addToFailedQueue = (attachments: File[]) => setFailedQueue(queue => [...queue, ...attachments]);
@@ -153,7 +153,7 @@ export const AttachmentUploader = ({
             modals.messageModal({
                 title: <span className="c__modal__text--centered">{t("Attachment size limit exceeded")}</span>,
                 children: <span className="c__modal__text--centered">{t("Cannot add attachment(s). Total size would be more than {{maxSize}}.", {
-                    maxSize: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language)
+                    maxSize: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.resolvedLanguage)
                 })}</span>,
                 messageType: VariantType.INFO,
             });
@@ -181,7 +181,7 @@ export const AttachmentUploader = ({
     }, [attachments]);
 
     // Show informational text about the limit
-    const infoText = t("Attachments must be less than {{size}}.", { size: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language) });
+    const infoText = t("Attachments must be less than {{size}}.", { size: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.resolvedLanguage) });
 
     return (
         <Field
