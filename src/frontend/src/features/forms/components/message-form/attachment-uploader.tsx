@@ -36,7 +36,7 @@ export const AttachmentUploader = ({
     const [uploadingQueue, setUploadingQueue] = useState<File[]>([]);
     const [failedQueue, setFailedQueue] = useState<File[]>([]);
     const { mutateAsync: uploadBlob } = useBlobUploadCreate();
-    const debouncedOnChange = useDebounceCallback(onChange, 1000);
+    const debouncedOnChange = useDebounceCallback(onChange, 100);
 
     // Calculate current total size of attachments and pending uploads
     const attachmentsSize = attachments.reduce((acc, attachment) => acc + attachment.size, 0);
