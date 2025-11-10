@@ -51,11 +51,11 @@ export const AttachmentUploader = ({
 
             if (totalSize > MAX_ATTACHMENT_SIZE) {
                 modals.messageModal({
-                    title: t("Attachment size limit exceeded"),
-                    children: t("Cannot add attachment(s). Total size would be more than {{maxSize}}.", {
+                    title: <span className="c__modal__text--centered">{t("Attachment size limit exceeded")}</span>,
+                    children: <span className="c__modal__text--centered">{t("Cannot add attachment(s). Total size would be more than {{maxSize}}.", {
                         maxSize: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language)
-                    }),
-                    messageType: VariantType.ERROR,
+                    })}</span>,
+                    messageType: VariantType.INFO,
                 });
                 return;
             }
@@ -73,11 +73,11 @@ export const AttachmentUploader = ({
             );
             if (tooLargeFiles.length > 0) {
                 modals.messageModal({
-                    title: t("File too large"),
-                    children: t("The file is too large. It must be less than {{size}}.", {
+                    title: <span className="c__modal__text--centered">{t("File too large")}</span>,
+                    children: <span className="c__modal__text--centered">{t("The file is too large. It must be less than {{size}}.", {
                         size: AttachmentHelper.getFormattedSize(MAX_ATTACHMENT_SIZE, i18n.language)
-                    }),
-                    messageType: VariantType.ERROR,
+                    })}</span>,
+                    messageType: VariantType.INFO,
                 });
             }
         }
