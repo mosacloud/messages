@@ -772,12 +772,13 @@ class Base(Configuration):
         # Ensure Django's upload limit accommodates the larger of the email size limits
         # Body and attachments are uploaded separately (body as JSON, attachments as blobs),
         # so we take the maximum of individual limits, not their sum.
-        # Apply a 1.4x safety factor to account for MIME encoding overhead, headers, etc.
+        # Apply 1.4x factor only for incoming emails (which arrive MIME-encoded with ~33% overhead).
+        # Outgoing attachments are uploaded as raw binary files, so no encoding overhead.
         self.DATA_UPLOAD_MAX_MEMORY_SIZE = max(
             self.DATA_UPLOAD_MAX_MEMORY_SIZE,
-            int(self.MAX_INCOMING_EMAIL_SIZE * 1.4),
-            int(self.MAX_OUTGOING_BODY_SIZE * 1.4),
-            int(self.MAX_OUTGOING_ATTACHMENT_SIZE * 1.4),
+            int(self.MAX_INCOMING_EMAIL_SIZE * 1.4),  # MIME encoding overhead
+            self.MAX_OUTGOING_BODY_SIZE,               # Raw JSON, minimal overhead
+            self.MAX_OUTGOING_ATTACHMENT_SIZE,         # Raw binary upload, no encoding
         )
 
         if self.ENABLE_PROMETHEUS:
