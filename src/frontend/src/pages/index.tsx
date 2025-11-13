@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { Hero, HomeGutter, Footer, ProConnectButton } from "@gouvfr-lasuite/ui-kit";
+import { Hero, HomeGutter, Footer } from "@gouvfr-lasuite/ui-kit";
 import { login, useAuth } from "@/features/auth";
 import { MainLayout } from "@/features/layouts/components/main";
 import { LanguagePicker } from "@/features/layouts/components/main/language-picker";
@@ -8,6 +8,7 @@ import { LeftPanel } from "@/features/layouts/components/main/left-panel";
 import { SKIP_LINK_TARGET_ID } from "@/features/ui/components/skip-link";
 import { FeedbackWidget } from "@/features/ui/components/feedback-widget";
 import { useTheme } from "@/features/providers/theme";
+import { Button } from "@openfun/cunningham-react";
 
 export default function HomePage() {
   const { t } = useTranslation();
@@ -21,26 +22,32 @@ export default function HomePage() {
 
   return (
     <AppLayout
-        hideLeftPanelOnDesktop
-        leftPanelContent={<LeftPanel />}
-        rightHeaderContent={<LanguagePicker />}
-        icon={<img src={`/images/${theme}/app-logo-${variant}.svg`} alt="logo" height={40} />}
-      >
+      hideLeftPanelOnDesktop
+      leftPanelContent={<LeftPanel />}
+      rightHeaderContent={<LanguagePicker />}
+      icon={<img src={`/images/app-icon.svg`} alt="logo" height={40} />}
+    >
       <div id={SKIP_LINK_TARGET_ID} className="app__home">
         <HomeGutter>
           <Hero
-            logo={<img src={`/images/${theme}/app-icon-${variant}.svg`} alt="Messages Logo" width={64} />}
+            logo={
+              <img
+                src={`/images/app-icon.svg`}
+                alt="Messages Logo"
+                width={64}
+              />
+            }
             title={t("Simple and intuitive messaging")}
             banner="/images/banner.webp"
             subtitle={t("Send and receive your messages in an instant.")}
-            mainButton={<ProConnectButton onClick={login} />}
+            mainButton={
+              <Button onClick={login}>{t("home.mainButtonLogin")}</Button>
+            }
           />
         </HomeGutter>
-        {themeConfig.footer && (
-          <Footer {...themeConfig.footer} />
-        )}
+        {themeConfig.footer && <Footer {...themeConfig.footer} />}
       </div>
       <FeedbackWidget />
-      </AppLayout>
+    </AppLayout>
   );
 }
