@@ -14,6 +14,7 @@ export const LanguagePicker = () => {
     const languages = [
         { label: "Français", value: "fr" },
         { label: "English", value: "en" },
+        { label: "Nederlands", value: "nl" },
     ];
 
     return (

@@ -1,8 +1,8 @@
 {
   "en": {
     "translation": {
-      "app_title": "Messaging",
-      "app_description": "Messaging",
+      "app_title": "Mosa Mail",
+      "app_description": "Mail",
       "welcome": "Welcome",
       "logout": "Logout",
       "my_account": "My Account",
@@ -27,7 +27,8 @@
       },
       "home": {
         "title": "Simple and intuitive messaging",
-        "subtitle": "Send and receive your messages in an instant."
+        "subtitle": "Send and receive your messages in an instant.",
+        "mainButtonLogin": "Start writing emails"
       },
       "folders": {
         "inbox": "Inbox",
@@ -228,7 +229,7 @@
   },
   "fr": {
     "translation": {
-      "app_title": "Messages",
+      "app_title": "Mosa Mail",
       "app_description": "Messages",
       "welcome": "Bienvenue",
       "logout": "Déconnexion",
@@ -254,7 +255,8 @@
       },
       "home": {
         "title": "Une messagerie simple et intuitive",
-        "subtitle": "Envoyez et recevez vos messages en un instant."
+        "subtitle": "Envoyez et recevez vos messages en un instant.",
+        "mainButtonLogin": "Commencer à écrire des emails"
       },
       "folders": {
         "inbox": "Boîte de réception",
@@ -455,5 +457,233 @@
         }
       }
     }
+  },
+  "nl": {
+    "translation": {
+      "app_title": "Mosa Mail",
+      "app_description": "Berichten",
+      "welcome": "Welkom",
+      "logout": "Uitloggen",
+      "my_account": "Mijn Account",
+      "no_mailbox": "Geen mailbox.",
+      "no_threads": "Geen gesprekken.",
+      "mailbox": "Mailbox",
+      "new_message_form": {
+          "title": "Nieuw bericht"
+      },
+      "aria": {
+          "labels": {
+              "banner": {
+                  "info": "Informatiebericht",
+                  "error": "Foutmelding"
+              }
+          }
+      },
+      "api": {
+          "error": {
+              "unexpected": "Er is een onverwachte fout opgetreden."
+          }
+      },
+      "home": {
+          "title": "Eenvoudige en intuïtieve berichten",
+          "subtitle": "Verstuur en ontvang uw berichten in een oogwenk.",
+          "mainButtonLogin": "Begin met e-mails schrijven"
+      },
+      "folders": {
+          "inbox": "Postvak IN",
+          "all_messages": "Alle berichten",
+          "drafts": "Concepten",
+          "sent": "Verzonden",
+          "trash": "Prullenbak",
+          "archive": "Archief"
+      },
+      "actions": {
+          "new_message": "Nieuw bericht",
+          "edit": "Bewerken",
+          "reply": "Beantwoorden",
+          "reply_all": "Allen beantwoorden",
+          "print": "Afdrukken",
+          "close_thread": "Dit gesprek sluiten",
+          "cancel": "Annuleren",
+          "delete": "Verwijderen",
+          "undelete": "Herstellen",
+          "undo": "Ongedaan maken",
+          "send": "Verzenden",
+          "archive": "Archiveren",
+          "refresh": "Vernieuwen",
+          "mark_as_read": "Markeren als gelezen",
+          "mark_as_unread": "Markeren als ongelezen",
+          "mark_as_unread_from_here": "Markeren als ongelezen vanaf hier",
+          "mark_all_as_read": "Alles markeren als gelezen",
+          "mark_all_as_unread": "Alles markeren als ongelezen",
+          "delete_draft": "Concept verwijderen",
+          "download": "Downloaden",
+          "close": "Sluiten",
+          "import": "Importeren",
+          "import_messages": "Berichten importeren",
+          "show": "Tonen"
+      },
+      "tooltips": {
+          "has_attachments": "Deze e-mail heeft een bijlage",
+          "mark_as_important": "Markeren als belangrijk",
+          "more_options": "Meer opties",
+          "reply": "Beantwoorden",
+          "forward": "Doorsturen"
+      },
+      "thread-view": {
+          "trashed-banner": {
+              "message_one": "{{count}} bericht van dit gesprek is verwijderd.",
+              "message_other": "{{count}} berichten van dit gesprek zijn verwijderd.",
+              "message_trashed": "Dit bericht is verwijderd."
+          }
+      },
+      "thread_message": {
+          "from": "Van: ",
+          "to": "Aan: ",
+          "cc": "CC: ",
+          "bcc": "BCC: ",
+          "subject": "Onderwerp: ",
+          "body": "Bericht: ",
+          "draft": "Concept"
+      },
+      "attachments": {
+          "counter_zero": "Geen bijlagen",
+          "counter_one": "{{count}} bijlage",
+          "counter_other": "{{count}} bijlagen"
+      },
+      "message_form": {
+          "helper_text": {
+              "recipients": "Voer de e-mailadressen van de ontvangers in, gescheiden door komma's"
+          },
+          "attachments_uploader": {
+              "input_label": "Bijlagen toevoegen",
+              "upload_failed": "{{filename}} kon niet worden geüpload.",
+              "drop_attachments_here": "Sleep uw bijlagen hierheen",
+              "or_drag_and_drop": "of sleep bestanden hierheen"
+          },
+          "error": {
+              "min_recipient": "Minimaal één ontvanger is vereist.",
+              "subject_required": "Onderwerp is vereist.",
+              "mailbox_required": "Mailbox is vereist.",
+              "invalid_recipient": "Het e-mailadres {{email}} is ongeldig.",
+              "messageEditorHtml": "U moet een bericht schrijven."
+          },
+          "success": {
+              "saved": "Concept opgeslagen",
+              "draft_deleted": "Concept verwijderd",
+              "draft_transferred": "Concept overgebracht naar andere mailbox"
+          },
+          "confirm": {
+              "delete": "Weet u zeker dat u dit concept wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt."
+          }
+      },
+      "queued_message": {
+          "sending": "Bericht wordt verzonden...",
+          "sent": "Bericht succesvol verzonden",
+          "error": "Het bericht kon niet worden verzonden.",
+          "not_found": "Geen verzendend bericht gevonden."
+      },
+      "trash": {
+          "message_deleted": "Het bericht is verwijderd",
+          "thread_deleted": "Het gesprek is verwijderd"
+      },
+      "message_editor": {
+          "start_typing": "Begin met typen..."
+      },
+      "search": {
+          "placeholder": "Zoeken in berichten...",
+          "filters": {
+              "submit": "Zoeken",
+              "reset": "Herstellen",
+              "open": "Filters openen",
+              "close": "Filters sluiten",
+              "label": {
+                  "from": "Van",
+                  "to": "Aan",
+                  "subject": "Onderwerp",
+                  "text": "Bevat de woorden",
+                  "in": "In",
+                  "folder_all_messages": "Alle berichten",
+                  "folder_sent": "Verzonden",
+                  "folder_drafts": "Concepten",
+                  "folder_trash": "Prullenbak",
+                  "read": "Gelezen",
+                  "unread": "Ongelezen",
+                  "read_state": "Leestatus"
+              }
+          }
+      },
+      "units": {
+          "file_size": {
+              "B_one": "byte",
+              "B_other": "bytes",
+              "Kb": "kb",
+              "Mb": "Mb",
+              "Gb": "Gb"
+          }
+      },
+      "roles": {
+          "viewer": "Lezer",
+          "editor": "Bewerker"
+      },
+      "thread_accesses_widget": {
+          "share_access": "Toegang delen",
+          "see_members": "Bekijk leden van dit gesprek",
+          "access_removed": "Gesprekstoestemming ingetrokken",
+          "last_editor_deletion_forbidden": "U kunt de laatste bewerker van dit gesprek niet verwijderen"
+      },
+      "message_importer_modal": {
+          "title": "Importeer uw oude berichten",
+          "progression_default": "Importeren...",
+          "progress_details": "U kunt dit venster sluiten en de app blijven gebruiken.",
+          "progression_one": "{{count}} bericht geïmporteerd van {{total}}",
+          "progression_other": "{{count}} berichten geïmporteerd van {{total}}",
+          "api_errors": {
+              "authentication_failed": "Authenticatie mislukt. Controleer uw gegevens en zorg ervoor dat u IMAP-verbindingen in uw account heeft ingeschakeld.",
+              "default": "Er is een fout opgetreden bij het importeren van berichten."
+          },
+          "form": {
+              "title": "Eerst hebben we wat informatie nodig over uw oude mailbox",
+              "imap_import_description": "Geef uw oude e-mailadres en wachtwoord op.",
+              "imap_import_need_imap_config": "Helaas konden we de IMAP-configuratie van uw oude mailbox niet raden. Geef deze aan via onderstaande velden.",
+              "upload_archive_file": "Upload een archief",
+              "imap_doc": "{{name}} configuratie",
+              "or": "Of",
+              "imap_banner": {
+                  "helper": "Om e-mails van een IMAP-server te kunnen importeren, moet u mogelijk IMAP-toegang op uw account toestaan.",
+                  "link_label": "Hoe sta ik IMAP-verbindingen toe vanaf mijn {{name}} account?"
+              },
+              "labels": {
+                  "email_address": "E-mailadres",
+                  "password": "Wachtwoord",
+                  "imap_server": "IMAP-server",
+                  "imap_port": "IMAP-poort",
+                  "use_ssl": "Gebruik SSL",
+                  "archive_file_helper": "EML of MBOX",
+                  "archive_file_description": "Sleep een archief hierheen"
+              },
+              "errors": {
+                  "username_invalid": "Het e-mailadres is ongeldig.",
+                  "password_required": "Het wachtwoord is vereist.",
+                  "imap_server_required": "De IMAP-server is vereist.",
+                  "imap_port_required": "De IMAP-poort is vereist."
+              }
+          }
+      },
+      "labels": {
+          "title": "Labels",
+          "create": "Label aanmaken",
+          "update": "Label bijwerken",
+          "form": {
+              "fields": {
+                  "name": "Labelnaam",
+                  "color": "Labelkleur",
+                  "parent_label": "Selecteer een bovenliggend label"
+              },
+              "submit_create": "Aanmaken",
+              "submit_update": "Bijwerken"
+          }
+      }
+      }
   }
 }
