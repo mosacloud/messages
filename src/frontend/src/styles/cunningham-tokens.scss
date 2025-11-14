@@ -39,7 +39,7 @@ $themes: (
         'primary-500': #6A6AF4,
         'primary-600': #313178,
         'primary-700': #272747,
-        'primary-800': #000091,
+        'primary-800': #0443F2,
         'primary-900': #21213F,
         'success-100': #dffee6,
         'success-200': #b8fec9,
@@ -68,7 +68,7 @@ $themes: (
         'danger-700': #642626,
         'danger-800': #412121,
         'danger-900': #391C1C,
-        'primary-text': #000091,
+        'primary-text': #0443F2,
         'success-text': #1f8d49,
         'warning-text': #d64d00,
         'danger-text': #FFF,
@@ -202,7 +202,7 @@ $themes: (
         'border-radius': 4px,
         'small-height': 26px,
         'primary': (
-          'background--color': #000091,
+          'background--color': #0443F2,
           'background--color-hover': #1212ff,
           'background--color-active': #2323ff,
           'background--color-disabled': #eee,
@@ -213,13 +213,13 @@ $themes: (
           'disabled': #7C7C7C
         ),
         'primary-text': (
-          'background--color': #000091,
+          'background--color': #0443F2,
           'background--color-hover': #eee,
           'background--color-active': #ECECFE,
           'background--color-focus-visible': #fff,
           'background--color-disabled': #fff,
-          'color': #000091,
-          'color-hover': #000091,
+          'color': #0443F2,
+          'color-hover': #0443F2,
           'disabled': #929292
         ),
         'secondary': (
@@ -227,7 +227,7 @@ $themes: (
           'background--color-active': #EDEDED,
           'background--color-focus-visible': #fff,
           'background--disabled': #fff,
-          'color': #000091,
+          'color': #0443F2,
           'border--color': #CECECE,
           'border--color-hover': #CECECE,
           'border--color-disabled': #CECECE,
@@ -239,12 +239,12 @@ $themes: (
           'background--color-hover': #CACAFB,
           'background--color-active': #CACAFB,
           'background--disabled': #F5F5FE,
-          'color': #000091,
+          'color': #0443F2,
           'disabled': #CACAFB
         ),
         'tertiary-text': (
           'background--color-hover': #eee,
-          'color-hover': #000091,
+          'color-hover': #0443F2,
           'color': #313178
         ),
         'danger': (
@@ -264,15 +264,15 @@ $themes: (
       ),
       'forms-checkbox': (
         'border-radius': 4px,
-        'border-color': #000091,
+        'border-color': #0443F2,
         'background-color--hover': #eee,
         'border--color-disabled': #E5E5E5,
-        'border--color': #000091,
+        'border--color': #0443F2,
         'background--disabled': #E5E5E5,
-        'background--enable': #000091,
+        'background--enable': #0443F2,
         'check--disabled': #CECECE,
         'check--enable': #fff,
-        'color': #000091,
+        'color': #0443F2,
         'label--color': #161616,
         'label--size': 0.875rem,
         'label--weight': 500,
@@ -288,25 +288,25 @@ $themes: (
         'label-color--big--disabled': #CECECE
       ),
       'forms-radio': (
-        'border-color': #000091,
+        'border-color': #0443F2,
         'background-color': #fff,
-        'accent-color': #000091,
+        'accent-color': #0443F2,
         'accent-color-disabled': #CECECE
       ),
       'forms-switch': (
         'border--color-disabled': #CECECE,
-        'border--color': #000091,
+        'border--color': #0443F2,
         'handle-background-color': white,
         'handle-background-color--disabled': #fff,
         'rail-background-color--disabled': #fff,
-        'accent-color': #000091
+        'accent-color': #0443F2
       ),
       'forms-textarea': (
         'label-color--focus': #161616,
         'border-radius': 4px,
         'border-color': #929292,
         'box-shadow--color--hover': #929292,
-        'box-shadow--color--focus': #000091,
+        'box-shadow--color--focus': #0443F2,
         'value-color': #1E1E1E,
         'value-color--disabled': #CECECE,
         'font-size': 14px
@@ -316,7 +316,7 @@ $themes: (
         'border-radius': 4px,
         'border-color': #929292,
         'box-shadow--color--hover': #929292,
-        'box-shadow--color--focus': #000091,
+        'box-shadow--color--focus': #0443F2,
         'value-color': #1E1E1E,
         'value-color--disabled': #CECECE,
         'font-size': 14px
@@ -328,7 +328,7 @@ $themes: (
         'border-radius-hover': 4px,
         'border-color': #929292,
         'box-shadow--color--hover': #929292,
-        'box-shadow--color--focus': #000091,
+        'box-shadow--color--focus': #0443F2,
         'value-color': #1E1E1E,
         'font-size': 14px
       ),
