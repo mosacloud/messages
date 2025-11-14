@@ -1,0 +1,34 @@
+# App database configuration
+DB_HOST=postgresql
+
+# Redis configuration
+REDIS_URL=redis://redis:6379
+CELERY_BROKER_URL=redis://redis:6379
+
+# OpenSearch configuration
+OPENSEARCH_URL=http://opensearch:9200
+
+# OIDC
+OIDC_OP_JWKS_ENDPOINT=http://keycloak:8802/realms/messages/protocol/openid-connect/certs
+OIDC_OP_AUTHORIZATION_ENDPOINT=http://keycloak:8802/realms/messages/protocol/openid-connect/auth
+OIDC_OP_TOKEN_ENDPOINT=http://keycloak:8802/realms/messages/protocol/openid-connect/token
+OIDC_OP_USER_ENDPOINT=http://keycloak:8802/realms/messages/protocol/openid-connect/userinfo
+
+OIDC_REDIRECT_ALLOWED_HOSTS=["http://keycloak:8802", "http://nginx"]
+
+LOGIN_REDIRECT_URL=http://nginx
+LOGIN_REDIRECT_URL_FAILURE=http://nginx
+LOGOUT_REDIRECT_URL=http://nginx
+
+# Keycloak
+KEYCLOAK_URL=http://keycloak:8802
+
+# Object storage configuration
+STORAGE_MESSAGE_IMPORTS_ENDPOINT_URL=http://objectstorage:9000
+AWS_S3_DOMAIN_REPLACE=
+
+# Email configuration (use mailcatcher from main services or disable)
+EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+
+# Debug
+DJANGO_DEBUG=True

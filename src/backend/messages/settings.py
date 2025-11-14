@@ -940,6 +940,20 @@ class Development(Base):
         self.INSTALLED_APPS += ["django_extensions", "drf_spectacular_sidecar"]
 
 
+class E2E(Development):
+    """
+    End2End environment settings
+
+    Uses nginx reverse proxy to serve both frontend and backend on the same origin,
+    avoiding cross-origin cookie issues.
+    """
+
+    CSRF_TRUSTED_ORIGINS = ["http://nginx", "http://keycloak:8802"]
+
+    # Trust X-Forwarded-* headers from nginx proxy
+    USE_X_FORWARDED_HOST = True
+
+
 class DevelopmentMinimal(Development):
     """
     Development environment settings with minimal dependencies

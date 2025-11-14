@@ -1,0 +1,52 @@
+# Messages E2E Tests
+
+End-to-end tests for the Messages application using Playwright.
+
+## Prerequisites
+
+- Docker and Docker Compose installed
+- Messages project configured
+
+## Running the tests
+
+### In headless mode (CI)
+
+```bash
+make e2e-test
+```
+
+### In UI mode
+
+```bash
+make e2e-test-ui
+```
+
+Open the Playwright UI on http://localhost:8932 to write and debug the tests interactively.
+
+### In Dev mode
+
+Start playwright in UI Mode and use the dev frontend service to avoid rebuilding
+ the frontend after each change.
+```bash
+make e2e-test-dev
+```
+
+Open the Playwright UI on http://localhost:8932 to write and debug the tests interactively.
+
+## Explanation
+
+### Isolated services
+
+E2E tests use [dedicated services](./compose.yaml) especially for the database and the object storage.
+
+### Nginx to serve the frontend and the backend
+
+Nginx is used to serve the frontend and the backend on the same origin, avoiding cross-origin cookie issues.
+
+### Environment variables
+
+E2E configuration files are located in `env.d/development/*.e2e`:
+- `backend.e2e`: Backend configuration for tests
+- `frontend.e2e`: Frontend configuration for tests
+- `keycloak.e2e`: Keycloak configuration for tests
+

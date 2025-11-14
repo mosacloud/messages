@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
-    "start": "next start",
+    "start": "npx serve -s out",
     "lint": "next lint",
     "build-theme": "cunningham -g css,scss -o src/styles",
     "api:update": "orval --config ./orval.config.ts",

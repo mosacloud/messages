@@ -26,6 +26,7 @@
 BOLD := \033[1m
 RESET := \033[0m
 GREEN := \033[1;32m
+BLUE := \033[1;34m
 
 # -- Docker
 # Get the current user ID to use for docker run and docker exec commands
@@ -33,6 +34,7 @@ DOCKER_UID          = $(shell id -u)
 DOCKER_GID          = $(shell id -g)
 DOCKER_USER         = $(DOCKER_UID):$(DOCKER_GID)
 COMPOSE             = DOCKER_USER=$(DOCKER_USER) docker compose
+COMPOSE_E2E         = DOCKER_USER=$(DOCKER_USER) docker compose -f src/e2e/compose.yaml
 COMPOSE_EXEC        = $(COMPOSE) exec
 COMPOSE_EXEC_APP    = $(COMPOSE_EXEC) backend-dev
 COMPOSE_RUN         = $(COMPOSE) run --rm --build
@@ -263,6 +265,93 @@ mta-out-test: ## run the mta-out tests
 socks-proxy-test: ## run the socks-proxy tests
 	@$(COMPOSE) run --build --rm socks-proxy-test
 .PHONY: socks-proxy-test
+
+# -- E2E Tests
+
+e2e-test: ## Setup, run and teardown e2e tests in headless mode
+	@$(MAKE) e2e-setup
+	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
+	$(MAKE) e2e-run-test args="$${args:-${1}}" || echo "$(BOLD)Tests failed$(RESET)"
+	@$(MAKE) e2e-teardown
+.PHONY: e2e-test
+
+e2e-test-ui: ## Setup, run and teardown e2e tests in UI mode
+	@$(MAKE) e2e-setup
+	@$(MAKE) e2e-run-test-ui
+	@$(MAKE) e2e-teardown
+.PHONY: e2e-test-ui
+
+e2e-test-dev: ## Setup, run and teardown e2e tests in UI mode with dev frontend
+	@$(MAKE) e2e-setup
+	@$(MAKE) e2e-run-test-dev
+	@$(MAKE) e2e-teardown
+.PHONY: e2e-test-dev
+
+e2e-test-ci: ## Setup and run e2e tests in CI mode
+	@$(MAKE) e2e-setup
+	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
+	$(MAKE) e2e-run-test -- $${args:-${1}}
+.PHONY: e2e-test-ci
+
+
+e2e-build: ## Build the e2e services
+	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
+	$(COMPOSE_E2E) build --no-cache $${args:-${1}}
+.PHONY: e2e-build
+
+e2e-log:
+	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
+	$(MAKE) e2e-logs -- $${args:-${1}}
+.PHONY: e2e-log
+
+e2e-logs: ## Show logs from e2e services
+	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
+	$(COMPOSE_E2E) --profile dev logs $${args:-${1}}
+.PHONY: e2e-logs
+
+e2e-run-test: ## Run e2e tests in headless mode
+	@echo "$(BLUE)\n\n| 🎭 Running E2E tests... \n$(RESET)"
+	$(COMPOSE_E2E) run --rm --service-ports runner npm run test -- $(args)
+	@echo "$(GREEN)> 🎭 E2E tests completed!$(RESET)\n"
+.PHONY: e2e-run-test
+
+e2e-run-test-ui: ## Run e2e tests in UI mode
+	@echo "$(BLUE)\n\n| 🎭 Running E2E tests in UI mode... \n$(RESET)"
+	# Note: || true allows graceful exit when user closes the UI
+	@$(COMPOSE_E2E) run --rm --service-ports runner npm run test:ui || true
+	@echo "$(GREEN)> 🎭 You killed the UI!$(RESET)\n"
+.PHONY: e2e-run-test-ui
+
+e2e-run-test-dev: ## Run e2e tests in UI mode with dev frontend
+	@echo "$(BLUE)\n\n| 🎭 Running E2E tests in dev mode... \n$(RESET)"
+	# Note: || true allows graceful exit when user closes the UI
+	E2E_PROFILE=dev $(COMPOSE_E2E) --profile dev run --rm --service-ports runner npm run test:ui || true
+	@echo "$(GREEN)> 🎭 You killed the UI!$(RESET)\n"
+.PHONY: e2e-run-test-dev
+
+e2e-down: ## Stop and remove all e2e services
+	@echo "$(BOLD)Stopping E2E services...$(RESET)"
+	@$(COMPOSE_E2E) --profile dev down -v
+	@echo "$(GREEN)✓ E2E services stopped$(RESET)"
+.PHONY: e2e-down
+
+e2e-demo: ## Populate the e2e database with demo data
+	@echo "$(BLUE)\n\n| 📝 Bootstrapping E2E demo data... \n$(RESET)"
+	@$(COMPOSE_E2E) run --rm backend python manage.py e2e_demo
+.PHONY: e2e-demo
+
+e2e-setup: ## Setup e2e services
+	@echo "$(BLUE)\n\n| 🔧 Setting up E2E services... \n$(RESET)"
+	@$(COMPOSE_E2E) run --rm objectstorage-createbucket
+	@$(COMPOSE_E2E) run --rm backend python manage.py migrate --noinput
+	@$(COMPOSE_E2E) run --rm backend python manage.py search_index_create || true
+	@$(MAKE) e2e-demo
+.PHONY: e2e-setup
+
+e2e-teardown: ## Teardown e2e services
+	@echo "$(BLUE)\n\n| 🧹 Cleaning up E2E services... \n$(RESET)"
+	@$(COMPOSE_E2E) --profile dev down -v
+.PHONY: e2e-teardown
 
 # -- Backend
 

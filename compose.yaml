@@ -75,28 +75,22 @@ services:
     depends_on:
       objectstorage:
         condition: service_healthy
+    environment:
+      - MC_HOST=http://objectstorage:9000
     entrypoint: >
       sh -c "
-      /usr/bin/mc alias set st-messages http://objectstorage:9000 st-messages password && \
+      /usr/bin/mc alias set st-messages $${MC_HOST} st-messages password && \
       /usr/bin/mc mb st-messages/msg-imports --ignore-existing && \
       /usr/bin/mc ilm rule rm --all --force st-messages/msg-imports || true && \
       /usr/bin/mc ilm rule add --expire-days 1 st-messages/msg-imports"
 
-  backend-dev:
+  backend-base:
     build:
       context: src/backend
       target: runtime-dev
       args:
         DOCKER_USER: ${DOCKER_USER:-1000}
     user: ${DOCKER_USER:-1000}
-    environment:
-      - PYLINTHOME=/app/.pylint.d
-      - DJANGO_CONFIGURATION=Development
-    env_file:
-      - env.d/development/backend.defaults
-      - env.d/development/backend.local
-    ports:
-      - "8901:8000"
     volumes:
       - ./src/backend:/app
       - ./data/static:/data/static
@@ -105,6 +99,17 @@ services:
       interval: 3s
       retries: 3
       start_period: 10s
+
+  backend-dev:
+    extends: backend-base
+    environment:
+      - PYLINTHOME=/app/.pylint.d
+      - DJANGO_CONFIGURATION=Development
+    env_file:
+      - env.d/development/backend.defaults
+      - env.d/development/backend.local
+    ports:
+      - "8901:8000"
     depends_on:
       postgresql:
         condition: service_healthy
@@ -121,14 +126,9 @@ services:
         condition: service_started
 
   backend-db:
+    extends: backend-base
     profiles:
       - tools
-    build:
-      context: src/backend
-      target: runtime-dev
-      args:
-        DOCKER_USER: ${DOCKER_USER:-1000}
-    user: ${DOCKER_USER:-1000}
     environment:
       - DJANGO_CONFIGURATION=DevelopmentMinimal
     env_file:
@@ -136,18 +136,6 @@ services:
       - env.d/development/backend.local
     ports:
       - "8901:8000"
-    volumes:
-      - ./src/backend:/app
-      - ./data/static:/data/static
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/healthz/', timeout=1)"]
-      interval: 3s
-      retries: 3
-      start_period: 10s
-    depends_on:
-      postgresql:
-        condition: service_healthy
-        restart: true
 
   backend-poetry:
     profiles:
@@ -199,23 +187,17 @@ services:
       - "8903:8803"
     command: celery -A messages.celery_app flower --port=8803
 
-  # nginx:
-  #   image: nginx:1.25
-  #   ports:
-  #     - "8083:8083"
-  #   volumes:
-  #     - ./docker/files/development/etc/nginx/conf.d:/etc/nginx/conf.d:ro
-  #   depends_on:
-  #     - keycloak
-  #     - backend-dev
-  #     - mta-in
-  #     - mta-out
-
-  frontend-dev:
+  frontend-base:
     user: "${DOCKER_USER:-1000}"
     build:
       context: ./src/frontend
       dockerfile: Dockerfile
+      target: frontend-deps
+      args:
+        DOCKER_USER: ${DOCKER_USER:-1000}
+
+  frontend-dev:
+    extends: frontend-base
     env_file:
       - env.d/development/frontend.defaults
       - env.d/development/frontend.local
@@ -226,27 +208,16 @@ services:
       - "8900:3000"
 
   frontend-tools:
-    user: "${DOCKER_USER:-1000}"
+    extends: frontend-base
     profiles:
       - frontend-tools
-    build:
-      context: ./src/frontend
-      dockerfile: Dockerfile
     volumes:
       - ./src/backend/core/api/openapi.json:/home/backend/core/api/openapi.json
       - ./src/frontend/:/home/frontend/
 
   frontend-tools-amd64:
-    user: "${DOCKER_USER:-1000}"
-    profiles:
-      - frontend-tools
+    extends: frontend-tools
     platform: linux/amd64
-    build:
-      context: ./src/frontend
-      dockerfile: Dockerfile
-    volumes:
-      - ./src/backend/core/api/openapi.json:/home/backend/core/api/openapi.json
-      - ./src/frontend/:/home/frontend/
 
   crowdin:
     image: crowdin/cli:4.11.0
@@ -366,13 +337,16 @@ services:
     volumes:
       - ./src/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
       - ./src/keycloak/themes/dsfr-2.2.1.jar:/opt/keycloak/providers/keycloak-theme.jar:ro
+    environment:
+      - HOST=http://localhost:8902
+      - ADMIN_HOST=http://localhost:8902
     command:
       - start-dev
       - --features=preview
       - --import-realm
       - --proxy=edge
-      - --hostname=http://localhost:8902
-      - --hostname-admin=http://localhost:8902/
+      - --hostname=$${HOST}
+      - --hostname-admin=$${ADMIN_HOST}
       - --http-port=8802
     env_file:
       - env.d/development/keycloak.defaults

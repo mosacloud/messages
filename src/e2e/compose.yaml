@@ -1,0 +1,176 @@
+name: st-messages-e2e
+
+services:
+  postgresql:
+    extends:
+      file: ../../compose.yaml
+      service: postgresql
+    ports: !reset []
+
+  redis:
+    extends:
+      file: ../../compose.yaml
+      service: redis
+    ports: !reset []
+
+  celery:
+    extends:
+      file: ../../compose.yaml
+      service: celery-dev
+    environment:
+      - DJANGO_CONFIGURATION=E2E
+    env_file:
+      - ../../env.d/development/backend.defaults
+      - ../../env.d/development/backend.e2e
+    depends_on: !override
+      - backend
+
+  opensearch:
+    extends:
+      file: ../../compose.yaml
+      service: opensearch
+    ports: !reset []
+
+  objectstorage:
+    extends:
+      file: ../../compose.yaml
+      service: objectstorage
+    volumes: !reset []
+    ports: !reset []
+
+  objectstorage-createbucket:
+    extends:
+      file: ../../compose.yaml
+      service: objectstorage-createbucket
+
+  keycloak:
+    extends:
+      file: ../../compose.yaml
+      service: keycloak
+    environment:
+      - HOST=http://keycloak:8802
+      - ADMIN_HOST=http://keycloak:8802
+    command:
+      - start-dev
+      - --features=preview
+      - --import-realm
+      - --proxy=edge
+      - --hostname=$${HOST}
+      - --hostname-admin=$${ADMIN_HOST}
+      - --http-port=8802
+    env_file:
+      - ../../env.d/development/keycloak.defaults
+      - ../../env.d/development/keycloak.e2e
+    ports: !reset []
+    depends_on: !override
+      - postgresql
+
+  backend:
+    extends:
+      file: ../../compose.yaml
+      service: backend-base
+    environment:
+      - DJANGO_CONFIGURATION=E2E
+    env_file:
+      - ../../env.d/development/backend.defaults
+      - ../../env.d/development/backend.e2e
+    depends_on: !override
+      postgresql:
+        condition: service_healthy
+      objectstorage:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      opensearch:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+  mta-in:
+    extends:
+      file: ../../compose.yaml
+      service: mta-in
+    env_file:
+      - ../../env.d/development/mta-in.defaults
+      - ../../env.d/development/mta-in.e2e
+    ports: !reset []
+    depends_on: !override
+      - backend
+
+  nginx:
+    image: nginx:1.27-alpine
+    environment:
+      - E2E_PROFILE=${E2E_PROFILE:-e2e}
+    volumes:
+      - ./nginx/e2e.conf.template:/etc/nginx/templates/e2e.conf.template:ro
+      - ./nginx/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: "/entrypoint.sh"
+    depends_on:
+      frontend:
+        condition: service_started
+      frontend-dev:
+        condition: service_started
+        required: false
+      backend:
+        condition: service_healthy
+
+  frontend:
+    extends:
+      file: ../../compose.yaml
+      service: frontend-base
+    build:
+      target: frontend-build
+      args:
+        API_ORIGIN: http://nginx
+    command: ["npx", "serve", "-s", "out"]
+    ports: !reset []
+
+  frontend-dev:
+    profiles: [dev]
+    extends:
+      file: ../../compose.yaml
+      service: frontend-base
+    command: ["npm", "run", "dev"]
+    env_file:
+      - ../../env.d/development/frontend.defaults
+      - ../../env.d/development/frontend.e2e
+    volumes:
+      - ../frontend/:/home/frontend/
+    ports: !reset []
+
+  # Service to proxy the Docker socket to the tools container
+  # This is necessary to keep the tools container rootless
+  docker-sock-proxy:
+    image: alpine/socat
+    command: tcp-listen:2375,fork,reuseaddr unix-connect:/var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  runner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DOCKER_USER: ${DOCKER_USER:-1000}
+    user: ${DOCKER_USER:-1000}
+    environment:
+      - FRONTEND_BASE_URL=http://nginx
+      - BACKEND_BASE_URL=http://nginx
+      - KEYCLOAK_BASE_URL=http://keycloak:8802
+      - DOCKER_HOST=tcp://docker-sock-proxy:2375
+    volumes:
+      - ./src:/app/src
+      - ./playwright.config.ts:/app/playwright.config.ts
+      - ../../env.d/development:/app/env.d/development:ro
+    depends_on:
+      docker-sock-proxy:
+        condition: service_started
+      nginx:
+        condition: service_started
+      mta-in:
+        condition: service_started
+      celery:
+        condition: service_started
+    command: npm run test
+    ports:
+      - "8932:8932"

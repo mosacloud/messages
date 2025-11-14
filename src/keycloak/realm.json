@@ -503,70 +503,7 @@
     "realmRoles" : [ "user" ],
     "notBefore" : 0,
     "groups" : [ ]
-  }, {
-    "id" : "5385a8dc-1d4e-4d48-b67b-8cc393122323",
-    "username" : "user-e2e-chromium",
-    "firstName" : "E2E",
-    "lastName" : "Chromium",
-    "email" : "user@chromium.e2e",
-    "emailVerified" : false,
-    "enabled" : true,
-    "totp" : false,
-    "credentials" : [ {
-      "id" : "f67a812e-2989-4b0c-8e29-59d52877cd13",
-      "type" : "password",
-      "createdDate" : 1749245683785,
-      "secretData" : "{\"value\":\"984c+yrQ7Ss7gEUyBKG1hU1rHbs0fWvKh6Y2cykkWZ4=\",\"salt\":\"KQ6A8Ch4tpZkVmsE5tbthw==\",\"additionalParameters\":{}}",
-      "credentialData" : "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
-    } ],
-    "disableableCredentialTypes" : [ ],
-    "requiredActions" : [ ],
-    "realmRoles" : [ "user" ],
-    "notBefore" : 0,
-    "groups" : [ ]
-  }, {
-    "id" : "a6b2fb46-2db3-4d98-abea-7be68c2b81ac",
-    "username" : "user-e2e-firefox",
-    "firstName" : "E2E",
-    "lastName" : "Firefox",
-    "email" : "user@firefox.e2e",
-    "emailVerified" : false,
-    "enabled" : true,
-    "totp" : false,
-    "credentials" : [ {
-      "id" : "d94f507b-7a93-4f82-a29b-d3024da1e6cb",
-      "type" : "password",
-      "createdDate" : 1749245683848,
-      "secretData" : "{\"value\":\"qTc3ucpr7axbMM/ex++wM3K1S0OoLIZ9yAiZCog8ydY=\",\"salt\":\"AbBiB8zqIfy0fXsBr0zjbQ==\",\"additionalParameters\":{}}",
-      "credentialData" : "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
-    } ],
-    "disableableCredentialTypes" : [ ],
-    "requiredActions" : [ ],
-    "realmRoles" : [ "user" ],
-    "notBefore" : 0,
-    "groups" : [ ]
-  }, {
-    "id" : "7315d5ac-0cd5-4ce1-8759-4bf95d076ba1",
-    "username" : "user-e2e-webkit",
-    "firstName" : "E2E",
-    "lastName" : "Webkit",
-    "email" : "user@webkit.e2e",
-    "emailVerified" : false,
-    "enabled" : true,
-    "totp" : false,
-    "credentials" : [ {
-      "id" : "9d2e6d7d-21d0-4e3d-a7d1-40ac820435c4",
-      "type" : "password",
-      "createdDate" : 1749245683819,
-      "secretData" : "{\"value\":\"akhpAqR4qEgEAPpBng130u9xMNP1allIPOwx2Q3tCiw=\",\"salt\":\"THM80YVFqeGJmaXvb8izLA==\",\"additionalParameters\":{}}",
-      "credentialData" : "{\"hashIterations\":5,\"algorithm\":\"argon2\",\"additionalParameters\":{\"hashLength\":[\"32\"],\"memory\":[\"7168\"],\"type\":[\"id\"],\"version\":[\"1.3\"],\"parallelism\":[\"1\"]}}"
-    } ],
-    "disableableCredentialTypes" : [ ],
-    "requiredActions" : [ ],
-    "realmRoles" : [ "user" ],
-    "notBefore" : 0,
-    "groups" : [ ]
-  } ],
+  }],
   "scopeMappings" : [ {
     "clientScope" : "offline_access",
     "roles" : [ "offline_access" ]
@@ -720,8 +657,8 @@
     "alwaysDisplayInConsole" : false,
     "clientAuthenticatorType" : "client-secret",
     "secret" : "ThisIsAnExampleKeyForDevPurposeOnly",
-    "redirectUris" : [ "http://localhost:8900/*", "http://localhost:8901/*", "http://localhost:8902/*" ],
-    "webOrigins" : [ "http://localhost:8900", "http://localhost:8901", "http://localhost:8902" ],
+    "redirectUris" : [ "http://localhost:8900/*", "http://localhost:8901/*", "http://localhost:8902/*", "http://backend:8000/*", "http://frontend:3000/*", "http://keycloak:8802/*", "http://nginx/*"],
+    "webOrigins" : [ "http://localhost:8900", "http://localhost:8901", "http://localhost:8902", "http://backend:8000", "http://frontend:3000", "http://keycloak:8802", "http://nginx" ],
     "notBefore" : 0,
     "bearerOnly" : false,
     "consentRequired" : false,
@@ -736,7 +673,7 @@
       "access.token.lifespan" : "-1",
       "client.secret.creation.time" : "1707820779",
       "user.info.response.signature.alg" : "RS256",
-      "post.logout.redirect.uris" : "http://localhost:8900/*##http://localhost:8901/*##http://localhost:8902/*",
+      "post.logout.redirect.uris" : "http://localhost:8900/*##http://localhost:8901/*##http://localhost:8902/*##http://backend:8000/*##http://frontend:3000/*##http://keycloak:8802/*##http://nginx/*",
       "oauth2.device.authorization.grant.enabled" : "false",
       "use.jwks.url" : "false",
       "backchannel.logout.revoke.offline.tokens" : "false",
