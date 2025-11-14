@@ -49,6 +49,11 @@ RUN poetry install --compile --extras dev
 FROM base-with-deps AS link-collector
 ARG MESSAGES_STATIC_ROOT=/data/static
 
+# Install libmagic required for collectstatic
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libmagic1 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy messages application (see .dockerignore)
 COPY . /app/
 
