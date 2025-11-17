@@ -413,7 +413,7 @@ export const MessageForm = ({
             const newDraft = response.data as Message;
             setDraft(newDraft);
         } catch (error) {
-            console.error("Error in saveDraft:", error);
+            console.warn("Error in saveDraft:", error);
         } finally {
             startAutoSave();
         }
