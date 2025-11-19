@@ -197,6 +197,16 @@
                                         "SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN": {
                                             "type": "object",
                                             "readOnly": true
+                                        },
+                                        "MAX_OUTGOING_ATTACHMENT_SIZE": {
+                                            "type": "integer",
+                                            "description": "Maximum size in bytes for outgoing email attachments",
+                                            "readOnly": true
+                                        },
+                                        "MAX_OUTGOING_BODY_SIZE": {
+                                            "type": "integer",
+                                            "description": "Maximum size in bytes for outgoing email body (text + HTML)",
+                                            "readOnly": true
                                         }
                                     },
                                     "required": [
@@ -207,7 +217,9 @@
                                         "FEATURE_AI_SUMMARY",
                                         "FEATURE_AI_AUTOLABELS",
                                         "SCHEMA_CUSTOM_ATTRIBUTES_USER",
-                                        "SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN"
+                                        "SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN",
+                                        "MAX_OUTGOING_ATTACHMENT_SIZE",
+                                        "MAX_OUTGOING_BODY_SIZE"
                                     ]
                                 }
                             }

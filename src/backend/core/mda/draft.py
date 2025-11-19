@@ -4,7 +4,9 @@ import logging
 import uuid
 from typing import Optional
 
+from django.conf import settings
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 import rest_framework as drf
 
@@ -48,7 +50,7 @@ def create_draft(
 
     # Get or create sender contact
     mailbox_email = f"{mailbox.local_part}@{mailbox.domain.name}"
-    sender_contact, _ = models.Contact.objects.get_or_create(
+    sender_contact, _created = models.Contact.objects.get_or_create(
         email=mailbox_email,
         mailbox=mailbox,
         defaults={
@@ -195,7 +197,7 @@ def update_draft(
             # Create new recipients
             emails = update_data.get(recipient_type) or []
             for email in emails:
-                contact, _ = models.Contact.objects.get_or_create(
+                contact, _created = models.Contact.objects.get_or_create(
                     email=email,
                     mailbox=mailbox,
                     defaults={
@@ -220,8 +222,28 @@ def update_draft(
         except models.Blob.DoesNotExist:
             pass
         if update_data["draftBody"]:
+            draft_body_bytes = update_data["draftBody"].encode("utf-8")
+
+            # Validate body size before creating blob
+            if len(draft_body_bytes) > settings.MAX_OUTGOING_BODY_SIZE:
+                body_mb = len(draft_body_bytes) / 1_000_000
+                max_body_mb = settings.MAX_OUTGOING_BODY_SIZE / 1_000_000
+
+                raise drf.exceptions.ValidationError(
+                    {
+                        "draftBody": _(
+                            "Message body size (%(body_size)s MB) exceeds the %(max_size)s MB limit. "
+                            "Please reduce message content."
+                        )
+                        % {
+                            "body_size": f"{body_mb:.1f}",
+                            "max_size": f"{max_body_mb:.0f}",
+                        }
+                    }
+                )
+
             message.draft_blob = mailbox.create_blob(
-                content=update_data["draftBody"].encode("utf-8"),
+                content=draft_body_bytes,
                 content_type="application/json",
             )
         updated_fields.append("draft_blob")
@@ -291,6 +313,45 @@ def update_draft(
             # Add new attachments and remove old ones
             to_add = new_attachments - current_attachment_ids
             to_remove = current_attachment_ids - new_attachments
+
+            # Validate total attachment size before adding
+            if to_add:
+                # Calculate current total (excluding attachments about to be removed)
+                current_attachments = message.attachments.exclude(id__in=to_remove)
+                current_total_size = sum(
+                    att.blob.size for att in current_attachments.select_related("blob")
+                )
+
+                # Calculate size of new attachments being added
+                new_attachments_objs = models.Attachment.objects.filter(
+                    id__in=to_add
+                ).select_related("blob")
+                new_total_size = sum(att.blob.size for att in new_attachments_objs)
+
+                # Check if adding these would exceed the attachment limit
+                total_attachment_size = current_total_size + new_total_size
+                if total_attachment_size > settings.MAX_OUTGOING_ATTACHMENT_SIZE:
+                    # Convert to MB for better readability
+                    total_mb = total_attachment_size / 1_000_000
+                    max_mb = settings.MAX_OUTGOING_ATTACHMENT_SIZE / 1_000_000
+                    current_mb = current_total_size / 1_000_000
+                    new_mb = new_total_size / 1_000_000
+
+                    raise drf.exceptions.ValidationError(
+                        {
+                            "attachments": _(
+                                "Cannot add attachment(s) (%(new_size)s MB). "
+                                "Total attachments would be %(total_size)s MB, exceeding the %(max_size)s MB limit. "
+                                "Current attachments: %(current_size)s MB."
+                            )
+                            % {
+                                "new_size": f"{new_mb:.1f}",
+                                "total_size": f"{total_mb:.1f}",
+                                "max_size": f"{max_mb:.0f}",
+                                "current_size": f"{current_mb:.1f}",
+                            }
+                        }
+                    )
 
             # Remove attachments no longer in the list
             if to_remove:
