@@ -358,7 +358,7 @@ export const MessageForm = ({
      */
     const saveDraft = async () => {
         const data = form.getValues();
-        if (!canWriteMessages) return;
+        if (!canWriteMessages || isSavingDraft) return;
 
         const saveDraftNeeded = (
             Object.keys(form.formState.dirtyFields).length > 0

@@ -56,6 +56,19 @@ jobs:
       - name: Run frontend tests
         run: make front-test
 
+  test-e2e:
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_USER: 1001
+      PW_TEST_HTML_REPORT_OPEN: 'never'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Create env files
+        run: make create-env-files
+      - name: Run E2E tests only for Chromium browser to speed up the tests
+        run: make e2e-test-ci args="--project chromium"
+
   lint-front:
     runs-on: ubuntu-latest
     steps:

@@ -4,6 +4,7 @@ import { Button } from "@openfun/cunningham-react";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { useLayoutContext } from "../../../main";
 import useAbility, { Abilities } from "@/hooks/use-ability";
+import { Icon, IconType } from "@gouvfr-lasuite/ui-kit";
 
 export const MailboxPanelActions = () => {
     const { t } = useTranslation();
@@ -28,7 +29,7 @@ export const MailboxPanelActions = () => {
                 <Button
                     onClick={goToNewMessageForm}
                     href={`/mailbox/${selectedMailbox.id}/new`}
-                    icon={<span className="material-icons">edit_note</span>}
+                    icon={<Icon name="edit_note" type={IconType.OUTLINED} aria-hidden="true" />}
                     disabled={!canWriteMessages}
                 >
                     {t("New message")}

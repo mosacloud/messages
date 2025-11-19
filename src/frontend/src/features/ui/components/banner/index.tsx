@@ -1,6 +1,6 @@
 import { Icon, IconType } from "@gouvfr-lasuite/ui-kit";
 import clsx from "clsx";
-import { useTranslation } from "react-i18next";
+import { useId } from "react";
 
 type BannerProps = {
     children: React.ReactNode;
@@ -15,14 +15,15 @@ type BannerProps = {
  * TODO: Migrate this component into our ui-kit
  */
 export const Banner = ({ children, type = 'info', icon, compact = false, fullWidth = false }: BannerProps) => {
-    const { t } = useTranslation();
+    const ariaLabelId = useId();
 
     return (
         <div
             className={clsx("banner", `banner--${type}`, { "banner--compact": compact, "banner--full-width": fullWidth })}
             role="alert"
             aria-live="polite"
-            aria-label={t(`aria.labels.banner.${type}`)}
+            data-testid="banner"
+            aria-labelledby={ariaLabelId}
         >
             <div className="banner__content">
                 <div
@@ -35,7 +36,7 @@ export const Banner = ({ children, type = 'info', icon, compact = false, fullWid
                         )
                     }
                 </div>
-                <div className="banner__content__text">
+                <div className="banner__content__text" id={ariaLabelId}>
                     {children}
                 </div>
             </div>

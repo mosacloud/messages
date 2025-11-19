@@ -289,10 +289,8 @@ e2e-test-dev: ## Setup, run and teardown e2e tests in UI mode with dev frontend
 
 e2e-test-ci: ## Setup and run e2e tests in CI mode
 	@$(MAKE) e2e-setup
-	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
-	$(MAKE) e2e-run-test -- $${args:-${1}}
+	@$(MAKE) e2e-run-test args="$(args)"
 .PHONY: e2e-test-ci
-
 
 e2e-build: ## Build the e2e services
 	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
@@ -565,3 +563,4 @@ mta-in-poetry-lock: ## lock the dependencies
 mta-out-poetry-lock: ## lock the dependencies
 	@$(COMPOSE) run --rm --build mta-out-poetry poetry lock
 .PHONY: mta-out-poetry-lock
+

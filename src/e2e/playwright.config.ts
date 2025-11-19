@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { getStorageStatePathIfExists } from './src/utils';
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -41,15 +42,22 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: getStorageStatePathIfExists('user.e2e.chromium'),
+      },
     },
     {
       name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
+      use: { ...devices['Desktop Firefox'],
+        storageState: getStorageStatePathIfExists('user.e2e.firefox'),
+      },
     },
     {
       name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
+      use: { ...devices['Desktop Safari'],
+        storageState: getStorageStatePathIfExists('user.e2e.webkit'),
+      },
     },
   ],
 
