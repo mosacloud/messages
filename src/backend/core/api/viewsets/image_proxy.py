@@ -3,7 +3,9 @@
 import logging
 from urllib.parse import unquote
 
+import magic
 import requests
+from django.conf import settings
 from django.http import HttpResponse
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
 from rest_framework import status
@@ -13,6 +15,7 @@ from rest_framework.viewsets import ViewSet
 
 from core import models
 from core.api import permissions
+from core.utils import validate_url_safety
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +36,7 @@ class ImageProxyViewSet(ViewSet):
 
         This endpoint fetches images from external sources and serves them
         through the application to protect user privacy. Requires the
-        _proxy_external_images setting to be enabled for the mailbox domain.
+        PROXY_EXTERNAL_IMAGES environment variable to be set to true.
         """,
         parameters=[
             OpenApiParameter(
@@ -73,10 +76,9 @@ class ImageProxyViewSet(ViewSet):
                 {"error": "Forbidden"}, status=status.HTTP_403_FORBIDDEN
             )
 
-        custom_attrs = mailbox.domain.custom_attributes or {}
-        if not custom_attrs.get("_proxy_external_images"):
+        if not settings.PROXY_EXTERNAL_IMAGES:
             return Response(
-                {"error": "Image proxy not enabled for this domain"},
+                {"error": "Image proxy not enabled"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -88,7 +90,25 @@ class ImageProxyViewSet(ViewSet):
 
         url = unquote(url)
 
-        max_size = custom_attrs.get("_proxy_max_image_size_mb", 5) * 1024 * 1024
+        # SSRF protection: validate URL before making any request
+        is_safe, error_message = validate_url_safety(url)
+        if not is_safe:
+            logger.warning("Blocked unsafe URL: %s - %s", url, error_message)
+            # Return placeholder image instead of JSON error for better UX
+            svg_placeholder = """<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100" viewBox="0 0 400 100">
+  <rect width="100%" height="100%" fill="#f8f9fa"/>
+  <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle"
+        font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#6c757d">
+    🚫 Image blocked for security reasons
+  </text>
+</svg>"""
+            return HttpResponse(
+                svg_placeholder,
+                content_type="image/svg+xml",
+                status=403,
+            )
+
+        max_size = settings.PROXY_MAX_IMAGE_SIZE_MB * 1024 * 1024
 
         try:
             response = requests.get(
@@ -96,6 +116,7 @@ class ImageProxyViewSet(ViewSet):
                 timeout=10,
                 stream=True,
                 headers={"User-Agent": "Messages-ImageProxy/1.0"},
+                allow_redirects=False,  # Prevent redirect-based SSRF bypass
             )
             response.raise_for_status()
 
@@ -105,18 +126,60 @@ class ImageProxyViewSet(ViewSet):
                     {"error": "Not an image"}, status=status.HTTP_400_BAD_REQUEST
                 )
 
-            content_length = int(response.headers.get("content-length", 0))
-            if content_length > max_size:
+            # Safely parse Content-Length header
+            try:
+                content_length = int(response.headers.get("content-length", 0))
+            except (TypeError, ValueError):
+                content_length = 0
+
+            # Use Content-Length as a hint, but don't trust it completely
+            if content_length and content_length > max_size:
                 return Response(
                     {"error": "Image too large"},
                     status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 )
 
-            image_content = response.content
-            if len(image_content) > max_size:
-                return Response(
-                    {"error": "Image too large"},
-                    status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            # Stream content in chunks to prevent memory exhaustion
+            chunks = []
+            total_size = 0
+            chunk_size = 8192  # 8KB chunks
+
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if not chunk:
+                    continue
+
+                total_size += len(chunk)
+
+                # Enforce size limit while streaming
+                if total_size > max_size:
+                    logger.warning(
+                        "Image from %s exceeds size limit: %d bytes", url, total_size
+                    )
+                    return Response(
+                        {"error": "Image too large"},
+                        status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    )
+
+                chunks.append(chunk)
+
+            image_content = b"".join(chunks)
+
+            # Validate that content is actually an image (defense in depth)
+            mime_type = magic.from_buffer(image_content, mime=True)
+            if not mime_type.startswith("image/"):
+                logger.warning("Content from %s is not a valid image: %s", url, mime_type)
+                # Return placeholder image for invalid content
+                svg_placeholder = """<svg xmlns="http://www.w3.org/2000/svg" width="400" height="100" viewBox="0 0 400 100">
+  <rect width="100%" height="100%" fill="#f8f9fa"/>
+  <text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle"
+        font-family="system-ui, -apple-system, sans-serif" font-size="14" fill="#6c757d">
+    🚫 Image blocked for security reasons
+  </text>
+</svg>"""
+                return HttpResponse(
+                    svg_placeholder,
+                    content_type="image/svg+xml",
+                    status=400,
                 )
 
             return HttpResponse(
