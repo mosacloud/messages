@@ -7,6 +7,7 @@ import random
 import uuid
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from django.urls import reverse
 
 import pytest
@@ -339,8 +340,6 @@ class TestDraftWithAttachments:
 
     def test_draft_attachment_size_limit_exceeded(self, api_client, user_mailbox):
         """Test that adding attachments exceeding the size limit raises ValidationError."""
-        from django.test import override_settings
-
         client, _ = api_client
 
         # Set a small attachment size limit for testing (1 KB)
@@ -378,8 +377,6 @@ class TestDraftWithAttachments:
 
     def test_draft_attachment_cumulative_size_limit(self, api_client, user_mailbox):
         """Test that cumulative attachment size is validated when adding multiple attachments."""
-        from django.test import override_settings
-
         client, _ = api_client
 
         # Set attachment size limit to 2 KB
@@ -450,8 +447,6 @@ class TestDraftWithAttachments:
 
     def test_draft_attachment_within_size_limit(self, api_client, user_mailbox):
         """Test that attachments within the size limit are accepted."""
-        from django.test import override_settings
-
         client, _ = api_client
 
         # Set attachment size limit to 10 KB
@@ -502,8 +497,6 @@ class TestDraftWithAttachments:
         self, api_client, user_mailbox
     ):
         """Test that removing an attachment allows adding a new one within the limit."""
-        from django.test import override_settings
-
         client, _ = api_client
 
         # Set attachment size limit to 2 KB
@@ -571,8 +564,6 @@ class TestDraftWithAttachments:
         self, api_client, user_mailbox
     ):
         """Test that sending a draft with attachments exceeding the size limit fails."""
-        from django.test import override_settings
-
         client, _ = api_client
 
         # Set a small attachment size limit for testing (1 KB)

@@ -73,6 +73,7 @@ export class AttachmentHelper {
             return new Intl.NumberFormat(language, {
                 style: 'unit',
                 unit: unit,
+                unitDisplay: 'narrow',
                 maximumFractionDigits: 1
             }).format(value);
         };
