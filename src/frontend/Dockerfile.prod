@@ -1,0 +1,35 @@
+# Build stage
+FROM node:22-slim AS builder
+
+WORKDIR /home/frontend
+
+# Install dependencies
+COPY package*.json ./
+RUN npm ci
+
+# Copy source files
+COPY . .
+
+# Set build-time environment variables for Next.js
+ENV NEXT_PUBLIC_API_ORIGIN=https://messages.demo.mosacloud.eu
+ENV NEXT_PUBLIC_MULTIPART_UPLOAD_CHUNK_SIZE=100
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_PUBLIC_LANGUAGES='[["en-US","English"],["fr-FR","Français"],["nl-NL","Nederlands"]]'
+ENV NEXT_PUBLIC_DEFAULT_LANGUAGE=nl-NL
+
+# Build the Next.js static export
+RUN npm run build
+
+# Production stage with nginx
+FROM nginx:1.27-alpine AS runtime
+
+# Copy the built static files
+COPY --from=builder /home/frontend/out /usr/share/nginx/html
+
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Expose port 8080
+EXPOSE 8080
+
+CMD ["nginx", "-g", "daemon off;"]

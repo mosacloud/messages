@@ -661,7 +661,60 @@ class MessageSerializer(serializers.ModelSerializer):
     @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_htmlBody(self, instance):  # pylint: disable=invalid-name
         """Return the list of HTML body parts (JMAP style)."""
-        return instance.get_parsed_field("htmlBody") or []
+        html_body_parts = instance.get_parsed_field("htmlBody") or []
+
+        request = self.context.get("request")
+        if not request or not hasattr(request, "user") or not request.user.is_authenticated:
+            return html_body_parts
+
+        mailbox = instance.thread.accesses.filter(
+            mailbox__accesses__user=request.user
+        ).first()
+
+        if not mailbox:
+            return html_body_parts
+
+        custom_attrs = mailbox.mailbox.domain.custom_attributes or {}
+        if custom_attrs.get("_proxy_external_images"):
+            html_body_parts = self._proxy_images_in_html(html_body_parts, instance, mailbox.mailbox)
+
+        return html_body_parts
+
+    def _proxy_images_in_html(self, html_body_parts, instance, mailbox):
+        """Rewrite external image URLs and CID references to use proxy."""
+        from bs4 import BeautifulSoup
+        from urllib.parse import quote
+
+        attachments = instance.get_parsed_field("attachments") or []
+        cid_map = {att.get("cid"): idx for idx, att in enumerate(attachments) if att.get("cid")}
+
+        proxified_parts = []
+        for part in html_body_parts:
+            html_content = part.get("content", "")
+            if not html_content:
+                proxified_parts.append(part)
+                continue
+
+            soup = BeautifulSoup(html_content, "html.parser")
+
+            for img in soup.find_all("img"):
+                src = img.get("src")
+                if not src:
+                    continue
+
+                if src.startswith("cid:"):
+                    cid = src[4:]
+                    if cid in cid_map:
+                        img["src"] = f"/api/messages/{instance.id}/attachments/{cid_map[cid]}"
+
+                elif src.startswith(("http://", "https://")):
+                    from django.conf import settings
+                    img["src"] = f"/api/{settings.API_VERSION}/mailboxes/{mailbox.id}/image-proxy/?url={quote(src)}"
+
+            part["content"] = str(soup)
+            proxified_parts.append(part)
+
+        return proxified_parts
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_draftBody(self, instance):  # pylint: disable=invalid-name
