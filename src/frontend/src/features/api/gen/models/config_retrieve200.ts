@@ -24,4 +24,6 @@ export type ConfigRetrieve200 = {
   readonly MAX_OUTGOING_ATTACHMENT_SIZE: number;
   /** Maximum size in bytes for outgoing email body (text + HTML) */
   readonly MAX_OUTGOING_BODY_SIZE: number;
+  /** Maximum size in bytes for incoming email (including attachments and body) */
+  readonly MAX_INCOMING_EMAIL_SIZE: number;
 };

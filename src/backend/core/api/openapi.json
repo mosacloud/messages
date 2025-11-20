@@ -207,6 +207,11 @@
                                             "type": "integer",
                                             "description": "Maximum size in bytes for outgoing email body (text + HTML)",
                                             "readOnly": true
+                                        },
+                                        "MAX_INCOMING_EMAIL_SIZE": {
+                                            "type": "integer",
+                                            "description": "Maximum size in bytes for incoming email (including attachments and body)",
+                                            "readOnly": true
                                         }
                                     },
                                     "required": [
@@ -219,7 +224,8 @@
                                         "SCHEMA_CUSTOM_ATTRIBUTES_USER",
                                         "SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN",
                                         "MAX_OUTGOING_ATTACHMENT_SIZE",
-                                        "MAX_OUTGOING_BODY_SIZE"
+                                        "MAX_OUTGOING_BODY_SIZE",
+                                        "MAX_INCOMING_EMAIL_SIZE"
                                     ]
                                 }
                             }

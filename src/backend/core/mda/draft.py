@@ -90,6 +90,35 @@ def create_draft(
     # Validate and get signature if provided
     signature = mailbox.get_validated_signature(signature_id)
 
+    # Validate and prepare draft body
+    draft_blob = None
+    if draft_body:
+        draft_body_bytes = draft_body.encode("utf-8")
+
+        # Validate body size before creating blob
+        if len(draft_body_bytes) > settings.MAX_OUTGOING_BODY_SIZE:
+            # Use binary (MiB) to match frontend formatting
+            body_mb = len(draft_body_bytes) / (1024 * 1024)
+            max_body_mb = settings.MAX_OUTGOING_BODY_SIZE / (1024 * 1024)
+
+            raise drf.exceptions.ValidationError(
+                {
+                    "draftBody": _(
+                        "Message body size (%(body_size)s MB) exceeds the %(max_size)s MB limit. "
+                        "Please reduce message content."
+                    )
+                    % {
+                        "body_size": f"{body_mb:.1f}",
+                        "max_size": f"{max_body_mb:.0f}",
+                    }
+                }
+            )
+
+        draft_blob = mailbox.create_blob(
+            content=draft_body_bytes,
+            content_type="application/json",
+        )
+
     # Create message instance
     message = models.Message(
         thread=thread,
@@ -99,12 +128,7 @@ def create_draft(
         read_at=timezone.now(),
         is_draft=True,
         is_sender=True,
-        draft_blob=mailbox.create_blob(
-            content=draft_body.encode("utf-8"),
-            content_type="application/json",
-        )
-        if draft_body
-        else None,
+        draft_blob=draft_blob,
         signature=signature,
     )
     message.save()
