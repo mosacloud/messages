@@ -67,14 +67,36 @@ export class AttachmentHelper {
     }
 
     static getFormattedSize(size: number, language: string = 'en') {
-        const formatter = Intl.NumberFormat(language, {
+        // Determine the appropriate unit using binary (1024) calculation
+        const units: Array<{ divisor: number; unit: Intl.NumberFormatOptions['unit'] }> = [
+            { divisor: 1024 ** 4, unit: 'terabyte' },
+            { divisor: 1024 ** 3, unit: 'gigabyte' },
+            { divisor: 1024 ** 2, unit: 'megabyte' },
+            { divisor: 1024, unit: 'kilobyte' },
+            { divisor: 1, unit: 'byte' },
+        ];
+
+        for (const { divisor, unit } of units) {
+            if (size >= divisor) {
+                const value = size / divisor;
+                const formatter = new Intl.NumberFormat(language, {
+                    notation: "compact",
+                    style: "unit",
+                    unit: unit,
+                    unitDisplay: "narrow",
+                });
+                return formatter.format(value);
+            }
+        }
+
+        // Fallback for 0 bytes
+        const formatter = new Intl.NumberFormat(language, {
             notation: "compact",
             style: "unit",
             unit: "byte",
             unitDisplay: "narrow",
-          });
-
-          return formatter.format(size);
+        });
+        return formatter.format(size);
     }
 
     static getFormattedTotalSize(attachments: readonly (DriveFile | Attachment | File)[], language: string = 'en') {

@@ -226,7 +226,7 @@ def update_draft(
 
             # Validate body size before creating blob
             if len(draft_body_bytes) > settings.MAX_OUTGOING_BODY_SIZE:
-                # Use binary MB (MiB) to match frontend formatting
+                # Use binary (MiB) to match frontend formatting
                 body_mb = len(draft_body_bytes) / (1024 * 1024)
                 max_body_mb = settings.MAX_OUTGOING_BODY_SIZE / (1024 * 1024)
 
@@ -332,7 +332,7 @@ def update_draft(
                 # Check if adding these would exceed the attachment limit
                 total_attachment_size = current_total_size + new_total_size
                 if total_attachment_size > settings.MAX_OUTGOING_ATTACHMENT_SIZE:
-                    # Use binary MB (MiB) to match frontend formatting
+                    # Use binary (MiB) to match frontend formatting
                     total_mb = total_attachment_size / (1024 * 1024)
                     max_mb = settings.MAX_OUTGOING_ATTACHMENT_SIZE / (1024 * 1024)
                     current_mb = current_total_size / (1024 * 1024)

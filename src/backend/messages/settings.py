@@ -92,21 +92,21 @@ class Base(Configuration):
         2621440, environ_name="DATA_UPLOAD_MAX_MEMORY_SIZE", environ_prefix=None
     )  # Default 2.5MB
 
-    # Email size limits
+    # Email size limits (using binary MiB for actual limits)
     MAX_INCOMING_EMAIL_SIZE = values.PositiveIntegerValue(
-        10485760,  # Default 10MB
+        10 * 1024 * 1024,  # 10 MiB
         environ_name="MAX_INCOMING_EMAIL_SIZE",
         environ_prefix=None,
     )
 
     MAX_OUTGOING_ATTACHMENT_SIZE = values.PositiveIntegerValue(
-        20971520,  # Default 20MB
+        20 * 1024 * 1024,  # 20 MiB
         environ_name="MAX_OUTGOING_ATTACHMENT_SIZE",
         environ_prefix=None,
     )
 
     MAX_OUTGOING_BODY_SIZE = values.PositiveIntegerValue(
-        5242880,  # Default 5MB
+        5 * 1024 * 1024,  # 5 MiB
         environ_name="MAX_OUTGOING_BODY_SIZE",
         environ_prefix=None,
     )
