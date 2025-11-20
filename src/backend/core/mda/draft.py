@@ -50,7 +50,7 @@ def create_draft(
 
     # Get or create sender contact
     mailbox_email = f"{mailbox.local_part}@{mailbox.domain.name}"
-    sender_contact, _ = models.Contact.objects.get_or_create(
+    sender_contact, _created = models.Contact.objects.get_or_create(
         email=mailbox_email,
         mailbox=mailbox,
         defaults={
@@ -197,7 +197,7 @@ def update_draft(
             # Create new recipients
             emails = update_data.get(recipient_type) or []
             for email in emails:
-                contact, _ = models.Contact.objects.get_or_create(
+                contact, _created = models.Contact.objects.get_or_create(
                     email=email,
                     mailbox=mailbox,
                     defaults={
