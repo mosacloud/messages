@@ -164,44 +164,6 @@ class TestMessageTemplateRender:
         assert "Cordialement, John Doe - Adjointe" in response.data["html_body"]
         assert "Cordialement, John Doe - Adjointe" in response.data["text_body"]
 
-    @patch(
-        "django.conf.settings.SCHEMA_CUSTOM_ATTRIBUTES_USER",
-        {"properties": {"job_title": {"type": "string"}}},
-    )
-    @pytest.mark.parametrize(
-        "role",
-        [
-            models.MailboxRoleChoices.EDITOR,
-            models.MailboxRoleChoices.SENDER,
-            models.MailboxRoleChoices.VIEWER,
-            models.MailboxRoleChoices.ADMIN,
-        ],
-    )
-    def test_success_with_context(self, user, mailbox, role):
-        """Test successful template rendering with context."""
-        factories.MailboxAccessFactory(
-            mailbox=mailbox,
-            user=user,
-            role=role,
-        )
-        template_reply = factories.MessageTemplateFactory(
-            html_body="<p>Hello {recipient_name}!</p><p> My name is {name} and I'm {job_title}.</p>",
-            text_body="Hello {recipient_name}! My name is {name} and I'm {job_title}.",
-            mailbox=mailbox,
-        )
-        client = APIClient()
-        client.force_authenticate(user=user)
-        url = reverse(
-            "mailbox-message-templates-render-template",
-            kwargs={"mailbox_id": mailbox.id, "pk": template_reply.id},
-        )
-        response = client.get(f"{url}?recipient_name=Jane Smith")
-        assert response.status_code == status.HTTP_200_OK
-        assert "Hello Jane Smith!" in response.data["html_body"]
-        assert "Hello Jane Smith!" in response.data["text_body"]
-        assert "My name is John Doe and I'm Adjointe." in response.data["html_body"]
-        assert "My name is John Doe and I'm Adjointe." in response.data["text_body"]
-
     def test_render_template_no_access_mailbox(self, user, mailbox):
         """Test rendering a template from a mailbox that doesn't exist."""
         client = APIClient()

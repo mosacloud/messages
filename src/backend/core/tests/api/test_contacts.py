@@ -13,21 +13,6 @@ from core import factories, models
 class TestContactViewSet:
     """Test the ContactViewSet."""
 
-    def test_list_contacts_unauthorized(self):
-        """Anonymous user cannot access the list of contacts."""
-        client = APIClient()
-        response = client.get(reverse("contacts-list"))
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
-
-    def test_list_contacts_no_access(self):
-        """User without access to the mailbox cannot access the list of contacts."""
-        user = factories.UserFactory()
-        mailbox = factories.MailboxFactory()
-        client = APIClient()
-        client.force_authenticate(user=user)
-        response = client.get(reverse("contacts-list"), {"mailbox_id": str(mailbox.id)})
-        assert response.status_code == status.HTTP_403_FORBIDDEN
-
     def test_list_contacts(self):
         """Test listing all contacts for user's mailboxes."""
         # Create authenticated user with access to 2 mailboxes
@@ -93,6 +78,12 @@ class TestContactViewSet:
         ]
         assert response.data == expected_contacts
 
+    def test_list_contacts_unauthorized(self):
+        """Anonymous user cannot access the list of contacts."""
+        client = APIClient()
+        response = client.get(reverse("contacts-list"))
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
     def test_list_contacts_filter_by_mailbox(self):
         """Test filtering contacts by mailbox ID."""
         # Create authenticated user with access to 2 mailboxes
@@ -139,122 +130,6 @@ class TestContactViewSet:
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 1
         assert response.data[0]["id"] == str(contact2.id)
-
-    def test_list_contacts_filter_by_mailbox_includes_domain_contacts(
-        self, django_assert_num_queries
-    ):
-        """Test filtering contacts by mailbox ID also includes contacts from other mailboxes in the same domain."""
-        # create a domain for authenticated user
-        brigny_domain = factories.MailDomainFactory(name="brigny.fr")
-
-        # Create authenticated user with access to mailboxes
-        dominique = factories.UserFactory()
-
-        # Authenticate user
-        client = APIClient()
-        client.force_authenticate(user=dominique)
-
-        # create a mailbox for authenticated user
-        dominique_mailbox = factories.MailboxFactory(
-            local_part="dominique.durand", domain=brigny_domain
-        )
-        factories.MailboxAccessFactory(
-            mailbox=dominique_mailbox,
-            user=dominique,
-            role=models.MailboxRoleChoices.ADMIN,
-        )
-        dominique_contact = factories.ContactFactory(
-            name="Dominique Durand", email="dominique.durand@brigny.fr"
-        )
-        dominique_mailbox.contact = dominique_contact
-        dominique_mailbox.save()
-
-        # Create 2 other mailboxes in the same domain
-        alain_mailbox = factories.MailboxFactory(
-            local_part="alain.verse", domain=brigny_domain
-        )
-        alain_contact = factories.ContactFactory(
-            name="Alain Verse", email="alain@brigny.fr"
-        )
-        alain_mailbox.contact = alain_contact
-        alain_mailbox.save()
-        factories.ContactFactory.create_batch(
-            3, mailbox=alain_mailbox
-        )  # alain has 3 contacts in his mailbox
-
-        michel_mailbox = factories.MailboxFactory(
-            local_part="michel.chatel", domain=brigny_domain
-        )
-        michel_contact = factories.ContactFactory(
-            name="Michel Chatel", email="michel@brigny.fr"
-        )
-        michel_mailbox.contact = michel_contact
-        michel_mailbox.save()
-        factories.ContactFactory.create_batch(
-            3, mailbox=michel_mailbox
-        )  # michel has 3 contacts in his mailbox
-
-        sam_mailbox = factories.MailboxFactory(
-            local_part="sam.suffit", domain=brigny_domain
-        )
-        sam_contact = factories.ContactFactory(name="Sam Suffit", email="sam@brigny.fr")
-        sam_mailbox.contact = sam_contact
-        sam_mailbox.save()
-        factories.ContactFactory.create_batch(
-            3, mailbox=sam_mailbox
-        )  # sam has 3 contacts in his mailbox
-        sam_contact_of_dominique = factories.ContactFactory(
-            name="Sam Suffit :)", email="sam@brigny.fr"
-        )
-        # Sam is Dominique contact too
-        dominique_mailbox.contacts.add(sam_contact_of_dominique)
-
-        # Dominique has some external contacts (other domains)
-        cecile_contact = factories.ContactFactory(
-            name="Cecile Troyen", email="cecile@otherdomain1.com"
-        )
-        dominique_mailbox.contacts.add(cecile_contact)
-        jean_contact = factories.ContactFactory(
-            name="Jean Bon", email="jean@otherdomain2.com"
-        )
-        dominique_mailbox.contacts.add(jean_contact)
-
-        # create random contacts
-        factories.ContactFactory.create_batch(10)
-
-        # Filter by first mailbox - should return all mailboxes contacts and contacts
-        # from same domain as user authenticated
-        # search by name
-        with django_assert_num_queries(2):
-            response = client.get(
-                reverse("contacts-list"), {"mailbox_id": str(dominique_mailbox.id)}
-            )
-        assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) == 6  # 4 internal contacts + 2 external contacts
-        contact_ids = {c["id"] for c in response.data}
-        assert contact_ids == {
-            str(dominique_contact.id),
-            str(alain_contact.id),
-            str(michel_contact.id),
-            str(cecile_contact.id),
-            str(jean_contact.id),
-            str(sam_contact_of_dominique.id),
-        }
-
-        # search by name
-        response = client.get(reverse("contacts-list"), {"q": "Verse"})
-        assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) == 0
-
-        with django_assert_num_queries(2):
-            response = client.get(
-                reverse("contacts-list"),
-                {"mailbox_id": str(dominique_mailbox.id), "q": "Troyen"},
-            )
-        assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) == 1
-        contact_ids = {c["id"] for c in response.data}
-        assert contact_ids == {str(cecile_contact.id)}
 
     def test_list_contacts_search_by_name(self):
         """Test searching contacts by name (multi-words)."""

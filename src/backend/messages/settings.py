@@ -87,6 +87,30 @@ class Base(Configuration):
         None, environ_name="OPENSEARCH_CA_CERTS", environ_prefix=None
     )
 
+    # Upload limits
+    DATA_UPLOAD_MAX_MEMORY_SIZE = values.PositiveIntegerValue(
+        2621440, environ_name="DATA_UPLOAD_MAX_MEMORY_SIZE", environ_prefix=None
+    )  # Default 2.5MB, can be overridden via environment variable
+
+    # Email size limits
+    MAX_INCOMING_EMAIL_SIZE = values.PositiveIntegerValue(
+        10485760,  # Default 10MB
+        environ_name="MAX_INCOMING_EMAIL_SIZE",
+        environ_prefix=None,
+    )
+
+    MAX_OUTGOING_ATTACHMENT_SIZE = values.PositiveIntegerValue(
+        20971520,  # Default 20MB
+        environ_name="MAX_OUTGOING_ATTACHMENT_SIZE",
+        environ_prefix=None,
+    )
+
+    MAX_OUTGOING_BODY_SIZE = values.PositiveIntegerValue(
+        5242880,  # Default 5MB
+        environ_name="MAX_OUTGOING_BODY_SIZE",
+        environ_prefix=None,
+    )
+
     # Security
     ALLOWED_HOSTS = values.ListValue([])
     SECRET_KEY = values.Value(None)
@@ -384,7 +408,6 @@ class Base(Configuration):
         (
             ("en-us", _("English")),
             ("fr-fr", _("French")),
-            ("nl-nl", _("Dutch")),
         )
     )
 
@@ -745,6 +768,19 @@ class Base(Configuration):
     # pylint: disable=invalid-name
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        # Ensure Django's upload limit accommodates the larger of the email size limits
+        # Body and attachments are uploaded separately (body as JSON, attachments as blobs),
+        # so we take the maximum of individual limits, not their sum.
+        # Apply 1.4x factor only for incoming emails (which arrive MIME-encoded with ~33% overhead).
+        # Outgoing attachments are uploaded as raw binary files, so no encoding overhead.
+        self.DATA_UPLOAD_MAX_MEMORY_SIZE = max(
+            self.DATA_UPLOAD_MAX_MEMORY_SIZE,
+            int(self.MAX_INCOMING_EMAIL_SIZE * 1.4),  # MIME encoding overhead
+            self.MAX_OUTGOING_BODY_SIZE,               # Raw JSON, minimal overhead
+            self.MAX_OUTGOING_ATTACHMENT_SIZE,         # Raw binary upload, no encoding
+        )
+
         if self.ENABLE_PROMETHEUS:
             self.INSTALLED_APPS += ["django_prometheus"]
             self.MIDDLEWARE = [
@@ -984,12 +1020,7 @@ class Production(Base):
     SECURE_HSTS_PRELOAD = True
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_SSL_REDIRECT = True
-    SECURE_REDIRECT_EXEMPT = [
-        "^__lbheartbeat__",
-        "^__heartbeat__",
-        "^api/v1\\.0/mta/",
-        "^api/v1\\.0/inbound/mta/",
-    ]
+    SECURE_REDIRECT_EXEMPT = ["^__lbheartbeat__", "^__heartbeat__", "^api/v1\\.0/mta/"]
 
     # Modern browsers require to have the `secure` attribute on cookies with `Samesite=none`
     CSRF_COOKIE_SECURE = True

@@ -67,14 +67,30 @@ export class AttachmentHelper {
     }
 
     static getFormattedSize(size: number, language: string = 'en') {
-        const formatter = Intl.NumberFormat(language, {
-            notation: "compact",
-            style: "unit",
-            unit: "byte",
-            unitDisplay: "narrow",
-          });
+        // Use binary (1024) conversion for user-friendly display
+        // This matches file system conventions and gives clean numbers
+        const formatter = (value: number, unit: string) => {
+            return new Intl.NumberFormat(language, {
+                style: 'unit',
+                unit: unit,
+                unitDisplay: 'narrow',
+                maximumFractionDigits: 1
+            }).format(value);
+        };
 
-          return formatter.format(size);
+        const KB = 1024;
+        const MB = 1024 * 1024;
+        const GB = 1024 * 1024 * 1024;
+
+        if (size < KB) {
+            return formatter(size, 'byte');
+        } else if (size < MB) {
+            return formatter(size / KB, 'kilobyte');
+        } else if (size < GB) {
+            return formatter(size / MB, 'megabyte');
+        } else {
+            return formatter(size / GB, 'gigabyte');
+        }
     }
 
     static getFormattedTotalSize(attachments: readonly (DriveFile | Attachment | File)[], language: string = 'en') {

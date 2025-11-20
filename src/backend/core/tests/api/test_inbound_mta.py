@@ -946,3 +946,64 @@ class TestMTAInboundEmailThreading:
         # Verify they are different message instances in different threads
         assert msg1.id != msg2.id
         assert msg1.thread.id != msg2.thread.id
+
+    def test_incoming_email_size_limit_exceeded(
+        self, api_client: APIClient, valid_jwt_token
+    ):
+        """Test that incoming emails exceeding the size limit are rejected."""
+        # Set a small incoming email size limit for testing (1 KB)
+        with override_settings(MAX_INCOMING_EMAIL_SIZE=1024):
+            # Create a large email body (2 KB) that exceeds the limit
+            large_email_body = (
+                b"From: sender@example.com\r\n"
+                b"To: recipient@example.com\r\n"
+                b"Subject: Large Email Test\r\n"
+                b"\r\n"
+                + b"x" * 2048  # Large body content
+            )
+
+            recipients = ["recipient@example.com"]
+            token = valid_jwt_token(large_email_body, {"original_recipients": recipients})
+
+            response = api_client.post(
+                "/api/v1.0/inbound/mta/deliver/",
+                data=large_email_body,
+                content_type="message/rfc822",
+                HTTP_AUTHORIZATION=f"Bearer {token}",
+            )
+
+            # Should fail with 413 Request Entity Too Large
+            assert response.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+            assert response.json()["status"] == "error"
+            assert "exceeds maximum allowed size" in response.json()["detail"]
+
+    def test_incoming_email_within_size_limit(
+        self, api_client: APIClient, valid_jwt_token
+    ):
+        """Test that incoming emails within the size limit are accepted."""
+        mailbox = factories.MailboxFactory()
+        email = f"{mailbox.local_part}@{mailbox.domain.name}"
+
+        # Set a reasonable incoming email size limit for testing (10 KB)
+        with override_settings(MAX_INCOMING_EMAIL_SIZE=10240):
+            # Create an email body (5 KB) that is within the limit
+            email_body = (
+                f"From: sender@example.com\r\n"
+                f"To: {email}\r\n"
+                f"Subject: Normal Email Test\r\n"
+                f"\r\n"
+            ).encode("utf-8") + b"x" * 5000
+
+            recipients = [email]
+            token = valid_jwt_token(email_body, {"original_recipients": recipients})
+
+            response = api_client.post(
+                "/api/v1.0/inbound/mta/deliver/",
+                data=email_body,
+                content_type="message/rfc822",
+                HTTP_AUTHORIZATION=f"Bearer {token}",
+            )
+
+            # Should succeed
+            assert response.status_code == status.HTTP_200_OK
+            assert response.json() == {"status": "ok", "delivered": 1}

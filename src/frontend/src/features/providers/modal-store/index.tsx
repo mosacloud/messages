@@ -75,7 +75,7 @@ export const ModalStoreProvider = ({ children }: PropsWithChildren) => {
         <ModalStoreContext.Provider value={contextValue}>
             {children}
             {Array.from(modalStore.entries()).map(([modalId, Modal]) => (
-                openModals.has(modalId) && <Modal key={modalId} />
+                <Modal key={modalId} />
             ))}
         </ModalStoreContext.Provider>
     )

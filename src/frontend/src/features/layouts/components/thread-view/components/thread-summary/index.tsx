@@ -1,15 +1,11 @@
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@openfun/cunningham-react";
-import { Icon, IconType } from "@gouvfr-lasuite/ui-kit";
+import { Icon, Spinner } from "@gouvfr-lasuite/ui-kit";
 import { addToast, ToasterItem } from "@/features/ui/components/toaster";
 import ReactMarkdown from "react-markdown";
 import { useThreadsRefreshSummaryCreate } from "@/features/api/gen";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { toast } from "react-toastify";
-import { TextLoader } from "@/features/ui/components/text-loader";
-
-const SUMMARIZE_TOAST_ID = "summarize-toast";
 
 interface ThreadSummaryProps {
   threadId: string;
@@ -29,6 +25,7 @@ export const ThreadSummary = ({
   onSummaryUpdated,
 }: ThreadSummaryProps) => {
   const { t } = useTranslation();
+  const [localSummary, setLocalSummary] = useState(summary);
 
   // Build the cache key for the thread
   const threadQueryKey = useMemo(() => {
@@ -89,34 +86,27 @@ export const ThreadSummary = ({
           <ToasterItem type="info">
             {t("Generating summary...")}
           </ToasterItem>
-        , {
-            toastId: SUMMARIZE_TOAST_ID,
-            autoClose: false
-          });
+        );
       },
       onSuccess: (data) => {
         if (data.status === 200 && 'summary' in data.data) {
           const newSummary = data.data.summary;
           if (newSummary) {
+            setLocalSummary(newSummary);
             cacheNewSummary(newSummary);
             onSummaryUpdated?.(newSummary);
-            toast.update(SUMMARIZE_TOAST_ID, {
-              render: <ToasterItem type="info">{t("Summary refreshed!")}</ToasterItem>,
-              autoClose: null
-            });
+            addToast(<ToasterItem type="info">{t("Summary refreshed!")}</ToasterItem>);
           }
         } else {
-          toast.update(SUMMARIZE_TOAST_ID, {
-            render: <ToasterItem type="error">{t("Failed to refresh summary.")}</ToasterItem>,
-            autoClose: null
-          });
+          addToast(<ToasterItem type="error">{t("Failed to refresh summary.")}</ToasterItem>);
         }
       },
       onError: () => {
-        toast.update(SUMMARIZE_TOAST_ID, {
-          render: <ToasterItem type="error">{t("Failed to refresh summary.")}</ToasterItem>,
-          autoClose: null
-        });
+        addToast(
+          <ToasterItem type="error">
+            {t("Failed to refresh summary.")}
+          </ToasterItem>
+        );
       },
     },
   });
@@ -127,29 +117,32 @@ export const ThreadSummary = ({
 
   return (
     <div className="thread-summary__container">
-      <>
+      {refreshMutation.isPending ? (
         <div className="thread-summary__content">
-          {refreshMutation.isPending ? (
-            <TextLoader lines={2} />
-          ) : summary ? (
-            <ReactMarkdown>{`**${t("Summary")} :** ${summary}`}</ReactMarkdown>
-          ) : (
-            <p>{t("No summary available.")}</p>
-          )}
+          <Spinner />
         </div>
-        <div className="thread-summary__refresh-button">
-          <Button
-            color="tertiary-text"
-            size="small"
-            icon={<Icon name="wrap_text" type={IconType.OUTLINED} />}
-            aria-label={t("Refresh summary")}
-            onClick={handleRefresh}
-            disabled={refreshMutation.isPending}
-          >
-            {t("Summarize")}
-          </Button>
-        </div>
-      </>
+      ) : (
+        <>
+          <div className="thread-summary__content">
+            {localSummary ? (
+              <ReactMarkdown>{`**${t("Summary")} :** ${localSummary}`}</ReactMarkdown>
+            ) : (
+              <p>{t("No summary available.")}</p>
+            )}
+          </div>
+          <div className="thread-summary__refresh-button">
+            <Button
+              color="tertiary"
+              size="small"
+              icon={<Icon name="autorenew" />}
+              aria-label={t("Refresh summary")}
+              onClick={handleRefresh}
+            >
+              {t("Summarize")}
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 };

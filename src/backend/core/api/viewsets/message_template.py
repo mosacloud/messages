@@ -4,7 +4,6 @@ from django.db.models import Q
 from django.utils.functional import cached_property
 
 from drf_spectacular.utils import (
-    OpenApiExample,
     OpenApiParameter,
     OpenApiResponse,
     OpenApiTypes,
@@ -76,16 +75,6 @@ class MailboxMessageTemplateViewSet(
         return context
 
     @extend_schema(
-        parameters=[
-            OpenApiParameter(
-                name="*",
-                type=OpenApiTypes.STR,
-                location=OpenApiParameter.QUERY,
-                description="Any other parameter will be available in the template context",
-                required=False,
-                examples=[OpenApiExample("Example", value="value")],
-            )
-        ],
         responses={
             200: OpenApiResponse(
                 description="Template rendered with provided context",
@@ -106,11 +95,7 @@ class MailboxMessageTemplateViewSet(
         """Render a template."""
         template = self.get_object()
         try:
-            rendered = template.render_template(
-                mailbox=self.mailbox,
-                user=request.user,
-                context=request.query_params.dict(),
-            )
+            rendered = template.render_template(mailbox=self.mailbox, user=request.user)
             return Response(rendered)
         except (KeyError, ValueError, TypeError) as e:
             return Response(

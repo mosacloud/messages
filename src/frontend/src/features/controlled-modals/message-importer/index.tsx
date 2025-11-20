@@ -6,13 +6,13 @@ import { StepForm } from "./step-form";
 import { StepLoader } from "./step-loader";
 import { StepCompleted } from "./step-completed";
 import clsx from "clsx";
+import { MESSAGE_IMPORT_TASK_KEY } from "@/features/config/constants";
 import { useEffect, useState } from "react";
-import { TaskImportCacheHelper } from "@/features/utils/task-import-cache";
 
 
 export const MODAL_MESSAGE_IMPORTER_ID = "modal-message-importer";
 
-export type IMPORT_STEP = 'idle' | 'uploading' | 'importing' | 'completed';
+type IMPORT_STEP = 'idle' | 'importing' | 'uploading' | 'completed';
 
 /**
  * A controlled modal to import messages from an archive file or an IMAP server.
@@ -23,21 +23,31 @@ export type IMPORT_STEP = 'idle' | 'uploading' | 'importing' | 'completed';
  * - completed : Importing completed once the task is SUCCESS
  */
 export const ModalMessageImporter = () => {
-    const { invalidateThreadMessages, invalidateThreadsStats, invalidateLabels, selectedMailbox } = useMailboxContext();
+    const { invalidateThreadMessages, invalidateThreadsStats, invalidateLabels } = useMailboxContext();
     const { t } = useTranslation();
     const modals = useModals();
-    const taskImportCacheHelper = new TaskImportCacheHelper(selectedMailbox?.id);
-    const [taskId, setTaskId] = useState<string | null>(taskImportCacheHelper.get());
+    const [taskId, setTaskId] = useState<string | null>(() => {
+        if (typeof localStorage === 'undefined') return null;
+        return localStorage.getItem(MESSAGE_IMPORT_TASK_KEY) || null;
+    });
     const [step, setStep] = useState<IMPORT_STEP>(taskId ? 'importing' : 'idle');
     const [error, setError] = useState<string | null>(null);
     const { closeModal } = useModalStore();
+    const onClose = () => {
+        if (!taskId) {
+            setStep('idle');
+            setTaskId('');
+            setError(null);
+        }
+    }
     const handleCompletedStepClose = () => {
         closeModal(MODAL_MESSAGE_IMPORTER_ID);
+        onClose();
     }
 
     const handleImportingStepComplete = async () => {
-        taskImportCacheHelper.remove();
-        setTaskId(null);
+        localStorage.removeItem(MESSAGE_IMPORT_TASK_KEY);
+        setTaskId('');
         setStep('completed');
         await Promise.all([
             invalidateThreadMessages(),
@@ -49,21 +59,21 @@ export const ModalMessageImporter = () => {
 
     const handleArchiveUploading = () => {
         setStep('uploading');
-        setTaskId(null);
+        setTaskId('');
         setError(null);
-        taskImportCacheHelper.remove();
+        localStorage.removeItem(MESSAGE_IMPORT_TASK_KEY);
     }
 
     const handleFormSuccess = (taskId: string) => {
         setTaskId(taskId);
         setStep('importing');
-        taskImportCacheHelper.set(taskId);
+        localStorage.setItem(MESSAGE_IMPORT_TASK_KEY, taskId);
     }
 
     const handleError = (error: string | null) => {
         setStep('idle');
-        setTaskId(null);
-        taskImportCacheHelper.remove();
+        setTaskId('');
+        localStorage.removeItem(MESSAGE_IMPORT_TASK_KEY);
         setError(error);
     }
 
@@ -85,20 +95,18 @@ export const ModalMessageImporter = () => {
 
         window.addEventListener("beforeunload", unloadCallback);
         return () => window.removeEventListener("beforeunload", unloadCallback);
-    }, [step]);
-
-
-    if (!selectedMailbox) return null;
+      }, [step]);
 
     return (
         <ControlledModal
-            title={t('Import your old messages in {{mailbox}}', { mailbox: selectedMailbox.email })}
+            title={t('Import your old messages')}
             modalId={MODAL_MESSAGE_IMPORTER_ID}
             size={ModalSize.LARGE}
+            onClose={onClose}
             confirmFn={step !== 'uploading' ? undefined : handleConfirmCloseModal}
         >
             <div className="modal-importer">
-                {(step === 'idle' || step === 'uploading' || step === 'importing') && (
+                {(step === 'idle'  || step === 'uploading' || step === 'importing') && (
                     <div
                         className={clsx("flex-column flex-align-center", { "c__offscreen": step === 'importing' })}
                         style={{ gap: 'var(--c--theme--spacings--xl)' }}
@@ -107,7 +115,6 @@ export const ModalMessageImporter = () => {
                             onUploading={handleArchiveUploading}
                             onSuccess={handleFormSuccess}
                             onError={handleError}
-                            step={step}
                             error={error}
                         />
                     </div>

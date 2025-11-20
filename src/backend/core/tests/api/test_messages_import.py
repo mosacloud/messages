@@ -1,5 +1,5 @@
 """Test messages import."""
-# pylint: disable=redefined-outer-name, unused-argument, no-value-for-parameter, too-many-lines
+# pylint: disable=redefined-outer-name, unused-argument, no-value-for-parameter
 
 import datetime
 from unittest.mock import patch
@@ -12,7 +12,7 @@ from rest_framework.test import APIClient
 
 from core import factories
 from core.api.utils import get_file_key
-from core.enums import MailboxRoleChoices, MessageDeliveryStatusChoices
+from core.enums import MailboxRoleChoices
 from core.models import Mailbox, MailDomain, Message, Thread
 from core.services.importer.tasks import process_eml_file_task, process_mbox_file_task
 
@@ -135,7 +135,6 @@ def test_api_import_eml_file(api_client, user, mailbox, eml_file):
     assert message.sent_at == datetime.datetime(
         2025, 5, 26, 20, 13, 44, tzinfo=datetime.timezone.utc
     )
-    assert message.recipients.get().delivery_status == MessageDeliveryStatusChoices.SENT
 
 
 def test_api_import_mbox_file(api_client, user, mailbox, mbox_file):
@@ -753,136 +752,6 @@ Test message body"""
         assert (
             Message.objects.filter(thread__accesses__mailbox=mailbox2).count() == 1
         ), "Message not found in second mailbox"
-
-
-def test_api_import_imap_delivery_status_for_drafts(api_client, user, mailbox):
-    """Test that imported draft messages have delivery_status set to None for recipients."""
-    mailbox.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
-
-    # Create a draft message with the Draft flag
-    draft_message = b"""From: sender@example.com
-To: recipient1@example.com, recipient2@example.com
-Cc: cc@example.com
-Subject: Draft Message
-Date: Mon, 26 May 2025 10:00:00 +0000
-
-This is a draft message."""
-
-    # Mock IMAP connection and responses
-    with patch("imaplib.IMAP4_SSL") as mock_imap:
-        mock_imap_instance = mock_imap.return_value
-
-        # Mock login
-        mock_imap_instance.login.return_value = ("OK", [b"Logged in"])
-
-        # Mock list folders - return INBOX folder
-        mock_imap_instance.list.return_value = (
-            "OK",
-            [b'(\\HasNoChildren) "/" "INBOX"'],
-        )
-
-        # Mock select folder
-        mock_imap_instance.select.return_value = ("OK", [b"1"])
-
-        # Mock search for messages
-        mock_imap_instance.search.return_value = ("OK", [b"1"])
-
-        # Mock fetch response with Draft flag
-        mock_imap_instance.fetch.return_value = (
-            "OK",
-            [(b"1 (FLAGS (\\Draft))", draft_message)],
-        )
-
-        data = {
-            "recipient": str(mailbox.id),
-            "imap_server": "imap.example.com",
-            "imap_port": 993,
-            "username": "test@example.com",
-            "password": "password123",
-            "use_ssl": True,
-        }
-
-        response = api_client.post(IMPORT_IMAP_URL, data, format="json")
-        assert response.status_code == 202
-        assert response.data["type"] == "imap"
-
-    # Verify the message was created as a draft
-    assert Message.objects.count() == 1
-    message = Message.objects.first()
-    assert message is not None
-    assert message.is_draft is True
-
-    # Verify delivery_status is None for all recipients of draft messages
-    # because drafts have not been sent yet
-    recipients = message.recipients.all()
-    assert recipients.count() == 3  # 2 To + 1 Cc
-    for recipient in recipients:
-        assert recipient.delivery_status is None
-
-
-def test_api_import_imap_delivery_status_for_non_draft_messages(
-    api_client, user, mailbox
-):
-    """Test that imported non-draft messages have delivery_status set to SENT."""
-    mailbox.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
-
-    # Create a regular (non-draft) message
-    regular_message = b"""From: sender@example.com
-To: recipient@example.com
-Subject: Regular Message
-Date: Mon, 26 May 2025 10:00:00 +0000
-
-This is a regular message."""
-
-    # Mock IMAP connection and responses
-    with patch("imaplib.IMAP4_SSL") as mock_imap:
-        mock_imap_instance = mock_imap.return_value
-
-        # Mock login
-        mock_imap_instance.login.return_value = ("OK", [b"Logged in"])
-
-        # Mock list folders
-        mock_imap_instance.list.return_value = (
-            "OK",
-            [b'(\\HasNoChildren) "/" "INBOX"'],
-        )
-
-        # Mock select folder
-        mock_imap_instance.select.return_value = ("OK", [b"1"])
-
-        # Mock search for messages
-        mock_imap_instance.search.return_value = ("OK", [b"1"])
-
-        # Mock fetch response without Draft flag
-        mock_imap_instance.fetch.return_value = (
-            "OK",
-            [(b"1 (FLAGS (\\Seen))", regular_message)],
-        )
-
-        data = {
-            "recipient": str(mailbox.id),
-            "imap_server": "imap.example.com",
-            "imap_port": 993,
-            "username": "test@example.com",
-            "password": "password123",
-            "use_ssl": True,
-        }
-
-        response = api_client.post(IMPORT_IMAP_URL, data, format="json")
-        assert response.status_code == 202
-        assert response.data["type"] == "imap"
-
-    # Verify the message was created as a non-draft
-    assert Message.objects.count() == 1
-    message = Message.objects.first()
-    assert message is not None
-    assert message.is_draft is False
-
-    # Verify delivery_status is SENT for all recipients
-    recipients = message.recipients.all()
-    assert recipients.count() == 1
-    for recipient in recipients:
-        assert recipient.delivery_status == MessageDeliveryStatusChoices.SENT
 
 
 # def test_api_import_mbox_multiple_times_threading(api_client, user, mailbox, mbox_file_path):

@@ -62,6 +62,16 @@ class ConfigView(drf.views.APIView):
                             "type": "object",
                             "readOnly": True,
                         },
+                        "MAX_OUTGOING_ATTACHMENT_SIZE": {
+                            "type": "integer",
+                            "description": "Maximum size in bytes for outgoing email attachments",
+                            "readOnly": True,
+                        },
+                        "MAX_OUTGOING_BODY_SIZE": {
+                            "type": "integer",
+                            "description": "Maximum size in bytes for outgoing email body (text + HTML)",
+                            "readOnly": True,
+                        },
                     },
                     "required": [
                         "ENVIRONMENT",
@@ -72,6 +82,8 @@ class ConfigView(drf.views.APIView):
                         "FEATURE_AI_AUTOLABELS",
                         "SCHEMA_CUSTOM_ATTRIBUTES_USER",
                         "SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN",
+                        "MAX_OUTGOING_ATTACHMENT_SIZE",
+                        "MAX_OUTGOING_BODY_SIZE",
                     ],
                 },
             )
@@ -99,6 +111,10 @@ class ConfigView(drf.views.APIView):
         dict_settings["AI_ENABLED"] = is_ai_enabled()
         dict_settings["FEATURE_AI_SUMMARY"] = is_ai_summary_enabled()
         dict_settings["FEATURE_AI_AUTOLABELS"] = is_auto_labels_enabled()
+
+        # Email size limits
+        dict_settings["MAX_OUTGOING_ATTACHMENT_SIZE"] = settings.MAX_OUTGOING_ATTACHMENT_SIZE
+        dict_settings["MAX_OUTGOING_BODY_SIZE"] = settings.MAX_OUTGOING_BODY_SIZE
 
         # Drive service
         if base_url := settings.DRIVE_CONFIG.get("base_url"):

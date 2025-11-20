@@ -45,10 +45,7 @@ class PlaceholderView(APIView):
     def get(self, request):
         """Get the structure of available fields."""
         current_language = translation.get_language().split("-")[0]
-        fields = {
-            "name": translation.gettext_lazy("Name"),
-            "recipient_name": translation.gettext_lazy("Recipient name"),
-        }
+        fields = {"name": translation.gettext_lazy("Name")}
         # Add user custom attributes fields from schema
         schema = settings.SCHEMA_CUSTOM_ATTRIBUTES_USER
         schema_properties = schema.get("properties", {})

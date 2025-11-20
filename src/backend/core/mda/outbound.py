@@ -7,6 +7,9 @@ from typing import Any, Optional
 from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
+
+import rest_framework as drf
 
 from core import models
 from core.enums import MessageDeliveryStatusChoices
@@ -147,12 +150,48 @@ def prepare_outbound_message(
         "message_id": message.mime_id,
     }
 
+    # Calculate body size (raw text/HTML bytes) before MIME encoding
+    body_size = 0
+    if text_body:
+        body_size += len(text_body.encode('utf-8'))
+    if html_body:
+        body_size += len(html_body.encode('utf-8'))
+
+    # Validate body size against limit
+    if body_size > settings.MAX_OUTGOING_BODY_SIZE:
+        body_mb = body_size / 1_000_000
+        max_body_mb = settings.MAX_OUTGOING_BODY_SIZE / 1_000_000
+
+        logger.error(
+            "Message body size for message %s exceeds limit: %d bytes (limit: %d bytes)",
+            message.id,
+            body_size,
+            settings.MAX_OUTGOING_BODY_SIZE,
+        )
+        raise drf.exceptions.ValidationError(
+            {
+                "message": _(
+                    "Message body size (%(body_size)s MB) exceeds the %(max_size)s MB limit. "
+                    "Please reduce message content."
+                )
+                % {
+                    "body_size": f"{body_mb:.1f}",
+                    "max_size": f"{max_body_mb:.0f}",
+                }
+            }
+        )
+
+    # Calculate total content size (attachments + body)
+    total_content_size = body_size
+
     # Add attachments if present
     if message.attachments.exists():
         attachments = []
+
         for attachment in message.attachments.select_related("blob").all():
             # Get the blob data
             blob = attachment.blob
+            total_content_size += blob.size
 
             # Add the attachment to the MIME data
             attachments.append(
@@ -169,6 +208,31 @@ def prepare_outbound_message(
         if attachments:
             mime_data["attachments"] = attachments
 
+    # Validate total attachment size (before MIME encoding)
+    attachment_size = total_content_size - body_size
+    if attachment_size > settings.MAX_OUTGOING_ATTACHMENT_SIZE:
+        attachment_mb = attachment_size / 1_000_000
+        max_mb = settings.MAX_OUTGOING_ATTACHMENT_SIZE / 1_000_000
+
+        logger.error(
+            "Total attachment size for message %s exceeds limit: %d bytes (limit: %d bytes)",
+            message.id,
+            attachment_size,
+            settings.MAX_OUTGOING_ATTACHMENT_SIZE,
+        )
+        raise drf.exceptions.ValidationError(
+            {
+                "message": _(
+                    "Total attachment size (%(total_size)s MB) exceeds the %(max_size)s MB limit. "
+                    "Please reduce attachments."
+                )
+                % {
+                    "total_size": f"{attachment_mb:.1f}",
+                    "max_size": f"{max_mb:.0f}",
+                }
+            }
+        )
+
     # Assemble the raw mime message
     try:
         raw_mime = compose_email(
@@ -178,7 +242,9 @@ def prepare_outbound_message(
         )
     except Exception as e:
         logger.error("Failed to compose MIME for message %s: %s", message.id, e)
-        return False
+        raise drf.exceptions.APIException(
+            _("Failed to compose email message.")
+        ) from e
 
     # Sign the message with DKIM
     dkim_signature_header: Optional[bytes] = sign_message_dkim(

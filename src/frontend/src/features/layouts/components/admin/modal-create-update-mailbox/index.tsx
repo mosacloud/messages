@@ -192,7 +192,7 @@ export const ModalCreateOrUpdateMailbox = ({ isOpen, mailbox, onClose, onSuccess
         }
       }
     }
-  }, [watchedValues, activeTab, prefixManuallyChanged, isUpdating, setValue]);
+  }, [watchedValues, activeTab, prefixManuallyChanged, setValue, isUpdating]);
 
   // Focus first field when tab changes
   // TODO: might be better to use form.setFocus if we can make it work
@@ -299,9 +299,9 @@ export const ModalCreateOrUpdateMailbox = ({ isOpen, mailbox, onClose, onSuccess
   };
 
   const handleClose = () => {
-    setActiveTab("personal");
-    reset(getDefaultValues("personal"));
+    form.reset();
     setError(null);
+    setActiveTab("personal");
     setCreatedMailbox(null);
     onClose();
   };

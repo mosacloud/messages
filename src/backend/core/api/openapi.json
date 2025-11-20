@@ -197,6 +197,16 @@
                                         "SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN": {
                                             "type": "object",
                                             "readOnly": true
+                                        },
+                                        "MAX_OUTGOING_ATTACHMENT_SIZE": {
+                                            "type": "integer",
+                                            "description": "Maximum size in bytes for outgoing email attachments",
+                                            "readOnly": true
+                                        },
+                                        "MAX_OUTGOING_BODY_SIZE": {
+                                            "type": "integer",
+                                            "description": "Maximum size in bytes for outgoing email body (text + HTML)",
+                                            "readOnly": true
                                         }
                                     },
                                     "required": [
@@ -207,7 +217,9 @@
                                         "FEATURE_AI_SUMMARY",
                                         "FEATURE_AI_AUTOLABELS",
                                         "SCHEMA_CUSTOM_ATTRIBUTES_USER",
-                                        "SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN"
+                                        "SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN",
+                                        "MAX_OUTGOING_ATTACHMENT_SIZE",
+                                        "MAX_OUTGOING_BODY_SIZE"
                                     ]
                                 }
                             }
@@ -220,7 +232,7 @@
         "/api/v1.0/contacts/": {
             "get": {
                 "operationId": "contacts_list",
-                "description": "List contacts with optional filtering by mailbox and search query.\nFor a mailbox, it returns all contacts in the mailbox and all contacts\nin the same domain as the mailbox.\n\nQuery parameters:\n- mailbox_id: Optional UUID to filter contacts by mailbox\n- q: Optional search query for name or email (case insensitive)",
+                "description": "List contacts with optional filtering by mailbox and search query.\n\nQuery parameters:\n- mailbox_id: Optional UUID to filter contacts by mailbox\n- q: Optional search query for name or email (case insensitive)",
                 "parameters": [
                     {
                         "in": "query",
@@ -2689,19 +2701,6 @@
                 "operationId": "mailboxes_message_templates_render_retrieve",
                 "description": "Render a template with the provided context variables.",
                 "parameters": [
-                    {
-                        "in": "query",
-                        "name": "*",
-                        "schema": {
-                            "type": "string"
-                        },
-                        "description": "Any other parameter will be available in the template context",
-                        "examples": {
-                            "Example": {
-                                "value": "value"
-                            }
-                        }
-                    },
                     {
                         "in": "path",
                         "name": "id",

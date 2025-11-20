@@ -111,24 +111,22 @@ describe("AttachmentHelper", () => {
 
     describe("getFormattedSize", () => {
         it("should format size in bytes", () => {
-            expect(AttachmentHelper.getFormattedSize(500)).toBe("500B");
+            expect(AttachmentHelper.getFormattedSize(500)).toBe("500 byte");
         });
 
-        it("should format size in kilobytes", () => {
-            expect(AttachmentHelper.getFormattedSize(1500)).toBe("1.5KB");
+        it("should format size in kilobytes (binary)", () => {
+            expect(AttachmentHelper.getFormattedSize(1536)).toBe("1.5 kB");
+            expect(AttachmentHelper.getFormattedSize(1024)).toBe("1 kB");
         });
 
-        it("should format size in megabytes", () => {
-            expect(AttachmentHelper.getFormattedSize(1500000)).toBe("1.5MB");
+        it("should format size in megabytes (binary)", () => {
+            expect(AttachmentHelper.getFormattedSize(5242880)).toBe("5 MB");
+            expect(AttachmentHelper.getFormattedSize(1572864)).toBe("1.5 MB");
         });
 
-        it("should format size in gigabytes", () => {
-            expect(AttachmentHelper.getFormattedSize(1500000000)).toBe("1.5BB");
-        });
-
-        it("should use specified language for formatting", () => {
-            // French uses comma as decimal separator
-            expect(AttachmentHelper.getFormattedSize(1500, 'fr')).toBe("1,5 ko");
+        it("should format exact megabyte limits without decimals", () => {
+            expect(AttachmentHelper.getFormattedSize(10485760)).toBe("10 MB");
+            expect(AttachmentHelper.getFormattedSize(20971520)).toBe("20 MB");
         });
     });
 
@@ -139,11 +137,11 @@ describe("AttachmentHelper", () => {
                 { size: 2000 } as Attachment,
                 { size: 3000 } as Attachment
             ];
-            expect(AttachmentHelper.getFormattedTotalSize(attachments)).toBe("6KB");
+            expect(AttachmentHelper.getFormattedTotalSize(attachments)).toBe("5.9 kB");
         });
 
         it("should handle empty array of attachments", () => {
-            expect(AttachmentHelper.getFormattedTotalSize([])).toBe("0B");
+            expect(AttachmentHelper.getFormattedTotalSize([])).toBe("0 byte");
         });
 
         it("should use specified language for formatting", () => {
@@ -151,7 +149,7 @@ describe("AttachmentHelper", () => {
                 { size: 1500 } as Attachment,
                 { size: 2500 } as Attachment
             ];
-            expect(AttachmentHelper.getFormattedTotalSize(attachments, 'fr')).toBe("4 ko");
+            expect(AttachmentHelper.getFormattedTotalSize(attachments, 'fr')).toBe("3,9 ko");
         });
     });
 }); 

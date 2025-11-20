@@ -148,20 +148,31 @@ class IsAllowedToAccess(IsAuthenticated):
 
             # Only EDITOR, SENDER or ADMIN role can destroy. SENDER or ADMIN can send.
             if view.action in ["destroy", "send"]:
-                # filter only mailboxes with editor role on thread
-                # and check if user has enough role on those mailboxes to destroy or send the message
-                minimal_user_role = (
-                    enums.MailboxRoleChoices.EDITOR
-                    if view.action == "destroy"
-                    else enums.MailboxRoleChoices.SENDER
-                )
-                return thread.accesses.filter(
-                    role=enums.ThreadAccessRoleChoices.EDITOR,
-                    mailbox__accesses__user=user,
-                    mailbox__accesses__role__gte=minimal_user_role,
-                ).exists()
+                mailbox = thread.accesses.get(mailbox__accesses__user=user).mailbox
+                if (
+                    models.ThreadAccess.objects.filter(
+                        thread=thread,
+                        mailbox=mailbox,
+                        role=enums.ThreadAccessRoleChoices.EDITOR,
+                    ).exists()
+                    and models.MailboxAccess.objects.filter(
+                        mailbox=mailbox,
+                        user=user,
+                        role__in=[
+                            enums.MailboxRoleChoices.ADMIN,
+                            enums.MailboxRoleChoices.SENDER,
+                        ]
+                        + (
+                            [enums.MailboxRoleChoices.EDITOR]
+                            if view.action == "destroy"
+                            else []
+                        ),
+                    ).exists()
+                ):
+                    return True
             # for retrieve action has_access is already checked above
-            return True
+            else:
+                return True
 
         # Deny access for other object types or if type is unknown
         return False

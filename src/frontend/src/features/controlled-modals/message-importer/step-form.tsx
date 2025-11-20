@@ -15,7 +15,6 @@ import { Banner } from "@/features/ui/components/banner";
 import i18n from "@/features/i18n/initI18n";
 import { BucketUploadState, useBucketUpload } from "./use-bucket-upload";
 import ProgressBar from "@/features/ui/components/progress-bar";
-import { IMPORT_STEP } from ".";
 
 const usernameSchema = z.email({ error: i18n.t('The email address is invalid.') });
 
@@ -47,9 +46,9 @@ type StepFormProps = {
     onSuccess: (taskId: string) => void;
     onError: (error: string | null) => void;
     error: string | null;
-    step: IMPORT_STEP;
+
 }
-export const StepForm = ({ onUploading, onSuccess, onError, error, step }: StepFormProps) => {
+export const StepForm = ({ onUploading, onSuccess, onError, error}: StepFormProps) => {
     const { t } = useTranslation();
     const router = useRouter();
     const [showAdvancedImapFields, setShowAdvancedImapFields] = useState(false);
@@ -188,10 +187,7 @@ export const StepForm = ({ onUploading, onSuccess, onError, error, step }: StepF
                 onSubmit={form.handleSubmit(handleSubmit)}
                 noValidate
             >
-                {step === 'uploading'
-                    ? <h2>{t('Uploading your archive')}</h2>
-                    : <h2>{t('First, we need some information about your old mailbox')}</h2>
-                }
+                <h2>{t('First, we need some information about your old mailbox')}</h2>
                 {showImapForm === true && (
                     <>
                         <div className="form-field-row flex-justify-center">
@@ -268,11 +264,9 @@ export const StepForm = ({ onUploading, onSuccess, onError, error, step }: StepF
                         </div>
                     </>
                 )}
-                {step !== 'uploading' && (
                 <div className="form-field-row flex-justify-center">
                     <p>{t('Upload an archive')}</p>
                 </div>
-                )}
                 <div className="form-field-row archive_file_field">
                     <RhfFileUploader
                         name="archive_file"
@@ -290,7 +284,7 @@ export const StepForm = ({ onUploading, onSuccess, onError, error, step }: StepF
                         </div>
                     )}
                 </div>
-                {error && (<Banner type="error"><p>{t(error)}</p></Banner>)}
+                {error && ( <Banner type="error"><p>{t(error)}</p></Banner> )}
                 <div className="form-field-row">
                     {[BucketUploadState.IMPORTING].includes(bucketUploadManager.state) ? (
                         <Button
@@ -299,7 +293,7 @@ export const StepForm = ({ onUploading, onSuccess, onError, error, step }: StepF
                             color="tertiary"
                             fullWidth
                         >
-                            {t('Abort upload')}
+                                {t('Abort upload')}
                         </Button>
 
                     ) : (
