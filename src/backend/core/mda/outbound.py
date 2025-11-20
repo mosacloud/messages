@@ -7,6 +7,9 @@ from typing import Any, Optional
 from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
+
+import rest_framework as drf
 
 from core import models
 from core.enums import MessageDeliveryStatusChoices
@@ -179,6 +182,36 @@ def prepare_outbound_message(
     except Exception as e:
         logger.error("Failed to compose MIME for message %s: %s", message.id, e)
         return False
+
+    # Validate the composed MIME size
+    mime_size = len(raw_mime)
+    max_total_size = settings.MAX_OUTGOING_BODY_SIZE + settings.MAX_OUTGOING_ATTACHMENT_SIZE
+    if mime_size > max_total_size:
+        # Use binary MB (MiB) to match frontend formatting
+        mime_mb = mime_size / (1024 * 1024)
+        max_mb = max_total_size / (1024 * 1024)
+
+        logger.error(
+            "Composed MIME for message %s exceeds size limit: %d bytes (%.1f MB) > %d bytes (%.0f MB)",
+            message.id,
+            mime_size,
+            mime_mb,
+            max_total_size,
+            max_mb,
+        )
+
+        raise drf.exceptions.ValidationError(
+            {
+                "message": _(
+                    "The composed email (%(mime_size)s MB) exceeds the maximum allowed size of %(max_size)s MB. "
+                    "Please reduce message content or attachments."
+                )
+                % {
+                    "mime_size": f"{mime_mb:.1f}",
+                    "max_size": f"{max_mb:.0f}",
+                }
+            }
+        )
 
     # Sign the message with DKIM
     dkim_signature_header: Optional[bytes] = sign_message_dkim(
