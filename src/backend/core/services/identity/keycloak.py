@@ -206,9 +206,16 @@ def sync_mailbox_to_keycloak_user(mailbox):
         # Add user to maildomain group
         group_path = f"{settings.KEYCLOAK_GROUP_PATH_PREFIX}{mailbox.domain.name}"
         group_name = group_path.rsplit("/", maxsplit=1)[-1]
-        groups = keycloak_admin.get_groups({"search": group_name})
 
-        for group in groups:
+        def list_groups_and_subgroups():
+            groups = keycloak_admin.get_groups({"search": group_name})
+
+            for group in groups:
+                yield group
+                for sub_group in group.get("subGroups") or []:
+                    yield sub_group
+
+        for group in list_groups_and_subgroups():
             if group.get("name") == group_name:
                 group_id = group["id"]
 
