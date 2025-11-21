@@ -7,6 +7,9 @@ from typing import Any, Optional
 from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
+
+import rest_framework as drf
 
 from core import models
 from core.enums import MessageDeliveryStatusChoices
@@ -150,9 +153,12 @@ def prepare_outbound_message(
     # Add attachments if present
     if message.attachments.exists():
         attachments = []
+        total_attachment_size = 0
+
         for attachment in message.attachments.select_related("blob").all():
             # Get the blob data
             blob = attachment.blob
+            total_attachment_size += blob.size
 
             # Add the attachment to the MIME data
             attachments.append(
@@ -162,6 +168,34 @@ def prepare_outbound_message(
                     "name": attachment.name,  # Original filename
                     "disposition": "attachment",  # Default to attachment disposition
                     "size": blob.size,  # Size in bytes
+                }
+            )
+
+        # Validate total attachment size before composing
+        if total_attachment_size > settings.MAX_OUTGOING_ATTACHMENT_SIZE:
+            # Use binary MB (MiB) to match frontend formatting
+            total_mb = total_attachment_size / (1024 * 1024)
+            max_mb = settings.MAX_OUTGOING_ATTACHMENT_SIZE / (1024 * 1024)
+
+            logger.error(
+                "Total attachment size for message %s exceeds limit: %d bytes (%.1f MB) > %d bytes (%.0f MB)",
+                message.id,
+                total_attachment_size,
+                total_mb,
+                settings.MAX_OUTGOING_ATTACHMENT_SIZE,
+                max_mb,
+            )
+
+            raise drf.exceptions.ValidationError(
+                {
+                    "message": _(
+                        "Total attachment size (%(total_size)s MB) exceeds the %(max_size)s MB limit. "
+                        "Please remove or reduce attachments."
+                    )
+                    % {
+                        "total_size": f"{total_mb:.1f}",
+                        "max_size": f"{max_mb:.0f}",
+                    }
                 }
             )
 
@@ -179,6 +213,38 @@ def prepare_outbound_message(
     except Exception as e:
         logger.error("Failed to compose MIME for message %s: %s", message.id, e)
         return False
+
+    # Validate the composed MIME size
+    mime_size = len(raw_mime)
+    max_total_size = (
+        settings.MAX_OUTGOING_BODY_SIZE + settings.MAX_OUTGOING_ATTACHMENT_SIZE
+    )
+    if mime_size > max_total_size:
+        # Use binary MB (MiB) to match frontend formatting
+        mime_mb = mime_size / (1024 * 1024)
+        max_mb = max_total_size / (1024 * 1024)
+
+        logger.error(
+            "Composed MIME for message %s exceeds size limit: %d bytes (%.1f MB) > %d bytes (%.0f MB)",
+            message.id,
+            mime_size,
+            mime_mb,
+            max_total_size,
+            max_mb,
+        )
+
+        raise drf.exceptions.ValidationError(
+            {
+                "message": _(
+                    "The composed email (%(mime_size)s MB) exceeds the maximum allowed size of %(max_size)s MB. "
+                    "Please reduce message content or attachments."
+                )
+                % {
+                    "mime_size": f"{mime_mb:.1f}",
+                    "max_size": f"{max_mb:.0f}",
+                }
+            }
+        )
 
     # Sign the message with DKIM
     dkim_signature_header: Optional[bytes] = sign_message_dkim(
