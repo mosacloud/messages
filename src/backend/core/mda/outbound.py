@@ -214,10 +214,10 @@ def prepare_outbound_message(
         logger.error("Failed to compose MIME for message %s: %s", message.id, e)
         return False
 
-    # Validate the composed MIME size
+    # Validate the composed MIME size, with ~33% overhead for attachments because of MIME encoding
     mime_size = len(raw_mime)
-    max_total_size = (
-        settings.MAX_OUTGOING_BODY_SIZE + settings.MAX_OUTGOING_ATTACHMENT_SIZE
+    max_total_size = settings.MAX_OUTGOING_BODY_SIZE + (
+        settings.MAX_OUTGOING_ATTACHMENT_SIZE * 1.4
     )
     if mime_size > max_total_size:
         # Use binary MB (MiB) to match frontend formatting
