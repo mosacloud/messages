@@ -18,7 +18,7 @@ cp /app/etc/sasl/smtpd.conf /etc/postfix/sasl/smtpd.conf
 : "${SMTP_PASSWORD:?Error: SMTP_PASSWORD must be set}"
 
 # Set optional vars with defaults
-export MAX_INCOMING_EMAIL_SIZE=${MAX_INCOMING_EMAIL_SIZE:-10240000}
+export MAX_OUTGOING_EMAIL_SIZE=${MAX_OUTGOING_EMAIL_SIZE:-10240000}
 export SMTP_RELAY_HOST=${SMTP_RELAY_HOST:-""}
 export SMTP_RELAY_USERNAME=${SMTP_RELAY_USERNAME:-""}
 export SMTP_RELAY_PASSWORD=${SMTP_RELAY_PASSWORD:-""}
