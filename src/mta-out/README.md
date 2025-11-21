@@ -35,7 +35,7 @@ Configuration is done entirely through environment variables:
 - `MYHOSTNAME`: The hostname this MTA identifies itself with in HELO/EHLO commands (default: `localhost`). Setting a proper FQDN is recommended. If it is not set we will attempt auto-detection from the rRNS of the host.
 - `TLS_CERT_PATH`: Path to the TLS certificate file (default: `/etc/ssl/certs/ssl-cert-snakeoil.pem`). **WARNING:** Mount a real certificate in production.
 - `TLS_KEY_PATH`: Path to the TLS private key file (default: `/etc/ssl/private/ssl-cert-snakeoil.key`). **WARNING:** Mount a real key in production.
-- `MESSAGE_SIZE_LIMIT`: Maximum size of messages in bytes (default: `10240000`).
+- `MAX_INCOMING_EMAIL_SIZE`: Maximum size of messages in bytes (default: `10240000`).
 
 ## Testing
 

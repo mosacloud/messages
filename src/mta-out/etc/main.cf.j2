@@ -75,7 +75,7 @@ smtpd_relay_restrictions =
    reject
 
 # === Message Size ===
-message_size_limit = {{ MESSAGE_SIZE_LIMIT }}
+message_size_limit = {{ MAX_INCOMING_EMAIL_SIZE }}
 
 # === Delivery Method (Outgoing Connections) ===
 {% if SMTP_RELAY_HOST %}
