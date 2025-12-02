@@ -134,7 +134,9 @@ class TestDriveAPIView:
         "lasuite.oidc_login.middleware.RefreshOIDCAccessToken.is_expired",
         return_value=False,
     )
-    def test_api_third_party_drive_get_search_by_title(self, _mock, api_client_with_user):
+    def test_api_third_party_drive_get_search_by_title(
+        self, _mock, api_client_with_user
+    ):
         """Test searching for files in the main workspace."""
         client, _ = api_client_with_user
 
@@ -215,7 +217,9 @@ class TestDriveAPIView:
         "lasuite.oidc_login.middleware.RefreshOIDCAccessToken.is_expired",
         return_value=False,
     )
-    def test_api_third_party_drive_get_no_main_workspace(self, _mock, api_client_with_user):
+    def test_api_third_party_drive_get_no_main_workspace(
+        self, _mock, api_client_with_user
+    ):
         """Test searching for files when no main workspace exists."""
         client, _ = api_client_with_user
 
@@ -343,7 +347,9 @@ class TestDriveAPIView:
         "lasuite.oidc_login.middleware.RefreshOIDCAccessToken.is_expired",
         return_value=False,
     )
-    def test_api_third_party_drive_post_missing_blob_id(self, _mock, api_client_with_user):
+    def test_api_third_party_drive_post_missing_blob_id(
+        self, _mock, api_client_with_user
+    ):
         """Test uploading file without blob_id."""
         client, _ = api_client_with_user
 
@@ -357,7 +363,9 @@ class TestDriveAPIView:
         "lasuite.oidc_login.middleware.RefreshOIDCAccessToken.is_expired",
         return_value=False,
     )
-    def test_api_third_party_drive_post_invalid_blob_id(self, _mock, api_client_with_user):
+    def test_api_third_party_drive_post_invalid_blob_id(
+        self, _mock, api_client_with_user
+    ):
         """Test uploading file with invalid blob_id format."""
         client, _ = api_client_with_user
 

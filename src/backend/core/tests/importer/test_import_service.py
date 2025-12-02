@@ -737,3 +737,71 @@ Test message body 2"""
         assert message.sent_at == datetime.datetime(
             2025, 5, 26, 10, 0, 0, tzinfo=datetime.timezone.utc
         )
+
+
+@patch("core.mda.inbound.is_ai_summary_enabled", return_value=True)
+@patch("core.mda.inbound.is_auto_labels_enabled", return_value=True)
+@patch("core.mda.inbound.summarize_thread")
+@patch("core.mda.inbound.assign_label_to_thread")
+def test_import_messages_do_not_trigger_ai_features(
+    mock_assign_label_to_thread,
+    mock_summarize_thread,
+    mock_is_auto_labels_enabled,
+    mock_is_ai_summary_enabled,
+    user,
+    mailbox,
+    mock_request,
+):
+    """Test importing messages should not trigger AI features."""
+    # Add access to mailbox
+    mailbox.accesses.create(user=user, role=MailboxRoleChoices.ADMIN)
+
+    # Mock IMAP connection and responses
+    with patch("imaplib.IMAP4_SSL") as mock_imap:
+        mock_imap_instance = mock_imap.return_value
+
+        # Mock login
+        mock_imap_instance.login.return_value = ("OK", [b"Logged in"])
+
+        # Mock list folders - return INBOX folder
+        mock_imap_instance.list.return_value = (
+            "OK",
+            [b'(\\HasNoChildren) "/" "INBOX"'],
+        )
+
+        # Mock select folder
+        mock_imap_instance.select.return_value = ("OK", [b"1"])
+
+        # Mock search for messages
+        mock_imap_instance.search.return_value = ("OK", [b"1 2"])
+
+        # Mock 1 message
+        message1 = b"""From: sender@example.com
+To: recipient@example.com
+Subject: Test Message 1
+Date: Mon, 26 May 2025 10:00:00 +0000
+
+Test message body 1"""
+
+        mock_imap_instance.fetch.side_effect = [
+            # First message: flags + content
+            ("OK", [(b"1 (FLAGS (\\Seen \\Answered))", message1)]),
+        ]
+
+        success, _ = ImportService.import_imap(
+            imap_server="imap.example.com",
+            imap_port=993,
+            username="test@example.com",
+            password="password123",
+            recipient=mailbox,
+            user=user,
+            use_ssl=True,
+            request=mock_request,
+        )
+
+        assert success is True
+
+        assert mock_is_ai_summary_enabled.call_count == 0
+        assert mock_is_auto_labels_enabled.call_count == 0
+        assert mock_assign_label_to_thread.call_count == 0
+        assert mock_summarize_thread.call_count == 0

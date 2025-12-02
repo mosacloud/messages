@@ -711,24 +711,26 @@ def deliver_inbound_message(  # pylint: disable=too-many-branches, too-many-stat
             thread.snippet = new_snippet
             thread.save(update_fields=["snippet"])
 
-        # Update summary if needed is ai is enabled
-        if is_ai_summary_enabled():
-            messages = get_messages_from_thread(thread)
-            token_count = sum(message.get_tokens_count() for message in messages)
+        # Do not trigger AI features on import
+        if not is_import:
+            # Update summary if needed is ai is enabled
+            if is_ai_summary_enabled():
+                messages = get_messages_from_thread(thread)
+                token_count = sum(message.get_tokens_count() for message in messages)
 
-            # Only summarize if the thread has enough content (more than 200 tokens or at least 3 messages)
-            if (
-                token_count >= TOKEN_THRESHOLD_FOR_SUMMARY
-                or len(messages) >= MINIMUM_MESSAGES_FOR_SUMMARY
-            ):
-                new_summary = summarize_thread(thread)
-                if new_summary:
-                    thread.summary = new_summary
-                    thread.save(update_fields=["summary"])
+                # Only summarize if the thread has enough content (more than 200 tokens or at least 3 messages)
+                if (
+                    token_count >= TOKEN_THRESHOLD_FOR_SUMMARY
+                    or len(messages) >= MINIMUM_MESSAGES_FOR_SUMMARY
+                ):
+                    new_summary = summarize_thread(thread)
+                    if new_summary:
+                        thread.summary = new_summary
+                        thread.save(update_fields=["summary"])
 
-        # Assign labels to the thread
-        if is_auto_labels_enabled():
-            assign_label_to_thread(thread, mailbox.id)
+            # Assign labels to the thread
+            if is_auto_labels_enabled():
+                assign_label_to_thread(thread, mailbox.id)
 
     except Exception as e:
         logger.exception(
