@@ -5,7 +5,7 @@ import { useMailboxContext } from '@/features/providers/mailbox';
 import { useConfig } from '@/features/providers/config';
 import { useFormContext } from 'react-hook-form';
 import { Button, Field, useModals, VariantType } from '@openfun/cunningham-react';
-import { AttachmentItem } from '@/features/layouts/components/thread-view/components/thread-attachment-list/attachment-item';
+import { AttachmentItem, isAttachment } from '@/features/layouts/components/thread-view/components/thread-attachment-list/attachment-item';
 import { useTranslation } from 'react-i18next';
 import { useDropzone } from 'react-dropzone';
 import { AttachmentHelper } from '@/features/utils/attachment-helper';
@@ -39,7 +39,10 @@ export const AttachmentUploader = ({
     const debouncedOnChange = useDebounceCallback(onChange, 1000);
 
     // Calculate current total size of attachments and pending uploads
-    const attachmentsSize = attachments.reduce((acc, attachment) => acc + attachment.size, 0);
+    const attachmentsSize = attachments.reduce((acc, attachment) => {
+        if (isAttachment(attachment)) return acc + attachment.size;
+        return acc;
+    }, 0);
     const uploadingQueueSize = uploadingQueue.reduce((acc, file) => acc + file.size, 0);
     const currentTotalSize = attachmentsSize + uploadingQueueSize;
 
@@ -181,7 +184,9 @@ export const AttachmentUploader = ({
                             ? t("{{count}} attachments", { count: attachments.length, defaultValue_one: "{{count}} attachment" })
                             : t("No attachments")}
                         </strong>{' '}
-                        ({AttachmentHelper.getFormattedTotalSize(attachments, i18n.resolvedLanguage)})
+                        {attachments.filter(isAttachment).length > 0 && (
+                            `(${AttachmentHelper.getFormattedTotalSize(attachments.filter(isAttachment), i18n.resolvedLanguage)})`
+                        )}
                     </p>
                     <div className="attachment-bucket__list">
                         {failedQueue.map((entry) => (

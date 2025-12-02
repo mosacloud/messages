@@ -19,10 +19,10 @@ type AttachmentItemProps = {
     onDelete?: () => void;
 }
 
-const isAttachment = (attachment: Attachment | File | DriveFile): attachment is Attachment => {
+export const isAttachment = (attachment: Attachment | File | DriveFile): attachment is Attachment => {
     return 'blobId' in attachment;
 }
-const isDriveFile = (attachment: Attachment | File | DriveFile): attachment is DriveFile => {
+export const isDriveFile = (attachment: Attachment | File | DriveFile): attachment is DriveFile => {
     return 'url' in attachment;
 }
 
