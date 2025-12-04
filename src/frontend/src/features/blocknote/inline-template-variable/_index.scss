@@ -1,11 +1,11 @@
 
 span[data-inline-content-type="template-variable"] {
-    padding: 0 4px;
-    border-radius: 6px;
-    background: var(--c--theme--colors--primary-100);
-    color: var(--c--theme--colors--primary-800);
-    font-size: 12px;
-    border: 1px solid var(--c--theme--colors--primary-300);
+    padding: var(--c--globals--spacings--4xs) var(--c--globals--spacings--2xs);
+    border-radius: 4px;
+    background: var(--c--contextuals--background--semantic--brand--secondary);
+    color: var(--c--contextuals--content--semantic--brand--primary);
+    font-size: var(--c--globals--font--sizes--xs);
+    border: 1px solid var(--c--contextuals--border--semantic--brand--secondary);
     user-select: none;
     font-family: monospace;
 }

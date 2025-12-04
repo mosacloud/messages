@@ -1,7 +1,7 @@
 import { TreeLabel, ThreadsStatsRetrieveStatsFields, useLabelsDestroy, useLabelsList, useThreadsStatsRetrieve, ThreadsStatsRetrieve200, useLabelsAddThreadsCreate, useLabelsRemoveThreadsCreate, useLabelsPartialUpdate } from "@/features/api/gen";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { DropdownMenu, Icon, IconType } from "@gouvfr-lasuite/ui-kit";
-import { Button, useModals } from "@openfun/cunningham-react";
+import { Button, useModals } from "@gouvfr-lasuite/cunningham-react";
 import clsx from "clsx";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -83,7 +83,7 @@ export const LabelItem = ({ level = 0, onEdit, canManage, defaultFoldState, ...l
   const queryClient = useQueryClient();
   const labelsQuery = useLabelsList({ mailbox_id: selectedMailbox!.id }, { query: { enabled: false } })
   const hasChildren = label.children && label.children.length > 0;
-  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+  const handleClick = (e: React.MouseEvent<HTMLAnchorElement | HTMLButtonElement>) => {
     e.preventDefault();
     toggle();
   }
@@ -112,7 +112,7 @@ export const LabelItem = ({ level = 0, onEdit, canManage, defaultFoldState, ...l
               label: t('Undo'), onClick: () => deleteThreadMutation.mutate(variables)
             }]}
           >
-            <span className="material-icons">label</span>
+            <Icon name="label" type={IconType.OUTLINED} />
             <span>{t('Label "{{label}}" assigned to this conversation.', { label: label.name })}</span>
           </ToasterItem>, {
           toastId: JSON.stringify(variables),
@@ -219,10 +219,7 @@ export const LabelItem = ({ level = 0, onEdit, canManage, defaultFoldState, ...l
   }
 
   const getPaddingLeftItem = (level: number) => {
-    let offset = 0;
-    if (level === 1 && !hasChildren) offset = 3.3;
-    else if (!hasChildren) offset = 2.25;
-    else offset = 1.15;
+    const offset = 1;
 
     return `${offset * level}rem`;
   }
@@ -243,18 +240,20 @@ export const LabelItem = ({ level = 0, onEdit, canManage, defaultFoldState, ...l
       >
         <div className="label-item__column">
           {hasChildren && (
-            <button
+            <Button
               onClick={handleClick}
+              variant="tertiary"
+              size="nano"
+              color="brand"
               className='label-item__toggle'
               aria-expanded={isFolded}
               title={isFolded ? t('Collapse') : t('Expand')}
-            >
-              <Icon type={IconType.OUTLINED} name={isFolded ? "chevron_right" : "expand_more"} />
-              <span className="c__offscreen">{isFolded ? t('Expand') : t('Collapse')}</span>
-            </button>
+              icon={<Icon name={isFolded ? "chevron_right" : "expand_more"} />}
+              aria-label={isFolded ? t('Expand') : t('Collapse')}
+            />
           )}
           <div className="label-item__name">
-            <Icon className="label-item__icon" icon="label" name="label" style={{ 'color': label.color, '--strokeColor': `${label.color}AF` }} />
+            <span className="label-item__icon" aria-hidden="true" style={{ backgroundColor: label.color }} />
             <span className="label-name label-name--truncated">{label.display_name}</span>
           </div>
         </div>
@@ -286,9 +285,9 @@ export const LabelItem = ({ level = 0, onEdit, canManage, defaultFoldState, ...l
                 <Button
                   onClick={() => setIsDropdownOpen(true)}
                   icon={<Icon name="more_horiz" />}
-                  color="primary-text"
+                  variant="tertiary"
                   aria-label={t('More options')}
-                  size="small"
+                  size="nano"
                 />
               </DropdownMenu>
             </div>

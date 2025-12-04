@@ -1,7 +1,7 @@
 import { MailboxAdminCreate } from "@/features/api/gen";
 import { Banner } from "@/features/ui/components/banner";
 import { Icon, IconType } from "@gouvfr-lasuite/ui-kit";
-import { Button } from "@openfun/cunningham-react";
+import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { Trans, useTranslation } from "react-i18next";
 import AdminMailboxCredentials from "../mailbox-credentials";
 import MailboxHelper from "@/features/utils/mailbox-helper";
@@ -59,7 +59,7 @@ export const MailboxCreationSuccess = ({ type, mailbox, onClose }: MailboxCreati
                   )
                 }
             </div>
-            <Button onClick={onClose} color="primary">{t('Close')}</Button>
+            <Button onClick={onClose} variant="primary">{t('Close')}</Button>
         </div>
     )
 }

@@ -6,6 +6,8 @@ import { AdminMailDomainProvider, useAdminMailDomain } from "@/features/provider
 import useAbility, { Abilities } from "@/hooks/use-ability";
 import ErrorPage from "next/error";
 import { Toaster } from "@/features/ui/components/toaster";
+import { Icon, IconSize, IconType } from "@gouvfr-lasuite/ui-kit";
+import { useTheme } from "@/features/providers/theme";
 
 type AdminLayoutProps = {
   children: React.ReactNode;
@@ -27,7 +29,9 @@ function AdminLayoutContent({
     {
       content: (
         <Link href="/" className="c__breadcrumbs__button" title={t("Back to your inbox")}>
-          <span className="material-icons">mail</span>
+          <span className="c__breadcrumbs__avatar">
+            <Icon name="mail" type={IconType.OUTLINED} size={IconSize.MEDIUM} />
+          </span>
         </Link>
       )
     },
@@ -67,9 +71,9 @@ function AdminLayoutContent({
 
   // Build tabs if we're in a domain
   const tabs = selectedMailDomain ? [
-    { id: "addresses", label: t("Addresses"), href: `/domain/${selectedMailDomain.id}` },
-    { id: "dns", label: t("DNS"), href: `/domain/${selectedMailDomain.id}/dns` },
-    { id: "signatures", label: t("Signatures"), href: `/domain/${selectedMailDomain.id}/signatures` },
+    { id: "addresses", label: t("Addresses"), href: `/domain/${selectedMailDomain.id}`, icon: "inbox" },
+    { id: "dns", label: t("DNS"), href: `/domain/${selectedMailDomain.id}/dns`, icon: "dns" },
+    { id: "signatures", label: t("Signatures"), href: `/domain/${selectedMailDomain.id}/signatures`, icon: "drive_file_rename_outline" },
   ] : [];
 
   if (!canViewDomainAdmin) {
@@ -89,42 +93,46 @@ function AdminLayoutContent({
           </div>
         )}
       </div>
+      <section className="admin-page__body">
+        {tabs.length > 0 && (
+          <div className="admin-page__tabs">
+            {tabs.map((tab) => (
+              <Link
+                key={tab.id}
+                href={tab.href}
+                className={`admin-page__tab ${currentTab === tab.id ? "admin-page__tab--active" : ""}`}
+              >
+                {tab.icon && <Icon name={tab.icon} type={IconType.OUTLINED} size={IconSize.MEDIUM} />}
+                {tab.label}
+              </Link>
+            ))}
+          </div>
+        )}
 
-      {tabs.length > 0 && (
-        <div className="admin-page__tabs">
-          {tabs.map((tab) => (
-            <Link
-              key={tab.id}
-              href={tab.href}
-              className={`admin-page__tab ${currentTab === tab.id ? "admin-page__tab--active" : ""}`}
-            >
-              {tab.label}
-            </Link>
-          ))}
+        <div className="admin-page__content">
+          {children}
         </div>
-      )}
-
-      <div className="admin-page__content">
-        {children}
-      </div>
+      </section>
     </div>
   );
 }
 
 export function AdminLayout(props: AdminLayoutProps) {
+  const { theme, variant } = useTheme();
+
   return (
-      <AppLayout
-        isLeftPanelOpen={false}
-        setIsLeftPanelOpen={() => {}}
-        leftPanelContent={null}
-        hideSearch
-        hideLeftPanelOnDesktop={true}
-        icon={<Link href="/"><img src="/images/app-logo.svg" alt="logo" height={32} /></Link>}
-      >
-        <AdminMailDomainProvider>
-          <AdminLayoutContent {...props} />
-          <Toaster />
-        </AdminMailDomainProvider>
-      </AppLayout>
+    <AppLayout
+      isLeftPanelOpen={false}
+      setIsLeftPanelOpen={() => { }}
+      leftPanelContent={null}
+      hideSearch
+      hideLeftPanelOnDesktop={true}
+      icon={<Link href="/"><img src={`/images/${theme}/app-logo-${variant}.svg`} alt="logo" height={40} /></Link>}
+    >
+      <AdminMailDomainProvider>
+        <AdminLayoutContent {...props} />
+        <Toaster />
+      </AdminMailDomainProvider>
+    </AppLayout>
   );
 }

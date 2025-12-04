@@ -4,7 +4,7 @@ import { ThreadLabel, useLabelsAddThreadsCreate, useLabelsRemoveThreadsCreate } 
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { useTranslation } from "react-i18next";
 import { Icon, IconSize, IconType, Spinner } from "@gouvfr-lasuite/ui-kit";
-import { Tooltip } from "@openfun/cunningham-react";
+import { Tooltip } from "@gouvfr-lasuite/cunningham-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useMemo } from "react";
@@ -31,7 +31,7 @@ export const LabelBadge = ({ label, removable = false, linkable = false, compact
     const isActive = searchParams.get('label_slug') === label.slug;
     const { invalidateThreadMessages, selectedThread, selectedMailbox } = useMailboxContext();
     const canManageLabels = useAbility(Abilities.CAN_MANAGE_MAILBOX_LABELS, selectedMailbox);
-    const badgeColor = ColorHelper.getContrastColor(label.color!);
+    const badgeColor = ColorHelper.getContrastColor(label.color!, { lightColor: `var(--c--globals--colors--white-850)`, darkColor: `var(--c--globals--colors--black-850)`});
     const { mutate: deleteLabelMutation, isPending: isDeletingLabel } = useLabelsRemoveThreadsCreate({
         mutation: {
             onSuccess: (_, variables) => {

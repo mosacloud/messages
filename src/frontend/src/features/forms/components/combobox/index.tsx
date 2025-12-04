@@ -1,9 +1,11 @@
-import { Field, LabelledBox, SelectProps } from "@openfun/cunningham-react";
+import { Field, LabelledBox, SelectProps } from "@gouvfr-lasuite/cunningham-react";
 import clsx from "clsx";
 import { useCombobox, useMultipleSelection } from "downshift"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chip } from "./chip";
-import { Button, Option } from "@openfun/cunningham-react";
+import { Button, Option } from "@gouvfr-lasuite/cunningham-react";
+import { Icon } from "@gouvfr-lasuite/ui-kit";
+import { useTranslation } from "react-i18next";
 
 export type ComboBoxProps =  {
     onInputChange?: (value: string) => void;
@@ -15,6 +17,7 @@ export type ComboBoxProps =  {
 } & Omit<SelectProps, 'value' | 'defaultValue' | 'onChange'>;
 
 export const ComboBox = (props: ComboBoxProps) => {
+    const { t } = useTranslation();
     const [inputValue, setInputValue] = useState('');
     const [inputFocused, setInputFocused] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -192,15 +195,15 @@ export const ComboBox = (props: ComboBoxProps) => {
                     <div className="c__select__inner__actions">
                     {props.clearable && !props.disabled && selectedItems.length > 0 && (
                         <Button
-                          color="tertiary-text"
+                          variant="tertiary"
                           size="nano"
-                          aria-label="Clear selected items"
+                          aria-label={t('Clear selected items')}
                           className="c__select__inner__actions__clear"
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedItems([]);
                           }}
-                          icon={<span className="material-icons">close</span>}
+                          icon={<Icon name="close" />}
                           type="button"
                         />
                     )}

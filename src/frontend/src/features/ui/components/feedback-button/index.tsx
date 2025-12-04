@@ -1,5 +1,5 @@
 import { Icon, IconType } from "@gouvfr-lasuite/ui-kit"
-import { Button, ButtonProps } from "@openfun/cunningham-react"
+import { Button, ButtonProps } from "@gouvfr-lasuite/cunningham-react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@/features/auth";
 
@@ -9,11 +9,11 @@ import { useAuth } from "@/features/auth";
 export const SurveyButton = (props: ButtonProps) => {
   const { t } = useTranslation()
   const { user } = useAuth();
-  
-  const apiUrl = process.env.NEXT_PUBLIC_FEEDBACK_WIDGET_API_URL; 
+
+  const apiUrl = process.env.NEXT_PUBLIC_FEEDBACK_WIDGET_API_URL;
   const widgetPath = process.env.NEXT_PUBLIC_FEEDBACK_WIDGET_PATH;
   const channel = process.env.NEXT_PUBLIC_FEEDBACK_WIDGET_CHANNEL;
-  
+
   if (!channel || !apiUrl || !widgetPath) return null;
 
   const title: string = t("Do you have any feedback?");
@@ -29,10 +29,10 @@ export const SurveyButton = (props: ButtonProps) => {
     if (typeof window !== "undefined" && widgetPath) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any)._stmsg_widget = (window as any)._stmsg_widget || [];
-      
+
       // Construct script URLs from the base path
       const feedbackScript = `${widgetPath}feedback.js`;
-      
+
       // Push the widget configuration
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any)._stmsg_widget.push([
@@ -71,7 +71,8 @@ export const SurveyButton = (props: ButtonProps) => {
     <Button
       {...props}
       icon={<Icon name="info" type={IconType.FILLED} />}
-      color="tertiary"
+      color="info"
+      variant="secondary"
       className="feedback-button"
       title={t("Do you have any feedback?")}
       onClick={showWidget}

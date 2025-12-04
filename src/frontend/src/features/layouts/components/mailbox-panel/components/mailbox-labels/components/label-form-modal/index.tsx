@@ -3,7 +3,7 @@ import { useLabelsCreate, useLabelsList, useLabelsUpdate } from "@/features/api/
 import { RhfInput, RhfSelect, RhfCheckbox, RhfTextArea } from "@/features/forms/components/react-hook-form";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Button, Modal, ModalSize } from "@openfun/cunningham-react";
+import { Button, Modal, ModalSize } from "@gouvfr-lasuite/cunningham-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
@@ -185,10 +185,10 @@ export const LabelModal = ({ isOpen, onClose, label, onSuccess }: LabelModalProp
               </>
             )}
             <footer className="form-field-row">
-              <Button type="button" color="secondary" size="medium" onClick={onClose}>
+              <Button type="button" variant="secondary" size="medium" onClick={onClose}>
                 {t('Cancel')}
               </Button>
-              <Button type="submit" color="primary" size="medium">
+              <Button type="submit" variant="primary" size="medium">
                 {isUpdate ? t('Update') : t('Create')}
               </Button>
             </footer>

@@ -3,7 +3,7 @@ import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from "@
 import { InlineTemplateVariable, TemplateVariableSelector } from "@/features/blocknote/inline-template-variable";
 import * as locales from '@blocknote/core/locales';
 import { useCreateBlockNote } from "@blocknote/react";
-import { FieldProps } from "@openfun/cunningham-react";
+import { FieldProps } from "@gouvfr-lasuite/cunningham-react";
 import { useEffect, useCallback } from "react";
 import { useFormContext } from "react-hook-form";
 import { useTranslation } from "react-i18next";

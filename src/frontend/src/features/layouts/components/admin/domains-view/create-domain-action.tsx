@@ -1,7 +1,7 @@
 import { MailDomainAdminWrite } from "@/features/api/gen";
 import { ModalCreateDomain } from "@/features/layouts/components/admin/modal-create-domain";
 import useAbility, { Abilities } from "@/hooks/use-ability";
-import { Button, useModal } from "@openfun/cunningham-react";
+import { Button, useModal } from "@gouvfr-lasuite/cunningham-react";
 import { useTranslation } from "react-i18next";
 
 type CreateDomainActionProps = {
@@ -23,7 +23,7 @@ export const CreateDomainAction = ({ onCreate }: CreateDomainActionProps) => {
 
     return (
         <>
-            <Button color="primary" onClick={modal.open}>
+            <Button onClick={modal.open}>
                 {t("New domain")}
             </Button>
             <ModalCreateDomain

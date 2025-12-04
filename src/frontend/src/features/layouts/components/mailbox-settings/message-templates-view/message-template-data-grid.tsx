@@ -1,5 +1,5 @@
 import { Icon, IconSize, Spinner } from "@gouvfr-lasuite/ui-kit";
-import { Button, Column, DataGrid, useModal, useModals } from "@openfun/cunningham-react";
+import { Button, Column, DataGrid, useModal, useModals } from "@gouvfr-lasuite/cunningham-react";
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -74,26 +74,25 @@ export const MessageTemplateDataGrid = ({ mailbox }: MessageTemplateDataGridProp
         },
         {
             id: "actions",
-            size: 150,
+            size: 154,
             headerName: t("Actions"),
             renderCell: ({ row }) => (
-                <div className="flex-row flex-justify-start" style={{ width: "100%", gap: "1rem" }}>
+                <div className="flex-row flex-justify-start" style={{ width: "100%", gap: "var(--c--globals--spacings--2xs)" }}>
                     <Button
-                        color="secondary"
+                        variant="bordered"
                         size="small"
                         onClick={() => handleModifyRow(row)}
                     >
                         {t("Modify")}
                     </Button>
                     <Button
-                        color="danger"
+                        color="error"
                         size="small"
-                        icon={isDeleting ? <Spinner size="sm" /> : <Icon name="delete" size={IconSize.SMALL} />}
                         onClick={() => handleDeleteRow(row)}
                         disabled={isDeleting}
+                        icon={isDeleting ? <Spinner size="sm" /> : <Icon name="delete" size={IconSize.SMALL} />}
                         aria-label={t("Delete")}
-                    >
-                    </Button>
+                    />
                 </div>
             ),
         },
@@ -121,18 +120,13 @@ export const MessageTemplateDataGrid = ({ mailbox }: MessageTemplateDataGridProp
 
     return (
         <div className="admin-data-grid">
-            {templates?.data && templates.data.length > 0 ? (
-                <DataGrid
-                    columns={columns}
-                    rows={templates.data}
-                    onSortModelChange={() => undefined}
-                    enableSorting={false}
-                />
-            ) : (
-                <Banner type="info">
-                    {t("No template found")}
-                </Banner>
-            )}
+            <DataGrid
+                columns={columns}
+                rows={templates?.data ?? []}
+                onSortModelChange={() => undefined}
+                enableSorting={false}
+                emptyPlaceholderLabel={t("No template found")}
+            />
             <ModalComposeTemplate
                 isOpen={modal.isOpen}
                 onClose={() => {

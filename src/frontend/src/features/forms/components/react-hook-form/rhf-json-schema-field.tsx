@@ -1,4 +1,4 @@
-import { Checkbox, CheckboxProps, FieldProps, Input, InputProps, Select, SelectProps } from "@openfun/cunningham-react";
+import { Checkbox, CheckboxProps, FieldProps, Input, InputProps, Select, SelectProps } from "@gouvfr-lasuite/cunningham-react";
 import { Controller, FieldValues, useFormContext, UseFormSetValue } from "react-hook-form";
 import { JSONSchema } from "zod/v4/core";
 import { useTranslation } from "react-i18next";

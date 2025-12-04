@@ -1,4 +1,5 @@
-import { Button } from "@openfun/cunningham-react";
+import { Icon, IconSize, IconType } from "@gouvfr-lasuite/ui-kit";
+import { Button } from "@gouvfr-lasuite/cunningham-react";
 import React, { ReactElement, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -14,13 +15,13 @@ export const Breadcrumbs = ({
   displayBack = false,
 }: BreadcrumbsProps) => {
   const { t } = useTranslation();
+
   return (
     <div className="c__breadcrumbs">
       {displayBack && (
         <Button
-          icon={<span className="material-icons">arrow_back</span>}
-          color="tertiary"
-          className="mr-t"
+          icon={<Icon name="arrow_back" />}
+          variant="secondary"
           onClick={onBack}
           disabled={items.length <= 1}
         >
@@ -32,9 +33,7 @@ export const Breadcrumbs = ({
         return (
           <React.Fragment key={index}>
             {index > 0 && (
-              <span className="material-icons clr-greyscale-600">
-                chevron_right
-              </span>
+              <Icon className="c__breadcrumbs__chevron" name="chevron_right" type={IconType.OUTLINED} size={IconSize.MEDIUM}/>
             )}
             {React.cloneElement(item.content as ReactElement<HTMLDivElement>, {
               className: `${

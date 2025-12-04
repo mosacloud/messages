@@ -236,10 +236,10 @@ _Those settings are deprecated and will be removed in the future._
 
 | Variable | Default | Description | Required |
 |----------|---------|-------------|----------|
-| `FRONTEND_THEME` | `dsfr` | Frontend theme identifier | Optional |
 | `NEXT_PUBLIC_API_ORIGIN` | `http://localhost:8901` | Frontend API origin | Dev |
 | `NEXT_PUBLIC_LANGUAGES` | `[["en-US","English"],["fr-FR","Français"],["nl-NL","Nederlands"]]` | Languages available for frontend | Optional |
 | `NEXT_PUBLIC_DEFAULT_LANGUAGE` | `en-US` | Default language for frontend | Optional |
+| `NEXT_PUBLIC_THEME_CONFIG` | `{theme: "white-label"}` | Theme configuration for frontend | Optional |
 
 ## Development Tools
 

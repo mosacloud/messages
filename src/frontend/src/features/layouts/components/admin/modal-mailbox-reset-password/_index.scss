@@ -1,6 +1,5 @@
 .modal-mailbox-reset-password {
-  // padding-inline: var(--c--theme--spacings--base);
-  padding-block: var(--c--theme--spacings--md) 0;
+  padding-block: var(--c--globals--spacings--md) 0;
 
   & > section {
     &.modal-mailbox-reset-password__success {
@@ -8,8 +7,8 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: var(--c--theme--spacings--md);
-      padding: var(--c--theme--spacings--md) var(--c--theme--spacings--base);
+      gap: var(--c--globals--spacings--md);
+      padding: var(--c--globals--spacings--md) var(--c--globals--spacings--base);
 
       & > footer > button {
           min-width: 200px;
@@ -20,13 +19,13 @@
     &.modal-mailbox-reset-password__idle {
       display: flex;
       flex-direction: column;
-      gap: var(--c--theme--spacings--md);
+      gap: var(--c--globals--spacings--md);
 
       & > footer {
-        margin-top: var(--c--theme--spacings--sm);
+        margin-top: var(--c--globals--spacings--sm);
         display: flex;
         justify-content: flex-end;
-        gap: var(--c--theme--spacings--base);
+        gap: var(--c--globals--spacings--base);
       }
     }
   }

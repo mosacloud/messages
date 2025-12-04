@@ -1,6 +1,6 @@
 import { useRouter } from "next/router";
 import { useTranslation } from "react-i18next";
-import { Button } from "@openfun/cunningham-react";
+import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { useLayoutContext } from "../../../main";
 import useAbility, { Abilities } from "@/hooks/use-ability";
@@ -9,7 +9,7 @@ import { Icon, IconType } from "@gouvfr-lasuite/ui-kit";
 export const MailboxPanelActions = () => {
     const { t } = useTranslation();
     const router = useRouter();
-    const { selectedMailbox } = useMailboxContext();
+    const { selectedMailbox, refetchMailboxes } = useMailboxContext();
     const { closeLeftPanel } = useLayoutContext();
     const canWriteMessages = useAbility(Abilities.CAN_WRITE_MESSAGES, selectedMailbox);
 
@@ -37,6 +37,12 @@ export const MailboxPanelActions = () => {
             }
             </div>
             <div className="mailbox-panel-actions__extra">
+                <Button
+                    icon={<span className="material-icons">autorenew</span>}
+                    variant="tertiary"
+                    aria-label={t('Refresh')}
+                    onClick={refetchMailboxes}
+                />
             </div>
         </div>
     )

@@ -5,7 +5,7 @@ import { useThirdPartyDriveRetrieve, useThirdPartyDriveCreate } from "@/features
 import { Attachment } from "@/features/api/gen/models";
 import usePrevious from "@/hooks/use-previous";
 import { Spinner, Icon } from "@gouvfr-lasuite/ui-kit";
-import { Tooltip, Button } from "@openfun/cunningham-react";
+import { Tooltip, Button } from "@gouvfr-lasuite/cunningham-react";
 import clsx from "clsx";
 import { DrivePreviewLink } from "./drive-preview-link";
 import { FEATURE_KEYS, useFeatureFlag } from "@/hooks/use-feature";
@@ -89,7 +89,7 @@ export const DriveUploadButton = ({ attachment }: DriveUploadButtonProps) => {
 
     const StateIcon = useMemo(() => {
         if (isBusy) return <Spinner size="sm" />;
-        if (state === 'success') return <Icon name="check" />;
+        if (state === 'success') return <Icon name="check_circle" />;
         if (state === 'error') return <Icon name="error" />;
         return <Icon name="drive_folder_upload" />;
     }, [state, driveFilesQuery.isLoading]);
@@ -129,8 +129,11 @@ export const DriveUploadButton = ({ attachment }: DriveUploadButtonProps) => {
                         icon={StateIcon}
                         disabled={isBusy || state !== 'idle'}
                         aria-busy={isBusy}
-                        color={state == 'error' ? 'danger' : 'tertiary-text'}
+                        color={state === 'error' ? 'error' : 'brand'}
+                        variant="tertiary"
                         onClick={handleUploadToDrive}
+                        data-state={state}
+                        className="attachment-item-drive-upload-button"
                     />
                 </Tooltip>
             )}

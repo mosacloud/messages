@@ -9,7 +9,7 @@ const Mailbox = () => {
             <Panel className="thread-list-panel" defaultSize={25} minSize={20}>
                 <ThreadPanel />
             </Panel>
-            <PanelResizeHandle className="thread__resize-handle" />
+            <PanelResizeHandle className="panel__resize-handle" />
             <Panel className="thread-view-panel" defaultSize={75} minSize={50}>
                 <ThreadView />
             </Panel>

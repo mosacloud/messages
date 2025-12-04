@@ -1,5 +1,5 @@
 import { DropdownMenu, HeaderProps, Icon, IconType, useResponsive, UserMenu, VerticalSeparator } from "@gouvfr-lasuite/ui-kit";
-import { Button, useCunningham } from "@openfun/cunningham-react";
+import { Button, useCunningham } from "@gouvfr-lasuite/cunningham-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "next/router";
@@ -35,11 +35,10 @@ export const AuthenticatedHeader = ({
           size="medium"
           onClick={onTogglePanel}
           aria-label={isPanelOpen ? t("Close the menu") : t("Open the menu")}
-          color="tertiary-text"
+          color="brand"
+          variant="tertiary"
           icon={
-            <span className="material-icons clr-primary-800">
-              {isPanelOpen ? "close" : "menu"}
-            </span>
+            <Icon name={isPanelOpen ? "close" : "menu"} />
           }
         />
       </div>
@@ -63,7 +62,7 @@ export const HeaderRight = () => {
   return (
     <>
       <ApplicationMenu />
-      {isDesktop && <VerticalSeparator size="24px" />}
+      {isDesktop && <VerticalSeparator size="24px" withPadding={false} />}
       <LagaufreButton />
       <UserMenu
         user={user ? {
@@ -71,8 +70,11 @@ export const HeaderRight = () => {
           email: user.email || ""
         } : null}
         logout={logout}
-        footerAction={
-          <LanguagePicker size="small" color="secondary" />
+        termOfServiceUrl={process.env.NEXT_PUBLIC_TERMS_OF_SERVICE_URL}
+        actions={
+          <div className="user-menu__footer-action">
+            <LanguagePicker size="small" compact />
+          </div>
         }
       />
     </>
@@ -148,7 +150,8 @@ const ApplicationMenu = () => {
           onClick={() => setIsDropdownOpen(true)}
           icon={<Icon name="settings" type={IconType.OUTLINED} />}
           aria-label={t("More options")}
-          color="tertiary-text"
+          color="brand"
+          variant="tertiary"
       />
       </DropdownMenu>
   )

@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, forwardRef, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Tooltip } from "@openfun/cunningham-react";
+import { Button, Tooltip } from "@gouvfr-lasuite/cunningham-react";
 import { DropdownMenu, Icon, IconSize, IconType, Spinner, UserAvatar } from "@gouvfr-lasuite/ui-kit";
 import { Message, MessageDeliveryStatusChoices, MessageRecipient } from "@/features/api/gen/models";
 import useRead from "@/features/message/use-read";
@@ -20,6 +20,7 @@ import { ContactChip, ContactChipDeliveryStatus } from "@/features/ui/components
 import clsx from "clsx";
 import { useThreadViewContext } from "../../provider";
 import usePrevious from "@/hooks/use-previous";
+import { DateHelper } from "@/features/utils/date-helper";
 
 type ThreadMessageProps = {
     message: Message,
@@ -131,15 +132,15 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
                     <div>
                         {
                             message.is_trashed && (
-                                <Banner type="info" icon={<Icon name="info" type={IconType.OUTLINED} />} fullWidth>
+                                <Banner type="info" icon={<span className="material-icons">restore_from_trash</span>} fullWidth>
                                     <div className="thread-view__trashed-banner__content">
                                         <p>{t('This message has been deleted.')}</p>
                                         <div className="thread-view__trashed-banner__actions">
                                             <Button
                                                 onClick={() => markAsUntrashed({ messageIds: [message.id] })}
-                                                color="primary-text"
-                                                size="small"
-                                                icon={<span className="material-icons">restore_from_trash</span>}
+                                                color="info"
+                                                variant="tertiary"
+                                                size="nano"
                                             >
                                                 {t('Undelete')}
                                             </Button>
@@ -147,7 +148,7 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
                                     </div>
                                 </Banner>
                             )}
-                        <div className="thread-message__header-rows" style={{ marginBottom: 'var(--c--theme--spacings--sm)' }}>
+                        <div className="thread-message__header-rows" style={{ marginBottom: 'var(--c--globals--spacings--sm)' }}>
                             {isSuspiciousSender && (
                                 <Banner type="warning" compact fullWidth>
                                     <div className="thread-message__header-banner__content">
@@ -173,27 +174,35 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
                                     </div>
                                     <div className="thread-message__header-column thread-message__header-column--right flex-row flex-align-center">
                                         <div className="thread-message__metadata">
-                                            {message.created_at && (
-                                                <p className="thread-message__date">{
-                                                    new Date(message.created_at).toLocaleString(i18n.resolvedLanguage, {
-                                                        minute: '2-digit',
-                                                        hour: '2-digit',
-                                                        day: 'numeric',
-                                                        month: 'short',
-                                                        year: 'numeric',
-                                                    })
-                                                }</p>
-                                            )}
-                                            {message.is_draft && (
-                                                <Badge>
-                                                    {t('Draft')}
-                                                </Badge>
-                                            )}
+                                            <div className="flex-row">
                                             {
                                                 message.attachments.length > 0 && (
-                                                    <span className="material-icons">attachment</span>
+                                                    <Badge
+                                                        aria-label={t('{{count}} attachments', { count: message.attachments.length })}
+                                                        title={t('{{count}} attachments', { count: message.attachments.length })}
+                                                        color="neutral"
+                                                        variant="tertiary"
+                                                    >
+                                                        <Icon type={IconType.FILLED} name="attachment" size={IconSize.SMALL} />
+                                                    </Badge>
                                                 )
                                             }
+                                            {(message.is_draft || draftMessage) && (
+                                                <Badge aria-label={t('Draft')} title={t('Draft')} variant="secondary" color="brand">
+                                                    <Icon type={IconType.FILLED} name="mode_edit" size={IconSize.SMALL} />
+                                                </Badge>
+                                            )}
+                                            </div>
+                                            {message.created_at && (
+                                                <p className="thread-message__date">
+                                                    {t('{{date}} at {{time}}', {
+                                                        date: DateHelper.formatDate(message.created_at, i18n.resolvedLanguage),
+                                                        time: new Date(message.created_at).toLocaleString(i18n.resolvedLanguage, {
+                                                            minute: '2-digit',
+                                                            hour: '2-digit',
+                                                        })
+                                                    })}</p>
+                                            )}
                                         </div>
                                         <div className="thread-message__header-actions">
                                             {!isFolded && (
@@ -201,7 +210,8 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
                                                     {canSendMessages && (
                                                         <Tooltip content={t('Reply')}>
                                                             <Button
-                                                                color="tertiary-text"
+                                                                color="brand"
+                                                                variant="tertiary"
                                                                 size="small"
                                                                 icon={<span className="material-icons">reply</span>}
                                                                 aria-label={t('Reply')}
@@ -253,7 +263,8 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
                                                             <Button
                                                                 onClick={() => setIsDropdownOpen(true)}
                                                                 icon={<span className="material-icons">more_vert</span>}
-                                                                color="primary-text"
+                                                                color="brand"
+                                                                variant="tertiary"
                                                                 aria-label={t('More options')}
                                                                 size="small"
                                                             />
@@ -265,7 +276,8 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
                                                 !isLatest && (
                                                     <Tooltip content={isFolded ? t('Unfold message') : t('Fold message')}>
                                                         <Button
-                                                            color="tertiary-text"
+                                                            color="brand"
+                                                            variant="tertiary"
                                                             size="small"
                                                             icon={<Icon type={IconType.FILLED} name={isFolded ? "unfold_more" : "unfold_less"} size={IconSize.LARGE} />}
                                                             aria-label={isFolded ? t('Unfold message') : t('Fold message')}
@@ -348,7 +360,9 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
                             <div className="thread-message__footer-actions">
                                 {hasSeveralRecipients && (
                                     <Button
-                                        color="primary"
+                                        color="brand"
+                                        variant="primary"
+                                        size="small"
                                         icon={<span className="material-icons">reply_all</span>}
                                         aria-label={t('Reply all')}
                                         onClick={() => setReplyFormMode('reply_all')}
@@ -357,15 +371,17 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
                                     </Button>
                                 )}
                                 <Button
-                                    color={hasSeveralRecipients ? 'secondary' : 'primary'}
+                                    variant={hasSeveralRecipients ? 'tertiary' : 'primary'}
                                     icon={<span className="material-icons">reply</span>}
                                     aria-label={t('Reply')}
+                                    size="small"
                                     onClick={() => setReplyFormMode('reply')}
                                 >
                                     {t('Reply')}
                                 </Button>
                                 <Button
-                                    color='secondary'
+                                    variant='tertiary'
+                                    size="small"
                                     icon={<span className="material-icons">forward</span>}
                                     onClick={() => setReplyFormMode('forward')}
                                 >

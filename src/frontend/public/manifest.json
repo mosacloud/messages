@@ -5,7 +5,7 @@
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#000091",
+  "theme_color": "#2945c1",
   "orientation": "portrait-primary",
   "icons": [
     {
@@ -60,4 +60,4 @@
   "categories": ["communication", "productivity"],
   "lang": "fr",
   "dir": "ltr"
-} 
+}

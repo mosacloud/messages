@@ -1,42 +1,36 @@
 .admin-mailbox-credentials {
   display: flex;
   flex-direction: column;
-  gap: var(--c--theme--spacings--base);
+  gap: var(--c--globals--spacings--base);
 
   &__content {
     width: 100%;
-    background: linear-gradient(
-      to bottom right,
-      var(--c--theme--colors--primary-50),
-      var(--c--theme--colors--primary-100)
-    );
-    border: 2px solid var(--c--theme--colors--primary-200);
+    border: 1px solid var(--c--contextuals--border--semantic--info--secondary);
     border-radius: 4px;
-    padding: var(--c--theme--spacings--md);
+    background-color: var(--c--contextuals--background--semantic--info--tertiary);
+    padding: var(--c--globals--spacings--md);
     text-align: center;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 2px 5px var(--c--contextuals--background--semantic--contextual--primary-hover);
 
     dt {
-      font-weight: 600;
-      color: var(--c--theme--colors--primary-800);
-      font-size: var(--c--theme--font-sizes--s);
-      margin-bottom: var(--c--theme--spacings--xs);
-      text-transform: uppercase;
+      font-weight: 500;
+      color: var(--c--contextuals--content--semantic--info--tertiary);
+      font-size: var(--c--globals--font--sizes--sm);
+      margin-bottom: var(--c--globals--spacings--xs);
       letter-spacing: 0.5px;
     }
 
     dd {
-      margin-bottom: var(--c--theme--spacings--base);
-      padding: var(--c--theme--spacings--s);
-      background-color: white;
-      border: 1px solid var(--c--theme--colors--greyscale-200);
-      border-radius: var(--c--theme--border-radius--s);
+      margin-bottom: var(--c--globals--spacings--base);
+      padding: var(--c--globals--spacings--s);
+      background-color: var(--c--contextuals--background--surface--secondary);
+      border: 1px solid var(--c--contextuals--border--semantic--info--secondary);
+      border-radius: 4px;
       font-family: monospace;
-      font-size: var(--c--theme--font-sizes--m);
+      font-size: var(--c--globals--font--sizes--md);
       font-weight: 600;
-      color: var(--c--theme--colors--greyscale-900);
+      color: var(--c--contextuals--content--semantic--info--primary);
       word-break: break-all;
-      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
     }
   }
 }

@@ -1,7 +1,7 @@
 import { useMaildomainsMailboxesResetPassword } from "@/features/api/gen/maildomains/maildomains";
 import { MailboxAdmin } from "@/features/api/gen/models/mailbox_admin";
 import { Spinner } from "@gouvfr-lasuite/ui-kit";
-import { Button, Modal, ModalSize } from "@openfun/cunningham-react";
+import { Button, Modal, ModalSize } from "@gouvfr-lasuite/cunningham-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import AdminMailboxCredentials from "../mailbox-credentials";
@@ -62,7 +62,7 @@ const ModalMailboxResetPassword = ({ isOpen, onClose, mailbox, domainId }: Modal
                         }
                         <footer>
                             <Button
-                                color="secondary"
+                                variant="secondary"
                                 onClick={onClose}
                                 disabled={isPending}
                                 icon={isPending && <Spinner />}
@@ -70,7 +70,7 @@ const ModalMailboxResetPassword = ({ isOpen, onClose, mailbox, domainId }: Modal
                                 {t('Cancel')}
                             </Button>
                             <Button
-                                color="danger"
+                                color="error"
                                 onClick={onResetPassword}
                                 disabled={isPending}
                                 icon={isPending && <Spinner />}
@@ -88,7 +88,7 @@ const ModalMailboxResetPassword = ({ isOpen, onClose, mailbox, domainId }: Modal
                         </header>
                         <AdminMailboxCredentials mailbox={{ ...mailbox, one_time_password: oneTimePassword }} />
                         <footer>
-                            <Button onClick={onClose} color="primary">{t('Close')}</Button>
+                            <Button onClick={onClose} variant="primary">{t('Close')}</Button>
                         </footer>
                     </section>
                 }

@@ -1,10 +1,10 @@
 import { Controller, useFormContext } from "react-hook-form";
-import { Select } from "@openfun/cunningham-react";
-import { SelectProps } from "@openfun/cunningham-react";
+import { Select } from "@gouvfr-lasuite/cunningham-react";
+import { SelectProps } from "@gouvfr-lasuite/cunningham-react";
 
 /**
  * A wrapper component for the Select component that integrates with react-hook-form.
- * 
+ *
  * This component allows you to use the Select component as a controlled component
  * with react-hook-form's form state management.
  */

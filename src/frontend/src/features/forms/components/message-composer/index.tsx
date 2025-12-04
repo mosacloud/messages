@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, PartialBlock } from '@blocknote/core';
 import { MessageTemplateSelector } from '@/features/blocknote/message-template-block';
 import MailHelper from '@/features/utils/mail-helper';
-import { FieldProps } from '@openfun/cunningham-react';
+import { FieldProps } from '@gouvfr-lasuite/cunningham-react';
 import { useFormContext } from 'react-hook-form';
 import { useEffect, useCallback } from 'react';
 import { QuotedMessageBlock } from '@/features/blocknote/quoted-message-block';

@@ -2,8 +2,8 @@ import { MailboxAdmin, MailDomainAdmin, useMaildomainsMailboxesDestroy, useMaild
 import { ModalMailboxManageAccesses } from "@/features/layouts/components/admin/modal-mailbox-manage-accesses";
 import { Banner } from "@/features/ui/components/banner";
 import useAbility, { Abilities } from "@/hooks/use-ability";
-import { DropdownMenu, Icon, IconSize, Spinner } from "@gouvfr-lasuite/ui-kit";
-import { Button, DataGrid, useModals, usePagination } from "@openfun/cunningham-react";
+import { IconType, DropdownMenu, Icon, IconSize, Spinner } from "@gouvfr-lasuite/ui-kit";
+import { Button, DataGrid, Tooltip, useModals, usePagination } from "@gouvfr-lasuite/cunningham-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ModalMailboxResetPassword from "../modal-mailbox-reset-password";
@@ -60,41 +60,41 @@ export const AdminMailboxDataGrid = ({ domain, pagination }: AdminUserDataGridPr
         const decision = await modals.deleteConfirmationModal({
             title: <span className="c__modal__text--centered">{t('Delete mailbox {{mailbox}}', { mailbox: email })}</span>,
             children: t('Are you sure you want to delete this mailbox? This action is irreversible!'),
-          });
+        });
 
-          if (decision === 'delete') {
+        if (decision === 'delete') {
             deleteMailboxMutation.mutate({ maildomainPk: domain.id, id: mailbox.id }, {
-              onSuccess: () => {
-                refetchMailboxes();
-                addToast(
-                    <ToasterItem type="error">
-                        <Icon name="delete" size={IconSize.SMALL} />
-                        <span>{t('Mailbox {{mailbox}} has been deleted successfully.', { mailbox: email })}</span>
-                    </ToasterItem>
-                );
-              },
+                onSuccess: () => {
+                    refetchMailboxes();
+                    addToast(
+                        <ToasterItem type="error">
+                            <Icon name="delete" size={IconSize.SMALL} />
+                            <span>{t('Mailbox {{mailbox}} has been deleted successfully.', { mailbox: email })}</span>
+                        </ToasterItem>
+                    );
+                },
             })
-          }
+        }
     }
 
     const columns = [
         {
             id: "mailbox_type",
             headerName: t("Type"),
-            size: 140,
+            size: 200,
             renderCell: ({ row }: { row: MailboxAdmin }) => {
                 let typeLabel: string;
                 let color: string;
 
                 if (row.alias_of) {
                     typeLabel = t("Redirection");
-                    color = "var(--c--theme--colors--info-600)";
+                    color = "var(--c--contextuals--content--semantic--info--tertiary)";
                 } else if (row.is_identity) {
                     typeLabel = t("Personal mailbox");
-                    color = "var(--c--theme--colors--success-600)";
+                    color = "var(--c--contextuals--content--semantic--success--tertiary)";
                 } else {
                     typeLabel = t("Shared mailbox");
-                    color = "var(--c--theme--colors--success-600)";
+                    color = "var(--c--contextuals--content--semantic--warning--tertiary)";
                 }
 
                 return (
@@ -107,34 +107,42 @@ export const AdminMailboxDataGrid = ({ domain, pagination }: AdminUserDataGridPr
         {
             id: "email",
             headerName: t("Email address"),
-            renderCell: ({ row }: { row: MailboxAdmin }) => MailboxHelper.toString(row) ,
+            renderCell: ({ row }: { row: MailboxAdmin }) => <strong>{MailboxHelper.toString(row)}</strong>,
         },
         {
             id: "accesses",
             headerName: t("Accesses"),
+            size: 150,
+            align: "right",
             renderCell: ({ row }: { row: MailboxAdmin }) => {
-                if (row.accesses?.length === 0) {
-                    return (
-                        <span style={{ color: "var(--c--theme--colors--danger-600)" }}>
-                            {t("No accesses")}
-                        </span>
-                    );
-                }
-
                 const otherAccessesCount = row.accesses?.length - 2;
-                return row.accesses?.slice(0, 2).map((access) => access.user?.full_name || access.user?.email || t("Unknown user")).join(", ")
-                + (otherAccessesCount > 0 ? ` ${
-                    t("and {{count}} other users", {
+                const accessesTooltip = row.accesses?.slice(0, 2).map((access) => access.user?.full_name || access.user?.email || t("Unknown user")).join(", ")
+                    + (otherAccessesCount > 0 ? ` ${t("and {{count}} other users", {
                         count: otherAccessesCount,
                         defaultValue_one: "and 1 other user"
                     })
-                }` : "");
+                            }` : "");
+                return (
+                    <Tooltip content={row.accesses.length ? accessesTooltip : t("Click to add accesses")} placement="right">
+                        <Button
+                            size="nano"
+                            variant="tertiary"
+                            color={row.accesses.length ? "brand" : "warning"}
+                            icon={<Icon name="group" type={IconType.FILLED} />}
+                            onClick={() => handleManageAccess(row)}
+                            style={{ paddingInline: "var(--c--globals--spacings--xs)" }}
+                        >
+                            {row.accesses.length ? row.accesses.length : t("No accesses")}
+                        </Button>
+                    </Tooltip>
+                );
+
+
             },
         },
         ...(canManageMailboxes ? [{
             id: "actions",
-            headerName: t("Actions"),
-            size: 160,
+            size: 150,
             renderCell: ({ row }: { row: MailboxAdmin }) => <ActionsRow
                 onManageAccess={() => handleManageAccess(row)}
                 onResetPassword={row.can_reset_password ? () => handleResetPassword(row) : undefined}
@@ -185,6 +193,7 @@ export const AdminMailboxDataGrid = ({ domain, pagination }: AdminUserDataGridPr
                 pagination={pagination}
                 enableSorting={false}
                 onSortModelChange={() => undefined}
+                emptyPlaceholderLabel={t("No addresses found")}
             />
             {canManageMailboxes && editedMailbox && (
                 <>
@@ -225,24 +234,24 @@ const ActionsRow = ({ onManageAccess, onResetPassword, onDelete, onUpdate }: Act
     const { t } = useTranslation();
 
     return (
-        <div className="flex-row" style={{ gap: "var(--c--theme--spacings--2xs)" }}>
+        <div className="flex-row" style={{ gap: "var(--c--globals--spacings--2xs)" }}>
             <Button
-                color="secondary"
+                variant="bordered"
                 size="nano"
-                onClick={onManageAccess}
-                style={{ paddingInline: "var(--c--theme--spacings--xs)" }}
+                onClick={onUpdate}
+                style={{ paddingInline: "var(--c--globals--spacings--xs)" }}
             >
-                {t('Manage accesses')}
+                {t('Edit')}
             </Button>
             <DropdownMenu
                 isOpen={isMoreActionsOpen}
                 onOpenChange={setMoreActionsOpen}
                 options={[
                     {
-                        label: t('Edit'),
-                        icon: <Icon name="edit" size={IconSize.SMALL} />,
-                        callback: onUpdate,
-                        showSeparator: !onResetPassword,
+                        icon: <Icon name="group" size={IconSize.SMALL} />,
+                        label: t('Manage accesses'),
+                        callback: onManageAccess,
+                        showSeparator: onResetPassword ? false : true,
                     },
                     ...(onResetPassword ? [{
                         icon: <Icon name="lock" size={IconSize.SMALL} />,
@@ -258,14 +267,18 @@ const ActionsRow = ({ onManageAccess, onResetPassword, onDelete, onUpdate }: Act
                     }
                 ]}
             >
-                <Button
-                    color="secondary"
-                    size="nano"
-                    onClick={() => setMoreActionsOpen(true)}
-                >
-                    <Icon name="more_vert" size={IconSize.SMALL} />
-                    <span className="c__offscreen">{t('More')}</span>
-                </Button>
+                <Tooltip content={t('More options')} placement="left">
+                    <Button
+                        color="brand"
+                        variant="tertiary"
+                        size="nano"
+                        onClick={() => setMoreActionsOpen(true)}
+                        style={{ paddingInline: "var(--c--globals--spacings--3xs)" }}
+                    >
+                        <Icon name="more_horiz" size={IconSize.SMALL} />
+                        <span className="c__offscreen">{t('More')}</span>
+                    </Button>
+                </Tooltip>
             </DropdownMenu>
         </div >
     );

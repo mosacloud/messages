@@ -9,17 +9,18 @@
   }
 
   &__item {
-    padding: 12px;
+    border-width: 1px;
+    border-style: solid;
+    padding: var(--c--globals--spacings--xs);
     border-radius: 4px;
     min-width: 400px;
     max-width: 500px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    box-shadow: 0px 6px 18px 0px #0000910d;
-    font-size: 14px;
+    font-size: var(--c--globals--font--sizes--sm);
     font-weight: 500;
-    font-family: var(--c--theme--font--families--base);
+    font-family: var(--c--globals--font--families--base);
 
     &__content {
       display: flex;
@@ -30,23 +31,33 @@
 
     &__actions {
       display: flex;
-      gap: var(--c--theme--spacings--3xs);
+      gap: var(--c--globals--spacings--3xs);
       align-items: center;
       flex-shrink: 0;
     }
 
     &--info {
-      background-color: var(--c--theme--colors--primary-050);
-      border: 1px solid var(--c--theme--colors--primary-300);
-      color: var(--c--theme--colors--primary-800);
-      --toastify-color-progress-light: var(--c--theme--colors--primary-800);
+      background-color: var(--c--contextuals--background--semantic--info--tertiary);
+      border-color: var(--c--contextuals--border--semantic--info--tertiary);
+      color: var(--c--contextuals--content--semantic--info--primary);
+      --toastify-color-progress-light: var(--c--contextuals--background--semantic--info--primary);
+      box-shadow: 0 6px 18px 0 rgba(0, 0, 145, 0.05);
     }
 
     &--error {
-      background-color: var(--c--theme--colors--danger-050);
-      border: 1px solid var(--c--theme--colors--danger-300);
-      color: var(--c--theme--colors--danger-600);
-      --toastify-color-progress-light: var(--c--theme--colors--danger-800);
+      background-color: var(--c--contextuals--background--semantic--error--tertiary);
+      border-color: var(--c--contextuals--border--semantic--error--tertiary);
+      color: var(--c--contextuals--content--semantic--error--primary);
+      --toastify-color-progress-light: var(--c--contextuals--background--semantic--error--primary);
+      box-shadow: 0 6px 18px 0 rgba(206, 5, 0, 0.05);
+    }
+
+    &--warning {
+      background-color: var(--c--contextuals--background--semantic--warning--tertiary);
+      border-color: var(--c--contextuals--border--semantic--warning--tertiary);
+      color: var(--c--contextuals--content--semantic--warning--primary);
+      --toastify-color-progress-light: var(--c--contextuals--background--semantic--warning--primary);
+      box-shadow: 0 6px 18px 0 rgba(206, 5, 0, 0.05);
     }
   }
 }

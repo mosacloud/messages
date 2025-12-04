@@ -1,4 +1,4 @@
-import { Button } from "@openfun/cunningham-react"
+import { Button } from "@gouvfr-lasuite/cunningham-react"
 import { useTranslation } from "react-i18next";
 import { Icon, Spinner } from "@gouvfr-lasuite/ui-kit";
 import clsx from "clsx";
@@ -64,7 +64,8 @@ export const AttachmentItem = ({ attachment, isLoading = false, canDownload = tr
                                 title={t("Retry")}
                                 icon={<Icon name="loop" />}
                                 size="medium"
-                                color="tertiary-text"
+                                color={variant === "error" ? "error" : "brand"}
+                                variant="tertiary"
                                 onClick={errorAction}
                             />
                         }
@@ -76,7 +77,8 @@ export const AttachmentItem = ({ attachment, isLoading = false, canDownload = tr
                                         title={t("Download")}
                                         size="medium"
                                         icon={<Icon name="download" />}
-                                        color="tertiary-text"
+                                        color={variant === "error" ? "error" : "brand"}
+                                        variant="tertiary"
                                         href={downloadUrl}
                                         download={attachment.name}
                                     />
@@ -92,7 +94,8 @@ export const AttachmentItem = ({ attachment, isLoading = false, canDownload = tr
                                 title={t("Delete")}
                                 icon={<Icon name="close" />}
                                 size="medium"
-                                color="tertiary-text"
+                                color={variant === "error" ? "error" : "brand"}
+                                variant="tertiary"
                                 onClick={onDelete}
                             />
                         }

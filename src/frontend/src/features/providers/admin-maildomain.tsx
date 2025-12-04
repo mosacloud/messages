@@ -2,7 +2,7 @@ import { createContext, PropsWithChildren, useContext, useEffect, useMemo } from
 import { MailDomainAdmin } from "../api/gen/models/mail_domain_admin";
 import { useMaildomainsList, useMaildomainsRetrieve } from "../api/gen";
 import { useRouter } from "next/router";
-import { usePagination } from "@openfun/cunningham-react";
+import { usePagination } from "@gouvfr-lasuite/cunningham-react";
 import { DEFAULT_PAGE_SIZE } from "../config/constants";
 
 type AdminMailDomainContextType = {

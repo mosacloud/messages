@@ -1,12 +1,11 @@
-import { Button, Tooltip } from "@openfun/cunningham-react"
-import { ShareModal } from "@gouvfr-lasuite/ui-kit"
+import { Button, Tooltip } from "@gouvfr-lasuite/cunningham-react"
+import { Icon, IconType, ShareModal } from "@gouvfr-lasuite/ui-kit"
 import { useState } from "react";
 import { ThreadAccessRoleChoices, ThreadAccessDetail, MailboxLight } from "@/features/api/gen/models";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { useTranslation } from "react-i18next";
 import { useMailboxesSearchList, useThreadsAccessesCreate, useThreadsAccessesDestroy, useThreadsAccessesUpdate } from "@/features/api/gen";
 import { addToast, ToasterItem } from "@/features/ui/components/toaster";
-import { ThreadAccessesList } from "./thread-accesses-list";
 import useAbility, { Abilities } from "@/hooks/use-ability";
 
 
@@ -109,12 +108,16 @@ export const ThreadAccessesWidget = ({ accesses }: ThreadAccessesWidgetProps) =>
 
     return (
         <>
-            <Tooltip content={t('See members of this conversation')}>
-                <Button color="tertiary-text" size="small" className="thread-accesses-widget" onClick={() => setIsShareModalOpen(true)}>
-                    <ThreadAccessesList accesses={accesses} />
-                    <div className="thread-accesses-widget__item thread-accesses-widget__item--count">
-                        {accesses.length}
-                    </div>
+            <Tooltip content={t('See members of this thread ({{count}} members)', { count: accesses.length })}>
+                <Button
+                    variant="tertiary"
+                    size="small"
+                    aria-label={t('See members of this thread ({{count}} members)', { count: accesses.length })}
+                    className="thread-accesses-widget"
+                    onClick={() => setIsShareModalOpen(true)}
+                    icon={<Icon name="group" type={IconType.FILLED} />}
+                >
+                    {accesses.length}
                 </Button>
             </Tooltip>
             <ShareModal<MailboxLight, MailboxLight, ThreadAccessDetail>

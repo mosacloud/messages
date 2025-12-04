@@ -1,4 +1,5 @@
 .circular-progress {
+    --stroke-width: 2px;
     position: relative;
     width: var(--var-size);
     height: var(--var-size);
@@ -6,7 +7,7 @@
     justify-content: center;
     align-items: center;
     flex-direction: column;
-    gap: var(--c--theme--spacings--sm);
+    gap: var(--c--globals--spacings--sm);
     transition: transform var(--transitionDuration, 0.3s) ease-in-out;
 
     &--loading {
@@ -25,7 +26,7 @@
     &__label {
         font-size: 0.65rem;
         font-weight: bold;
-        color: var(--c--theme--colors--greyscale-400);
+        color: var(--c--contextuals--background--semantic--brand--primary);
         position: absolute;
         top: 52%;
         line-height: 1;
@@ -33,7 +34,21 @@
         transform: translate(-50%, -50%);
     }
 
-    &__progress {
-        transition: stroke-dashoffset var(--transitionDuration, 0.3s) ease-in-out;
+    &__background {
+        stroke: var(--c--contextuals--background--semantic--neutral--secondary);
+        stroke-width: var(--stroke-width);
+        fill: none;
+    }
+
+    &__foreground {
+        stroke: var(--c--contextuals--background--semantic--brand--primary);
+        stroke-width: var(--stroke-width);
+        fill: none;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 0.3s ease-in-out;
+    }
+
+    &__icon-completed {
+        color: var(--c--contextuals--background--semantic--success--primary)
     }
 }

@@ -1,6 +1,7 @@
 import { Icon } from "@gouvfr-lasuite/ui-kit";
-import { Button } from "@openfun/cunningham-react";
+import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { HTMLAttributes } from "react";
+import { useTranslation } from "react-i18next";
 
 type ChipProps = HTMLAttributes<HTMLDivElement> & {
     label: string;
@@ -8,6 +9,7 @@ type ChipProps = HTMLAttributes<HTMLDivElement> & {
 }
 
 export const Chip = ({label, onRemove, ...props}: ChipProps) => {
+    const { t } = useTranslation();
 
     return (
         <div className="c__combobox__chip" {...props}>
@@ -20,10 +22,11 @@ export const Chip = ({label, onRemove, ...props}: ChipProps) => {
                             e.stopPropagation();
                             onRemove();
                         }}
-                        color="tertiary-text"
+                        color="neutral"
+                        variant="tertiary"
                         size="small"
                         icon={<Icon name="close" />}
-                        aria-label="Remove"
+                        aria-label={t("Remove")}
                     />
                 )
             }

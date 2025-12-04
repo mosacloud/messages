@@ -1,6 +1,6 @@
 import { ThreadLabel, TreeLabel, useLabelsAddThreadsCreate, useLabelsList, useLabelsRemoveThreadsCreate } from "@/features/api/gen";
 import { Icon, IconType, Spinner } from "@gouvfr-lasuite/ui-kit";
-import { Button, Checkbox, Input, Tooltip, useModal } from "@openfun/cunningham-react";
+import { Button, Checkbox, Input, Tooltip, useModal } from "@gouvfr-lasuite/cunningham-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMailboxContext } from "@/features/providers/mailbox";
@@ -38,7 +38,7 @@ export const ThreadLabelsWidget = ({ threadId, selectedLabels = [] }: ThreadLabe
                 >
                     <Button
                         size="small"
-                        color="primary-text"
+                        variant="tertiary"
                         aria-label={t('Add label')}
                         icon={<Icon type={IconType.OUTLINED} name="new_label" />}
                     />
@@ -53,7 +53,7 @@ export const ThreadLabelsWidget = ({ threadId, selectedLabels = [] }: ThreadLabe
                 <Button
                     onClick={() => setIsPopupOpen(true)}
                     size="small"
-                    color="primary-text"
+                    variant="tertiary"
                     aria-label={t('Add label')}
                     icon={<Icon type={IconType.OUTLINED} name="new_label" />}
                 />
@@ -168,7 +168,7 @@ const LabelsPopup = ({ labels = [], selectedLabels, threadId }: LabelsPopupProps
                     </li>
                 ))}
                 <li className="thread-labels-widget__popup__content__empty">
-                    <Button color="secondary" onClick={open} fullWidth icon={<Icon type={IconType.OUTLINED} name="add" />}>
+                    <Button color="brand" variant="primary" onClick={open} fullWidth icon={<Icon type={IconType.OUTLINED} name="add" />}>
                         <span className="thread-labels-widget__popup__content__empty__button-label">
                         {searchQuery && labelsOptions.length === 0 ? t('Create the label "{{label}}"', { label: searchQuery }) : t('Create a new label')}
                         </span>

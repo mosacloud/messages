@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Button } from "@openfun/cunningham-react";
+import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { Icon, IconType } from "@gouvfr-lasuite/ui-kit";
 import { addToast, ToasterItem } from "@/features/ui/components/toaster";
 import ReactMarkdown from "react-markdown";
@@ -139,14 +139,15 @@ export const ThreadSummary = ({
         </div>
         <div className="thread-summary__refresh-button">
           <Button
-            color="tertiary-text"
+            color="brand"
+            variant="tertiary"
             size="small"
-            icon={<Icon name="wrap_text" type={IconType.OUTLINED} />}
-            aria-label={t("Refresh summary")}
+            icon={<Icon name={summary ? "refresh" : "wrap_text"} type={IconType.OUTLINED} />}
+            aria-label={summary ? t("Refresh summary") : t("Summarize")}
             onClick={handleRefresh}
             disabled={refreshMutation.isPending}
           >
-            {t("Summarize")}
+            {summary ? t("Refresh") : t("Summarize")}
           </Button>
         </div>
       </>

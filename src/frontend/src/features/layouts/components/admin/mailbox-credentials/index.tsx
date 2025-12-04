@@ -3,7 +3,7 @@ import { Banner } from "@/features/ui/components/banner";
 import { handle } from "@/features/utils/errors";
 import MailboxHelper from "@/features/utils/mailbox-helper";
 import { Icon, IconType } from "@gouvfr-lasuite/ui-kit";
-import { Button } from "@openfun/cunningham-react";
+import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -47,7 +47,8 @@ const AdminMailboxCredentials = ({ mailbox }: AdminMailboxCredentialsProps) => {
                     <dd>{mailbox.one_time_password}</dd>
                 </dl>
                 <Button
-                    color="secondary"
+                    color="info"
+                    variant="tertiary"
                     icon={<Icon name={clipboardState === 'copied' ? "check" : clipboardState === 'error' ? "close" : "content_copy"} />}
                     onClick={handleCopyToClipboard}
                 >

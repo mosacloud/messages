@@ -2,10 +2,11 @@ import { useRouter } from "next/router";
 import { useTranslation } from "react-i18next";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
-import { Button } from "@openfun/cunningham-react";
+import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { SearchFiltersForm } from "../search-filters-form";
 import { useLayoutContext } from "@/features/layouts/components/main";
 import { MAILBOX_FOLDERS } from "@/features/layouts/components/mailbox-panel/components/mailbox-list";
+import { Icon } from "@gouvfr-lasuite/ui-kit";
 
 export const SearchInput = () => {
     const router = useRouter();
@@ -80,7 +81,7 @@ export const SearchInput = () => {
             <div className="search__container">
                 <div className="search__input-container">
                     <label className="search__label" htmlFor="search">
-                        <span className="material-icons">search</span>
+                        <Icon name="search" style={{ fontSize: '1.125rem' }} />
                         <span className="c__offscreen">{t("Search in messages...")}</span>
                     </label>
                     <input
@@ -96,18 +97,22 @@ export const SearchInput = () => {
                 </div>
                 { value && (
                 <Button
-                    color="tertiary-text"
+                    color="neutral"
+                    variant="tertiary"
                     onClick={resetInput}
                     title={t("Reset")}
+                    size="small"
                 >
                     <span className="material-icons">close</span>
                     <span className="c__offscreen">{t("Reset")}</span>
                 </Button>
                 )}
                 <Button
-                    color="tertiary-text"
+                    color="neutral"
+                    variant="tertiary"
                     onClick={() => setShowFilters(!showFilters)}
                     title={showFilters ? t("Close filters") : t("Open filters")}
+                    size="small"
                 >
                     <span className="material-icons">tune</span>
                     <span className="c__offscreen">{showFilters ? t("Close filters") : t("Open filters")}</span>

@@ -4,10 +4,10 @@ import config from "@/../cunningham";
 export const useResponsive = () => {
   const [width, setWidth] = useState(window.innerWidth);
   const mobile = parseInt(
-    config.themes.default.theme.breakpoints.mobile.replace("px", "")
+    config.themes.default.globals.breakpoints.mobile.replace("px", "")
   );
   const tablet = parseInt(
-    config.themes.default.theme.breakpoints.tablet.replace("px", "")
+    config.themes.default.globals.breakpoints.tablet.replace("px", "")
   );
 
   const handleWindowSizeChange = () => {

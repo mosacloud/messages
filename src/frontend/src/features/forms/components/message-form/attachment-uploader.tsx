@@ -4,7 +4,7 @@ import { useBlobUploadCreate } from "@/features/api/gen/blob/blob";
 import { useMailboxContext } from '@/features/providers/mailbox';
 import { useConfig } from '@/features/providers/config';
 import { useFormContext } from 'react-hook-form';
-import { Button, Field, useModals, VariantType } from '@openfun/cunningham-react';
+import { Button, Field, useModals, VariantType } from '@gouvfr-lasuite/cunningham-react';
 import { AttachmentItem, isAttachment } from '@/features/layouts/components/thread-view/components/thread-attachment-list/attachment-item';
 import { useTranslation } from 'react-i18next';
 import { useDropzone } from 'react-dropzone';
@@ -156,14 +156,14 @@ export const AttachmentUploader = ({
     return (
         <Field
             text={infoText}
-            state='default'
+            state="default"
             fullWidth
         >
         <section className={clsx("attachment-uploader", { 'attachment-uploader--disabled': disabled })} {...getRootProps()} onClick={handleClick}>
             <DropZone isHidden={!isDragActive} />
             <div className="attachment-uploader__input">
                 <Button
-                    color="tertiary"
+                    variant="secondary"
                     icon={<Icon name="attach_file" />}
                     type="button"
                     disabled={disabled}
@@ -174,7 +174,8 @@ export const AttachmentUploader = ({
                 <p className="attachment-uploader__input__helper-text">
                     {t("or drag and drop some files")}
                 </p>
-                <input {...getInputProps()} />
+                {/* This input is not focusable so we hide it from the screen reader and we give the priority to the button*/}
+                <input {...getInputProps()} disabled={disabled} aria-hidden={true} />
             </div>
             { [...attachments, ...uploadingQueue, ...failedQueue].length > 0 && (
                 <div className="attachment-uploader__bucket">
@@ -195,7 +196,7 @@ export const AttachmentUploader = ({
                                 attachment={entry}
                                 variant="error"
                                 errorAction={() => uploadFile(entry)}
-                                onDelete={() => removeToFailedQueue([entry])}
+                                onDelete={disabled ? undefined : () => removeToFailedQueue([entry])}
                                 canDownload={false}
                                 errorMessage={t("The upload failed. Please try again.")}
                             />
@@ -208,7 +209,7 @@ export const AttachmentUploader = ({
                                 key={'blobId' in entry ? entry.blobId : entry.id}
                                 canDownload={false}
                                 attachment={entry}
-                                onDelete={() => removeToAttachments([entry])}
+                                onDelete={disabled ? undefined : () => removeToAttachments([entry])}
                             />
                         ))}
                     </div>

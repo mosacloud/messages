@@ -1,5 +1,5 @@
 import { Icon, IconType, Spinner } from "@gouvfr-lasuite/ui-kit";
-import { Button, Tooltip } from "@openfun/cunningham-react";
+import { Button, Tooltip } from "@gouvfr-lasuite/cunningham-react";
 import { clsx } from "clsx";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { FormProvider, useForm, useWatch } from "react-hook-form";
@@ -535,11 +535,15 @@ export const MessageForm = ({
                         text={form.formState.errors.to && !Array.isArray(form.formState.errors.to) ? form.formState.errors.to.message : t("Enter the email addresses of the recipients separated by commas")}
                         textItems={Array.isArray(form.formState.errors.to) ? form.formState.errors.to?.map((error, index) => t(error!.message as string, { email: form.getValues('to')?.[index] })) : []}
                         disabled={!canWriteMessages}
+                        rightText={
+                            <div className="form-field-options">
+                                <Button tabIndex={-1} type="button" size="nano" variant={showCCField ? "bordered" : "tertiary"} onClick={() => setShowCCField(!showCCField)} disabled={!canWriteMessages}>cc</Button>
+                                <Button tabIndex={-1} type="button" size="nano" variant={showBCCField ? "bordered" : "tertiary"} onClick={() => setShowBCCField(!showBCCField)} disabled={!canWriteMessages}>bcc</Button>
+                            </div> as unknown as string // TODO: Allow ReactNode as rightText in Cunningham
+                        }
                         fullWidth
                         clearable
                     />
-                    <Button tabIndex={-1} type="button" size="nano" color={showCCField ? "tertiary" : "tertiary-text"} onClick={() => setShowCCField(!showCCField)}>cc</Button>
-                    <Button tabIndex={-1} type="button" size="nano" color={showBCCField ? "tertiary" : "tertiary-text"} onClick={() => setShowBCCField(!showBCCField)}>bcc</Button>
                 </div>
 
                 {showCCField && (
@@ -597,17 +601,18 @@ export const MessageForm = ({
                     />
                 </div>
 
+                {showAttachmentsForgetAlert &&
+                    <Banner type="warning">
+                        {t("Did you forget an attachment?")}
+                    </Banner>
+                }
+
                 <AttachmentUploader
                     initialAttachments={initialAttachments}
                     onChange={form.handleSubmit(saveDraft)}
                     disabled={!canWriteMessages}
                 />
 
-                {showAttachmentsForgetAlert &&
-                    <Banner type="warning">
-                        {t("Did you forget an attachment?")}
-                    </Banner>
-                }
 
                 <div className="form-field-row form-field-save-time">
                     {
@@ -623,7 +628,7 @@ export const MessageForm = ({
                 </div>
                 <footer className="form-footer">
                     <DropdownButton
-                        color="primary"
+                        variant="primary"
                         disabled={!canSendMessages || isSubmittingMessage}
                         type="submit"
                         dropdownOptions={[
@@ -646,7 +651,7 @@ export const MessageForm = ({
                         <Tooltip content={t("Delete")}>
                             <Button
                                 type="button"
-                                color="tertiary"
+                                variant="tertiary"
                                 onClick={onClose}
                                 aria-label={t("Delete")}
                                 icon={<Icon name="delete" type={IconType.OUTLINED} />}
@@ -658,7 +663,7 @@ export const MessageForm = ({
                             <Tooltip content={t("Delete draft")}>
                                 <Button
                                     type="button"
-                                    color="tertiary"
+                                    variant="tertiary"
                                     onClick={() => handleDeleteMessage(draft.id)}
                                     aria-label={t("Delete draft")}
                                     icon={<Icon name="delete" type={IconType.OUTLINED} />}

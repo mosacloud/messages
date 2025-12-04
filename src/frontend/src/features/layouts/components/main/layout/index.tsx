@@ -13,7 +13,6 @@ import { Toaster } from "@/features/ui/components/toaster";
 export type MainLayoutProps = {
   icon?: React.ReactNode;
   leftPanelContent?: React.ReactNode;
-  rightPanelContent?: React.ReactNode;
   rightHeaderContent?: React.ReactNode;
   languages?: DropdownMenuOption[];
   onToggleRightPanel?: () => void;
@@ -103,7 +102,7 @@ export const AppLayout = ({
           hideSearch={hideSearch}
         />
       </div>
-      <div className="c__main-layout__content">
+      <main className="c__main-layout__content">
         <PanelGroup autoSaveId={"persistance"} direction="horizontal">
           {mountLeftPanel && (
             <>
@@ -117,20 +116,15 @@ export const AppLayout = ({
                 <LeftPanel isOpen={showLeftPanel}>{leftPanelContent}</LeftPanel>
               </Panel>
               {isDesktop && (
-                <PanelResizeHandle
-                  className="bg-greyscale-200"
-                  style={{
-                    width: "1px",
-                  }}
-                />
+                <PanelResizeHandle className="panel__resize-handle" />
               )}
             </>
           )}
           <Panel order={1} style={{ width: "100%" }}>
-              {children}
+                  {children}
           </Panel>
         </PanelGroup>
-      </div>
+      </main>
       <Toaster />
     </div>
   );

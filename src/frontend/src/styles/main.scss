@@ -8,24 +8,19 @@
 @use "./globals.scss";
 
 // UI Kit components fork
-@use "./../features/layouts/components/main/right-panel";
 @use "./../features/layouts/components/main/header";
 @use "./../features/layouts/components/main/layout";
 @use "./../features/layouts/components/main/left-panel";
 
 // Application Components
 @use "./../features/layouts/components/main";
-@use "./../features/ui/components/users";
 @use "./../features/ui/components/breadcrumbs";
 @use "./../features/ui/components/toaster";
 @use "./../features/ui/components/badge";
 @use "./../features/ui/components/label-badge";
 @use "./../features/ui/components/contact-chip";
-@use "./../features/ui/components/info-row";
-@use "./../features/ui/components/bar";
 @use "./../features/ui/components/banner";
 @use "./../features/ui/components/feedback-button";
-@use "./../features/ui/components/lagaufre";
 @use "./../features/ui/components/copyable-input";
 @use "./../features/ui/components/dropdown-button";
 @use "./../features/ui/components/progress-bar";

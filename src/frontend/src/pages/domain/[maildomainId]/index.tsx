@@ -2,7 +2,7 @@ import { DEFAULT_PAGE_SIZE } from "@/features/config/constants";
 import { AdminLayout } from "@/features/layouts/components/admin/admin-layout";
 import { CreateMailboxAction } from "@/features/layouts/components/admin/mailboxes-view/create-mailbox-action";
 import { AdminDomainPageContent } from "@/features/layouts/components/admin/mailboxes-view/page-content";
-import { usePagination } from "@openfun/cunningham-react";
+import { usePagination } from "@gouvfr-lasuite/cunningham-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 /**

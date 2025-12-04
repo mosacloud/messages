@@ -1,5 +1,5 @@
 import { DropdownMenu, DropdownMenuOption, Icon, IconType } from "@gouvfr-lasuite/ui-kit";
-import { Button, ButtonProps } from "@openfun/cunningham-react";
+import { Button, ButtonProps } from "@gouvfr-lasuite/cunningham-react";
 import { PropsWithChildren, useState } from "react";
 
 export type DropdownButtonProps = PropsWithChildren<ButtonProps & {

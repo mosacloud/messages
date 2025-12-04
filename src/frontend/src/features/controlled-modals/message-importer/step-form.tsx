@@ -2,7 +2,7 @@ import { FocusEventHandler, useEffect, useMemo, useState } from "react";
 import z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { FormProvider, useForm, useWatch } from "react-hook-form";
-import { Button } from "@openfun/cunningham-react";
+import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { Spinner } from "@gouvfr-lasuite/ui-kit";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "next/router";
@@ -296,7 +296,8 @@ export const StepForm = ({ onUploading, onSuccess, onError, error, step }: StepF
                         <Button
                             type="button"
                             onClick={bucketUploadManager.abort}
-                            color="tertiary"
+                            color="brand"
+                            variant="tertiary"
                             fullWidth
                         >
                             {t('Abort upload')}

@@ -1,12 +1,12 @@
 .signature-block-selector {
     &--forced {
-        padding-left: var(--c--theme--spacings--xs);
+        padding-left: var(--c--globals--spacings--xs);
         opacity: 0.6;
         .signature-block-selector__content {
             display: flex;
             flex-direction: row;
             align-items: center;
-            gap: var(--c--theme--spacings--xs);
+            gap: var(--c--globals--spacings--xs);
         }
         cursor: not-allowed;
     }

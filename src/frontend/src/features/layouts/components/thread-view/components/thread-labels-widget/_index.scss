@@ -13,7 +13,7 @@
 .thread-labels-widget__loading-labels-tooltip-content {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--c--globals--spacings--xs);
 
     & > .c__spinner {
         flex-shrink: 0;
@@ -22,43 +22,44 @@
 
 .thread-labels-widget__popup {
     position: absolute;
-    right: 0;
+    right: -25%;
     top: 100%;
-    background-color: #FFF;
-    border: 1px solid #e0e0e0;
+    background-color: var(--c--contextuals--background--surface--secondary);
+    border: 1px solid var(--c--contextuals--border--surface--primary);
     border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 5px 0 var(--c--contextuals--background--semantic--contextual--primary-hover);
     z-index: 10000;
     width: min(400px, 60vw);
     max-height: max(600px, 80vh);
-    margin-top: 4px;
+    margin-top: var(--c--globals--spacings--2xs);
 }
 
 .thread-labels-widget__popup__header {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    padding: 16px 16px 12px 16px;
-    background: #f7f7f7;
-    border-bottom: 1px solid #e0e0e0;
+    gap: var(--c--globals--spacings--xs);
+    padding-inline: var(--c--globals--spacings--base);
+    padding-block: var(--c--globals--spacings--base) var(--c--globals--spacings--sm);
+    background: var(--c--contextuals--background--surface--tertiary);
+    border-bottom: 1px solid var(--c--contextuals--border--surface--primary);
 
     h3 {
         display: inline-flex;
         align-items: center;
-        gap: 0.5rem;
-        margin: 0 0 0.25rem 0;
+        gap: var(--c--globals--spacings--xs);
+        margin: 0 0 var(--c--globals--spacings--3xs) 0;
         font-size: 1rem;
         font-weight: 600;
-        color: #222;
+        color: var(--c--contextuals--content--semantic--neutral--secondary);
     }
 }
 
 .thread-labels-widget__popup__content {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--c--globals--spacings--xs);
     list-style: none;
-    padding: 12px 16px;
+    padding: var(--c--globals--spacings--sm) var(--c--globals--spacings--base);
     margin: 0;
     max-height: 300px;
     overflow-y: auto;

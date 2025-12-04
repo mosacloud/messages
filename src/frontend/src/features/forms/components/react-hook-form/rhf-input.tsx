@@ -1,9 +1,9 @@
 import { Controller, useFormContext } from "react-hook-form";
-import { Input, InputProps } from "@openfun/cunningham-react";
+import { Input, InputProps } from "@gouvfr-lasuite/cunningham-react";
 
 /**
  * A wrapper component for the Input component that integrates with react-hook-form.
- * 
+ *
  * This component allows you to use the Input component as a controlled component
  * with react-hook-form's form state management.
  */

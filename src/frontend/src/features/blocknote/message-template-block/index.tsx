@@ -1,10 +1,10 @@
 import { useBlockNoteEditor, useComponentsContext } from "@blocknote/react";
 import { useTranslation } from "react-i18next";
 import { Icon, IconSize, Spinner } from "@gouvfr-lasuite/ui-kit";
-import { Modal, ModalSize } from "@openfun/cunningham-react";
+import { Modal, ModalSize } from "@gouvfr-lasuite/cunningham-react";
 import { MessageTemplateTypeChoices, ReadOnlyMessageTemplate, useMailboxesMessageTemplatesAvailableList, mailboxesMessageTemplatesRenderRetrieve, MailboxesMessageTemplatesRenderRetrieveParams } from "@/features/api/gen";
 import { MessageComposerBlockSchema, MessageComposerInlineContentSchema, MessageComposerStyleSchema, PartialMessageComposerBlockSchema } from "@/features/forms/components/message-composer";
-import { useModal } from "@openfun/cunningham-react";
+import { useModal } from "@gouvfr-lasuite/cunningham-react";
 import { handle } from "@/features/utils/errors";
 
 type MessageTemplateSelectorProps = {

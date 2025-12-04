@@ -1,7 +1,7 @@
 import { DriveIcon } from "@/features/forms/components/message-form/drive-icon";
 import { useConfig } from "@/features/providers/config";
 import { FEATURE_KEYS, useFeatureFlag } from "@/hooks/use-feature";
-import { Button } from "@openfun/cunningham-react";
+import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { useTranslation } from "react-i18next";
 
 type DrivePreviewLinkProps = {
@@ -27,7 +27,7 @@ export const DrivePreviewLink = ({ fileId }: DrivePreviewLinkProps) => {
             href={`${DRIVE.file_url}/${fileId}`}
             target="_blank"
             size="medium"
-            color="tertiary-text"
+            variant="tertiary"
             icon={<DriveIcon />}
         />
     )

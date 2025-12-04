@@ -4,12 +4,12 @@
     height: 100%;
     max-height: 100%;
     overflow: hidden;
+    font-size: var(--c--globals--font--sizes--sm);
 }
 
 .mailbox-panel__header {
     position: sticky;
     top: 0;
-    background-color: #FFF;
     z-index: 10;
     flex-shrink: 0;
 }
@@ -17,7 +17,7 @@
 .mailbox-panel__mailbox-title {
     margin: 0;
     flex-shrink: 0;
-    padding-block: var(--c--theme--spacings--sm);
+    padding-block: var(--c--globals--spacings--sm);
 
     & > .c__dropdown-menu-trigger {
         justify-content: flex-start;
@@ -25,11 +25,11 @@
     }
 
     button.mailbox-panel__mailbox-title__dropdown-button {
-        color: var(--c--theme--colors--greyscale-900);
-        font-weight: 600;
-        padding-block: var(--c--theme--spacings--sm);
+        color: var(--c--contextuals--content--semantic--neutral--primary);
+        font-weight: 700;
+        padding-block: var(--c--globals--spacings--sm);
         // 1.1rem hardcoded to be aligned with other icon in the sidebar
-        padding-inline: var(--c--theme--spacings--base) 1.1rem;
+        padding-inline: var(--c--globals--spacings--base) 1.1rem;
         width: 100%;
         height: inherit;
 
@@ -52,10 +52,10 @@
 
 .mailbox-panel .mailbox-list {
     flex-shrink: 0;
-    margin-bottom: var(--c--theme--spacings--sm);
+    margin-bottom: var(--c--globals--spacings--sm);
 }
 
 .mailbox-panel .mailbox-labels {
-    border-top: 1px solid var(--c--theme--colors--greyscale-200);
+    border-top: 1px solid var(--c--contextuals--border--surface--primary);
     flex: 1;
 }
