@@ -19,22 +19,27 @@ describe('DateHelper', () => {
       expect(DateHelper.formatDate(todayDate, 'en')).toBe('17:30');
     });
 
-    it('should format as short date when less than 30 days ago', () => {
-      const recentDate = '2025-03-20T15:30:00';
-      expect(DateHelper.formatDate(recentDate, 'fr')).toBe('20 mars');
-      expect(DateHelper.formatDate(recentDate, 'en')).toBe('20 March');
+    it('should format as "Yesterday" when date is yesterday', () => {
+      const yesterdayDate = '2025-04-16T15:30:00';
+      expect(DateHelper.formatDate(yesterdayDate, 'en')).toBe('Yesterday');
     });
 
-    it('should format as full date when more than 30 days ago', () => {
-      const oldDate = '2024-01-15T15:30:00';
-      expect(DateHelper.formatDate(oldDate, 'fr')).toBe('15/01/2024');
-      expect(DateHelper.formatDate(oldDate, 'en')).toBe('15/01/2024');
+    it('should format as day name when date is in the same week but not today/yesterday', () => {
+      const sameWeekDate = '2025-04-14T15:30:00'; // Monday
+      expect(DateHelper.formatDate(sameWeekDate, 'fr')).toBe('lundi');
+      expect(DateHelper.formatDate(sameWeekDate, 'en')).toBe('Monday');
     });
 
-    it('should handle different locales correctly', () => {
-      const date = '2025-03-20T15:30:00';
-      expect(DateHelper.formatDate(date, 'fr')).toBe('20 mars');
-      expect(DateHelper.formatDate(date, 'en')).toBe('20 March');
+    it('should format as day month when date is in the same year but not same week', () => {
+      const sameYearDate = '2025-02-20T15:30:00';
+      expect(DateHelper.formatDate(sameYearDate, 'fr')).toBe('20 févr.');
+      expect(DateHelper.formatDate(sameYearDate, 'en')).toBe('20 Feb');
+    });
+
+    it('should format as full date when more than 1 year', () => {
+      const oldDate = '2024-04-15T15:30:00';
+      expect(DateHelper.formatDate(oldDate, 'fr')).toBe('15/04/2024');
+      expect(DateHelper.formatDate(oldDate, 'en')).toBe('15/04/2024');
     });
   });
 

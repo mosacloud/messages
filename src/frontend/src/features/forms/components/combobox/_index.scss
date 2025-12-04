@@ -1,11 +1,53 @@
 .c__combobox {
   position: relative;
 
+  .c__combobox__wrapper {
+    border-radius: var(--c--components--forms-select--border-radius);
+    border-width: var(--c--components--forms-select--border-width);
+    border-color: var(--c--components--forms-select--border-color);
+    border-style: var(--c--components--forms-select--border-style);
+    display: flex;
+    transition:
+          border var(--c--globals--transitions--duration) var(--c--globals--transitions--ease-out),
+          border-radius var(--c--globals--transitions--duration) var(--c--globals--transitions--ease-out);
+    padding: 0 var(--c--globals--spacings--s);
+    gap: var(--c--globals--spacings--base);
+    box-sizing: border-box;
+    height: auto;
+    min-height: var(--c--components--forms-select--height);
+    cursor: pointer;
+    background-color: var(--c--components--forms-select--background-color);
+    position: relative;
+
+    label {
+      cursor: pointer;
+      // In case of text-overflow we do not want the text to render above the toggle button arrow.
+      max-width: calc(100% - 1.5rem);
+    }
+
+    &:hover {
+      border-radius: var(--c--components--forms-select--border-radius--hover);
+      box-shadow: var(--c--components--forms-select--border-color--hover) 0 0 0 1px;
+      border-color: var(--c--components--forms-select--border-color--hover);
+    }
+
+    &:focus-within,
+    &--focus {
+      border-radius: var(--c--components--forms-select--border-radius--focus);
+      box-shadow: var(--c--components--forms-select--border-color--focus) 0 0 0 1px;
+      border-color: var(--c--components--forms-select--border-color--focus);
+
+      label {
+        color: var(--c--components--forms-select--label-color--focus);
+      }
+    }
+  }
+
   &--disabled {
     pointer-events: none;
 
     .c__combobox__wrapper {
-      border-color: var(--c--theme--colors--greyscale-200);
+      border-color: var(--c--contextuals--border--semantic--neutral--tertiary);
       cursor: default;
 
       label, input {
@@ -16,29 +58,25 @@
         color: var(--c--components--forms-select--value-color--disabled)
       }
     }
-
-    &:hover {
-      border-color: var(--c--theme--colors--greyscale-200);
-    }
   }
 
   &--error {
 
     .c__combobox__wrapper {
-      border-color: var(--c--theme--colors--danger-600);
+      border-color: var(--c--contextuals--border--semantic--error--secondary);
 
       label {
-        color: var(--c--theme--colors--danger-600);
+        color: var(--c--contextuals--content--semantic--error--secondary);
       }
     }
 
     &:not(.c__combobox--disabled) {
       .c__combobox__wrapper:hover {
-        border-color: var(--c--theme--colors--danger-800);
-        box-shadow: var(--c--theme--colors--danger-800) 0 0 0 1px;
+        border-color: var(--c--contextuals--border--semantic--error--primary);
+        box-shadow: var(--c--contextuals--border--semantic--error--primary) 0 0 0 1px;
 
         label {
-          color: var(--c--theme--colors--danger-800);
+          color: var(--c--contextuals--content--semantic--error--primary);
         }
       }
     }
@@ -47,69 +85,25 @@
   &--success {
 
     .c__combobox__wrapper {
-      border-color: var(--c--theme--colors--success-600);
-      box-shadow: var(--c--theme--colors--success-600) 0 0 0 1px;
+      border-color: var(--c--contextuals--border--semantic--success--secondary);
 
       label {
-        color: var(--c--theme--colors-success-600);
+        color: var(--c--contextuals--content--semantic--success--secondary);
       }
     }
 
     &:not(.c__combobox--disabled) {
-      .c__select__wrapper:hover {
-        border-color: var(--c--theme--colors--success-800);
+      .c__combobox__wrapper:hover {
+        border-color: var(--c--contextuals--border--semantic--success--primary);
+        box-shadow: var(--c--contextuals--border--semantic--success--primary) 0 0 0 1px;
 
         label {
-          color: var(--c--theme--colors--success-800);
+          color: var(--c--contextuals--content--semantic--success--primary);
         }
       }
     }
   }
 
-}
-
-.c__combobox__wrapper {
-  border-radius: var(--c--components--forms-select--border-radius);
-  border-width: var(--c--components--forms-select--border-width);
-  border-color: var(--c--components--forms-select--border-color);
-  border-style: var(--c--components--forms-select--border-style);
-  display: flex;
-  transition:
-    border var(--c--theme--transitions--duration)
-      var(--c--theme--transitions--ease-out),
-    border-radius var(--c--theme--transitions--duration)
-      var(--c--theme--transitions--ease-out);
-  padding: 0 0.75rem;
-  gap: 1rem;
-  box-sizing: border-box;
-  height: auto;
-  min-height: var(--c--components--forms-select--height);
-  cursor: pointer;
-  background-color: var(--c--components--forms-select--background-color);
-  position: relative;
-
-  label {
-    cursor: pointer;
-    // In case of text-overflow we do not want the text to render above the toggle button arrow.
-    max-width: calc(100% - 1.5rem);
-  }
-
-  &:hover {
-    border-radius: var(--c--components--forms-select--border-radius--hover);
-    box-shadow: var(--c--components--forms-select--box-shadow--color--hover) 0 0 0 1px;
-    border-color: var(--c--components--forms-select--box-shadow--color--hover);
-  }
-
-  &:focus-within,
-  &--focus {
-    border-radius: var(--c--components--forms-select--border-radius--focus);
-    box-shadow: var(--c--components--forms-select--box-shadow--color--focus) 0 0 0 1px;
-    border-color: var(--c--components--forms-select--box-shadow--color--focus);
-
-    label {
-      color: var(--c--components--forms-select--label-color--focus);
-    }
-  }
 }
 
 .c__combobox__menu {
@@ -132,7 +126,7 @@
   }
 
   &__item {
-    padding: 0.75rem;
+    padding: var(--c--globals--spacings--sm);
     font-size: var(--c--components--forms-select--item-font-size);
     color: var(--c--components--forms-select--item-color);
     cursor: pointer;
@@ -170,13 +164,14 @@
   background-color: var(
     --c--components--forms-select--multi-pill-background-color
   );
-  padding: 0.125rem 0.5rem;
+  padding-block: var(--c--globals--spacings--4xs);
+  padding-inline: var(--c--globals--spacings--xs) var(--c--globals--spacings--4xs);
   border-radius: var(--c--components--forms-select--multi-pill-border-radius);
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: var(--c--globals--spacings--3xs);
   max-width: 100%;
-  font-size: var(--c--components--forms-select--multi-pill-font-size);
+  font-size: var(--c--globals--font--sizes--sm);
   vertical-align: middle;
 
   &__label {

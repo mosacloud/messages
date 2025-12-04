@@ -1,7 +1,7 @@
 @use "../../../../styles/utils" as *;
 
 .new-message-form {
-    padding: var(--c--theme--spacings--base);
+    padding: var(--c--globals--spacings--base);
     max-height: 100%;
     width: 100%;
     overflow-y: auto;
@@ -9,18 +9,18 @@
 
 .new-message-form-container {
     margin-inline: auto;
-    margin-bottom: var(--c--theme--spacings--4xl);
+    margin-bottom: var(--c--globals--spacings--4xl);
     height: 100%;
     width: 100%;
     max-width: breakpoint("mobile");
 }
 
 .new-message-form-container h1 {
-    margin-block: var(--c--theme--spacings--md) var(--c--theme--spacings--xl);
+    margin-block: var(--c--globals--spacings--md) var(--c--globals--spacings--xl);
 }
 
 @media (max-width: breakpoint("tablet")) {
     .new-message-form-container h1 {
-        margin-block: var(--c--theme--spacings--sm) var(--c--theme--spacings--md);
+        margin-block: var(--c--globals--spacings--sm) var(--c--globals--spacings--md);
     }
 }

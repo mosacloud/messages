@@ -1,18 +1,18 @@
 .thread-action-bar {
-    justify-content: space-between;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    background: var(--c--contextuals--background--surface--primary);
+    width: inherit;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px 0 var(--c--contextuals--background--semantic--contextual--primary-hover);
+    padding: var(--c--globals--spacings--3xs);
+    gap: var(--c--globals--spacings--4xs);
 }
 
 .thread-action-bar > div {
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: var(--c--theme--spacings--2xs);
-}
-
-.thread-action-bar__left {
-    justify-content: flex-start;
-}
-
-.thread-action-bar__right {
-    justify-content: flex-end;
+    gap: var(--c--globals--spacings--4xs);
 }

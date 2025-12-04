@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { Button, DataGrid, usePagination } from "@openfun/cunningham-react";
+import { Button, DataGrid, usePagination } from "@gouvfr-lasuite/cunningham-react";
 import { useRouter } from "next/router";
 import { Trans, useTranslation } from "react-i18next";
-import { Spinner } from "@gouvfr-lasuite/ui-kit";
+import { Icon, IconType, Spinner } from "@gouvfr-lasuite/ui-kit";
 import { AdminLayout } from "@/features/layouts/components/admin/admin-layout";
-import Bar from "@/features/ui/components/bar";
 import { getMaildomainsListQueryOptions, MailDomainAdmin, MailDomainAdminWrite } from "@/features/api/gen";
 import { useAdminMailDomain } from "@/features/providers/admin-maildomain";
 import useAbility, { Abilities } from "@/hooks/use-ability";
@@ -35,7 +34,7 @@ function AdminDataGrid({ domains, pagination }: AdminDataGridProps) {
       headerName: t("Domain"),
       renderCell: ({ row }: { row: MailDomainAdmin }) => (
         <span
-          style={{ cursor: "pointer", color: "var(--c--theme--colors--primary-600)" }}
+          style={{ cursor: "pointer", fontWeight: 700 }}
           onClick={() => router.push(`/domain/${row.id}`)}
         >
           {row.name}
@@ -44,18 +43,19 @@ function AdminDataGrid({ domains, pagination }: AdminDataGridProps) {
     },
     {
       id: "created_at",
+      size: 160,
       headerName: t("Created at"),
       renderCell: ({ row }: { row: MailDomainAdmin }) => new Date(row.created_at).toLocaleDateString(i18n.resolvedLanguage),
     },
     {
       id: "updated_at",
+      size: 160,
       headerName: t("Updated at"),
       renderCell: ({ row }: { row: MailDomainAdmin }) => new Date(row.updated_at).toLocaleDateString(i18n.resolvedLanguage),
     },
     ...(canManageMaildomainAccesses ? [{
       id: "actions",
-      size: 130,
-      headerName: t("Actions"),
+      size: 200,
       renderCell: ({ row }: { row: MailDomainAdmin }) => (
         <ActionsCell
           domain={row}
@@ -126,9 +126,9 @@ const AdminPageContent = () => {
 
   return (
     <>
-      <Bar className="admin-page__bar">
+      <div className="admin-page__bar">
         <h1>{t("Maildomains management")}</h1>
-      </Bar>
+      </div>
       <AdminDataGrid domains={mailDomains} pagination={pagination} />
     </>
   )
@@ -155,7 +155,7 @@ export default function AdminPage() {
   };
 
   return (
-    <AdminLayout actions={<CreateDomainAction onCreate={handleCreateDomain} />}>
+    <AdminLayout currentTab="addresses" actions={<CreateDomainAction onCreate={handleCreateDomain} />}>
       <AdminPageContent />
     </AdminLayout>
   );
@@ -169,8 +169,10 @@ const ActionsCell = ({ domain, onManageAccess }: { domain: MailDomainAdmin, onMa
   return (
     <Button
       size="nano"
-      color="secondary"
+      variant="tertiary"
+      icon={<Icon name="group" type={IconType.FILLED} />}
       onClick={onManageAccess}
+      style={{ paddingInline: "var(--c--globals--spacings--xs)" }}
     >{t("Manage accesses")}</Button>
   )
 }

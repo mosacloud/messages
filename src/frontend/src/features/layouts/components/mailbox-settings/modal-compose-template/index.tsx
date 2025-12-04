@@ -2,7 +2,7 @@ import { Mailbox, MessageTemplate, MessageTemplateTypeChoices, useMailboxesMessa
 import { RhfInput } from "@/features/forms/components/react-hook-form/rhf-input";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Button, Modal, ModalSize } from "@openfun/cunningham-react";
+import { Button, Modal, ModalSize } from "@gouvfr-lasuite/cunningham-react";
 import { FormProvider, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";

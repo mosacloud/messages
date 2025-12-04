@@ -6,10 +6,11 @@ import { LanguagePicker } from "@/features/layouts/components/main/language-pick
 import { AppLayout } from "@/features/layouts/components/main/layout";
 import { LeftPanel } from "@/features/layouts/components/main/left-panel";
 import { FeedbackWidget } from "@/features/ui/components/feedback-widget";
+import { useTheme } from "@/features/providers/theme";
 
 export default function HomePage() {
-
   const { t } = useTranslation();
+  const { theme, variant, themeConfig } = useTheme();
   const { user } = useAuth();
 
   if (user) {
@@ -22,19 +23,21 @@ export default function HomePage() {
         hideLeftPanelOnDesktop
         leftPanelContent={<LeftPanel />}
         rightHeaderContent={<LanguagePicker />}
-        icon={<img src="/images/app-logo.svg" alt="logo" height={32} />}
+        icon={<img src={`/images/${theme}/app-logo-${variant}.svg`} alt="logo" height={40} />}
       >
       <div className="app__home">
         <HomeGutter>
           <Hero
-            logo={<img src="/images/app-icon.svg" alt="Messages Logo" width={64} />}
+            logo={<img src={`/images/${theme}/app-icon-${variant}.svg`} alt="Messages Logo" width={64} />}
             title={t("Simple and intuitive messaging")}
             banner="/images/banner.webp"
             subtitle={t("Send and receive your messages in an instant.")}
             mainButton={<ProConnectButton onClick={login} />}
           />
         </HomeGutter>
-        <Footer />
+        {themeConfig.footer && (
+          <Footer {...themeConfig.footer} />
+        )}
       </div>
       <FeedbackWidget />
       </AppLayout>

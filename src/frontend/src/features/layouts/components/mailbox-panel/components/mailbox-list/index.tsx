@@ -40,7 +40,7 @@ export const MAILBOX_FOLDERS = (): Folder[] => [
     {
         id: "drafts",
         name: i18n.t("Drafts"),
-        icon: "drafts",
+        icon: "mode_edit",
         searchable: true,
         filter: {
             has_draft: "1",
@@ -87,14 +87,14 @@ export const MAILBOX_FOLDERS = (): Folder[] => [
 export const MailboxList = () => {
 
     return (
-        <div className="mailbox-list">
+        <nav className="mailbox-list">
             {MAILBOX_FOLDERS().map((folder) => (
                 <FolderItem
                     key={folder.icon}
                     folder={folder}
                 />
             ))}
-        </div>
+        </nav>
     )
 }
 

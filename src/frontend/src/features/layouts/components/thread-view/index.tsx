@@ -9,7 +9,7 @@ import { Message, Thread } from "@/features/api/gen/models"
 import { Spinner } from "@gouvfr-lasuite/ui-kit"
 import { useSearchParams } from "next/navigation"
 import { Banner } from "@/features/ui/components/banner"
-import { Button } from "@openfun/cunningham-react"
+import { Button } from "@gouvfr-lasuite/cunningham-react"
 import { useTranslation } from "react-i18next"
 import { ThreadViewLabelsList } from "./components/thread-view-labels-list"
 import { ThreadSummary } from "./components/thread-summary";
@@ -27,9 +27,10 @@ type ThreadViewComponentProps = {
     showTrashedMessages: boolean,
     setShowTrashedMessages: (show: boolean) => void,
     searchParams: URLSearchParams,
+    stats: { trashed: number, archived: number, total: number },
 }
 
-const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages, setShowTrashedMessages, searchParams }: ThreadViewComponentProps) => {
+const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages, setShowTrashedMessages, stats, searchParams }: ThreadViewComponentProps) => {
     const { t } = useTranslation();
     const toMarkAsReadQueue = useRef<string[]>([]);
     const stickyContainerRef = useRef<HTMLDivElement>(null);
@@ -48,10 +49,8 @@ const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages,
     // Find all unread message IDs
     const unreadMessageIds = messages.filter((m) => m.is_unread).map((m) => m.id) || [];
     const draftMessageIds = messages.filter((m) => m.draft_message).map((m) => m.id) || [];
-    const trashedMessageIds = messages.filter((m) => m.is_trashed).map((m) => m.id) || [];
-    const archivedMessageIds = messages.filter((m) => m.is_archived).map((m) => m.id) || [];
-    const isThreadTrashed = trashedMessageIds.length === messages.length;
-    const isThreadArchived = archivedMessageIds.length === messages.length;
+    const isThreadTrashed = stats.trashed === stats.total;
+    const isThreadArchived = stats.archived === stats.total;
     const isThreadSender = messages?.some((m) => m.is_sender);
     const latestMessage = messages.reduce((acc, message) => {
         if (message!.created_at && acc!.created_at && message!.created_at > acc!.created_at) {
@@ -121,16 +120,18 @@ const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages,
     return (
         <div className={clsx("thread-view", { "thread-view--talk": isThreadSender })} ref={rootRef}>
             <div className="thread-view__sticky-container" ref={stickyContainerRef}>
-                <ActionBar canUndelete={isThreadTrashed} canUnarchive={isThreadArchived} />
                 <header className="thread-view__header">
-                    <h2 className="thread-view__subject">{thread.subject || t('No subject')}</h2>
-                    {
-                        thread.labels.length > 0 && (
-                            <ThreadViewLabelsList labels={thread.labels} />
-                        )
-                    }
+                    <div className="thread-view__header__top">
+                        <ActionBar canUndelete={isThreadTrashed} canUnarchive={isThreadArchived} />
+                        <h2 className="thread-view__subject">{thread.subject || t('No subject')}</h2>
+                    </div>
                 </header>
             </div>
+            {
+                thread.labels.length > 0 && (
+                    <ThreadViewLabelsList labels={thread.labels} />
+                )
+            }
             {isAISummaryEnabled && (
                 <ThreadSummary
                     threadId={thread.id}
@@ -141,6 +142,30 @@ const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages,
                 />
             )}
             <div className="thread-view__messages-list">
+                {stats.trashed > 0 && !showTrashedMessages && (
+                    <Banner icon={<span className="material-icons">delete</span>} type="info">
+                        <div className="thread-view__trashed-banner__content">
+                            <p>
+                                {t(
+                                    '{{count}} messages of this thread have been deleted.',
+                                    {
+                                        count: stats.trashed,
+                                        defaultValue_one: "{{count}} message of this thread has been deleted.",
+                                    }
+                                )}
+                            </p>
+                            <div className="thread-view__trashed-banner__actions">
+                                <Button
+                                    onClick={() => setShowTrashedMessages(!showTrashedMessages)}
+                                    variant="tertiary"
+                                    size="nano"
+                                >
+                                    {t('Show')}
+                                </Button>
+                            </div>
+                        </div>
+                    </Banner>
+                )}
                 {messages.map((message) => {
                     const isLatest = latestMessage?.id === message.id;
                     const isUnread = message.is_unread;
@@ -155,31 +180,6 @@ const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages,
                         />
                     );
                 })}
-                {trashedMessageIds.length > 0 && !showTrashedMessages && (
-                    <Banner icon={<span className="material-icons">delete</span>} type="info">
-                        <div className="thread-view__trashed-banner__content">
-                            <p>
-                                {t(
-                                    '{{count}} messages of this thread have been deleted.',
-                                    {
-                                        count: trashedMessageIds.length,
-                                        defaultValue_one: "{{count}} message of this thread has been deleted.",
-                                    }
-                                )}
-                            </p>
-                            <div className="thread-view__trashed-banner__actions">
-                                <Button
-                                    onClick={() => setShowTrashedMessages(!showTrashedMessages)}
-                                    color="primary-text"
-                                    size="small"
-                                    icon={<span className="material-icons">visibility</span>}
-                                >
-                                    {t('Show')}
-                                </Button>
-                            </div>
-                        </div>
-                    </Banner>
-                )}
             </div>
         </div>
     )
@@ -203,11 +203,16 @@ export const ThreadView = () => {
         });
         return rootMessages
     }, [messages]);
+    const messagesStats = useMemo(() => ({
+        trashed: messagesWithDraftChildren?.filter((m) => m.is_trashed).length || 0,
+        archived: messagesWithDraftChildren?.filter((m) => m.is_archived).length || 0,
+        total: messagesWithDraftChildren?.length || 0,
+    }), [messagesWithDraftChildren]);
     /**
      * If we are in the trash view, we only want to show trashed messages
      * otherwise, we want to show only non-trashed messages
      *
-     * If we are in the trash view and the user has clicked on the "show trashed messages" button,
+     * If we are not in the trash view and the user has clicked on the "show trashed messages" button,
      * we want to show all messages.
      */
     const filteredMessages = useMemo(() => {
@@ -237,6 +242,7 @@ export const ThreadView = () => {
                 messages={filteredMessages}
                 showTrashedMessages={showTrashedMessages}
                 setShowTrashedMessages={setShowTrashedMessages}
+                stats={messagesStats}
                 searchParams={searchParams}
             />
         </ThreadViewProvider>

@@ -4,6 +4,10 @@ import { Attachment } from "@/features/api/gen/models";
 import { getRequestUrl, getApiOrigin } from "@/features/api/utils";
 import { getBlobDownloadRetrieveUrl } from "@/features/api/gen/blob/blob";
 import { UnquoteMessage } from '@/features/utils/unquote-message';
+import { useTranslation } from "react-i18next";
+import { tokens } from '@/styles/cunningham-tokens'
+import { useTheme } from "@/features/providers/theme";
+import { C } from "vitest/dist/chunks/reporters.d.BFLkQcL6.js";
 
 type MessageBodyProps = {
     rawHtmlBody?: string;
@@ -42,7 +46,9 @@ const CSP = [
   ].join('; ');
 
 const MessageBody = ({ rawHtmlBody, rawTextBody = '', attachments = [], isHidden = false, onLoad }: MessageBodyProps) => {
+    const { t } = useTranslation();
     const iframeRef = useRef<HTMLIFrameElement>(null);
+    const { cunninghamTheme, variant } = useTheme();
 
     // Create a mapping of CID to blob URL for CID image transformation
     const cidToBlobUrlMap = useMemo(() => {
@@ -135,9 +141,10 @@ const MessageBody = ({ rawHtmlBody, rawTextBody = '', attachments = [], isHidden
                     padding: 0;
                 }
                 body {
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                    font-size: 14px;
-                    color: #24292e;
+                    font-family: ${tokens.themes[cunninghamTheme].globals.font.families.base};
+                    padding: ${tokens.themes[cunninghamTheme].globals.spacings.base};
+                    font-size: ${tokens.themes[cunninghamTheme].globals.font.sizes.sm};
+                    color: ${tokens.themes[cunninghamTheme].contextuals.content.semantic.neutral.primary};
                 }
                 .text-plain-content {
                     white-space: pre-wrap;
@@ -147,7 +154,7 @@ const MessageBody = ({ rawHtmlBody, rawTextBody = '', attachments = [], isHidden
                     padding-top: 0 !important;
                 }
                 body > *:last-child {
-                    margin-bottom: 1rem;
+                    margin-bottom: ${tokens.themes[cunninghamTheme].globals.spacings.base};
                 }
                 table, div {
                     max-width: 100%;
@@ -158,32 +165,56 @@ const MessageBody = ({ rawHtmlBody, rawTextBody = '', attachments = [], isHidden
                 p, ul {
                     line-height: 1.3;
                 }
-                a { color: #0366d6; text-decoration: none; }
+                a {
+                    color: ${tokens.themes[cunninghamTheme].contextuals.background.semantic.info.primary};
+                    text-decoration: none;
+                }
                 a:hover { text-decoration: underline; }
 
                 blockquote {
-                    padding: 0 1rem !important;
-                    margin: 1rem 0 !important;
-                    border-left-width: 1px;
+                    padding: 0 ${tokens.themes[cunninghamTheme].globals.spacings.base} !important;
+                    margin: ${tokens.themes[cunninghamTheme].globals.spacings.base} 0 !important;
                     border-left-style: solid;
-                    border-color: #7C7C7C !important;
+                    border-color: ${tokens.themes[cunninghamTheme].globals.colors["gray-500"]} !important;
                 }
 
                 blockquote blockquote {
-                    border-color: #929292 !important;
+                    border-color: ${tokens.themes[cunninghamTheme].globals.colors["gray-400"]} !important;
                 }
 
                 blockquote blockquote blockquote {
-                    border-left-width: 2px;
-                    border-color: #CECECE !important;
+                    border-color: ${tokens.themes[cunninghamTheme].globals.colors["gray-300"]} !important;
                 }
 
                 blockquote blockquote blockquote blockquote {
-                    border-color: #E5E5E5 !important;
+                    border-color: ${tokens.themes[cunninghamTheme].globals.colors["gray-200"]} !important;
                 }
 
                 blockquote blockquote blockquote blockquote blockquote {
-                    border-color: #eee !important;
+                    border-color: ${tokens.themes[cunninghamTheme].globals.colors["gray-100"]} !important;
+                }
+
+                body[data-theme-variant="dark"] {
+                    blockquote {
+                        border-color: ${tokens.themes[cunninghamTheme].globals.colors["gray-450"]} !important;
+                    }
+
+                    blockquote blockquote {
+                        border-color: ${tokens.themes[cunninghamTheme].globals.colors["gray-550"]} !important;
+                    }
+
+                    blockquote blockquote blockquote {
+                        border-color: ${tokens.themes[cunninghamTheme].globals.colors["gray-650"]} !important;
+                    }
+
+                    blockquote blockquote blockquote blockquote {
+                        border-color: ${tokens.themes[cunninghamTheme].globals.colors["gray-750"]} !important;
+                    }
+
+
+                    blockquote blockquote blockquote blockquote blockquote {
+                        border-color: ${tokens.themes[cunninghamTheme].globals.colors["gray-850"]} !important;
+                    }
                 }
 
                 img {
@@ -191,9 +222,9 @@ const MessageBody = ({ rawHtmlBody, rawTextBody = '', attachments = [], isHidden
                 }
 
                 pre {
-                    background-color: #f6f8fa;
-                    border-radius: 3px;
-                    padding: 16px;
+                    background-color: ${tokens.themes[cunninghamTheme].contextuals.background.semantic.overlay.primary};
+                    border-radius: 4px;
+                    padding: ${tokens.themes[cunninghamTheme].globals.spacings.base};
                     overflow: auto;
                 }
                 code {
@@ -202,21 +233,22 @@ const MessageBody = ({ rawHtmlBody, rawTextBody = '', attachments = [], isHidden
                 }
 
                 details.email-quoted-content > summary.email-quoted-summary {
-                    background-color: #ECECFE;
+                    background-color: ${tokens.themes[cunninghamTheme].contextuals.background.semantic.brand.tertiary};
                     cursor: pointer;
                     user-select: none;
-                    padding: 0.25rem 0.5rem;
-                    border-radius: 0.25rem;
+                    padding: ${tokens.themes[cunninghamTheme].globals.spacings['3xs']} ${tokens.themes[cunninghamTheme].globals.spacings.xs};
+                    border-radius: 4px;
                     display: grid;
                     place-items: center;
-                    color: #000091;
+                    color: ${tokens.themes[cunninghamTheme].contextuals.content.semantic.brand.primary};
                     vertical-align: middle;
                     list-style: none;
                     outline: none;
                     width: fit-content;
                     position: relative;
-                    margin-top: 1rem;
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                    margin-top: ${tokens.themes[cunninghamTheme].globals.spacings.base};
+                    font-family: ${tokens.themes[cunninghamTheme].globals.font.families.base};
+                    transition: background-color ${tokens.themes.default.globals.transitions.duration} ${tokens.themes.default.globals.transitions['ease-in-out']};
                 }
 
                 details.email-quoted-content:not([open]) > summary.email-quoted-summary::before {
@@ -226,39 +258,39 @@ const MessageBody = ({ rawHtmlBody, rawTextBody = '', attachments = [], isHidden
                     top: 50%;
                     width: 100%;
                     height: 100%;
-                    background-color: #f0f1f2;
-                    border: 1px solid #d2d4d8;
+                    background-color: ${tokens.themes[cunninghamTheme].contextuals.background.semantic.neutral.tertiary};
+                    border: 1px solid ${tokens.themes[cunninghamTheme].contextuals.border.semantic.neutral.tertiary};
                     box-shadow: 0 1px 5.4px 0 rgba(0, 0, 0, 0.15);
                     width: max-content;
                     transform: translateY(-50%);
-                    color: #74777c;
-                    padding: 0.3rem 0.6rem;
+                    color: ${tokens.themes[cunninghamTheme].contextuals.content.semantic.neutral.tertiary};
+                    padding: ${tokens.themes[cunninghamTheme].globals.spacings['3xs']} ${tokens.themes[cunninghamTheme].globals.spacings.xs};
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     border-radius: 0.5rem;
-                    font-size: 0.75rem;
+                    font-size: ${tokens.themes[cunninghamTheme].globals.font.sizes.s};
                     visibility: hidden;
                     opacity: 0;
                     transition-property: visibility, opacity;
                     transition-duration: 150ms;
-                    transition-timing-function: cubic-bezier(0.32, 0, 0.67, 0);
+                    transition-timing-function: ${tokens.themes.default.globals.transitions['ease-in']};
                 }
 
                 details.email-quoted-content > summary.email-quoted-summary > span {
-                    font-size: 18px;
-                    font-weight: bold;
+                    font-size: ${tokens.themes[cunninghamTheme].globals.font.sizes.lg};
+                    font-weight: 700;
                     transform: translateY(-5px);
                     line-height: 1ex;
                 }
 
                 details.email-quoted-content > summary.email-quoted-summary:hover {
-                    background-color: #cacafb;
+                    background-color: ${tokens.themes[cunninghamTheme].contextuals.background.semantic.brand["tertiary-hover"]};
                 }
                 details.email-quoted-content > summary.email-quoted-summary:hover::before {
                     visibility: visible;
                     opacity: 1;
-                    transition-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+                    transition-timing-function: ${tokens.themes.default.globals.transitions['ease-in-out']};
                     transition-delay: 1000ms;
                 }
                 details.email-quoted-content > summary.email-quoted-summary::-webkit-details-marker {
@@ -266,12 +298,12 @@ const MessageBody = ({ rawHtmlBody, rawTextBody = '', attachments = [], isHidden
                 }
                 </style>
             </head>
-            <body>
+            <body data-theme-variant="${variant}">
                 ${sanitizedHtmlBody}
             </body>
             </html>
       `;
-    }, [sanitizedHtmlBody]);
+    }, [sanitizedHtmlBody, cunninghamTheme]);
 
     const resizeIframe = useCallback(() => {
         if (iframeRef.current?.contentWindow) {
@@ -320,6 +352,7 @@ const MessageBody = ({ rawHtmlBody, rawTextBody = '', attachments = [], isHidden
 
     return (
         <iframe
+            title={t("Message content")}
             style={{
                 maxHeight: isHidden ? '0px' : undefined,
                 visibility: isHidden ? 'hidden' : 'visible',

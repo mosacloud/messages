@@ -1,5 +1,5 @@
 import { Icon, IconSize, Spinner } from "@gouvfr-lasuite/ui-kit";
-import { Button, Checkbox, Column, DataGrid, useModal, useModals } from "@openfun/cunningham-react";
+import { Button, Checkbox, Column, DataGrid, useModal, useModals } from "@gouvfr-lasuite/cunningham-react";
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -85,7 +85,12 @@ export const SignatureDataGrid = ({ domain }: SignatureDataGridProps) => {
             size: 75,
             renderCell: ({ row }) => (
                 <div className="flex-row flex-justify-center">
-                    <Checkbox checked={row.is_active} onChange={() => toggleActive(row)} disabled={isUpdating} />
+                    <Checkbox
+                        checked={row.is_active}
+                        onChange={() => toggleActive(row)}
+                        disabled={isUpdating}
+                        aria-label={t("Active")}
+                    />
                 </div>
             ),
         },
@@ -99,6 +104,7 @@ export const SignatureDataGrid = ({ domain }: SignatureDataGridProps) => {
                         checked={row.is_forced}
                         onChange={() => toggleDefault(row)}
                         disabled={!row.is_active || isUpdating}
+                        aria-label={t("Forced")}
                     />
                 </div>
             ),
@@ -113,21 +119,22 @@ export const SignatureDataGrid = ({ domain }: SignatureDataGridProps) => {
             size: 150,
             headerName: t("Actions"),
             renderCell: ({ row }) => (
-                <div className="flex-row flex-justify-start" style={{ width: "100%", gap: "1rem" }}>
+                <div className="flex-row flex-justify-start" style={{ width: "100%", gap: "0.5rem" }}>
                     <Button
-                        color="secondary"
+                        variant="bordered"
                         size="small"
                         onClick={() => handleModifyRow(row)}
                     >
                         {t("Modify")}
                     </Button>
                     <Button
-                        color="danger"
+                        color="error"
                         size="small"
                         icon={isDeleting ? <Spinner size="sm" /> : <Icon name="delete" size={IconSize.SMALL} />}
                         onClick={() => handleDeleteRow(row)}
                         disabled={isDeleting}
                         aria-label={t("Delete")}
+                        style={{ paddingInline: "var(--c--globals--spacings--2xs)" }}
                     >
                     </Button>
                 </div>
@@ -157,18 +164,13 @@ export const SignatureDataGrid = ({ domain }: SignatureDataGridProps) => {
 
     return (
         <div className="admin-data-grid">
-            {signatures.length > 0 ? (
-                <DataGrid
-                    columns={columns}
-                    rows={signatures}
-                    onSortModelChange={() => undefined}
-                    enableSorting={false}
-                />
-            ) : (
-                <Banner type="info">
-                    {t("No signatures found")}
-                </Banner>
-            )}
+            <DataGrid
+                columns={columns}
+                rows={signatures}
+                onSortModelChange={() => undefined}
+                enableSorting={false}
+                emptyPlaceholderLabel={t("No signatures found")}
+            />
             <ModalComposeSignature
                 isOpen={modal.isOpen}
                 onClose={

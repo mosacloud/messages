@@ -1,19 +1,43 @@
 @use "../../../../styles/utils" as *;
 
 .thread-view {
-    background-color: var(--c--theme--colors--greyscale-050);
+    background-color: var(--c--contextuals--background--surface--tertiary);
     display: flex;
     flex-direction: column;
     max-height: 100%;
     overflow-y: auto;
+
+    &--empty {
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        height: 100%;
+        background: var(--c--contextuals--background--surface--tertiary);
+
+        & > div {
+            font-size: var(--c--globals--font--sizes--h4);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+
+            & > * {
+                margin-block: 0;
+            }
+
+            p {
+                color: var(--c--contextuals--content--semantic--neutral--tertiary);
+            }
+        }
+    }
 }
 
 .thread-view--talk .thread-message:not(.thread-message--sender) {
-    margin-right: var(--c--theme--spacings--xxl);
+    margin-right: var(--c--globals--spacings--xxl);
 }
 
 .thread-view--talk .thread-message.thread-message--sender {
-    margin-left: var(--c--theme--spacings--xxl);
+    margin-left: var(--c--globals--spacings--xxl);
 }
 
 @media screen and (max-width: breakpoint(tablet)) {
@@ -24,6 +48,11 @@
         right: 0;
         bottom: 0;
         z-index: 900;
+    }
+
+    .thread-view--talk .thread-message:not(.thread-message--sender),
+    .thread-view--talk .thread-message.thread-message--sender {
+        margin-inline: 0;
     }
 }
 
@@ -39,39 +68,55 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
+    padding: var(--c--globals--spacings--base);
+    padding-left: var(--c--globals--spacings--md);
+    padding-top: 0;
 }
 
 
 .thread-view__messages-list {
     display: flex;
     flex-direction: column;
-    gap: var(--c--theme--spacings--base);
-    padding: var(--c--theme--spacings--base);
+    gap: var(--c--globals--spacings--base);
+    padding: var(--c--globals--spacings--base);
     margin-bottom: 300px;
 }
 
 .thread-view__trashed-banner__content {
     display: flex;
     flex-direction: row;
-    gap: var(--c--theme--spacings--base);
+    gap: var(--c--globals--spacings--base);
     justify-content: space-between;
 }
 
 .thread-view__trashed-banner__actions {
     display: flex;
-    gap: var(--c--theme--spacings--sm);
+    gap: var(--c--globals--spacings--sm);
 }
 
 
 .thread-view__header {
-    padding: var(--c--theme--spacings--base);
-    padding-left: var(--c--theme--spacings--md);
-    background: linear-gradient(to top, #F6F6F600, #F6F6F6FF 15px,#F6F6F6FF 100%);
+    padding-inline: var(--c--globals--spacings--md) var(--c--globals--spacings--base);
+    padding-block: var(--c--globals--spacings--b) var(--c--globals--spacings--base);
+    background: linear-gradient(to top, var(--c--globals--colors--black-000), var(--c--contextuals--background--surface--tertiary) 15px, var(--c--contextuals--background--surface--tertiary) 100%);
     z-index: 10;
 }
 
+.thread-view__header__top {
+    display: flow-root;
+
+    .thread-action-bar {
+        float: right;
+        width: auto;
+        margin-left: var(--c--globals--spacings--base);
+        margin-bottom: var(--c--globals--spacings--4xs);
+    }
+}
+
 .thread-view__subject {
-    font-weight: bold;
+    font-weight: 700;
+    font-size: var(--c--globals--font--sizes--h4);
+    margin-top: var(--c--globals--spacings--xs);
 }
 
 .thread-view__sticky-container {

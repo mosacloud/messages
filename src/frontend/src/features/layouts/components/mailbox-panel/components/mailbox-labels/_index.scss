@@ -6,9 +6,8 @@
 }
 
 .mailbox-labels__drag-over-indicator {
-    margin-inline: var(--c--theme--spacings--base);
-    margin-block: var(--c--theme--spacings--2xs) var(--c--theme--spacings--xs);
-    background-color: var(--c--theme--colors--greyscale-000);
+    margin-inline: var(--c--globals--spacings--base);
+    margin-block: var(--c--globals--spacings--2xs) var(--c--globals--spacings--xs);
     height: 10px;
     border-radius: 2px;
     position: sticky;
@@ -21,7 +20,7 @@
         left: 0;
         right: 0;
         top: 4px;
-        background-color: var(--c--theme--colors--greyscale-300);
+        background-color: var(--c--contextuals--border--semantic--neutral--tertiary);
     }
 }
 
@@ -30,42 +29,54 @@
     justify-content: space-between;
     align-items: center;
     font-weight: 600;
-    padding-left: var(--c--theme--spacings--sm);
-    padding-right: var(--c--theme--spacings--base);
-    margin-bottom: var(--c--theme--spacings--3xs);
+    padding-inline: var(--c--globals--spacings--sm);
+    margin-bottom: var(--c--globals--spacings--3xs);
     position: sticky;
     top: 0;
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.8) 50%, rgba(255, 255, 255, 0) 100%);
+    background: var(--c--contextuals--background--surface--secondary);
+    background: linear-gradient(
+        to bottom,
+        var(--c--contextuals--background--surface--secondary) 0%,
+        color-mix(in srgb, var(--c--contextuals--background--surface--secondary) 80%, transparent) 50%,
+        transparent 100%
+    );
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     z-index: 5;
     flex-shrink: 0;
-    padding-top: var(--c--theme--spacings--sm);
+    padding-top: var(--c--globals--spacings--sm);
 }
 
 .mailbox-labels__actions {
     display: flex;
-    gap: var(--c--theme--spacings--xs);
+    gap: var(--c--globals--spacings--xs);
 }
 
 .mailbox-labels__fold-button {
     padding: 0;
 
     .c__button__icon > span {
-        font-size: 1.71rem;
+        font-size: var(--c--globals--font--sizes--h3);
     }
 }
 
 .label-list {
     display: flex;
     flex-direction: column;
-    gap: var(--c--theme--spacings--4xs);
-    margin-inline: var(--c--theme--spacings--sm);
+    gap: var(--c--globals--spacings--4xs);
+    margin-inline: var(--c--globals--spacings--sm);
     flex: 1;
     min-height: 0;
-    padding-bottom: var(--c--theme--spacings--sm);
+    padding-bottom: var(--c--globals--spacings--sm);
 
     > div {
         position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: var(--c--globals--spacings--4xs);
+    }
+
+    &--no-padding .label-item .label-item__column:first-child {
+        padding-inline-start: 0;
     }
 }

@@ -1,7 +1,6 @@
-import type { ReactElement, ReactNode } from "react";
+import { type ReactElement, type ReactNode } from "react";
 import type { NextPage } from "next";
 import type { AppProps } from "next/app";
-import { CunninghamProvider } from "@gouvfr-lasuite/ui-kit";
 import "@blocknote/mantine/style.css";
 import {
   MutationCache,
@@ -23,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import { Auth } from "@/features/auth";
 import { ConfigProvider } from "@/features/providers/config";
 import ErrorBoundary from "@/features/errors/error-boundary";
+import ThemeProvider from "@/features/providers/theme";
 
 export type NextPageWithLayout<P = object, IP = P> = NextPage<P, IP> & {
   getLayout?: (page: ReactElement) => ReactNode;
@@ -60,9 +60,11 @@ const queryClient = new QueryClient({
   },
 });
 
+const THEME = JSON.parse(process.env.NEXT_PUBLIC_THEME_CONFIG || '{ "theme": "white-label" }').theme;
+
 export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   // Use the layout defined at the page level, if available
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const getLayout = Component.getLayout ?? ((page) => page);
 
   return (
@@ -70,17 +72,16 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
       <Head>
         <title>{t("Messaging")}</title>
         <meta name="description" content={t("Messaging")} />
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-        <link rel="icon" href="/images/favicon-light.svg" type="image/svg+xml" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link
           rel="icon"
-          href="/images/favicon-light.svg"
+          href={`/images/${THEME}/favicon-light.svg`}
           type="image/svg+xml"
           media="(prefers-color-scheme: light)"
         />
         <link
           rel="icon"
-          href="/images/favicon-dark.svg"
+          href={`/images/${THEME}/favicon-dark.svg`}
           type="image/svg+xml"
           media="(prefers-color-scheme: dark)"
         />
@@ -89,11 +90,11 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
         <ReactQueryDevtools initialIsOpen={false} />
         <ErrorBoundary>
           <ConfigProvider>
-            <CunninghamProvider currentLocale={i18n.language}>
+            <ThemeProvider>
               <Auth>
                 {getLayout(<Component {...pageProps} />)}
               </Auth>
-            </CunninghamProvider>
+            </ThemeProvider>
           </ConfigProvider>
         </ErrorBoundary>
       </QueryClientProvider>

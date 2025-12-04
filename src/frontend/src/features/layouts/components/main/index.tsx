@@ -6,6 +6,7 @@ import { NoMailbox } from "./no-mailbox";
 import { SentBoxProvider } from "@/features/providers/sent-box";
 import { LeftPanel } from "./left-panel";
 import { ModalStoreProvider } from "@/features/providers/modal-store";
+import { useTheme } from "@/features/providers/theme";
 
 export const MainLayout = ({ children }: PropsWithChildren) => {
     return (
@@ -31,6 +32,7 @@ const MainLayoutContent = ({ children }: PropsWithChildren<{ simple?: boolean }>
     const { mailboxes, queryStates } = useMailboxContext();
     const hasNoMailbox = queryStates.mailboxes.status === 'success' && mailboxes!.length === 0;
     const [leftPanelOpen, setLeftPanelOpen] = useState(false);
+    const { theme, variant } = useTheme();
 
     return (
         <LayoutContext.Provider value={{
@@ -43,7 +45,7 @@ const MainLayoutContent = ({ children }: PropsWithChildren<{ simple?: boolean }>
                 isLeftPanelOpen={leftPanelOpen}
                 setIsLeftPanelOpen={setLeftPanelOpen}
                 leftPanelContent={<LeftPanel hasNoMailbox={hasNoMailbox} />}
-                icon={<img src="/images/app-logo.svg" alt="logo" height={32} />}
+                icon={<img src={`/images/${theme}/app-logo-${variant}.svg`} alt="logo" height={40} />}
                 hideLeftPanelOnDesktop={hasNoMailbox}
             >
                 {hasNoMailbox ? (

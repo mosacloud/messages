@@ -1,6 +1,6 @@
 import { Mailbox, TreeLabel, useLabelsList, useLabelsPartialUpdate } from "@/features/api/gen";
 import { Icon, IconSize, IconType, Spinner } from "@gouvfr-lasuite/ui-kit";
-import { Button, useModal, Tooltip } from "@openfun/cunningham-react";
+import { Button, useModal, Tooltip } from "@gouvfr-lasuite/cunningham-react";
 import { useTranslation } from "react-i18next";
 import { LabelModal, SubLabelCreation } from "./components/label-form-modal";
 import { LabelItem, LabelTransferData } from "./components/label-item";
@@ -9,6 +9,7 @@ import useAbility, { Abilities } from "@/hooks/use-ability";
 import { FoldProvider, useFold } from "@/features/providers/fold";
 import { useQueryClient } from "@tanstack/react-query";
 import { handle } from "@/features/utils/errors";
+import clsx from "clsx";
 
 type MailboxLabelsProps = {
   mailbox: Mailbox;
@@ -102,8 +103,9 @@ export const MailboxLabelsBase = ({ mailbox }: MailboxLabelsProps) => {
             <Tooltip content={areAllFolded ? t('Expand all') : t('Collapse all')} placement="bottom">
               <Button
                 icon={<Icon type={IconType.FILLED} name={areAllFolded ? "unfold_more" : "unfold_less"} size={IconSize.LARGE} />}
-                color="tertiary-text"
-                size="small"
+                color="brand"
+                variant="tertiary"
+                size="nano"
                 onClick={toggleFolding}
                 className="mailbox-labels__fold-button"
                 aria-label={areAllFolded ? t('Expand all') : t('Collapse all')}
@@ -115,8 +117,8 @@ export const MailboxLabelsBase = ({ mailbox }: MailboxLabelsProps) => {
                 <Tooltip content={t('Create a Label')} placement="bottom">
                   <Button
                     icon={<Icon type={IconType.FILLED} name="add" />}
-                    color="primary"
-                    size="small"
+                    variant="primary"
+                    size="nano"
                     onClick={open}
                     className="mailbox-labels__create-button"
                     aria-label={t('Create a Label')}
@@ -126,8 +128,8 @@ export const MailboxLabelsBase = ({ mailbox }: MailboxLabelsProps) => {
             )}
           </div>
         </header>
-        <div className="label-list">
-          <div>
+        <div className={clsx("label-list", { "label-list--no-padding": areAllFolded === undefined })}>
+          <nav>
             {
               labelsQuery.data?.data.map((label) => (
                 <LabelItem key={label.id} {...label} onEdit={editLabel} canManage={canManageLabels} defaultFoldState={defaultFoldState} />
@@ -136,7 +138,7 @@ export const MailboxLabelsBase = ({ mailbox }: MailboxLabelsProps) => {
             {isDragOver && (
               <div className="mailbox-labels__drag-over-indicator" />
             )}
-          </div>
+          </nav>
         </div>
         <LabelModal isOpen={isOpen} onClose={handleClose} label={labelToEdit} />
       </section>

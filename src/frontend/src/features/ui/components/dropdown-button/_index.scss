@@ -10,6 +10,17 @@
   > .c__dropdown-menu-trigger > .c__button {
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
-    border-left: 1px solid rgba(255, 255, 255, 0.3);
+    position: relative;
+
+    &:before {
+      content: '';
+      position: absolute;
+      top: 6px;
+      bottom: 6px;
+      left: -0.5px;
+      width: 1px;
+      background-color: var(--c--contextuals--content--semantic--brand--primary);
+      border-radius: 1px;
+    }
   }
 }

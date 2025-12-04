@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react"
-import { Button, Tooltip } from "@openfun/cunningham-react"
+import { Button, ButtonProps, Tooltip } from "@gouvfr-lasuite/cunningham-react"
 import { openPicker, type Item, type PickerResult } from "@gouvfr-lasuite/drive-sdk";
 import { useTranslation } from "react-i18next";
 import { Spinner } from "@gouvfr-lasuite/ui-kit";
@@ -11,7 +11,7 @@ import { handle } from "@/features/utils/errors";
 
 export type DriveFile = { id: string, url: string } & Omit<Attachment, 'sha256' | 'blobId' | 'cid'>;
 
-type DriveAttachmentPickerProps = {
+type DriveAttachmentPickerProps = ButtonProps & {
     onPick: (attachments: DriveFile[]) => void;
 }
 
@@ -24,7 +24,7 @@ type DriveAttachmentPickerProps = {
  *
  * https://github.com/suitenumerique/drive
  */
-export const DriveAttachmentPicker = ({ onPick }: DriveAttachmentPickerProps) => {
+export const DriveAttachmentPicker = ({ onPick, ...buttonProps }: DriveAttachmentPickerProps) => {
     const { t } = useTranslation();
     const [isLoading, setIsLoading] = useState(false);
     const config = useConfig();
@@ -64,10 +64,12 @@ export const DriveAttachmentPicker = ({ onPick }: DriveAttachmentPickerProps) =>
     return (
         <Tooltip content={t('Add attachment from {{driveAppName}}', { driveAppName: config.DRIVE.app_name })}>
             <Button
-                color="tertiary"
+                aria-label={t('Add attachment from {{driveAppName}}')}
+                {...buttonProps}
+                variant="secondary"
                 icon={isLoading ? <Spinner size="sm" /> : <DriveIcon />}
                 type="button"
-                disabled={isLoading}
+                disabled={isLoading || buttonProps.disabled}
                 aria-busy={isLoading}
                 onClick={pick}
                 className="drive-attachment-picker"

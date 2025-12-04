@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Tooltip } from "@openfun/cunningham-react";
+import { Tooltip } from "@gouvfr-lasuite/cunningham-react";
 import { Contact } from "@/features/api/gen/models";
 import { Icon, IconSize, IconType } from "@gouvfr-lasuite/ui-kit";
 import { ContactPopover } from "./contact-popover";

@@ -9,7 +9,10 @@ export default function Document() {
   return (
     <Html lang="en">
       <Head>
-        {/* PWA Attributes */}
+        {/*
+        PWA Attributes
+        TODO: Customize the PWA attributes for the current theme
+        */}
         <meta name="theme-color" content="#FFFFFF" />
         <link rel="manifest" href="/manifest.json" />
         <link rel="icon" type="image/png" sizes="32x32" href="/images/pwa/icons/ios/32.png" />

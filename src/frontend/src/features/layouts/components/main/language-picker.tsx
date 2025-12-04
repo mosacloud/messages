@@ -7,7 +7,7 @@ import { handle } from "@/features/utils/errors";
  * @MARK: Those languages should be retrieved from the backend through conf API
  * Furthermore, this component should be moved to the UI Kit
  */
-export const LanguagePicker = (props: Pick<LanguagePickerProps, "size" | "color" | "fullWidth">) => {
+export const LanguagePicker = (props: Pick<LanguagePickerProps, "size" | "color" | "variant" | "fullWidth" | "compact">) => {
   const { i18n } = useTranslation();
   const languages = LANGUAGES.map((language: [string, string]) => ({
     value: language[0],

@@ -1,15 +1,44 @@
 .badge {
-    font-size: var(--c--theme--font--sizes--xs);
+    font-size: var(--c--globals--font--sizes--t);
     line-height: 1;
     display: flex;
-    padding: 0.25rem 0.5rem;
+    padding: var(--c--globals--spacings--3xs);
+    box-sizing: border-box;
     border-radius: 4px;
-    background-color: var(--c--theme--colors--primary-200);
-    color: var(--c--theme--colors--primary-400);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     align-items: center;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.badge--brand {
+    &.badge--primary {
+        background-color: var(--c--contextuals--background--semantic--brand--primary);
+        color: var(--c--contextuals--content--semantic--brand--on-brand);
+    }
+    &.badge--secondary {
+        background-color: var(--c--contextuals--background--semantic--brand--secondary);
+        color: var(--c--contextuals--content--semantic--brand--secondary);
+    }
+    &.badge--tertiary {
+        background-color: transparent;
+        color: var(--c--contextuals--content--semantic--brand--tertiary);
+    }
+}
+
+.badge--neutral {
+    &.badge--primary {
+        background-color: var(--c--contextuals--background--semantic--neutral--primary);
+        color: var(--c--contextuals--content--semantic--neutral--on-neutral);
+    }
+    &.badge--secondary {
+        background-color: var(--c--contextuals--background--semantic--neutral--secondary);
+        color: var(--c--contextuals--content--semantic--neutral--secondary);
+    }
+    &.badge--tertiary {
+        background-color: transparent;
+        color: var(--c--contextuals--content--semantic--neutral--tertiary);
+    }
 }

@@ -1,11 +1,11 @@
 .label-form {
     display: flex;
     flex-direction: column;
-    gap: var(--c--theme--spacings--base);
+    gap: var(--c--globals--spacings--base);
 }
 
 .label-form footer {
     display: flex;
     justify-content: flex-end;
-    gap: var(--c--theme--spacings--base);
+    gap: var(--c--globals--spacings--base);
 }

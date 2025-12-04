@@ -3,9 +3,9 @@
 .label-item {
     display: flex;
     align-items: center;
-    gap: var(--c--theme--spacings--base);
-    padding-block: calc(8/14 * 1rem);
-    padding-inline: calc(6/14 * 1rem);
+    gap: var(--c--globals--spacings--2xs);
+    padding-block: var(--c--globals--spacings--xs);
+    padding-inline: var(--c--globals--spacings--3xs);
     color: inherit;
     font-weight: 500;
     text-decoration: none;
@@ -18,7 +18,7 @@
 
 .label-item__column {
     display: flex;
-    gap: var(--c--theme--spacings--3xs);
+    gap: var(--c--globals--spacings--base);
     position: relative;
     align-items: center;
     min-width: 0;
@@ -32,19 +32,6 @@
 }
 
 .label-item__toggle {
-    background-color: transparent;
-    border: thin solid transparent;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 3px;
-    padding: 0;
-    margin: 0;
-    font-size: 1rem;
-    /* Ensure overall box fits the reserved inline space */
-    box-sizing: border-box;
-    color: var(--c--theme--colors--greyscale-600);
     /* Position the toggle button absolutely to not affect text alignment */
     position: absolute;
     inset-inline-start: 0;
@@ -52,12 +39,10 @@
     transform: translateY(-50%);
     width: var(--label-toggle-size);
     height: var(--label-toggle-size);
+    & .c__button__icon > span {
+        font-size: var(--c--globals--font--sizes--h3);
+    }
 }
-
-.label-item__toggle:focus-visible {
-    outline: 2px solid var(--c--theme--colors--primary-500);
-    outline-offset: 2px;
-  }
 
 .label-item__column:last-child {
     justify-content: flex-end;
@@ -68,11 +53,11 @@
 .label-item:not(.label-item--active):hover,
 .label-item:not(.label-item--active):focus-within,
 .label-item:not(.label-item--active)[data-focus-within="true"]  {
-    background-color: var(--c--theme--colors--greyscale-100);
+    background-color: var(--c--contextuals--background--semantic--contextual--primary);
 }
 
 .label-item--active {
-    background-color: var(--c--theme--colors--greyscale-100);
+    background-color: var(--c--contextuals--background--semantic--contextual--primary);
     font-weight: 600;
 }
 
@@ -83,15 +68,21 @@
 .label-item__name {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--c--globals--spacings--xs);
     cursor: pointer;
     border-radius: 4px;
     flex: 1;
     min-width: 0;
 
     .label-item__icon {
-        -webkit-text-stroke: 3px var(--strokeColor);
-        color: var(--color);
+        border: 2px solid var(--c--contextuals--border--semantic--contextual--primary);
+        width: 0.875rem;
+        height: 0.875rem;
+        border-radius: 4px;
+        box-sizing: border-box;
+        padding: 0;
+        margin: 0;
+        flex-shrink: 0;
     }
 
     .label-name {
@@ -101,10 +92,6 @@
         text-overflow: ellipsis;
         max-width: 100%;
     }
-}
-
-.label-item__toggle:hover {
-    background-color: rgba(0, 0, 0, 0.1);
 }
 
 .label-item:hover .label-item__dropdown-actions,
@@ -118,11 +105,6 @@
     opacity: 0;
 
     & .c__button__icon > span {
-        font-size: 1.5rem;
+        font-size: var(--c--globals--font--sizes--h3);
     }
-}
-
-.label-item__dropdown-actions .c__button:hover {
-    background-color: rgba(0, 0, 0, 0.1);
-
 }

@@ -2,9 +2,9 @@
 
 .thread-message {
     border-radius: 8px;
-    background-color: white;
-    padding-inline: var(--c--theme--spacings--base);
-    padding-top: var(--c--theme--spacings--2xs);
+    background-color: var(--c--contextuals--background--surface--primary);
+    padding-inline: var(--c--globals--spacings--base);
+    padding-top: var(--c--globals--spacings--2xs);
     outline: 3px solid transparent;
     transition: outline-color 0.1s ease;
     max-width: 1600px;
@@ -25,16 +25,17 @@
 }
 
 .thread-message[data-trashed="true"] .banner {
-    margin-bottom: var(--c--theme--spacings--xs);
+    margin-bottom: var(--c--globals--spacings--xs);
 }
 
 .thread-message[data-unread="true"] {
-    outline-color: var(--c--theme--colors--primary-300);
+    outline-color: var(--c--contextuals--border--semantic--brand--tertiary);
+    outline-width: 2px;
 }
 
 .thread-message__header {
-    border-bottom: 1px solid var(--c--theme--colors--greyscale-200);
-    padding-bottom: var(--c--theme--spacings--base);
+    border-bottom: 1px solid var(--c--contextuals--border--surface--primary);
+    padding-bottom: var(--c--globals--spacings--base);
     position: relative;
 }
 
@@ -42,9 +43,9 @@
     background: none;
     border-radius: 8px;
     position: absolute;
-    left: calc(var(--c--theme--spacings--base) * -1);
-    right: calc(var(--c--theme--spacings--base) * -1);
-    top: calc(var(--c--theme--spacings--2xs) * -1);
+    left: calc(var(--c--globals--spacings--base) * -1);
+    right: calc(var(--c--globals--spacings--base) * -1);
+    top: calc(var(--c--globals--spacings--2xs) * -1);
     bottom: 0;
     border: none;
     padding: 0;
@@ -73,7 +74,7 @@
 }
 
 .thread-message__header-column--right {
-    gap: var(--c--theme--spacings--xs);
+    gap: var(--c--globals--spacings--xs);
     flex-shrink: 0;
 }
 
@@ -86,17 +87,17 @@
 .thread-message__header-content {
     display: flex;
     flex-direction: row;
-    gap: var(--c--theme--spacings--base);
+    gap: var(--c--globals--spacings--base);
     width: 100%;
 
     & > .thread-message__header-content-avatar {
         flex-shrink: 0;
 
         .c__avatar {
-            height: 2.5rem;
-            width: 2.5rem;
-            font-size: 1.1rem;
-            line-height: 2.5rem;
+            height: 2rem;
+            width: 2rem;
+            font-size: var(--c--globals--font--sizes--sm);
+            line-height: 2rem;
         }
     }
 
@@ -109,11 +110,13 @@
             min-width: 0;
 
             .contact-chip__identity-email {
-                font-size: 0.875rem;
+                font-size: var(--c--globals--font--sizes--sm);
+                color: var(--c--contextuals--content--semantic--neutral--secondary);
             }
 
             .contact-chip__identity-name {
-                font-size: 1.2rem;
+                font-size: var(--c--globals--font--sizes-base);
+                color: var(--c--contextuals--content--semantic--neutral--primary);
             }
         }
     }
@@ -125,7 +128,7 @@
     flex-direction: row;
     justify-content: space-between;
     align-items: baseline;
-    gap: var(--c--theme--spacings--base);
+    gap: var(--c--globals--spacings--base);
     min-width: 0;
 }
 
@@ -136,10 +139,10 @@
 .thread-message__metadata {
     display: flex;
     flex-direction: row;
-    gap: var(--c--theme--spacings--xs);
+    gap: var(--c--globals--spacings--xs);
     align-items: center;
-    font-size: 0.875rem;
-    color: var(--c--theme--colors--greyscale-500);
+    font-size: var(--c--globals--font--sizes--sm);
+    color: var(--c--contextuals--content--semantic--neutral--secondary);
 }
 
 .thread-message__date {
@@ -150,20 +153,16 @@
     display: grid;
     grid-template-columns: max-content 1fr;
     margin: 0;
-    column-gap: var(--c--theme--spacings--2xs);
+    column-gap: var(--c--globals--spacings--2xs);
     align-items: baseline;
 }
 
 .thread-message__correspondents dt {
-    font-size: 0.875rem;
+    font-size: var(--c--globals--font--sizes--sm);
 }
 .thread-message__correspondents dd {
     margin: 0;
     word-break: break-word;
-
-    .contact-chip__identity-email {
-        color: var(--c--theme--colors--greyscale-500);
-    }
 }
 
 .thread-message__correspondents .recipient-chip-list {
@@ -171,10 +170,9 @@
     flex-direction: row;
     flex-wrap: wrap;
 }
-
 .thread-message__body {
-    width: 100%;
-    margin-block: var(--c--theme--spacings--base);
+    width: calc(100% + 2 * var(--c--globals--spacings--base));
+    margin-inline: calc(-1 * var(--c--globals--spacings--base));
     height: auto;
     border: none;
     display: block;
@@ -183,14 +181,14 @@
 .thread-message__footer {
     display: flex;
     flex-direction: column;
-    gap: var(--c--theme--spacings--xl);
-    margin-bottom: var(--c--theme--spacings--base);
+    gap: var(--c--globals--spacings--xl);
+    margin-bottom: var(--c--globals--spacings--base);
 }
 
 .thread-message__footer-actions {
     display: flex;
     flex-direction: row;
-    gap: var(--c--theme--spacings--base);
+    gap: var(--c--globals--spacings--base);
 }
 
 .thread-message__loading {
@@ -198,9 +196,9 @@
     justify-content: center;
     align-items: center;
     height: 100%;
-    margin-block: var(--c--theme--spacings--base);
+    margin-block: var(--c--globals--spacings--base);
 }
 
 .thread-message__reply-form {
-    margin-bottom: var(--c--theme--spacings--base);
+    margin-bottom: var(--c--globals--spacings--base);
 }

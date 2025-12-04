@@ -1,6 +1,6 @@
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { ControlledModal, useModalStore } from "@/features/providers/modal-store";
-import { ModalSize, useModals } from "@openfun/cunningham-react";
+import { ModalSize, useModals } from "@gouvfr-lasuite/cunningham-react";
 import { useTranslation } from "react-i18next";
 import { StepForm } from "./step-form";
 import { StepLoader } from "./step-loader";
@@ -93,6 +93,7 @@ export const ModalMessageImporter = () => {
     return (
         <ControlledModal
             title={t('Import your old messages in {{mailbox}}', { mailbox: selectedMailbox.email })}
+            aria-label={t('Import your old messages in {{mailbox}}', { mailbox: selectedMailbox.email })}
             modalId={MODAL_MESSAGE_IMPORTER_ID}
             size={ModalSize.LARGE}
             confirmFn={step !== 'uploading' ? undefined : handleConfirmCloseModal}
@@ -101,7 +102,7 @@ export const ModalMessageImporter = () => {
                 {(step === 'idle' || step === 'uploading' || step === 'importing') && (
                     <div
                         className={clsx("flex-column flex-align-center", { "c__offscreen": step === 'importing' })}
-                        style={{ gap: 'var(--c--theme--spacings--xl)' }}
+                        style={{ gap: 'var(--c--globals--spacings--xl)' }}
                     >
                         <StepForm
                             onUploading={handleArchiveUploading}

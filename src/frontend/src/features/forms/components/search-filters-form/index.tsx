@@ -1,7 +1,7 @@
 import { MAILBOX_FOLDERS } from "@/features/layouts/components/mailbox-panel/components/mailbox-list";
 import { SearchHelper } from "@/features/utils/search-helper";
 import { Label } from "@gouvfr-lasuite/ui-kit";
-import { Button, Checkbox, Input, Select } from "@openfun/cunningham-react";
+import { Button, Checkbox, Input, Select } from "@gouvfr-lasuite/cunningham-react";
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -81,16 +81,16 @@ export const SearchFiltersForm = ({ query, onChange }: SearchFiltersFormProps) =
                 clearable={false}
                 fullWidth
             />
-            <div className="flex-row flex-align-center" style={{ gap: 'var(--c--theme--spacings--2xs)' }}>
+            <div className="flex-row flex-align-center" style={{ gap: 'var(--c--globals--spacings--2xs)' }}>
                 <Label>{t("Read state")} :</Label>
                 <Checkbox label={t("Read")} value="true" name="is_read" checked={Boolean(parsedQuery.is_read)} onChange={handleReadStateChange} />
                 <Checkbox label={t("Unread")} value="true" name="is_unread" checked={Boolean(parsedQuery.is_unread)} onChange={handleReadStateChange} />
             </div>
             <footer className="search__filters-footer">
-                <Button type="reset" color="tertiary-text" onClick={handleReset}>
+                <Button type="reset" variant="tertiary" onClick={handleReset}>
                     {t("Reset")}
                 </Button>
-                <Button type="submit" color="tertiary">
+                <Button type="submit" variant="primary">
                     {t("Search")}
                 </Button>
             </footer>

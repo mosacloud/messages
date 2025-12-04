@@ -1,21 +1,21 @@
 import React, { useState } from "react";
-import { Button } from "@openfun/cunningham-react";
+import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { useTranslation } from "react-i18next";
 import { handle } from "@/features/utils/errors";
+import { Icon } from "@gouvfr-lasuite/ui-kit";
 
-export type CopyableInputProps = {
-  value: string;
-  readOnly?: boolean;
+export type CopyableInputProps = Omit<React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>, 'value'> & {
+  value: string | number;
 };
 
-export function CopyableInput({ value, readOnly = true }: CopyableInputProps) {
+export function CopyableInput({ value, readOnly = true, ...props }: CopyableInputProps) {
   const { t } = useTranslation();
   const [showCopyButton, setShowCopyButton] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(value);
+      await navigator.clipboard.writeText(value.toString());
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
@@ -35,23 +35,21 @@ export function CopyableInput({ value, readOnly = true }: CopyableInputProps) {
     >
       <input
         type="text"
-        value={value}
         readOnly={readOnly}
+        {...props}
+        value={value}
         onFocus={handleFocus}
         className="copyable-input__input"
       />
       {showCopyButton && (
         <Button
-          size="small"
-          color="secondary"
+          size="nano"
+          variant="secondary"
           onClick={handleCopy}
-          style={{
-            minWidth: 'auto',
-            padding: '4px 8px',
-            fontSize: '0.75rem'
-          }}
+          aria-label={copied ? t("Copied") : t("Copy")}
+          aria-live="polite"
         >
-          {copied ? '✓' : t("Copy")}
+          {copied ? <Icon name="check" /> : t("Copy")}
         </Button>
       )}
     </div>

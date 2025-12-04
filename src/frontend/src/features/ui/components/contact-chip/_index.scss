@@ -3,7 +3,7 @@
     align-items: center;
     position: relative;
     cursor: default;
-    font-size: var(--c--theme--font--sizes--sm);
+    font-size: var(--c--globals--font--sizes--sm);
     white-space: nowrap;
     min-width: 0;
     max-width: 100%;
@@ -12,16 +12,6 @@
         content: ", ";
         margin-right: 1ex;
     }
-
-    &[data-copied="true"] {
-        .contact-chip__content, .contact-chip__warning {
-            color: transparent;
-        }
-        .contact-chip__copied {
-            visibility: visible;
-            opacity: 1;
-        }
-    }
 }
 
 .contact-chip__content {
@@ -29,12 +19,13 @@
     border: none;
     padding: 0;
     margin: 0;
+    color: inherit;
     cursor: pointer;
     display: flex;
     align-items: baseline;
     flex-direction: row;
     flex-wrap: nowrap;
-    gap: 0.25rem;
+    gap: var(--c--globals--spacings--2xs);
     position: relative;
     z-index: 1;
     transition: color 0.2s;
@@ -47,7 +38,7 @@
         position: absolute;
         inset: -4px -8px;
         border-radius: 4px;
-        background-color: var(--c--theme--colors--greyscale-200);
+        background-color: var(--c--contextuals--background--semantic--neutral--tertiary);
         z-index: -1;
     }
 }
@@ -69,61 +60,37 @@
     flex: 0 1 auto;
 }
 
-.contact-chip__copied {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    text-align: left;
-    justify-content: flex-start;
-    color: var(--c--theme--colors--greyscale-900);
-    transition: visibility 0.2s, opacity 0.2s;
-    visibility: hidden;
-    opacity: 0;
-}
-
 .contact-chip__icon {
     transform: translateY(2px);
 }
 .contact-chip__icon--warning {
-    color: var(--c--theme--colors--warning-600);
+    color: var(--c--contextuals--content--semantic--warning--tertiary);
 }
 
 .contact-chip__icon--error {
-    color: var(--c--theme--colors--danger-600);
+    color: var(--c--contextuals--content--semantic--error--tertiary);
 }
 
 .contact-chip__icon--success {
-    color: var(--c--theme--colors--success-600);
+    color: var(--c--contextuals--content--semantic--success--tertiary);
 }
 
 // == ContactPopover
 .contact-popover {
-    padding: 1rem;
+    padding: var(--c--globals--spacings--base);
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    border-radius: 8px;
-    background-color: #FFF;
+    gap: var(--c--globals--spacings--xs);
+    background-color: var(--c--contextuals--background--surface--secondary);
+    border: 1px solid var(--c--contextuals--border--surface--primary);
+    border-radius: 4px;
+    box-shadow: 0 2px 5px 0 var(--c--contextuals--background--semantic--contextual--primary-hover);
     width: 350px;
-    border-radius: 8px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-}
-
-.contact-popover__overlay {
-    content: "";
-    position: fixed;
-    display: block;
-    inset: 0;
-    z-index: -1;
-    background-color: red;
 }
 
 .contact-popover__identity {
     display: flex;
-    gap: var(--c--theme--spacings--md);
+    gap: var(--c--globals--spacings--md);
     align-items: center;
 
     & > div {
@@ -137,7 +104,7 @@
 
 .contact-popover__identity-name {
     display: inline-block;
-    font-size: var(--c--theme--font--sizes--h4);
+    font-size: var(--c--globals--font--sizes--h4);
     font-weight: bold;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -151,6 +118,7 @@
     appearance: none;
     background: none;
     border: none;
+    color: inherit;
     align-items: center;
     padding: 0;
     margin: 0;
@@ -169,9 +137,8 @@
     }
 
     & > .contact-popover__copy-icon {
-        background: white;
         height: 100%;
-        font-size: var(--c--theme--font--sizes--base);
+        font-size: var(--c--globals--font--sizes--base);
         height: 1.2em;
         padding: 2px;
         display: none;
@@ -179,7 +146,7 @@
     }
 
     &:hover {
-        color: var(--c--theme--colors--primary-600);
+        color: var(--c--contextuals--content--semantic--brand--primary);
         text-decoration-color: currentColor;
         & > .contact-popover__copy-icon {
             display: block;

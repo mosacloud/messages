@@ -1,5 +1,5 @@
-import { HeaderProps, useResponsive } from "@gouvfr-lasuite/ui-kit";
-import { Button } from "@openfun/cunningham-react";
+import { HeaderProps, Icon, useResponsive } from "@gouvfr-lasuite/ui-kit";
+import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { useTranslation } from "react-i18next";
 import { LanguagePicker } from "../language-picker";
 import { LagaufreButton } from "@/features/ui/components/lagaufre";
@@ -20,12 +20,9 @@ export const AnonymousHeader = ({
           size="medium"
           onClick={onTogglePanel}
           aria-label={isPanelOpen ? t("Close the menu") : t("Open the menu")}
-          color="tertiary-text"
-          icon={
-            <span className="material-icons clr-primary-800">
-              {isPanelOpen ? "close" : "menu"}
-            </span>
-          }
+          color="brand"
+          variant="tertiary"
+          icon={<Icon name={isPanelOpen ? "close" : "menu"} />}
         />
       </div>
       <div className="c__header__left">
@@ -38,7 +35,7 @@ export const AnonymousHeader = ({
             <LagaufreButton />
           </>
         )}
-        
+
       </div>
     </div>
   );

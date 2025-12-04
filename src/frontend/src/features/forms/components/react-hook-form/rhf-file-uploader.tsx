@@ -1,10 +1,10 @@
 import { Controller, useFormContext } from "react-hook-form";
-import { FileUploader, FileUploaderProps } from "@openfun/cunningham-react";
+import { FileUploader, FileUploaderProps } from "@gouvfr-lasuite/cunningham-react";
 import { ChangeEvent } from "react";
 
 /**
  * A wrapper component for the FileUploader component that integrates with react-hook-form.
- * 
+ *
  * This component allows you to use the FileUploader component as a controlled component
  * with react-hook-form's form state management.
  */

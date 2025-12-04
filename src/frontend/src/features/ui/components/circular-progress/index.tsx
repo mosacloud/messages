@@ -1,23 +1,15 @@
 import { CSSProperties } from "react";
-import { CheckIcon } from "../icon";
 import clsx from "clsx";
+import { Icon, IconType } from "@gouvfr-lasuite/ui-kit";
 
 interface CircularProgressProps {
   progress?: number;
-  size?: number;
-  strokeWidth?: number;
-  primaryColor?: string;
-  secondaryColor?: string;
-  transitionDuration?: number;
   withLabel?: boolean;
   loading?: boolean;
 }
 
 export const CircularProgress = ({
   progress = 0,
-  primaryColor = "#1a237e",
-  secondaryColor = "#E5E5E5",
-  transitionDuration = 0.3,
   withLabel = false,
   loading = false,
 }: CircularProgressProps) => {
@@ -27,8 +19,6 @@ export const CircularProgress = ({
   if (loading) {
     progress = 33;
   }
-
-  const strokeWidth = 2;
 
   // Fixed size of 24px for the component
   const fixedSize = 24;
@@ -61,35 +51,26 @@ export const CircularProgress = ({
           >
             {/* Background circle - centered in the 24x24 container */}
             <circle
+              className="circular-progress__background"
               cx={fixedSize / 2}
               cy={fixedSize / 2}
               r={radius}
-              fill="none"
-              stroke={secondaryColor}
-              strokeWidth={strokeWidth}
             />
 
             {/* Progress circle - centered in the 24x24 container */}
             <circle
-              className="circular-progress__progress"
-              style={{
-                '--transitionDuration': `${transitionDuration}s`,
-              } as CSSProperties}
+              className="circular-progress__foreground"
               cx={fixedSize / 2}
               cy={fixedSize / 2}
               r={radius}
-              fill="none"
-              stroke={primaryColor}
-              strokeWidth={strokeWidth}
               strokeDasharray={circumference}
               strokeDashoffset={dashOffset}
-              strokeLinecap="round"
             />
           </svg>
         </>
       )}
       {/* Check mark when complete */}
-      {isComplete && <CheckIcon />}
+      {isComplete && <Icon name="check_circle" type={IconType.FILLED} className="circular-progress__icon-completed" />}
     </div>
   );
 };

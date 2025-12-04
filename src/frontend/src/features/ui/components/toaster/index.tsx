@@ -1,5 +1,6 @@
-import { Button } from "@openfun/cunningham-react";
+import { Button } from "@gouvfr-lasuite/cunningham-react";
 import clsx from "clsx";
+import { useMemo } from "react";
 import { Slide, ToastContainer, ToastContentProps, toast } from "react-toastify";
 
 export const Toaster = () => {
@@ -24,9 +25,20 @@ export const ToasterItem = ({
   children: React.ReactNode;
   closeButton?: boolean;
   className?: string;
-  type?: "error" | "info";
+  type?: "error" | "info" | "warning";
   actions?: ToastAction[];
 } & Partial<ToastContentProps>) => {
+
+  const buttonColor = useMemo(() => {
+    switch (type) {
+      case "error":
+        return "error";
+      case "warning":
+        return "warning";
+      default:
+        return "brand";
+    }
+  }, [type]);
   return (
     <div
       className={clsx(
@@ -42,7 +54,8 @@ export const ToasterItem = ({
             key={action.label}
             aria-label={!action.showLabel ? action.label : undefined}
             onClick={action.onClick}
-            color="primary-text"
+            color={buttonColor}
+            variant="tertiary"
             size="small"
             icon={action.icon && <span className="material-icons">{action.icon}</span>}
           >{action.showLabel || !action.icon && action.label}</Button>
@@ -50,7 +63,8 @@ export const ToasterItem = ({
         {closeButton && (
           <Button
             onClick={closeToast}
-            color="primary-text"
+            color={buttonColor}
+            variant="tertiary"
             size="small"
             icon={<span className="material-icons">close</span>}
           ></Button>

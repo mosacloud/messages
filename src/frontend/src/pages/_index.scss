@@ -1,53 +1,13 @@
-@use "../styles/utils" as *;
-
 .app__home {
-    background-color: var(--c--theme--colors--greyscale-000);
-
-    .c__header {
-        height: var(--header-height);
-        min-height: var(--header-height);
-        max-height: var(--header-height);
-        border: none;
-    }
-
-    .c__main-layout__content {
-        margin-top: var(--header-height);
-        background-color: var(--c--theme--colors--greyscale-050);
-
-        .c__main-layout__content__center__children {
-        height: calc(100dvh - var(--header-height));
-        }
-
-        .c__right-panel {
-        height: calc(100dvh - var(--header-height));
-        }
-    }
+    background-color: var(--c--contextuals--background--surface--primary);
+    height: 100%;
+    overflow: auto;
 
     .c__hero {
         height: calc(100vh - var(--header-height));
     }
 
-    @media (max-width: breakpoint(tablet)) {
-        .c__header {
-        .drive__header__left {
-            img:first-child {
-            display: none;
-            }
-        }
-
-        .c__header__right {
-            > * {
-            display: none !important;
-            }
-        }
-        }
-    }
-
-    &__left-panel {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 0.75rem 0;
+    .c__hero__display img {
+        object-fit: contain;
     }
 }

@@ -1,12 +1,12 @@
 .template-list {
     display: flex;
     flex-direction: column;
-    gap: var(--c--theme--spacings--t);
+    gap: var(--c--globals--spacings--t);
 
     .template-item {
         border: 0;
         width: 100%;
         cursor: pointer;
-        padding: var(--c--theme--spacings--base);
+        padding: var(--c--globals--spacings--base);
     }
 }

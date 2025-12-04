@@ -1,8 +1,8 @@
 import { AdminLayout } from "@/features/layouts/components/admin/admin-layout";
 import { useState, useEffect, useRef } from "react";
-import { Button, DataGrid } from "@openfun/cunningham-react";
+import { Button, DataGrid } from "@gouvfr-lasuite/cunningham-react";
 import { useTranslation, Trans } from "react-i18next";
-import { Spinner } from "@gouvfr-lasuite/ui-kit";
+import { Badge, Spinner } from "@gouvfr-lasuite/ui-kit";
 import { MailDomainAdmin, DNSRecordCheck } from "@/features/api/gen";
 import { Banner } from "@/features/ui/components/banner";
 import { useMaildomainsCheckDnsCreate, useMaildomainsRetrieve } from "@/features/api/gen/maildomains/maildomains";
@@ -24,16 +24,16 @@ function AdminDNSDataGrid({ domain, dnsRecords, isLoading, error }: AdminDNSData
   const { t } = useTranslation();
   const [justCopied, setJustCopied] = useState(false);
 
-  const getStatusColor = (status: string) => {
+  const getStatusType = (status: string) => {
     switch (status) {
       case "correct":
-        return "var(--c--theme--colors--success-600)";
+        return "success";
       case "incorrect":
-        return "var(--c--theme--colors--warning-600)";
+        return "warning";
       case "missing":
-        return "var(--c--theme--colors--danger-600)";
+        return "danger";
       default:
-        return "var(--c--theme--colors--info-600)";
+        return "neutral";
     }
   };
 
@@ -66,14 +66,14 @@ function AdminDNSDataGrid({ domain, dnsRecords, isLoading, error }: AdminDNSData
       headerName: t("Target"),
       size: 200,
       renderCell: ({ row }: { row: DNSRecordWithId }) => (
-        <CopyableInput value={row.target || "@"} />
+        <CopyableInput value={row.target || "@"} aria-label={t("Target")} />
       ),
     },
     {
       id: "value",
       headerName: t("Value"),
       renderCell: ({ row }: { row: DNSRecordWithId }) => (
-        <CopyableInput value={row.value} />
+        <CopyableInput value={row.value} name="value" aria-label={t("Value")} />
       ),
     },
     {
@@ -83,9 +83,9 @@ function AdminDNSDataGrid({ domain, dnsRecords, isLoading, error }: AdminDNSData
       renderCell: ({ row }: { row: DNSRecordWithId }) => {
         const status = row._check?.status || "unknown";
         return (
-          <span style={{ color: getStatusColor(status) }}>
+          <Badge type={getStatusType(status)}>
             {getStatusText(status)}
-          </span>
+          </Badge>
         );
       },
     },
@@ -133,7 +133,7 @@ function AdminDNSDataGrid({ domain, dnsRecords, isLoading, error }: AdminDNSData
         rows={dnsRecords}
       />
       <div style={{ marginTop: "1.5rem" }}>
-        <Button icon={justCopied?<Icon name="check" />:<Icon name="content_copy" />} color="secondary" onClick={() => {
+        <Button icon={justCopied?<Icon name="check" />:<Icon name="content_copy" />} variant="bordered" onClick={() => {
           const headerRow = t("Type") + "\t" + t("Target") + "\t" + t("Value") + "\n";
           const records = headerRow + dnsRecords.map((record) => `${record.type.toUpperCase()}\t${record.target || "@"}\t${record.value}`).join("\n");
           navigator.clipboard.writeText(records);
@@ -223,7 +223,7 @@ export default function AdminDNSPage() {
       actions={
         <>
           <Button
-            color="primary"
+            variant="primary"
             onClick={handleCheckDNS}
             disabled={dnsCheckMutation.isPending}
           >

@@ -1,4 +1,4 @@
-import { Modal, ModalProps } from "@openfun/cunningham-react";
+import { Modal, ModalProps } from "@gouvfr-lasuite/cunningham-react";
 import { useModalStore } from ".";
 
 type ControlledModalProps = Omit<ModalProps, "isOpen" | "onClose"> & { modalId: string; onClose?: () => void, confirmFn?: () => Promise<boolean> }

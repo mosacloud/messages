@@ -1,4 +1,4 @@
-import { Button, useModal } from "@openfun/cunningham-react";
+import { Button, useModal } from "@gouvfr-lasuite/cunningham-react";
 import { ModalComposeSignature } from "../modal-compose-signature";
 import { useTranslation } from "react-i18next";
 
@@ -9,7 +9,7 @@ export const ComposeSignatureAction = () => {
 
     return (
         <>
-            <Button color="primary" onClick={modal.open}>
+            <Button variant="primary" onClick={modal.open}>
                 {t("New signature")}
             </Button>
             <ModalComposeSignature

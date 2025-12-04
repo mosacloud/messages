@@ -2,7 +2,7 @@ import { BlockNoteViewField } from "@/features/blocknote/blocknote-view-field";
 import { BlockNoteEditor, BlockNoteSchema, defaultInlineContentSpecs, filterSuggestionItems, PartialBlock } from "@blocknote/core";
 import * as locales from '@blocknote/core/locales';
 import { SuggestionMenuController, useCreateBlockNote } from "@blocknote/react";
-import { FieldProps } from "@openfun/cunningham-react";
+import { FieldProps } from "@gouvfr-lasuite/cunningham-react";
 import { useEffect } from "react";
 import { useFormContext } from "react-hook-form";
 import { useTranslation } from "react-i18next";

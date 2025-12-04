@@ -6,13 +6,13 @@
     align-items: center;
     justify-content: center;
     min-height: 400px;
-    padding-block: var(--c--theme--spacings--xxxl);
+    padding-block: var(--c--globals--spacings--xxxl);
     text-align: center;
 }
 .modal-importer-form {
     display: flex;
     flex-direction: column;
-    gap: var(--c--theme--spacings--base);
+    gap: var(--c--globals--spacings--base);
     width: 680px;
 }
 
@@ -20,12 +20,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: var(--c--theme--spacings--base);
-    color: var(--c--theme--colors--greyscale-400);
+    gap: var(--c--globals--spacings--base);
+    color: var(--c--contextuals--content--semantic--neutral--tertiary);
     font-weight: bold;
     font-size: 0.8rem;
     letter-spacing: 0.1em;
-    margin-block: var(--c--theme--spacings--base);
+    margin-block: var(--c--globals--spacings--base);
     text-transform: uppercase;
 
     &:before, &:after {
@@ -46,15 +46,15 @@
         display: flex;
         flex-direction: column;
         line-height: 1;
-        gap: var(--c--theme--spacings--sm);
+        gap: var(--c--globals--spacings--sm);
         justify-content: center;
         align-items: center;
         padding-top: 12px;
         padding-inline: 25%;
         width: 100%;
-        background-color: rgba(map.get($themes, "default", "theme", "colors", "greyscale-100"), 0.9);
+        background-color: var(--c--contextuals--background--surface--tertiary);
         backdrop-filter: blur(2px);
-        border-radius: var(--c--theme--spacings--base);
+        border-radius: var(--c--globals--spacings--xs);
         height: 100%;
         font-variant-numeric: tabular-nums;
     }
@@ -63,13 +63,13 @@
 .task-loader {
     margin: 0 auto;
     width: 100%;
-    padding: var(--c--theme--spacings--base) 0;
+    padding: var(--c--globals--spacings--base) 0;
     max-width: 400px;
     text-align: center;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--c--theme--spacings--base);
+    gap: var(--c--globals--spacings--base);
 }
 
 .task-loader__progress_resume {
@@ -85,7 +85,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--c--theme--spacings--4xl);
+    gap: var(--c--globals--spacings--4xl);
     width: 100%;
     max-width: 400px;
 
@@ -97,7 +97,7 @@
     }
     .importer-completed__description > .material-icons {
         font-size: 10rem;
-        color: var(--c--theme--colors--greyscale-100);
+        color: var(--c--contextuals--content--semantic--success--tertiary);
     }
     .importer-completed__description > p {
         text-align: center;

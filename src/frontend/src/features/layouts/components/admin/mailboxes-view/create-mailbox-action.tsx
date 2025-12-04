@@ -1,7 +1,7 @@
 import { ModalCreateOrUpdateMailbox } from "@/features/layouts/components/admin/modal-create-update-mailbox";
 import { useAdminMailDomain } from "@/features/providers/admin-maildomain";
 import useAbility, { Abilities } from "@/hooks/use-ability";
-import { Button, useModal } from "@openfun/cunningham-react";
+import { Button, useModal } from "@gouvfr-lasuite/cunningham-react";
 import { useTranslation } from "react-i18next";
 
 type CreateMailboxActionProps = {
@@ -24,7 +24,7 @@ export const CreateMailboxAction = ({ onCreate }: CreateMailboxActionProps) => {
 
     return (
         <>
-            <Button color="primary" onClick={modal.open}>
+            <Button variant="primary" onClick={modal.open}>
                 {t("New address")}
             </Button>
             <ModalCreateOrUpdateMailbox

@@ -1,4 +1,4 @@
-import { format, isToday, differenceInDays } from 'date-fns';
+import { format, isToday, isSameWeek, isYesterday, isSameYear } from 'date-fns';
 // @WARN: This import is surely importing to much locales, later we should
 // import only the needed locales
 import * as locales from 'date-fns/locale';
@@ -17,7 +17,6 @@ export class DateHelper {
    */
   public static formatDate(dateString: string, lng: string = 'en'): string {
     const date = new Date(dateString);
-    const daysDifference = differenceInDays(new Date(), date);
     const locale = lng.length > 2 ? lng.split('-')[0] : lng;
     const dateLocale = locales[locale as keyof typeof locales];
 
@@ -25,8 +24,16 @@ export class DateHelper {
       return format(date, 'HH:mm', { locale: dateLocale });
     }
 
-    if (daysDifference < 30) {
-      return format(date, 'd MMMM', { locale: dateLocale });
+    if (isYesterday(date)) {
+      return i18n.t('Yesterday');
+    }
+
+    if (isSameWeek(date, Date.now())) {
+      return format(date, 'EEEE', { locale: dateLocale });
+    }
+
+    if (isSameYear(date, Date.now())) {
+      return format(date, 'd MMM', { locale: dateLocale });
     }
 
     return format(date, 'dd/MM/yyyy', { locale: dateLocale });

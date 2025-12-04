@@ -2,16 +2,16 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--c--globals--spacings--2xs);
 
   &__input {
     width: 100%;
-    padding: var(--c--theme--spacings--xs) 0;
+    padding: var(--c--globals--spacings--xs) 0;
     border: 0px;
-    font-size: var(--c--theme--font--sizes--sm);
+    font-size: var(--c--globals--font--sizes--xs);
     font-family: monospace;
-    background-color: var(--c--theme--colors--neutral-50);
-    color: var(--c--theme--colors--neutral-900);
+    background-color: transparent;
+    color: var(--c--contextuals--content--semantic--neutral--primary);
     outline: none;
     flex: 1;
   }

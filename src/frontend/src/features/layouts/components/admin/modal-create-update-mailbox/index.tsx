@@ -1,4 +1,4 @@
-import { ModalSize, Button, Modal } from "@openfun/cunningham-react";
+import { ModalSize, Button, Modal } from "@gouvfr-lasuite/cunningham-react";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { FieldErrors, FormProvider, useForm } from "react-hook-form";

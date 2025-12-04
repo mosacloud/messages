@@ -1,6 +1,6 @@
 import { BlockSchema, InlineContentSchema, StyleSchema } from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/mantine";
-import { Field, FieldProps } from "@openfun/cunningham-react";
+import { Field, FieldProps } from "@gouvfr-lasuite/cunningham-react";
 import clsx from "clsx";
 import { PropsWithChildren } from "react";
 
@@ -10,7 +10,10 @@ type BlockNoteViewFieldProps<BSchema extends BlockSchema, ISchema extends Inline
 }>
 export const BlockNoteViewField = <BSchema extends BlockSchema, ISchema extends InlineContentSchema, SSchema extends StyleSchema>({ composerProps, disabled = false, children, ...fieldProps }: BlockNoteViewFieldProps<BSchema, ISchema, SSchema>) => {
     return (
-        <Field {...fieldProps} className={clsx(fieldProps?.className, "composer-field", { 'composer-field--disabled': disabled })}>
+        <Field
+            {...fieldProps}
+            className={clsx(fieldProps?.className, "composer-field", { 'composer-field--disabled': disabled })}
+        >
             <BlockNoteView
                 theme="light"
                 sideMenu={false}

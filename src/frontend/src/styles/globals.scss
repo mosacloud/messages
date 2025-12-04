@@ -1,7 +1,6 @@
 @use "./utils" as *;
 
 :root {
-  font-size: 14px;
   --header-height: 52px;
   --c--components--forms-checkbox--size: 24px;
 }
@@ -14,7 +13,8 @@
 
 body {
   margin: 0;
-  color: var(--c--theme--colors--greyscale-1000);
+  background-color: var(--c--contextuals--background--surface--tertiary);
+  color: var(--c--contextuals--content--semantic--neutral--primary);
 }
 
 * {
@@ -30,45 +30,70 @@ body {
   overflow: inherit !important;
 }
 
+// Customize resize handle to add an hover effect to explicit that
+// this component is interactive.
+.panel__resize-handle {
+  width: 1px;
+  background-color: var(--c--contextuals--border--surface--primary);
+  position: relative;
+
+  &:before {
+    content: '';
+    width: 3px;
+    left: -1px;
+    top: 0;
+    bottom: 0;
+    background: var(--c--contextuals--border--surface--primary);
+    position: absolute;
+    opacity: 0;
+    transition: opacity 250ms var(--c--globals--transitions--ease-in-out);
+  }
+
+  // Little tricks to expand the area to catch hover
+  &:after {
+    content: '';
+    width: 11px;
+    left: -5px;
+    top:0;
+    bottom: 0;
+    position: absolute;
+  }
+
+  &:hover:before {
+    opacity: 1;
+  }
+}
+
+
+// Cunningham tweaks
+.c__datagrid__table__container > table tbody tr:not(:last-child) {
+  border-bottom: 1px solid var(--c--contextuals--border--surface--primary);
+}
+
+.c__dropdown-menu-trigger .c__button {
+  font-size: var(--c--globals--font--sizes--sm);
+}
+
+// Cunningham icon sizes fix
+// remove when https://github.com/suitenumerique/ui-kit/pull/134 will be merged
 .material-icons.icon--xsmall {
-  font-size: 0.6875rem;
+  font-size: 11px;
 }
 
 .material-icons.icon--small {
-  font-size: 1rem;
+  font-size: 16px;
 }
 
-.material-icons,
 .material-icons.icon--medium {
-  font-size: 1.5rem;
+  font-size: 24px;
 }
 
 .material-icons.icon--large {
-  font-size: 2rem;
+  font-size: 32px;
 }
 
 .material-icons.icon--xlarge {
-  font-size: 3rem;
-}
-
-// Cunningham tweaks
-// As we reduce the global font size, we need to increase the font size of of some components
-.c__modal__content {
-  font-size: var(--c--theme--font--sizes--md);
-}
-
-.c__file-uploader__inner__text,
-.c__file-uploader__inner__actions {
-  font-size: var(--c--theme--font--sizes--m);
-}
-
-.c__datagrid__table__container > table th, .c__datagrid__table__container > table td {
-  font-size: var(--c--theme--font--sizes--ml);
-}
-
-.c__datagrid .c__pagination .c__button--active {
-  background-color: var(--c--components--button--tertiary-text--background--color-hover);
-  color: var(--c--components--button--tertiary-text--color-hover);
+  font-size: 48px;
 }
 
 // Cunningham modal class utilities
@@ -77,7 +102,6 @@ body {
   width: 100%;
   text-align: center;
 }
-
 
 
 // Hide toast container as we use react-toastify
@@ -131,27 +155,27 @@ body {
 }
 
 .p-0 {
-  padding: var(--c--theme--spacings--2xs);
+  padding: var(--c--globals--spacings--2xs);
 }
 
 .p-2xs {
-  padding: var(--c--theme--spacings--2xs);
+  padding: var(--c--globals--spacings--2xs);
 }
 
 .p-xs {
-  padding: var(--c--theme--spacings--xs);
+  padding: var(--c--globals--spacings--xs);
 }
 
 .p-sm {
-  padding: var(--c--theme--spacings--sm);
+  padding: var(--c--globals--spacings--sm);
 }
 
 .p-md {
-  padding: var(--c--theme--spacings--md);
+  padding: var(--c--globals--spacings--md);
 }
 
 .p-base {
-  padding: var(--c--theme--spacings--base);
+  padding: var(--c--globals--spacings--base);
 }
 
 .m-0 {
@@ -159,23 +183,23 @@ body {
 }
 
 .m-2xs {
-  margin: var(--c--theme--spacings--2xs);
+  margin: var(--c--globals--spacings--2xs);
 }
 
 .m-xs {
-  margin: var(--c--theme--spacings--xs);
+  margin: var(--c--globals--spacings--xs);
 }
 
 .m-sm {
-  margin: var(--c--theme--spacings--sm);
+  margin: var(--c--globals--spacings--sm);
 }
 
 .m-md {
-  margin: var(--c--theme--spacings--md);
+  margin: var(--c--globals--spacings--md);
 }
 
 .m-base {
-  margin: var(--c--theme--spacings--base);
+  margin: var(--c--globals--spacings--base);
 }
 
 .text-nowrap {

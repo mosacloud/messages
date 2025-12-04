@@ -1,19 +1,50 @@
 .composer-field {
-    &.c__field--error {
-        .composer-field-input {
-            border-color: var(--c--theme--colors--error);
+    &:hover .composer-field-input {
+        border-radius: var(--c--components--forms-select--border-radius--hover);
+        box-shadow: var(--c--components--forms-select--border-color--hover) 0 0 0 1px;
+        border-color: var(--c--components--forms-select--border-color--hover);
+    }
+
+    &:focus-within .composer-field-input,
+    &--focus .composer-field-input {
+        border-radius: var(--c--components--forms-select--border-radius--focus);
+        box-shadow: var(--c--components--forms-select--border-color--focus) 0 0 0 1px;
+        border-color: var(--c--components--forms-select--border-color--focus);
+    }
+    &:not([class*="--disabled"]):not(:focus-within) {
+        &.c__field--error .composer-field-input {
+            border-color: var(--c--contextuals--border--semantic--error--secondary);
+        }
+        &.c__field--error:hover .composer-field-input {
+            border-color: var(--c--contextuals--border--semantic--error--primary);
+            box-shadow: var(--c--contextuals--border--semantic--error--primary) 0 0 0 1px;
+        }
+        &.c__field--success .composer-field-input {
+            border-color: var(--c--contextuals--border--semantic--success--secondary);
+        }
+        &.c__field--success:hover .composer-field-input {
+            border-color: var(--c--contextuals--border--semantic--success--primary);
+            box-shadow: var(--c--contextuals--border--semantic--success--primary) 0 0 0 1px;
         }
     }
-    &.c__field--success {
-        .composer-field-input {
-            border-color: var(--c--theme--colors--success);
-        }
-    }
+
     &--disabled {
-        pointer-events: none;
-        .composer-field-input {
+        &:hover .composer-field-input{
             cursor: not-allowed;
-            border-color: var(--c--theme--colors--greyscale-200);
+            border-radius: var(--c--components--forms-input--border-radius);
+            border-color: var(--c--components--forms-input--border-color);
+            box-shadow: none;
+        }
+        .composer-field-input {
+            padding-top: var(--c--globals--spacings--base);
+        }
+
+        & .bn-toolbar.bn-formatting-toolbar {
+            display: none;
+        }
+
+        & .bn-editor {
+            color: var(--c--components--forms-input--value-color--disabled);
         }
     }
 }
@@ -25,10 +56,13 @@
     width: 100%;
     display: flex;
     flex-direction: column-reverse;
-    gap: var(--c--theme--spacings--2xs);
+    gap: var(--c--globals--spacings--2xs);
     background-color: var(--bn-colors-editor-background);
     position: relative;
     min-height: 20rem;
+    transition:
+          border var(--c--globals--transitions--duration) var(--c--globals--transitions--ease-out),
+          border-radius var(--c--globals--transitions--duration) var(--c--globals--transitions--ease-out);
 
     & .bn-toolbar.bn-formatting-toolbar {
         background: none;
@@ -38,18 +72,25 @@
         border-top-left-radius: var(--c--components--forms-input--border-radius);
         border-top-right-radius: var(--c--components--forms-input--border-radius);
         width: 100%;
-        border-bottom: 1px solid var(--c--theme--colors--greyscale-200);
-        padding-block: var(--c--theme--spacings--2xs);
+        border-bottom: 1px solid var(--c--components--forms-input--border-color);
+        padding-block: var(--c--globals--spacings--2xs);
         flex: 0 0 43px;
         height: 43px;
     }
 
     & .bn-editor {
-        border-radius: 0;
-        border-bottom-left-radius: var(--c--components--forms-input--border-radius);
-        border-bottom-right-radius: var(--c--components--forms-input--border-radius);
+        // Even in dark mode, the editor stays light so we used global tokens color
+        color: var(--c--globals--colors--gray-850);
+        border-radius: var(--c--components--forms-input--border-radius);
         min-height: calc(100% - 43px);
-        padding-inline: var(--c--theme--spacings--base);
+        padding-inline: var(--c--globals--spacings--base);
         flex: 1;
+
+        // Overide blocknote default styles to fix some contrast issues
+        blockquote {
+            color: var(--c--globals--colors--gray-550);
+            border-color: var(--c--globals--colors--gray-550);
+        }
+
     }
 }
