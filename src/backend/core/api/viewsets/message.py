@@ -25,6 +25,7 @@ class MessageViewSet(
         permissions.IsAuthenticated,
         permissions.IsAllowedToAccess,
     ]
+    pagination_class = None  # Show all messages in a thread without pagination
     queryset = models.Message.objects.all()
     lookup_field = "id"
     lookup_url_kwarg = "id"
