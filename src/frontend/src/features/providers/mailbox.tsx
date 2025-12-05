@@ -1,5 +1,5 @@
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo } from "react";
-import { Mailbox, MailboxRoleChoices, Message, messagesListResponse200, PaginatedMessageList, PaginatedThreadList, Thread, useLabelsList, useMailboxesList, useMessagesList, useThreadsListInfinite } from "../api/gen";
+import { Mailbox, MailboxRoleChoices, Message, messagesListResponse200, PaginatedThreadList, Thread, useLabelsList, useMailboxesList, useMessagesList, useThreadsListInfinite } from "../api/gen";
 import { FetchStatus, QueryStatus, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/router";
 import usePrevious from "@/hooks/use-previous";
@@ -27,7 +27,7 @@ type MessageQueryInvalidationSource = {
 type MailboxContextType = {
     mailboxes: readonly Mailbox[] | null;
     threads: PaginatedThreadList | null;
-    messages: PaginatedMessageList | null;
+    messages: readonly Message[] | null;
     selectedMailbox: Mailbox | null;
     selectedThread: Thread | null;
     unselectThread: () => void;
@@ -168,7 +168,7 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
         return threadsQuery.data?.pages.flatMap((page) => page.data.results).find((thread) => thread.id === threadId) ?? null;
     }, [router.query.threadId, flattenThreads])
 
-    const messagesQuery = useMessagesList(undefined, {
+    const messagesQuery = useMessagesList({
         query: {
             enabled: !!selectedThread,
             queryKey: ['messages', selectedThread?.id],
@@ -189,8 +189,8 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
 
     const _updateThreadMessagesQueryData = (threadId: Thread['id'], source: MessageQueryInvalidationSource) => {
         queryClient.setQueryData(['messages', threadId], (oldData: messagesListResponse200 | undefined) => {
-            if (!oldData?.data?.results) return oldData;
-            let newResults = [ ...oldData.data.results ];
+            if (!oldData?.data) return oldData;
+            let newResults = [ ...oldData.data ];
             if (source.type === 'delete') {
                 newResults = newResults.filter((message: Message) => {
                     if ((source.metadata.threadIds ?? []).includes(threadId)) return true;
@@ -208,14 +208,7 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
                 });
             }
 
-            return {
-                ...oldData,
-                data: {
-                    ...oldData.data,
-                    results: newResults,
-                    count: newResults.length,
-                }
-            };
+            return {...oldData, data: newResults};
         });
     }
     /**

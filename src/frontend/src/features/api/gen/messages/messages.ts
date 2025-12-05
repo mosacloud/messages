@@ -36,8 +36,6 @@ import type {
   DraftUpdate403,
   DraftUpdate404,
   Message,
-  MessagesListParams,
-  PaginatedMessageList,
   SendCreate400,
   SendCreate403,
   SendCreate503,
@@ -615,7 +613,7 @@ export const useDraftUpdate2 = <
  * ViewSet for Message model.
  */
 export type messagesListResponse200 = {
-  data: PaginatedMessageList;
+  data: Message[];
   status: 200;
 };
 
@@ -625,55 +623,39 @@ export type messagesListResponse = messagesListResponseComposite & {
   headers: Headers;
 };
 
-export const getMessagesListUrl = (params?: MessagesListParams) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? "null" : value.toString());
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0
-    ? `/api/v1.0/messages/?${stringifiedParams}`
-    : `/api/v1.0/messages/`;
+export const getMessagesListUrl = () => {
+  return `/api/v1.0/messages/`;
 };
 
 export const messagesList = async (
-  params?: MessagesListParams,
   options?: RequestInit,
 ): Promise<messagesListResponse> => {
-  return fetchAPI<messagesListResponse>(getMessagesListUrl(params), {
+  return fetchAPI<messagesListResponse>(getMessagesListUrl(), {
     ...options,
     method: "GET",
   });
 };
 
-export const getMessagesListQueryKey = (params?: MessagesListParams) => {
-  return [`/api/v1.0/messages/`, ...(params ? [params] : [])] as const;
+export const getMessagesListQueryKey = () => {
+  return [`/api/v1.0/messages/`] as const;
 };
 
 export const getMessagesListQueryOptions = <
   TData = Awaited<ReturnType<typeof messagesList>>,
   TError = unknown,
->(
-  params?: MessagesListParams,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<Awaited<ReturnType<typeof messagesList>>, TError, TData>
-    >;
-    request?: SecondParameter<typeof fetchAPI>;
-  },
-) => {
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<Awaited<ReturnType<typeof messagesList>>, TError, TData>
+  >;
+  request?: SecondParameter<typeof fetchAPI>;
+}) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getMessagesListQueryKey(params);
+  const queryKey = queryOptions?.queryKey ?? getMessagesListQueryKey();
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof messagesList>>> = ({
     signal,
-  }) => messagesList(params, { signal, ...requestOptions });
+  }) => messagesList({ signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof messagesList>>,
@@ -691,7 +673,6 @@ export function useMessagesList<
   TData = Awaited<ReturnType<typeof messagesList>>,
   TError = unknown,
 >(
-  params: undefined | MessagesListParams,
   options: {
     query: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof messagesList>>, TError, TData>
@@ -714,7 +695,6 @@ export function useMessagesList<
   TData = Awaited<ReturnType<typeof messagesList>>,
   TError = unknown,
 >(
-  params?: MessagesListParams,
   options?: {
     query?: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof messagesList>>, TError, TData>
@@ -737,7 +717,6 @@ export function useMessagesList<
   TData = Awaited<ReturnType<typeof messagesList>>,
   TError = unknown,
 >(
-  params?: MessagesListParams,
   options?: {
     query?: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof messagesList>>, TError, TData>
@@ -753,7 +732,6 @@ export function useMessagesList<
   TData = Awaited<ReturnType<typeof messagesList>>,
   TError = unknown,
 >(
-  params?: MessagesListParams,
   options?: {
     query?: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof messagesList>>, TError, TData>
@@ -764,7 +742,7 @@ export function useMessagesList<
 ): UseQueryResult<TData, TError> & {
   queryKey: DataTag<QueryKey, TData, TError>;
 } {
-  const queryOptions = getMessagesListQueryOptions(params, options);
+  const queryOptions = getMessagesListQueryOptions(options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<
     TData,

@@ -192,9 +192,9 @@ export const ThreadView = () => {
     const [showTrashedMessages, setShowTrashedMessages] = useState(isTrashView);
     // Nest draft messages under their parent messages
     const messagesWithDraftChildren = useMemo(() => {
-        if (!messages?.results) return [];
-        const rootMessages: MessageWithDraftChild[] = messages.results.filter((m) => !m.is_draft || !m.parent_id);
-        const draftChildren = messages.results.filter((m) => m.is_draft && m.parent_id);
+        if (!messages) return [];
+        const rootMessages: MessageWithDraftChild[] = messages.filter((m) => !m.is_draft || !m.parent_id);
+        const draftChildren = messages.filter((m) => m.is_draft && m.parent_id);
         draftChildren.forEach((m) => {
             const parentMessage = rootMessages.find((um) => um.id === m.parent_id);
             if (parentMessage) {

@@ -174,11 +174,11 @@ Content-Disposition: attachment; filename="{attachment_data["filename"]}"
         # Step 3: Use the message list API to get messages in this thread
         response = client.get(reverse("messages-list"), {"thread_id": thread_id})
         assert response.status_code == status.HTTP_200_OK
-        assert response.data["count"] >= 1
+        assert len(response.data) >= 1
 
         # Find our message
         message_data = None
-        for m in response.data["results"]:
+        for m in response.data:
             if m["subject"] == "Test E2E Inbound with Attachment":
                 message_data = m
                 break

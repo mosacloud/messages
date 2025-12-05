@@ -87,8 +87,9 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
         }
 
         const markAsUnreadFrom = useCallback((messageId: Message['id']) => {
-            const offestIndex = messages?.results.findIndex((m) => m.id === messageId);
-            const messageIds = messages?.results.slice(offestIndex).map((m) => m.id);
+            const offsetIndex = messages?.findIndex((m) => m.id === messageId) ?? -1;
+            if (offsetIndex < 0) return;
+            const messageIds = messages?.slice(offsetIndex).map((m) => m.id);
             markAsUnread({ messageIds, onSuccess: unselectThread });
         }, [messages, unselectThread, markAsUnread])
 

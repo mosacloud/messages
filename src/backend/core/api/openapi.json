@@ -3859,17 +3859,6 @@
             "get": {
                 "operationId": "messages_list",
                 "description": "ViewSet for Message model.",
-                "parameters": [
-                    {
-                        "name": "page",
-                        "required": false,
-                        "in": "query",
-                        "description": "A page number within the paginated result set.",
-                        "schema": {
-                            "type": "integer"
-                        }
-                    }
-                ],
                 "tags": [
                     "messages"
                 ],
@@ -3883,7 +3872,10 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/PaginatedMessageList"
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/Message"
+                                    }
                                 }
                             }
                         },
@@ -6732,37 +6724,6 @@
                         "type": "array",
                         "items": {
                             "$ref": "#/components/schemas/MailboxAdmin"
-                        }
-                    }
-                }
-            },
-            "PaginatedMessageList": {
-                "type": "object",
-                "required": [
-                    "count",
-                    "results"
-                ],
-                "properties": {
-                    "count": {
-                        "type": "integer",
-                        "example": 123
-                    },
-                    "next": {
-                        "type": "string",
-                        "nullable": true,
-                        "format": "uri",
-                        "example": "http://api.example.org/accounts/?page=4"
-                    },
-                    "previous": {
-                        "type": "string",
-                        "nullable": true,
-                        "format": "uri",
-                        "example": "http://api.example.org/accounts/?page=2"
-                    },
-                    "results": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/Message"
                         }
                     }
                 }
