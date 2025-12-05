@@ -2,7 +2,16 @@ import { ConfigRetrieve200, useConfigRetrieve } from "@/features/api/gen";
 import { Spinner } from "@gouvfr-lasuite/ui-kit";
 import { PropsWithChildren, createContext, useContext, useMemo } from "react";
 
-const DEFAULT_CONFIG: ConfigRetrieve200 = {
+type AppConfig = Omit<ConfigRetrieve200, 'DRIVE'> & Required<Pick<ConfigRetrieve200, 'DRIVE'>>;
+
+const DEFAULT_DRIVE_CONFIG: NonNullable<ConfigRetrieve200['DRIVE']> = {
+    sdk_url: "",
+    api_url: "",
+    file_url: "",
+    app_name: "Drive",
+}
+
+const DEFAULT_CONFIG: AppConfig = {
     ENVIRONMENT: "",
     LANGUAGES: [],
     LANGUAGE_CODE: "",
@@ -14,9 +23,10 @@ const DEFAULT_CONFIG: ConfigRetrieve200 = {
     MAX_OUTGOING_ATTACHMENT_SIZE: 0,
     MAX_OUTGOING_BODY_SIZE: 0,
     MAX_INCOMING_EMAIL_SIZE: 0,
+    DRIVE: DEFAULT_DRIVE_CONFIG
 }
 
-const ConfigContext = createContext<ConfigRetrieve200>(DEFAULT_CONFIG)
+const ConfigContext = createContext<AppConfig>(DEFAULT_CONFIG)
 
 /**
  * A global provider in charge of fetching the config at first load
@@ -24,7 +34,13 @@ const ConfigContext = createContext<ConfigRetrieve200>(DEFAULT_CONFIG)
  */
 export const ConfigProvider = ({ children }: PropsWithChildren) => {
     const { data: config, isFetched } = useConfigRetrieve();
-    const configValue = useMemo(() => config?.data ?? DEFAULT_CONFIG, [config])
+    const configValue = useMemo(() => {
+      if (!config) return DEFAULT_CONFIG;
+      return {
+        ...config?.data,
+        DRIVE: config?.data?.DRIVE ?? DEFAULT_DRIVE_CONFIG,
+      }
+    }, [config])
 
     if (!isFetched) {
         return (

@@ -23,7 +23,7 @@ pytestmark = pytest.mark.django_db
     AI_MODEL=None,
     FEATURE_AI_SUMMARY=False,
     FEATURE_AI_AUTOLABELS=False,
-    DRIVE_CONFIG={"base_url": None},
+    DRIVE_CONFIG={"base_url": None, "app_name": "Drive"},
     MAX_OUTGOING_ATTACHMENT_SIZE=20971520,  # 20MB
     MAX_OUTGOING_BODY_SIZE=5242880,  # 5MB
     MAX_INCOMING_EMAIL_SIZE=10485760,  # 10MB
@@ -60,6 +60,7 @@ def test_api_config(is_authenticated):
         "sdk_url": "/sdk",
         "api_url": "/api/v1.0",
         "file_url": "/explorer/items/files",
+        "app_name": "Drive App",
     }
 )
 def test_api_config_with_external_services():
@@ -72,4 +73,5 @@ def test_api_config_with_external_services():
         "sdk_url": "http://localhost:8902/sdk",
         "api_url": "http://localhost:8902/api/v1.0",
         "file_url": "http://localhost:8902/explorer/items/files",
+        "app_name": "Drive App",
     }

@@ -1,5 +1,6 @@
 import { DriveIcon } from "@/features/forms/components/message-form/drive-icon";
 import { useConfig } from "@/features/providers/config";
+import { FEATURE_KEYS, useFeatureFlag } from "@/hooks/use-feature";
 import { Button } from "@openfun/cunningham-react";
 import { useTranslation } from "react-i18next";
 
@@ -14,14 +15,15 @@ type DrivePreviewLinkProps = {
  */
 export const DrivePreviewLink = ({ fileId }: DrivePreviewLinkProps) => {
     const { DRIVE } = useConfig();
+    const isDriveDisabled = !useFeatureFlag(FEATURE_KEYS.DRIVE);
     const { t } = useTranslation();
 
-    if (!DRIVE) return null;
+    if (isDriveDisabled) return null;
 
     return (
         <Button
-            aria-label={t("Open Drive preview")}
-            title={t("Open Drive preview")}
+            aria-label={t("Open {{driveAppName}} preview", { driveAppName: DRIVE.app_name })}
+            title={t("Open {{driveAppName}} preview", { driveAppName: DRIVE.app_name })}
             href={`${DRIVE.file_url}/${fileId}`}
             target="_blank"
             size="medium"

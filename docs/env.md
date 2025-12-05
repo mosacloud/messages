@@ -291,6 +291,7 @@ _Those settings are deprecated and will be removed in the future._
 | Variable | Default | Description | Required |
 |----------|---------|-------------|----------|
 | `DRIVE_BASE_URL` | None | Base URL to access Drive endpoints | Optional |
+| `DRIVE_APP_NAME` | `Drive` | Name of the Drive application used in the frontend | Optional |
 
 ## Legend
 

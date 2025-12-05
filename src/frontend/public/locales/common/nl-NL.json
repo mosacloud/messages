@@ -22,7 +22,7 @@
   "Active": "Actief",
   "Add a domain": "Domein toevoegen",
   "Add a sub-label": "Een sublabel toevoegen",
-  "Add attachment from Fichiers": "Bijlage toevoegen van Fichiers",
+  "Add attachment from {{driveAppName}}": "Bijlage toevoegen van {{driveAppName}}",
   "Add attachments": "Bijlage toevoegen",
   "Add label": "Label toevoegen",
   "Add labels": "Labels toevoegen",

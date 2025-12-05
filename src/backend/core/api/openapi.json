@@ -186,13 +186,18 @@
                                                 "file_url": {
                                                     "type": "string",
                                                     "readOnly": true
+                                                },
+                                                "app_name": {
+                                                    "type": "string",
+                                                    "readOnly": true
                                                 }
                                             },
                                             "readOnly": true,
                                             "required": [
                                                 "sdk_url",
                                                 "api_url",
-                                                "file_url"
+                                                "file_url",
+                                                "app_name"
                                             ]
                                         },
                                         "SCHEMA_CUSTOM_ATTRIBUTES_USER": {

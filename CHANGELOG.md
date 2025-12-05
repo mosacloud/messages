@@ -10,6 +10,7 @@ and this project adheres to
 
 ### Changed
 
+- Configure Drive App Name through environment variable (DRIVE_APP_NAME)
 - Inherit OIDC Authentication backend from django-lasuite #408
 
 ### Added

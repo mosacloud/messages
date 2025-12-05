@@ -18,7 +18,7 @@ export const useFeatureFlag = (featureKey: FEATURE_KEYS) => {
 
     switch (featureKey) {
         case FEATURE_KEYS.DRIVE:
-            return config.DRIVE !== undefined;
+            return Boolean(config.DRIVE.sdk_url);
         case FEATURE_KEYS.AI_SUMMARY:
             return config.AI_ENABLED === true && config.FEATURE_AI_SUMMARY === true;
         case FEATURE_KEYS.AI_AUTOLABELS:

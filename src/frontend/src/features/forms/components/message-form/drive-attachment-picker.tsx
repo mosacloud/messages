@@ -61,7 +61,7 @@ export const DriveAttachmentPicker = ({ onPick }: DriveAttachmentPickerProps) =>
     if (isDriveDisabled) return null;
 
     return (
-        <Tooltip content={t('Add attachment from Fichiers')}>
+        <Tooltip content={t('Add attachment from {{driveAppName}}', { driveAppName: config.DRIVE.app_name })}>
             <Button
                 color="tertiary"
                 icon={isLoading ? <Spinner size="sm" /> : <DriveIcon />}

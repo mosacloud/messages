@@ -9,6 +9,7 @@ import { Tooltip, Button } from "@openfun/cunningham-react";
 import clsx from "clsx";
 import { DrivePreviewLink } from "./drive-preview-link";
 import { FEATURE_KEYS, useFeatureFlag } from "@/hooks/use-feature";
+import { useConfig } from "@/features/providers/config";
 
 
 type DriveUploadButtonProps = {
@@ -25,6 +26,7 @@ type DriveUploadButtonProps = {
  */
 export const DriveUploadButton = ({ attachment }: DriveUploadButtonProps) => {
     const { t } = useTranslation();
+    const { DRIVE } = useConfig();
     const isDriveDisabled = !useFeatureFlag(FEATURE_KEYS.DRIVE);
     const [state, setState] = useState<'idle' | 'uploading' | 'error' | 'success'>('idle');
     const [driveFileId, setDriveFileId] = useState<string | null>(null);
@@ -119,9 +121,9 @@ export const DriveUploadButton = ({ attachment }: DriveUploadButtonProps) => {
     return (
         <div className="attachment-item-drive-upload-button-container">
             {(driveFileId && state === 'idle') ? <DrivePreviewLink fileId={driveFileId} /> : (
-                <Tooltip content={t("Save into your Drive's workspace")}>
+                <Tooltip content={t("Save into your {{driveAppName}}'s workspace", { driveAppName: DRIVE.app_name })}>
                     <Button
-                        aria-label={t("Save into your Drive's workspace")}
+                        aria-label={t("Save into your {{driveAppName}}'s workspace", { driveAppName: DRIVE.app_name })}
                         size="medium"
                         icon={StateIcon}
                         disabled={isBusy || state !== 'idle'}
@@ -141,8 +143,8 @@ export const DriveUploadButton = ({ attachment }: DriveUploadButtonProps) => {
                 aria-live="polite"
                 aria-hidden={!showUploadTooltip}
             >
-                {(state === 'success' || prevState === 'success') && t("Attachment saved into your Drive's workspace.")}
-                {(state === 'error' || prevState === 'error') && t("Attachment failed to be saved into your Drive's workspace.")}
+                {(state === 'success' || prevState === 'success') && t("Attachment saved into your {{driveAppName}}'s workspace.", { driveAppName: DRIVE.app_name })}
+                {(state === 'error' || prevState === 'error') && t("Attachment failed to be saved into your {{driveAppName}}'s workspace.", { driveAppName: DRIVE.app_name })}
             </div>
         </div>
     )

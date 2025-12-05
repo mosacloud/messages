@@ -22,7 +22,7 @@
   "Active": "Активный",
   "Add a domain": "Добавить домен",
   "Add a sub-label": "Добавить вложенный ярлык",
-  "Add attachment from Fichiers": "Добавить вложение из Файлов",
+  "Add attachment from {{driveAppName}}": "Добавить вложение из {{driveAppName}}",
   "Add attachments": "Добавить вложения",
   "Add label": "Добавить ярлык",
   "Add labels": "Добавить ярлыки",

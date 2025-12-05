@@ -91,6 +91,7 @@ class TestDriveAPIView:
     def configure_settings(self, settings):
         """Configure settings for tests."""
         settings.DRIVE_CONFIG = {
+            "app_name": "Drive",
             "base_url": "http://drive.test",
             "sdk_url": "/sdk",
             "api_url": "/api/v1.0",

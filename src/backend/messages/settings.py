@@ -774,6 +774,9 @@ class Base(Configuration):
     # Settings related to the third-party services that messages is able to use
     # 1. Drive - https://github.com/suitenumerique/drive
     DRIVE_CONFIG = {
+        "app_name": values.Value(
+            default="Drive", environ_name="DRIVE_APP_NAME", environ_prefix=None
+        ),
         "base_url": values.Value(
             default=None, environ_name="DRIVE_BASE_URL", environ_prefix=None
         ),
@@ -1042,6 +1045,7 @@ class Test(Base):
     PROMETHEUS_API_KEY = "test_api_key"
 
     DRIVE_CONFIG = {
+        "app_name": "Drive",
         "base_url": "http://drive.test",
         "file_url": "/explorer/items/files",
         "sdk_url": "/sdk",
