@@ -317,6 +317,12 @@ def send_message(message: models.Message, force_mta_out: bool = False):
         return
 
     try:
+        blob_content = message.blob.get_content()
+        parsed_email = parse_email_message(blob_content)
+
+        if parsed_email.get("from", {}).get("email") != message.sender.email:
+            raise ValueError("Mailbox email does not match the raw message sender")
+
         message.sent_at = timezone.now()
         message.save(update_fields=["sent_at"])
 
@@ -398,18 +404,17 @@ def send_message(message: models.Message, force_mta_out: bool = False):
                 )
 
         external_recipients = set()
-        parsed_email = None
-        blob_content = message.blob.get_content()
         for recipient_email in envelope_to:
             if (
                 check_local_recipient(recipient_email, create_if_missing=True)
                 and not force_mta_out
             ):
                 try:
-                    if parsed_email is None:
-                        parsed_email = parse_email_message(blob_content)
                     delivered = deliver_inbound_message(
-                        recipient_email, parsed_email, blob_content
+                        recipient_email,
+                        parsed_email,
+                        blob_content,
+                        skip_inbound_queue=True,
                     )
                     _mark_delivered(recipient_email, delivered, True)
                 except Exception as e:
@@ -483,7 +488,7 @@ def send_outbound_message(
         recipient_emails,
         message.sender.email,
         mime_data,
-        message.sender.mailbox.domain.custom_attributes or {},
+        message.sender.mailbox.domain.custom_settings or {},
     )
 
 
@@ -491,11 +496,11 @@ def send_outbound_email(
     recipient_emails: set[str],
     envelope_from: str,
     mime_data: bytes,
-    custom_attributes: dict[str, Any],
+    custom_settings: dict[str, Any],
 ) -> dict[str, Any]:
     """Send an existing email via MTA out (SMTP) or direct MX if not configured."""
 
-    mta_out_mode = custom_attributes.get("_mta_out_mode") or settings.MTA_OUT_MODE
+    mta_out_mode = custom_settings.get("MTA_OUT_MODE") or settings.MTA_OUT_MODE
 
     # Use direct MX delivery
     if mta_out_mode == "direct":
@@ -503,16 +508,18 @@ def send_outbound_email(
 
     if mta_out_mode == "relay":
         mta_out_smtp_host = (
-            custom_attributes.get("_mta_out_smtp_host") or settings.MTA_OUT_RELAY_HOST
+            custom_settings.get("MTA_OUT_RELAY_HOST") or settings.MTA_OUT_RELAY_HOST
         )
         mta_out_smtp_username = (
-            custom_attributes.get("_mta_out_smtp_username")
+            custom_settings.get("MTA_OUT_RELAY_USERNAME")
             or settings.MTA_OUT_RELAY_USERNAME
         )
         mta_out_smtp_password = (
-            custom_attributes.get("_mta_out_smtp_password")
+            custom_settings.get("MTA_OUT_RELAY_PASSWORD")
             or settings.MTA_OUT_RELAY_PASSWORD
         )
+        if not mta_out_smtp_host:
+            raise ValueError("MTA_OUT_RELAY_HOST is not configured")
 
         statuses = send_smtp_mail(
             smtp_host=(mta_out_smtp_host or "").split(":")[0],

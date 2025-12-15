@@ -16,7 +16,7 @@ from core.api.utils import get_file_key
 from core.enums import MailboxRoleChoices
 from core.mda.inbound import deliver_inbound_message
 from core.models import Mailbox, MailDomain, Message
-from core.services.importer import ImportService
+from core.services.importer.service import ImportService
 from core.services.importer.tasks import process_eml_file_task
 
 
@@ -739,10 +739,10 @@ Test message body 2"""
         )
 
 
-@patch("core.mda.inbound.is_ai_summary_enabled", return_value=True)
-@patch("core.mda.inbound.is_auto_labels_enabled", return_value=True)
-@patch("core.mda.inbound.summarize_thread")
-@patch("core.mda.inbound.assign_label_to_thread")
+@patch("core.mda.inbound_create.is_ai_summary_enabled", return_value=True)
+@patch("core.mda.inbound_create.is_auto_labels_enabled", return_value=True)
+@patch("core.mda.inbound_create.summarize_thread")
+@patch("core.mda.inbound_create.assign_label_to_thread")
 def test_import_messages_do_not_trigger_ai_features(
     mock_assign_label_to_thread,
     mock_summarize_thread,
