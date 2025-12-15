@@ -88,6 +88,9 @@ MTA_OUT_RELAY_HOST=mailcatcher:1025
 MDA_API_SECRET=my-shared-secret-mda
 SALT_KEY=ThisIsAnExampleSaltForDevPurposeOnly
 
+# Rspamd
+SPAM_CONFIG={"rspamd_url": "http://mpa:8010/_api", "rspamd_auth": ""}
+
 # AI
 AI_BASE_URL=
 AI_API_KEY=
