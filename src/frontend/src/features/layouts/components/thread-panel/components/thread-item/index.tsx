@@ -92,20 +92,20 @@ export const ThreadItem = ({ thread }: ThreadItemProps) => {
                             <p className="thread-item__subject">{thread.subject || thread.snippet || t('No subject')}</p>
                         </div>
                         <div className="thread-item__column thread-item__column--badges">
-                            {thread.has_attachments ? (
-                                <Tooltip placement="bottom" content={t('This thread has an attachment')}>
-                                    <Badge aria-label={t('Draft')} title={t('Draft')} color="neutral" variant="tertiary">
-                                        <Icon name="attachment" size={IconSize.SMALL} />
-                                    </Badge>
-                                </Tooltip>
-                            ) : null}
                             {thread.has_draft && (
-                                <Tooltip placement="bottom" content={t('This thread has a draft')}>
-                                    <Badge aria-label={t('Draft')} title={t('Draft')} color="brand" variant="secondary">
-                                        <Icon type={IconType.FILLED} name="mode_edit" size={IconSize.SMALL} />
-                                    </Badge>
-                                </Tooltip>
+                                <Badge aria-label={t('Draft')} title={t('Draft')} color="neutral" variant="tertiary" compact>
+                                    <Icon
+                                        type={IconType.FILLED}
+                                        name="mode_edit"
+                                        className="icon--size-sm"
+                                    />
+                                </Badge>
                             )}
+                            {thread.has_attachments ? (
+                                <Badge aria-label={t('Attachments')} title={t('Attachments')} color="neutral" variant="tertiary" compact>
+                                    <Icon name="attachment" size={IconSize.SMALL} />
+                                </Badge>
+                            ) : null}
                             {/* <div className="thread-item__actions">
                         <Tooltip placement="bottom" content={t('Mark as important')}>
                             <Button color="tertiary-text" className="thread-item__action">

@@ -175,23 +175,26 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
                                     <div className="thread-message__header-column thread-message__header-column--right flex-row flex-align-center">
                                         <div className="thread-message__metadata">
                                             <div className="flex-row">
-                                            {
-                                                message.attachments.length > 0 && (
-                                                    <Badge
-                                                        aria-label={t('{{count}} attachments', { count: message.attachments.length })}
-                                                        title={t('{{count}} attachments', { count: message.attachments.length })}
-                                                        color="neutral"
-                                                        variant="tertiary"
-                                                    >
-                                                        <Icon type={IconType.FILLED} name="attachment" size={IconSize.SMALL} />
-                                                    </Badge>
-                                                )
-                                            }
-                                            {(message.is_draft || draftMessage) && (
-                                                <Badge aria-label={t('Draft')} title={t('Draft')} variant="secondary" color="brand">
-                                                    <Icon type={IconType.FILLED} name="mode_edit" size={IconSize.SMALL} />
-                                                </Badge>
-                                            )}
+                                                {(message.is_draft || draftMessage) && (
+                                                    <Tooltip placement="bottom" content={t('This message has a draft')}>
+                                                        <Badge aria-label={t('Draft')} variant="tertiary" color="neutral">
+                                                            <Icon type={IconType.FILLED} name="mode_edit" className="icon--size-sm" />
+                                                        </Badge>
+                                                    </Tooltip>
+                                                )}
+                                                {
+                                                    message.attachments.length > 0 && (
+                                                        <Tooltip placement="bottom" content={t('This message has {{count}} attachments', { count: message.attachments.length, defaultValue_one: 'This message has one attachment' })}>
+                                                            <Badge
+                                                                aria-label={t('{{count}} attachments', { count: message.attachments.length })}
+                                                                color="neutral"
+                                                                variant="tertiary"
+                                                            >
+                                                                <Icon type={IconType.FILLED} name="attachment" size={IconSize.SMALL} />
+                                                            </Badge>
+                                                        </Tooltip>
+                                                    )
+                                                }
                                             </div>
                                             {message.created_at && (
                                                 <p className="thread-message__date">

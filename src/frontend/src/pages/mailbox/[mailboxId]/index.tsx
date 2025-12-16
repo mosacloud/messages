@@ -13,13 +13,13 @@ const Mailbox = () => {
 
     return (
         <PanelGroup autoSaveId="threads" direction="horizontal" className="threads__container">
-            <Panel className="thread-list-panel" defaultSize={25} minSize={20}>
+            <Panel className="thread-list-panel" defaultSize={35} minSize={20}>
                 <ThreadPanel />
             </Panel>
             {(isDesktop && (threads?.results?.length ?? 0) > 0) && (
                 <>
                     <PanelResizeHandle className="panel__resize-handle" />
-                    <Panel className="thread-view-panel" defaultSize={75} minSize={50}>
+                    <Panel className="thread-view-panel" defaultSize={65} minSize={50}>
                         <div className="thread-view thread-view--empty">
                             <div>
                                 <Image src="/images/svg/read-mail.svg" alt="" width={60} height={60} />

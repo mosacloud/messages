@@ -61,6 +61,7 @@
   "Attachment failed to be saved into your {{driveAppName}}'s workspace.": "",
   "Attachment saved into your {{driveAppName}}'s workspace.": "",
   "Attachment size limit exceeded": "",
+  "Attachments": "",
   "Attachments must be less than {{size}}.": "Bijlagen moeten minder zijn dan {{size}}.",
   "Authentication failed. Please check your credentials and ensure you have enabled IMAP connections in your account.": "Verificatie is mislukt. Controleer uw inloggegevens en zorg ervoor dat IMAP-verbindingen in uw account zijn ingeschakeld.",
   "Auto-labeling": "Auto-labeling",
