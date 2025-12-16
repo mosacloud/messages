@@ -13,6 +13,8 @@
             font-size: var(--c--globals--font--sizes--h4);
             font-weight: 500;
             line-height: 1.27;
+            // Adjust title position to align with message count below
+            transform: translateX(-3px);
         }
 
         .thread-panel__header--details {

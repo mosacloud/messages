@@ -71,7 +71,7 @@ export const SurveyButton = (props: ButtonProps) => {
     <Button
       {...props}
       icon={<Icon name="info" type={IconType.FILLED} />}
-      color="info"
+      color="brand"
       variant="secondary"
       className="feedback-button"
       title={t("Do you have any feedback?")}

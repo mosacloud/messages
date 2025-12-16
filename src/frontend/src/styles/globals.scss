@@ -47,6 +47,7 @@ body {
     position: absolute;
     opacity: 0;
     transition: opacity 250ms var(--c--globals--transitions--ease-in-out);
+    z-index: 5;
   }
 
   // Little tricks to expand the area to catch hover
@@ -74,26 +75,9 @@ body {
   font-size: var(--c--globals--font--sizes--sm);
 }
 
-// Cunningham icon sizes fix
-// remove when https://github.com/suitenumerique/ui-kit/pull/134 will be merged
-.material-icons.icon--xsmall {
-  font-size: 11px;
-}
-
-.material-icons.icon--small {
-  font-size: 16px;
-}
-
-.material-icons.icon--medium {
-  font-size: 24px;
-}
-
-.material-icons.icon--large {
-  font-size: 32px;
-}
-
-.material-icons.icon--xlarge {
-  font-size: 48px;
+// Cunningham icon sizes tweaks
+.material-icons.icon--size-sm {
+  font-size: var(--c--globals--font--sizes--sm);
 }
 
 // Cunningham modal class utilities
