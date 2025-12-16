@@ -4,11 +4,22 @@ import { useLabelsList } from "@/features/api/gen";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { useTranslation } from "react-i18next";
 import { useMemo, useState } from "react";
-import { Button, Tooltip } from "@gouvfr-lasuite/cunningham-react";
+import { Button, Tooltip, Checkbox } from "@gouvfr-lasuite/cunningham-react";
 import useRead from "@/features/message/use-read";
-import { DropdownMenu } from "@gouvfr-lasuite/ui-kit";
+import { DropdownMenu, Icon } from "@gouvfr-lasuite/ui-kit";
 
-const ThreadPanelTitle = () => {
+type ThreadPanelTitleProps = {
+    selectedThreadIds: Set<string>;
+    isAllSelected: boolean;
+    isSomeSelected: boolean;
+    isSelectionMode: boolean;
+    onSelectAll: () => void;
+    onClearSelection: () => void;
+    onEnableSelectionMode: () => void;
+    onDisableSelectionMode: () => void;
+}
+
+const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, isSelectionMode, onSelectAll, onClearSelection, onEnableSelectionMode, onDisableSelectionMode }: ThreadPanelTitleProps) => {
     const { t } = useTranslation();
     const { markAsRead, markAsUnread } = useRead();
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -23,10 +34,42 @@ const ThreadPanelTitle = () => {
         return MAILBOX_FOLDERS().find((folder) => new URLSearchParams(folder.filter).toString() === searchParams.toString())?.name;
     }, [searchParams, labelsQuery.data?.data, selectedMailbox])
 
+    const handleSelectAllToggle = () => {
+        if (isAllSelected) {
+            onClearSelection();
+        } else {
+            onSelectAll();
+        }
+    };
+
+    const threadIdsToMark = useMemo(() => {
+        if (selectedThreadIds.size > 0) {
+            return Array.from(selectedThreadIds);
+        }
+        return threads?.results.map((thread) => thread.id) || [];
+    }, [selectedThreadIds, threads?.results]);
+
+    const markAllTooltip = selectedThreadIds.size > 0
+        ? t('Mark {{count}} threads as read', { count: selectedThreadIds.size, defaultValue_one: 'Mark {{count}} thread as read' })
+        : t('Mark all as read');
+
+    const markAllUnreadLabel = selectedThreadIds.size > 0
+        ? t('Mark {{count}} threads as unread', { count: selectedThreadIds.size, defaultValue_one: 'Mark {{count}} thread as unread' })
+        : t('Mark all as unread');
+
     return (
         <header className="thread-panel__header">
             <h2 className="thread-panel__header--title">{title}</h2>
             <div className="thread-panel__header--details">
+                {(isSelectionMode || isSomeSelected) && (
+                    <Checkbox
+                        checked={isAllSelected}
+                        indeterminate={isSomeSelected && !isAllSelected}
+                        onChange={handleSelectAllToggle}
+                        aria-label={isAllSelected ? t('Deselect all threads') : t('Select all threads')}
+                        className="thread-panel__header--checkbox"
+                    />
+                )}
                 <p>
                     {isSearch
                         ? t('{{count}} results', { count: threads?.count, defaultValue_one: '{{count}} result' })
@@ -34,13 +77,21 @@ const ThreadPanelTitle = () => {
                     }
                 </p>
                 <div className="thread-panel__bar">
-                    <Tooltip content={t('Mark all as read')}>
+                    <Tooltip content={markAllTooltip}>
                         <Button
-                            onClick={() => markAsRead({ threadIds: threads?.results.map((thread) => thread.id) })}
+                            onClick={() => {
+                                markAsRead({
+                                    threadIds: threadIdsToMark,
+                                    onSuccess: () => {
+                                        unselectThread();
+                                        onClearSelection();
+                                    }
+                                });
+                            }}
                             icon={<span className="material-icons">mark_email_read</span>}
                             variant="tertiary"
                             size="nano"
-                            aria-label={t('Mark all as read')}
+                            aria-label={markAllTooltip}
                         />
                     </Tooltip>
                     <DropdownMenu
@@ -48,14 +99,29 @@ const ThreadPanelTitle = () => {
                         onOpenChange={setIsDropdownOpen}
                         options={[
                             {
-                                label: t('Mark all as unread'),
+                                label: markAllUnreadLabel,
                                 icon: <span className="material-icons">mark_email_unread</span>,
                                 callback: () => {
                                     markAsUnread({
-                                        threadIds: threads?.results.map((thread) => thread.id),
-                                        onSuccess: unselectThread
+                                        threadIds: threadIdsToMark,
+                                        onSuccess: () => {
+                                            unselectThread();
+                                            onClearSelection();
+                                        }
                                     })
                                 },
+                            },
+                            {
+                                label: isSelectionMode ? t('Disable thread selection') : t('Select threads'),
+                                icon: <Icon name="checklist" />,
+                                callback: () => {
+                                    if (isSelectionMode) {
+                                        onDisableSelectionMode();
+                                    } else {
+                                        onEnableSelectionMode();
+                                    }
+                                },
+                                showSeparator: true,
                             },
                         ]}
                     >

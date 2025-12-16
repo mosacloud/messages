@@ -14,6 +14,7 @@ and this project adheres to
 - Add a SPAM folder in mailbox panel
 - Allow to search for spam messages
 - Add `is_trashed` flag to thread model
+- Add to select multiple threads in thread panel
 
 ### Changed
 

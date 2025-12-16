@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next"
 import Link from "next/link"
 import { useParams, useSearchParams } from "next/navigation"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import clsx from "clsx"
 import { DateHelper } from "@/features/utils/date-helper"
@@ -10,28 +10,64 @@ import { ThreadItemSenders } from "./thread-item-senders"
 import { Badge } from "@/features/ui/components/badge"
 import { ThreadDragPreview } from "./thread-drag-preview"
 import { PORTALS } from "@/features/config/constants"
-import { Tooltip } from "@gouvfr-lasuite/cunningham-react"
+import { Checkbox } from "@gouvfr-lasuite/cunningham-react"
 import { Icon, IconSize, IconType } from "@gouvfr-lasuite/ui-kit"
 import { LabelBadge } from "@/features/ui/components/label-badge"
 
 type ThreadItemProps = {
     thread: Thread
+    index: number
+    isSelected: boolean
+    onToggleSelection: (threadId: string, index: number, shiftKey: boolean, ctrlKey: boolean, arrowUpKey?: 'up' | 'down') => void
+    selectedThreadIds: Set<string>
+    isSelectionMode: boolean
 }
 
-export const ThreadItem = ({ thread }: ThreadItemProps) => {
+export const ThreadItem = ({ thread, index, isSelected, onToggleSelection, selectedThreadIds, isSelectionMode }: ThreadItemProps) => {
     const { t, i18n } = useTranslation();
     const params = useParams<{ mailboxId: string, threadId: string }>()
     const searchParams = useSearchParams()
     const [isDragging, setIsDragging] = useState(false)
     const dragPreviewContainer = useRef(document.getElementById(PORTALS.DRAG_PREVIEW));
 
+    const hasSelection = isSelectionMode || selectedThreadIds.size > 0;
+    const showCheckbox = hasSelection;
+
+    const handleCheckboxClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onToggleSelection(thread.id, index, e.shiftKey, e.ctrlKey || e.metaKey);
+    };
+
+    const handleItemClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+        // If using modifier keys or in selection mode, toggle selection instead of navigating
+        if (e.shiftKey || e.ctrlKey || e.metaKey || hasSelection) {
+            e.preventDefault();
+            onToggleSelection(thread.id, index, e.shiftKey, e.ctrlKey || e.metaKey);
+        }
+        // Otherwise, let the Link handle navigation normally
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLAnchorElement>) => {
+        if (!hasSelection) return;
+        const arrowUpKey = e.key === 'ArrowUp';
+        const arrowDownKey = e.key === 'ArrowDown';
+        if (e.shiftKey && (arrowUpKey || arrowDownKey)) {
+            e.preventDefault();
+            onToggleSelection(thread.id, index, e.shiftKey, e.ctrlKey || e.metaKey, arrowUpKey ? 'up' : 'down');
+        }
+    };
+
     const handleDragStart = (e: React.DragEvent<HTMLAnchorElement>) => {
         setIsDragging(true)
+
+        // If this thread is selected, drag all selected threads
+        const threadsToDrag = isSelectionMode ? Array.from(selectedThreadIds) : [thread.id];
+
         e.dataTransfer.setData('application/json', JSON.stringify({
             type: 'thread',
-            threadId: thread.id,
-            labels: thread.labels.map((label) => label.id),
-        }))
+            threadIds: threadsToDrag,
+            labels: isSelectionMode ? [] : thread.labels.map((label) => label.id),
+        }));
         e.dataTransfer.effectAllowed = 'link'
         // Set the drag image
         if (dragPreviewContainer.current) {
@@ -39,6 +75,8 @@ export const ThreadItem = ({ thread }: ThreadItemProps) => {
         }
     }
     const handleDragEnd = () => setIsDragging(false);
+
+    const dragCount = selectedThreadIds.size > 0 ? selectedThreadIds.size : 1;
 
     return (
         <>
@@ -49,14 +87,26 @@ export const ThreadItem = ({ thread }: ThreadItemProps) => {
                     {
                         'thread-item--active': thread.id === params?.threadId,
                         'thread-item--dragging': isDragging,
+                        'thread-item--selected': isSelected,
                     },
                 )}
                 data-unread={thread.has_unread}
                 draggable
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
+                onClick={handleItemClick}
+                onKeyDown={handleKeyDown}
+                tabIndex={0}
             >
                 <div>
+                    {showCheckbox && (
+                        <Checkbox
+                            checked={isSelected}
+                            onClick={handleCheckboxClick}
+                            aria-label={isSelected ? t('Deselect thread') : t('Select thread')}
+                            className="thread-item__checkbox"
+                        />
+                    )}
                     <div className="thread-item__read-indicator" />
                 </div>
                 <div>
@@ -129,7 +179,7 @@ export const ThreadItem = ({ thread }: ThreadItemProps) => {
                 </div>
             </Link>
             {isDragging && dragPreviewContainer.current && createPortal(
-                <ThreadDragPreview count={1} />,
+                <ThreadDragPreview count={dragCount} />,
                 dragPreviewContainer.current
             )}
         </>

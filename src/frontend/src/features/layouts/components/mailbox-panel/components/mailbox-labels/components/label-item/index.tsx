@@ -105,19 +105,26 @@ export const LabelItem = ({ level = 0, onEdit, canManage, defaultFoldState, ...l
         invalidateThreadsStats();
 
         // Show success toast
-        addToast(
-          <ToasterItem
-            type="info"
-            actions={[{
-              label: t('Undo'), onClick: () => deleteThreadMutation.mutate(variables)
-            }]}
-          >
-            <Icon name="label" type={IconType.OUTLINED} />
-            <span>{t('Label "{{label}}" assigned to this conversation.', { label: label.name })}</span>
-          </ToasterItem>, {
-          toastId: JSON.stringify(variables),
-        }
-        );
+        const threadCount = variables.data.thread_ids!.length;
+
+          addToast(
+            <ToasterItem
+              type="info"
+              actions={[{
+                label: t('Undo'), onClick: () => deleteThreadMutation.mutate(variables)
+              }]}
+            >
+              <Icon name="label" type={IconType.OUTLINED} />
+              <span>{t('Label "{{label}}" assigned to {{count}} threads.', {
+                count: threadCount,
+                label: label.name,
+                defaultValue_one: "Label \"{{label}}\" assigned to this thread.",
+                defaultValue_other: "Label \"{{label}}\" assigned to {{count}} threads.",
+              })}</span>
+            </ToasterItem>, {
+            toastId: JSON.stringify(variables),
+          }
+          );
       },
     },
   });
@@ -154,15 +161,17 @@ export const LabelItem = ({ level = 0, onEdit, canManage, defaultFoldState, ...l
     }
   };
 
-  const handleDropThread = (transferData: { threadId: string, labels: string[] }) => {
+  const handleDropThread = (transferData: { threadIds?: string[], labels: string[] }) => {
     const canBeAssigned = !transferData.labels.includes(label.id);
-    if (transferData.threadId && canBeAssigned) {
-      addThreadMutation.mutate({
-        id: label.id,
-        data: {
-          thread_ids: [transferData.threadId],
-        },
-      });
+    if (!canBeAssigned) return;
+
+    if (transferData.threadIds && transferData.threadIds.length > 0) {
+        addThreadMutation.mutate({
+          id: label.id,
+          data: {
+            thread_ids: transferData.threadIds,
+          },
+        });
     }
   }
 

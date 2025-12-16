@@ -13,6 +13,10 @@
         padding-top: 0.42rem;
         padding-inline: var(--c--globals--spacings--2xs);
         flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--c--globals--spacings--3xs);
     }
 
     & > div:last-child {
@@ -33,6 +37,17 @@
 .thread-item.thread-item--active {
     background-color: var(--c--contextuals--background--semantic--brand--tertiary);
     border-color: var(--c--contextuals--border--semantic--brand--tertiary);
+}
+
+.thread-item.thread-item--selected {
+    background-color: var(--c--contextuals--background--semantic--brand--secondary);
+    border-color: var(--c--contextuals--border--semantic--brand--secondary);
+}
+
+.thread-item.thread-item--selected:not(.thread-item--active):hover,
+.thread-item.thread-item--selected:not(.thread-item--active):focus {
+    background-color: var(--c--contextuals--background--semantic--brand--secondary);
+    border-color: var(--c--contextuals--border--semantic--brand--secondary);
 }
 
 .thread-item.thread-item--dragging {
@@ -61,6 +76,18 @@
 .thread-item__thread-details {
     min-width: 0;
     flex: 1;
+}
+
+.thread-item__checkbox {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0;
+    --c--components--forms-checkbox--size: 1rem;
+    transform: translate(-3px, -30%);
+    & svg {
+        width: var(--c--components--forms-checkbox--size);
+        height: var(--c--components--forms-checkbox--size);
+    }
 }
 
 .thread-item__read-indicator {
