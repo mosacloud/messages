@@ -6,7 +6,7 @@
     height: 100%;
 
     &__header {
-        padding: var(--c--globals--spacings--sm) var(--c--globals--spacings--md);
+        padding: var(--c--globals--spacings--sm) var(--c--globals--spacings--base);
 
         .thread-panel__header--title {
             color: var(--c--contextuals--content--semantic--neutral--primary);
@@ -24,6 +24,19 @@
             font-size: var(--c--globals--font--sizes--xs);
             font-weight: 400;
             gap: var(--c--globals--spacings--xs);
+
+            .c__checkbox {
+                flex-shrink: 0;
+                margin: 0;
+                padding: 0;
+                --c--components--forms-checkbox--size: 1rem;
+                transform: translateX(-2px);
+
+                & svg {
+                    width: var(--c--components--forms-checkbox--size);
+                    height: var(--c--components--forms-checkbox--size);
+                }
+            }
         }
     }
 
