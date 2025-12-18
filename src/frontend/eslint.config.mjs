@@ -18,6 +18,7 @@ const eslintConfig = [
     rules: {
       "react-hooks/exhaustive-deps": "off",
       "no-console": ["error", { allow: ["error", "warn"] }],
+      "@typescript-eslint/no-unused-vars": "error",
     },
   },
 ];
