@@ -7,7 +7,6 @@ import { UnquoteMessage } from '@/features/utils/unquote-message';
 import { useTranslation } from "react-i18next";
 import { tokens } from '@/styles/cunningham-tokens'
 import { useTheme } from "@/features/providers/theme";
-import { C } from "vitest/dist/chunks/reporters.d.BFLkQcL6.js";
 
 type MessageBodyProps = {
     rawHtmlBody?: string;

@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next"
 import Link from "next/link"
 import { useParams, useSearchParams } from "next/navigation"
-import { useEffect, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import clsx from "clsx"
 import { DateHelper } from "@/features/utils/date-helper"
