@@ -108,7 +108,6 @@ export const DriveUploadButton = ({ attachment }: DriveUploadButtonProps) => {
         if (!driveFileId && driveFiles.length > 0) {
             const file = driveFiles.find((file) =>
                 file.filename === attachment.name
-                && file.mimetype === attachment.type
                 && file.size === attachment.size
             );
             if (file) {

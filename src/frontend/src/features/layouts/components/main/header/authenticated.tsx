@@ -13,6 +13,7 @@ import { useImportTaskStatus } from "@/hooks/use-import-task";
 import { StatusEnum } from "@/features/api/gen";
 import { CircularProgress } from "@/features/ui/components/circular-progress";
 import { TaskImportCacheHelper } from "@/features/utils/task-import-cache";
+import { useTheme } from "@/features/providers/theme";
 
 
 type AuthenticatedHeaderProps = HeaderProps & {
@@ -58,6 +59,7 @@ export const AuthenticatedHeader = ({
 export const HeaderRight = () => {
   const { user } = useAuth();
   const { isDesktop } = useResponsive();
+  const { themeConfig } = useTheme();
 
   return (
     <>
@@ -70,7 +72,7 @@ export const HeaderRight = () => {
           email: user.email || ""
         } : null}
         logout={logout}
-        termOfServiceUrl={process.env.NEXT_PUBLIC_TERMS_OF_SERVICE_URL}
+        termOfServiceUrl={themeConfig.terms_of_service_url}
         actions={
           <div className="user-menu__footer-action">
             <LanguagePicker size="small" compact />
