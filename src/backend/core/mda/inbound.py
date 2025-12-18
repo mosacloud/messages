@@ -139,7 +139,7 @@ def deliver_inbound_message(
             channel=channel,
         )
         logger.info(
-            "Queued inbound message %s for spam processing (recipient: %s)",
+            "Queued inbound message %s (recipient: %s)",
             inbound_message.id,
             recipient_email,
         )

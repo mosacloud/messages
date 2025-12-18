@@ -321,6 +321,10 @@ that the mail delivery pipeline is working correctly.</p>
         logger.error("Selfcheck failed: %s", e, exc_info=True)
 
     finally:
+        # Wait a bit for indexation, thread.update_stats() to be done in order
+        # to avoid race conditions on deleted objects.
+        time.sleep(5)
+
         if message:
             _cleanup_test_data(message)
         if received_message:
