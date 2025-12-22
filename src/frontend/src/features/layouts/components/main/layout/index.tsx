@@ -1,4 +1,4 @@
-import { PropsWithChildren, useEffect, useRef, useState } from "react";
+import { PropsWithChildren, useEffect, useState } from "react";
 import { Header } from "../header";
 import { useResponsive } from "../hooks/useResponsive";
 import {

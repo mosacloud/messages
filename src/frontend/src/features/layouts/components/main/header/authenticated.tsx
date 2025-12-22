@@ -124,7 +124,7 @@ const ApplicationMenu = () => {
         window.location.hash = `#modal-message-importer`;
       }
     }
-  }, [taskStatus]);
+  }, [t, taskStatus]);
 
   return (
     <DropdownMenu

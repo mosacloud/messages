@@ -31,9 +31,10 @@ export const RhfColorPaletteField = (props: { name: string }) => {
     const { control, setValue, watch } = useFormContext();
     const { t } = useTranslation();
     const [showInputOfHell, setShowInputOfHell] = useState(false);
+    const colorValue = watch('color');
     const charColor = useMemo(
-        () => ColorHelper.getContrastColor(watch('color')),
-        [watch('color')]
+        () => ColorHelper.getContrastColor(colorValue),
+        [colorValue]
     );
 
     return (

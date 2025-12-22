@@ -11,7 +11,7 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "npx serve -s out",
-    "lint": "next lint",
+    "lint": "eslint .",
     "build-theme": "cunningham -g css,scss,ts -o src/styles",
     "api:update": "orval --config ./orval.config.ts",
     "test": "vitest run",
@@ -55,7 +55,6 @@
     "zod-from-json-schema": "0.5.2"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "3.3.3",
     "@tanstack/eslint-plugin-query": "5.91.2",
     "@types/node": "25.0.3",
     "@types/react": "19.2.7",

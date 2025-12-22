@@ -25,7 +25,7 @@ export const TemplateVariableSelector = ({ variables, isLoading }: TemplateVaria
         editor.insertInlineContent([{ type: "template-variable", props: { label, value } }, " "]);
       }
     }));
-  }, [variables]);
+  }, [editor, variables]);
 
   if (isLoading) {
     return (

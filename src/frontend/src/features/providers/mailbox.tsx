@@ -165,7 +165,7 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
 
     const selectedThread = useMemo(() => {
         const threadId = router.query.threadId;
-        return threadsQuery.data?.pages.flatMap((page) => page.data.results).find((thread) => thread.id === threadId) ?? null;
+        return flattenThreads?.results.find((thread) => thread.id === threadId) ?? null;
     }, [router.query.threadId, flattenThreads])
     const previousSelectedThreadMessagesCount = usePrevious(selectedThread?.messages.length);
 
@@ -261,7 +261,7 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
         }
     }
 
-    const context = useMemo(() => ({
+    const context = {
         mailboxes: mailboxQuery.data?.data ?? null,
         threads: flattenThreads ?? null,
         messages: messagesQuery.data?.data ?? null,
@@ -301,13 +301,7 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
             threads: threadsQuery.error,
             messages: messagesQuery.error,
         }
-    }), [
-        mailboxQuery,
-        threadsQuery,
-        messagesQuery,
-        selectedMailbox,
-        selectedThread,
-    ]);
+    };
 
     useEffect(() => {
         if (selectedMailbox) {

@@ -32,7 +32,7 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
         if (searchParams.has('search')) return t('folder.search', { defaultValue: 'Search' });
         if (searchParams.has('label_slug')) return (labelsQuery.data?.data || []).find((label) => label.slug === searchParams.get('label_slug'))?.name;
         return MAILBOX_FOLDERS().find((folder) => new URLSearchParams(folder.filter).toString() === searchParams.toString())?.name;
-    }, [searchParams, labelsQuery.data?.data, selectedMailbox])
+    }, [searchParams, labelsQuery.data?.data, selectedMailbox, t])
 
     const handleSelectAllToggle = () => {
         if (isAllSelected) {

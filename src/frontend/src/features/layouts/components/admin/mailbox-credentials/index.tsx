@@ -24,7 +24,7 @@ const AdminMailboxCredentials = ({ mailbox }: AdminMailboxCredentialsProps) => {
                 password,
                 defaultValue: 'Your Messages credentials are:\n- Email: {{id}}\n- Password: {{password}}\n\nIt will be asked to change your password at your first login.',
             });
-    }, [mailbox]);
+    }, [mailbox, t]);
 
     const handleCopyToClipboard = async () => {
         try {

@@ -1,7 +1,7 @@
 import { ThreadLabel, TreeLabel, useLabelsAddThreadsCreate, useLabelsList, useLabelsRemoveThreadsCreate } from "@/features/api/gen";
 import { Icon, IconType, Spinner } from "@gouvfr-lasuite/ui-kit";
 import { Button, Checkbox, Input, Tooltip, useModal } from "@gouvfr-lasuite/cunningham-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import StringHelper from "@/features/utils/string-helper";
@@ -94,8 +94,7 @@ const LabelsPopup = ({ labels = [], selectedLabels, threadId }: LabelsPopupProps
             checked: selectedLabels.some((selectedLabel) => selectedLabel.id === label.id),
         }, ...children];
     }
-    const labelsOptions = useMemo(() => {
-        return labels
+    const labelsOptions = labels
         .map((label) => getFlattenLabelOptions(label))
         .flat()
         .filter((option) => {
@@ -107,22 +106,15 @@ const LabelsPopup = ({ labels = [], selectedLabels, threadId }: LabelsPopupProps
             if (a.checked !== b.checked) return a.checked ? -1 : 1;
             return a.label.localeCompare(b.label);
         });
-    }, [labels, searchQuery]);
 
     const addLabelMutation = useLabelsAddThreadsCreate({
         mutation: {
-            onSuccess: (_, variables) => {
-                invalidateThreadMessages();
-                labelsOptions.find((option) => option.value === variables.id)!.checked = true;
-            }
+            onSuccess: () => invalidateThreadMessages()
         }
     });
     const deleteLabelMutation = useLabelsRemoveThreadsCreate({
         mutation: {
-            onSuccess: (_, variables) => {
-                invalidateThreadMessages();
-                labelsOptions.find((option) => option.value === variables.id)!.checked = false;
-            }
+            onSuccess: () => invalidateThreadMessages()
         }
     });
 

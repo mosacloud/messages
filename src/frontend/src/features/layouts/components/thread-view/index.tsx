@@ -34,6 +34,7 @@ const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages,
     const { t } = useTranslation();
     const toMarkAsReadQueue = useRef<string[]>([]);
     const stickyContainerRef = useRef<HTMLDivElement>(null);
+    const { markAsRead } = useRead();
     const debouncedMarkAsRead = useDebounceCallback(() => {
         if (toMarkAsReadQueue.current.length === 0) return;
         markAsRead({ messageIds: toMarkAsReadQueue.current });
@@ -41,7 +42,6 @@ const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages,
     }, 150);
 
     const rootRef = useRef<HTMLDivElement>(null);
-    const { markAsRead } = useRead();
     const isAISummaryEnabled = useFeatureFlag(FEATURE_KEYS.AI_SUMMARY);
     const { isReady, reset, hasBeenInitialized, setHasBeenInitialized } = useThreadViewContext();
     // Refs for all unread messages
