@@ -16,7 +16,7 @@ import { useMailboxContext } from "@/features/providers/mailbox";
 const TEMPLATE_BLOCKNOTE_SCHEMA = BlockNoteSchema.create({
     blockSpecs: {
         ...defaultBlockSpecs,
-        'signature': BlockSignature,
+        'signature': BlockSignature(),
     },
     inlineContentSpecs: {
         ...defaultInlineContentSpecs,

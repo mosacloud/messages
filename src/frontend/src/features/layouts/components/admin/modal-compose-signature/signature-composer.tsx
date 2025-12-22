@@ -1,5 +1,6 @@
 import { BlockNoteViewField } from "@/features/blocknote/blocknote-view-field";
-import { BlockNoteEditor, BlockNoteSchema, defaultInlineContentSpecs, filterSuggestionItems, PartialBlock } from "@blocknote/core";
+import { BlockNoteEditor, BlockNoteSchema, defaultInlineContentSpecs, PartialBlock } from "@blocknote/core";
+import { filterSuggestionItems } from "@blocknote/core/extensions";
 import * as locales from '@blocknote/core/locales';
 import { SuggestionMenuController, useCreateBlockNote } from "@blocknote/react";
 import { FieldProps } from "@gouvfr-lasuite/cunningham-react";

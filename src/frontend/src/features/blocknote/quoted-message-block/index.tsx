@@ -6,7 +6,6 @@ export const QuotedMessageBlock = createReactBlockSpec(
     {
         type: "quoted-message",
         content: "none",
-        isSelectable: false,
         propSchema: {
             mode: { default: "reply" }, // reply or forward
             messageId: { default: "" },
@@ -36,6 +35,9 @@ export const QuotedMessageBlock = createReactBlockSpec(
         },
         // We don't embedded the quoted message as it is done by the backend
         // Take a look at the backend/core/mda/rfc5322/composer.py:477 for more details
-        toExternalHTML: () => (<span />)
+        toExternalHTML: () => (<span />),
+        meta: {
+            selectable: false,
+        }
     }
 )

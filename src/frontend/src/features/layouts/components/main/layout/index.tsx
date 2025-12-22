@@ -2,12 +2,12 @@ import { PropsWithChildren, useEffect, useRef, useState } from "react";
 import { Header } from "../header";
 import { useResponsive } from "../hooks/useResponsive";
 import {
-  ImperativePanelHandle,
   Panel,
-  PanelGroup,
-  PanelResizeHandle,
+  Group,
+  Separator,
+  useDefaultLayout,
 } from "react-resizable-panels";
-import { DropdownMenuOption,LeftPanel } from "@gouvfr-lasuite/ui-kit";
+import { DropdownMenuOption, LeftPanel } from "@gouvfr-lasuite/ui-kit";
 import { useControllableState } from "../hooks/useControllableState";
 import { Toaster } from "@/features/ui/components/toaster";
 export type MainLayoutProps = {
@@ -44,9 +44,12 @@ export const AppLayout = ({
     props.isLeftPanelOpen,
     props.setIsLeftPanelOpen
   );
+  const { defaultLayout, onLayoutChange } = useDefaultLayout({
+    groupId: "main",
+    storage: localStorage,
+  });
 
   const { isDesktop } = useResponsive();
-  const ref = useRef<ImperativePanelHandle>(null);
 
   const [minPanelSize, setMinPanelSize] = useState(
     calculateDefaultSize(300, isDesktop)
@@ -103,27 +106,26 @@ export const AppLayout = ({
         />
       </div>
       <main className="c__main-layout__content">
-        <PanelGroup autoSaveId={"persistance"} direction="horizontal">
+        <Group defaultLayout={defaultLayout} onLayoutChange={onLayoutChange} orientation="horizontal" style={{ flex: 1 }}>
           {mountLeftPanel && (
             <>
               <Panel
-                ref={ref}
-                order={0}
-                defaultSize={isDesktop ? minPanelSize : 0}
-                minSize={isDesktop ? minPanelSize : 0}
-                maxSize={maxPanelSize}
+                id="panel-main-left"
+                defaultSize={isDesktop ? `${minPanelSize}%` : "0"}
+                minSize={isDesktop ? `${minPanelSize}%` : "0"}
+                maxSize={`${maxPanelSize}%`}
               >
                 <LeftPanel isOpen={showLeftPanel}>{leftPanelContent}</LeftPanel>
               </Panel>
               {isDesktop && (
-                <PanelResizeHandle className="panel__resize-handle" />
+                <Separator className="panel__resize-handle" />
               )}
             </>
           )}
-          <Panel order={1} style={{ width: "100%" }}>
-                  {children}
+          <Panel id="panel-main-right">
+            {children}
           </Panel>
-        </PanelGroup>
+        </Group>
       </main>
       <Toaster />
     </div>

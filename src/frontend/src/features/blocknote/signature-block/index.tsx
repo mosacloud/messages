@@ -1,4 +1,4 @@
-import { createReactBlockSpec, useBlockNoteEditor, useComponentsContext, useEditorContentOrSelectionChange } from "@blocknote/react";
+import { createReactBlockSpec, useBlockNoteEditor, useComponentsContext, useEditorSelectionChange, useEditorChange } from "@blocknote/react";
 import { Icon, IconSize, Spinner } from "@gouvfr-lasuite/ui-kit";
 import { useState } from "react";
 import { Props } from "@blocknote/core";
@@ -29,15 +29,18 @@ export const SignatureTemplateSelector = ({ mailboxId, templates = [], defaultSe
     const forcedTemplate = templates.find(template => template.is_forced);
     const isForced = !!forcedTemplate;
 
-    // Updates state on content or selection change.
-    useEditorContentOrSelectionChange(() => {
+    const handleEditorContentOrSelectionChange = () => {
         const signatureBlock = editor.getBlock('signature');
         if (signatureBlock) {
             setIsSelected((signatureBlock.props as BlockSignatureConfigProps).templateId);
         } else {
             setIsSelected(null);
         }
-    }, editor);
+    }
+
+    // Updates state on content or selection change.
+    useEditorSelectionChange(handleEditorContentOrSelectionChange, editor);
+    useEditorChange(handleEditorContentOrSelectionChange, editor);
 
     if (isLoading) {
         return <Spinner size="sm" />;
@@ -140,8 +143,6 @@ export const BlockSignature = createReactBlockSpec(
     {
         type: "signature",
         content: "none",
-        isSelectable: false,
-        isFileBlock: false,
         propSchema: {
             templateId: { default: "" },
             mailboxId: { default: "" },
@@ -174,8 +175,11 @@ export const BlockSignature = createReactBlockSpec(
                 <div dangerouslySetInnerHTML={{ __html: preview.html_body }} />
             )
         },
-        toExternalHTML: () => (<span />)
+        toExternalHTML: () => (<span />),
+        meta: {
+            selectable: false,
+        }
     }
 )
 
-export type BlockSignatureConfigProps = Props<typeof BlockSignature['config']["propSchema"]>;
+export type BlockSignatureConfigProps = Props<ReturnType<typeof BlockSignature>["config"]["propSchema"]>;

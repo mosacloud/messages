@@ -19,8 +19,8 @@ import { MessageComposerHelper } from '@/features/utils/composer-helper';
 const BLOCKNOTE_SCHEMA = BlockNoteSchema.create({
     blockSpecs: {
         ...defaultBlockSpecs,
-        'signature': BlockSignature,
-        'quoted-message': QuotedMessageBlock,
+        'signature': BlockSignature(),
+        'quoted-message': QuotedMessageBlock(),
     }
 });
 

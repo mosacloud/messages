@@ -50,6 +50,7 @@ src/frontend/out/
 tsconfig.tsbuildinfo
 src/frontend/.config
 src/frontend/.next
+src/frontend/next-env.d.ts
 .vite
 
 # Mails
