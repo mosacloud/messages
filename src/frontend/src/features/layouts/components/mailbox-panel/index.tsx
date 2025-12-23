@@ -29,11 +29,8 @@ export const MailboxPanel = () => {
             <div className="mailbox-panel__header">
                 <MailboxPanelActions />
                 <HorizontalSeparator withPadding={false} />
-            </div>
-            {!selectedMailbox || queryStates.mailboxes.isLoading ? <Spinner /> :
-                (
-                    <>
-                        <div className="mailbox-panel__mailbox-title">
+                { selectedMailbox && (
+                <div className="mailbox-panel__mailbox-title">
                             <DropdownMenu
                                 options={getMailboxOptions()}
                                 isOpen={isOpen}
@@ -56,6 +53,12 @@ export const MailboxPanel = () => {
                                 </Button>
                             </DropdownMenu>
                         </div>
+                )}
+            </div>
+            {!selectedMailbox || queryStates.mailboxes.isLoading ? <Spinner /> :
+                (
+                    <>
+
                         <MailboxList />
                         <MailboxLabels mailbox={selectedMailbox} />
                     </>
