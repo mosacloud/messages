@@ -40,15 +40,16 @@ export const SignatureComposer = ({ blockNoteOptions, defaultValue, disabled = f
     const { data: { data: placeholders = {} } = {}, isLoading: isLoadingPlaceholders } = usePlaceholdersRetrieve();
     const canShowPlaceholdersMenu = !isLoadingPlaceholders && !!placeholders;
 
+    const locale = i18n.resolvedLanguage?.split('-')[0] || 'en';
     const editor = useCreateBlockNote({
         schema: SIGNATURE_BLOCKNOTE_SCHEMA,
         tabBehavior: "prefer-navigate-ui",
         initialContent: defaultValue ? JSON.parse(defaultValue): [{ type: "paragraph", content: "" }],
         trailingBlock: false,
         dictionary: {
-            ...(locales[(i18n.resolvedLanguage) as keyof typeof locales] || locales.en),
+            ...(locales[locale as keyof typeof locales] || locales.en),
             placeholders: {
-                ...(locales[(i18n.resolvedLanguage) as keyof typeof locales] || locales.en).placeholders,
+                ...(locales[locale as keyof typeof locales] || locales.en).placeholders,
                 emptyDocument: t('Start typing...'),
                 default: t('Start typing...'),
             }

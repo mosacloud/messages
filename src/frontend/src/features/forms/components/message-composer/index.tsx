@@ -97,21 +97,22 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
         }]);
     };
 
+    const locale = i18n.resolvedLanguage?.split('-')[0] || 'en';
     const editor = useCreateBlockNote({
         schema: BLOCKNOTE_SCHEMA,
         tabBehavior: "prefer-navigate-ui",
         trailingBlock: false,
         initialContent: getInitialContent(),
         dictionary: {
-            ...(locales[(i18n.resolvedLanguage) as keyof typeof locales] || locales.en),
+            ...(locales[locale as keyof typeof locales] || locales.en),
             placeholders: {
-                ...(locales[(i18n.resolvedLanguage) as keyof typeof locales] || locales.en).placeholders,
+                ...(locales[locale as keyof typeof locales] || locales.en).placeholders,
                 emptyDocument: t('Start typing...'),
                 default: t('Start typing...'),
             }
         },
         ...blockNoteOptions,
-    }, [i18n.resolvedLanguage]);
+    }, [locale]);
 
     const handleChange = useCallback(async (editor: BlockNoteEditor<MessageComposerBlockSchema, MessageComposerInlineContentSchema, MessageComposerStyleSchema>, submitNeeded: boolean = true) => {
         const markdown = await editor.blocksToMarkdownLossy(editor.document);
