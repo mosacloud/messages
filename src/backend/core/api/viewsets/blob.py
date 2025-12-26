@@ -148,7 +148,7 @@ class BlobViewSet(ViewSet):
         except Exception as e:
             logger.exception("Error uploading file: %s", str(e))
             return Response(
-                {"error": f"Error processing file: {str(e)}"},
+                {"error": "Error processing file"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -224,6 +224,6 @@ class BlobViewSet(ViewSet):
         except Exception as e:
             logger.exception("Error downloading file: %s", str(e))
             return Response(
-                {"error": f"Error downloading file: {str(e)}"},
+                {"error": "Error downloading file"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
