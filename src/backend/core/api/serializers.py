@@ -523,6 +523,7 @@ class ThreadSerializer(serializers.ModelSerializer):
 
         return ThreadAccessDetailSerializer(accesses, many=True).data
 
+    @extend_schema_field(serializers.ListSerializer(child=serializers.UUIDField()))
     def get_messages(self, instance):
         """Return the messages in the thread."""
         # Consider performance for large threads; pagination might be needed here?
