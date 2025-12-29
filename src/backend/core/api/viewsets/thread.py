@@ -382,12 +382,19 @@ class ThreadViewSet(
                 location=OpenApiParameter.QUERY,
                 description="Filter threads that are spam (1=true, 0=false).",
             ),
+            OpenApiParameter(
+                name="include_linked",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Include linked threads that share mime_id even if outside pagination (1=true, 0=false). Useful for unified inbox view.",
+            ),
         ],
     )
     def list(self, request, *args, **kwargs):
         """List threads with optional search functionality."""
         search_query = request.query_params.get("search", "").strip()
         mailbox_id = request.query_params.get("mailbox_id")
+        include_linked = request.query_params.get("include_linked") == "1"
 
         if mailbox_id:
             mailbox_access = models.MailboxAccess.objects.filter(
@@ -456,8 +463,39 @@ class ThreadViewSet(
                 }
             )
         # Fall back to regular DB query if no search query or OpenSearch not available
+        response = super().list(request, *args, **kwargs)
 
-        return super().list(request, *args, **kwargs)
+        # If include_linked is enabled, fetch linked threads not in the current page
+        if include_linked and response.data.get("results"):
+            result_ids = {str(t["id"]) for t in response.data["results"]}
+
+            # Collect all linked_thread_ids from the results
+            all_linked_ids = set()
+            for thread_data in response.data["results"]:
+                linked_ids = thread_data.get("linked_thread_ids", [])
+                for linked_id in linked_ids:
+                    if str(linked_id) not in result_ids:
+                        all_linked_ids.add(str(linked_id))
+
+            # Fetch the missing linked threads
+            if all_linked_ids:
+                # Get threads the user has access to
+                linked_threads = models.Thread.objects.filter(
+                    id__in=all_linked_ids,
+                ).filter(
+                    Exists(
+                        models.ThreadAccess.objects.filter(
+                            mailbox__accesses__user=request.user,
+                            thread=OuterRef("pk"),
+                        )
+                    )
+                )
+
+                # Serialize and append to results
+                linked_serializer = self.get_serializer(linked_threads, many=True)
+                response.data["results"].extend(linked_serializer.data)
+
+        return response
 
     @extend_schema(
         responses={
