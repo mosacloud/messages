@@ -39,14 +39,15 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
 
     const title = useMemo(() => {
         if (isUnifiedView) {
-            return folderName;
+            // Unified view: show "All mailboxes - Folder"
+            return folderName ? `${t('All mailboxes')} - ${folderName}` : t('All mailboxes');
         }
         // Single mailbox view: show email - folder name
         if (selectedMailbox?.email && folderName) {
             return `${selectedMailbox.email} - ${folderName}`;
         }
         return folderName;
-    }, [isUnifiedView, selectedMailbox?.email, folderName])
+    }, [isUnifiedView, selectedMailbox?.email, folderName, t])
 
     const handleSelectAllToggle = () => {
         if (isAllSelected) {
