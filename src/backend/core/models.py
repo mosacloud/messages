@@ -39,6 +39,7 @@ from core.enums import (
     MessageDeliveryStatusChoices,
     MessageRecipientTypeChoices,
     MessageTemplateTypeChoices,
+    ThreadAccessOriginChoices,
     ThreadAccessRoleChoices,
     UserAbilities,
 )
@@ -1143,6 +1144,12 @@ class ThreadAccess(BaseModel):
         _("role"),
         choices=ThreadAccessRoleChoices.choices,
         default=ThreadAccessRoleChoices.VIEWER,
+    )
+    origin = models.CharField(
+        _("origin"),
+        max_length=20,
+        choices=ThreadAccessOriginChoices.choices,
+        default=ThreadAccessOriginChoices.RECEIVED,
     )
 
     class Meta:

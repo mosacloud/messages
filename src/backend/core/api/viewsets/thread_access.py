@@ -7,7 +7,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import mixins, viewsets
 
-from core import models
+from core import enums, models
 
 from .. import permissions, serializers
 
@@ -62,3 +62,7 @@ class ThreadAccessViewSet(
         """Create a new thread access."""
         request.data["thread"] = self.kwargs.get("thread_id")
         return super().create(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        """Set origin to 'shared' when creating via API."""
+        serializer.save(origin=enums.ThreadAccessOriginChoices.SHARED)

@@ -155,11 +155,12 @@ def _create_thread(
         subject=thread_subject,
         snippet=snippet,
     )
-    # Create a thread access for the sender mailbox
+    # Create a thread access for the receiving mailbox
     models.ThreadAccess.objects.create(
         thread=thread,
         mailbox=mailbox,
         role=enums.ThreadAccessRoleChoices.EDITOR,
+        origin=enums.ThreadAccessOriginChoices.RECEIVED,
     )
 
     return thread

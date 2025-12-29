@@ -28,6 +28,15 @@ class ThreadAccessRoleChoices(models.IntegerChoices):
     EDITOR = 2, "editor"
 
 
+class ThreadAccessOriginChoices(models.TextChoices):
+    """Defines the origin of a thread access - how it was created."""
+
+    RECEIVED = "received", "received"    # Inbound email reception
+    SENT = "sent", "sent"                # Outbound/draft created
+    SHARED = "shared", "shared"          # Explicit share via API
+    FORWARDED = "forwarded", "forwarded"  # Mail rules/forwards
+
+
 class MessageRecipientTypeChoices(models.IntegerChoices):
     """Defines the possible types of message recipients."""
 

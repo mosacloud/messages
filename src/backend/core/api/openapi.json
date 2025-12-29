@@ -7303,6 +7303,10 @@
                     "role": {
                         "$ref": "#/components/schemas/ThreadAccessRoleChoices"
                     },
+                    "origin": {
+                        "type": "string",
+                        "readOnly": true
+                    },
                     "created_at": {
                         "type": "string",
                         "format": "date-time",
@@ -7322,6 +7326,7 @@
                     "created_at",
                     "id",
                     "mailbox",
+                    "origin",
                     "role",
                     "thread",
                     "updated_at"
@@ -7347,11 +7352,16 @@
                             }
                         ],
                         "readOnly": true
+                    },
+                    "origin": {
+                        "type": "string",
+                        "readOnly": true
                     }
                 },
                 "required": [
                     "id",
                     "mailbox",
+                    "origin",
                     "role"
                 ]
             },

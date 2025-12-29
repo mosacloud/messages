@@ -136,6 +136,7 @@ def create_draft(
             thread=thread,
             mailbox=mailbox,
             role=enums.ThreadAccessRoleChoices.EDITOR,
+            origin=enums.ThreadAccessOriginChoices.SENT,
         )
     # Validate and get signature if provided
     signature = mailbox.get_validated_signature(signature_id)

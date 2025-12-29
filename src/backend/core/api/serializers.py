@@ -497,10 +497,11 @@ class ThreadAccessDetailSerializer(serializers.ModelSerializer):
     role = IntegerChoicesField(
         choices_class=models.ThreadAccessRoleChoices, read_only=True
     )
+    origin = serializers.CharField(read_only=True)
 
     class Meta:
         model = models.ThreadAccess
-        fields = ["id", "mailbox", "role"]
+        fields = ["id", "mailbox", "role", "origin"]
         read_only_fields = fields
 
 
@@ -785,11 +786,12 @@ class ThreadAccessSerializer(serializers.ModelSerializer):
     """Serialize thread access information."""
 
     role = IntegerChoicesField(choices_class=models.ThreadAccessRoleChoices)
+    origin = serializers.CharField(read_only=True)
 
     class Meta:
         model = models.ThreadAccess
-        fields = ["id", "thread", "mailbox", "role", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        fields = ["id", "thread", "mailbox", "role", "origin", "created_at", "updated_at"]
+        read_only_fields = ["id", "origin", "created_at", "updated_at"]
 
 
 class MailboxAccessReadSerializer(serializers.ModelSerializer):
