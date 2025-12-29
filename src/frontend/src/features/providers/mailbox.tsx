@@ -29,7 +29,9 @@ type MailboxContextType = {
     threads: PaginatedThreadList | null;
     messages: readonly Message[] | null;
     selectedMailbox: Mailbox | null;
+    selectedMailboxIds: string[];  // [] = all (unified), [id] = single, [id1, id2] = subset
     selectedThread: Thread | null;
+    isUnifiedView: boolean;
     unselectThread: () => void;
     loadNextThreads: () => Promise<unknown>;
     invalidateThreadMessages: (source?: MessageQueryInvalidationSource) => Promise<void>;
@@ -54,7 +56,9 @@ const MailboxContext = createContext<MailboxContextType>({
     threads: null,
     messages: null,
     selectedMailbox: null,
+    selectedMailboxIds: [],
     selectedThread: null,
+    isUnifiedView: false,
     loadNextThreads: async () => {},
     unselectThread: () => {},
     invalidateThreadMessages: async () => {},
@@ -103,6 +107,7 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
     const hasSearchParamsChanged = useMemo(() => {
         return previousSearchParams?.toString() !== searchParams.toString();
     }, [previousSearchParams, searchParams]);
+
     const mailboxQuery = useMailboxesList({
         query: {
             refetchInterval: 30 * 1000, // 30 seconds
@@ -110,29 +115,62 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
         },
     });
 
+    // Determine selected mailbox IDs from route
+    // [] = unified (all mailboxes), [id] = single, [id1, id2] = subset
+    const selectedMailboxIds = useMemo((): string[] => {
+        const mailboxId = router.query.mailboxId as string | undefined;
+        if (!mailboxId || mailboxId === 'unified') {
+            return []; // Unified view - all mailboxes
+        }
+        return [mailboxId];
+    }, [router.query.mailboxId]);
+
+    // Unified view = no specific mailbox selected (empty array)
+    const isUnifiedView = selectedMailboxIds.length === 0;
+
+    // For backward compatibility and single-mailbox operations
     const selectedMailbox = useMemo(() => {
         if (!mailboxQuery.data?.data.length) return null;
 
-        const mailboxId = router.query.mailboxId;
+        // In unified view or multi-select, don't select a single mailbox
+        if (selectedMailboxIds.length !== 1) return null;
+
+        const mailboxId = selectedMailboxIds[0];
         return mailboxQuery.data?.data.find((mailbox) => mailbox.id === mailboxId)
             ?? mailboxQuery.data.data.findLast(m => m.role === MailboxRoleChoices.admin)
             ?? mailboxQuery.data.data.findLast(m => m.role === MailboxRoleChoices.editor)
             ?? mailboxQuery.data.data.findLast(m => m.role === MailboxRoleChoices.sender)
             ?? mailboxQuery.data.data.findLast(m => m.role === MailboxRoleChoices.viewer)
             ?? mailboxQuery.data.data[mailboxQuery.data.data.length - 1]
-    }, [router.query.mailboxId, mailboxQuery.data])
+    }, [selectedMailboxIds, mailboxQuery.data])
 
     const previousUnreadMessagesCount = usePrevious(selectedMailbox?.count_unread_messages);
     const threadQueryKey = useMemo(() => {
-        const queryKey = ['threads', selectedMailbox?.id];
+        const queryKey = ['threads', isUnifiedView ? 'unified' : selectedMailbox?.id];
         if (searchParams.get('search')) {
             return [...queryKey, 'search'];
         }
         return [...queryKey, searchParams.toString()];
-    }, [selectedMailbox?.id, searchParams]);
+    }, [selectedMailbox?.id, searchParams, isUnifiedView]);
+
+    // Build request params based on selectedMailboxIds
+    // [] = no filter (all mailboxes), [id] = single mailbox, [id1, id2] = multiple (future)
+    const threadRequestParams = useMemo(() => {
+        const params = { ...(router.query as Record<string, string>) };
+        // Remove mailboxId from query params (it's a route param, not an API filter)
+        delete params.mailboxId;
+        // Only add mailbox_id filter when a single mailbox is selected
+        if (selectedMailboxIds.length === 1) {
+            params.mailbox_id = selectedMailboxIds[0];
+        }
+        // TODO: Future - support multiple mailbox_ids for subset unification
+        return params;
+    }, [router.query, selectedMailboxIds]);
+
     const threadsQuery = useThreadsListInfinite(undefined, {
         query: {
-            enabled: !!selectedMailbox,
+            // Enable when we have mailboxes and either unified view or specific mailbox selected
+            enabled: !!mailboxQuery.data?.data.length && (isUnifiedView || selectedMailboxIds.length > 0),
             initialPageParam: 1,
             queryKey: threadQueryKey,
             getNextPageParam: (lastPage, pages) => {
@@ -140,10 +178,7 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
             },
         },
         request: {
-            params: {
-                ...(router.query as Record<string, string>),
-                mailbox_id: selectedMailbox?.id ?? '',
-            }
+            params: threadRequestParams,
         }
     });
 
@@ -266,7 +301,9 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
         threads: flattenThreads ?? null,
         messages: messagesQuery.data?.data ?? null,
         selectedMailbox,
+        selectedMailboxIds,
         selectedThread,
+        isUnifiedView,
         unselectThread,
         loadNextThreads: threadsQuery.fetchNextPage,
         invalidateThreadMessages,
@@ -306,10 +343,15 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
         threadsQuery,
         messagesQuery,
         selectedMailbox,
+        selectedMailboxIds,
         selectedThread,
+        isUnifiedView,
     ]);
 
     useEffect(() => {
+        // Don't redirect in unified view
+        if (isUnifiedView) return;
+
         if (selectedMailbox) {
             if (router.pathname === '/' ||  (selectedMailbox.id !== router.query.mailboxId && !router.pathname.includes('new'))) {
                 const defaultFolder = MAILBOX_FOLDERS()[0];
@@ -322,7 +364,7 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
                 invalidateThreadMessages();
             }
         }
-    }, [selectedMailbox]);
+    }, [selectedMailbox, isUnifiedView]);
 
     useEffect(() => {
         if (selectedMailbox && !selectedThread) {

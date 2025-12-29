@@ -34,6 +34,12 @@
         padding-inline: var(--c--globals--spacings--base) 1.1rem;
         width: 100%;
         height: inherit;
+        gap: var(--c--globals--spacings--xs);
+
+        & > .material-icons {
+            font-size: 1.25rem;
+            flex-shrink: 0;
+        }
 
         & > .button__label {
             overflow: hidden;

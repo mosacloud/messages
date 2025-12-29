@@ -18,6 +18,7 @@ export interface ThreadAccess {
   /** primary key for the record as UUID */
   mailbox: string;
   role: ThreadAccessRoleChoices;
+  readonly origin: string;
   /** date and time at which a record was created */
   readonly created_at: string;
   /** date and time at which a record was last updated */

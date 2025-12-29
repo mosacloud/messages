@@ -9,18 +9,22 @@ import { Icon, IconType } from "@gouvfr-lasuite/ui-kit";
 export const MailboxPanelActions = () => {
     const { t } = useTranslation();
     const router = useRouter();
-    const { selectedMailbox, refetchMailboxes } = useMailboxContext();
+    const { selectedMailbox, mailboxes, isUnifiedView, refetchMailboxes } = useMailboxContext();
     const { closeLeftPanel } = useLayoutContext();
     const canWriteMessages = useAbility(Abilities.CAN_WRITE_MESSAGES, selectedMailbox);
 
+    // In unified view, use the first mailbox (user can change 'from' in composer)
+    const defaultMailbox = isUnifiedView ? mailboxes?.[0] : selectedMailbox;
+    const canWrite = isUnifiedView ? !!defaultMailbox : canWriteMessages;
+
     const goToNewMessageForm = (event: React.MouseEvent<HTMLButtonElement | HTMLAnchorElement>) => {
         event.preventDefault();
-        if (!canWriteMessages) return;
+        if (!canWrite || !defaultMailbox) return;
         closeLeftPanel();
-        router.push(`/mailbox/${selectedMailbox!.id}/new`);
+        router.push(`/mailbox/${defaultMailbox.id}/new`);
     }
 
-    if (!selectedMailbox) return null;
+    if (!defaultMailbox) return null;
 
     return (
         <div className="mailbox-panel-actions">
@@ -28,9 +32,9 @@ export const MailboxPanelActions = () => {
             {
                 <Button
                     onClick={goToNewMessageForm}
-                    href={`/mailbox/${selectedMailbox.id}/new`}
+                    href={`/mailbox/${defaultMailbox.id}/new`}
                     icon={<Icon name="edit_note" type={IconType.OUTLINED} aria-hidden="true" />}
-                    disabled={!canWriteMessages}
+                    disabled={!canWrite}
                 >
                     {t("New message")}
                 </Button>

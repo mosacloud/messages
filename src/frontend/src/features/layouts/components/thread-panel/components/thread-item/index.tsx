@@ -13,6 +13,7 @@ import { PORTALS } from "@/features/config/constants"
 import { Checkbox } from "@gouvfr-lasuite/cunningham-react"
 import { Icon, IconSize, IconType } from "@gouvfr-lasuite/ui-kit"
 import { LabelBadge } from "@/features/ui/components/label-badge"
+import { useMailboxContext } from "@/features/providers/mailbox"
 
 type ThreadItemProps = {
     thread: Thread
@@ -29,6 +30,7 @@ export const ThreadItem = ({ thread, index, isSelected, onToggleSelection, selec
     const searchParams = useSearchParams()
     const [isDragging, setIsDragging] = useState(false)
     const dragPreviewContainer = useRef(document.getElementById(PORTALS.DRAG_PREVIEW));
+    const { isUnifiedView } = useMailboxContext();
 
     const hasSelection = isSelectionMode || selectedThreadIds.size > 0;
     const showCheckbox = hasSelection;
@@ -117,19 +119,25 @@ export const ThreadItem = ({ thread, index, isSelected, onToggleSelection, selec
                             )}
                         </div>
                         <div className="thread-item__column thread-item__column--metadata">
-                            {/* <Tooltip content={thread.labels.map((label) => label.display_name).join(', ')}>
-                                <div className="thread-item__label-bullets">
-                                    {thread.labels.slice(0, 4).map((label) => (
-                                        <div key={`label-bullet-${label.id}`} className="thread-item__label-bullet" style={{ backgroundColor: label.color }} />
+                            {isUnifiedView && thread.accesses?.length > 0 && (
+                                <div className="thread-item__mailboxes">
+                                    {thread.accesses.map((access) => (
+                                        <span
+                                            key={access.id}
+                                            className={clsx('thread-item__mailbox', {
+                                                'thread-item__mailbox--shared': access.origin === 'shared'
+                                            })}
+                                            title={access.origin === 'shared' ? t('Shared') : undefined}
+                                        >
+                                            <Icon
+                                                name={access.origin === 'shared' ? 'share' : 'mail'}
+                                                size={IconSize.SMALL}
+                                            />
+                                            {access.mailbox?.email}
+                                        </span>
                                     ))}
-                                    {thread.labels.length > 4 && (
-                                        <div className="thread-item__label-bullet">
-                                            +{thread.labels.length - 4}
-                                        </div>
-                                    )}
                                 </div>
-                            </Tooltip> */}
-
+                            )}
                             {thread.messaged_at && (
                                 <span className="thread-item__date">
                                     {DateHelper.formatDate(thread.messaged_at, i18n.resolvedLanguage)}

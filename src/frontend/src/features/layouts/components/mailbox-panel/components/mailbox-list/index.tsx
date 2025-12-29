@@ -104,7 +104,7 @@ type FolderItemProps = {
 
 const FolderItem = ({ folder }: FolderItemProps) => {
     const { t } = useTranslation();
-    const { selectedMailbox } = useMailboxContext();
+    const { selectedMailbox, isUnifiedView } = useMailboxContext();
     const { closeLeftPanel } = useLayoutContext();
     const searchParams = useSearchParams()
     const queryParams = useMemo(() => {
@@ -115,13 +115,18 @@ const FolderItem = ({ folder }: FolderItemProps) => {
         if (folder.filter?.has_draft === "1") return ThreadsStatsRetrieveStatsFields.all;
         return ThreadsStatsRetrieveStatsFields.all_unread;
     }, []);
+
+    // Use 'unified' as the key when in unified view
+    const mailboxIdForQuery = isUnifiedView ? 'unified' : selectedMailbox?.id;
+
     const { data } = useThreadsStatsRetrieve({
-        mailbox_id: selectedMailbox?.id,
+        mailbox_id: isUnifiedView ? undefined : selectedMailbox?.id,
         stats_fields,
         ...folder.filter
     }, {
         query: {
-            queryKey: ['threads', 'stats', selectedMailbox!.id, queryParams],
+            enabled: isUnifiedView || !!selectedMailbox,
+            queryKey: ['threads', 'stats', mailboxIdForQuery, queryParams],
         }
     });
 
@@ -136,9 +141,12 @@ const FolderItem = ({ folder }: FolderItemProps) => {
         });
     }, [searchParams, folder.filter]);
 
+    // Use 'unified' in URL when in unified view
+    const mailboxIdForUrl = isUnifiedView ? 'unified' : selectedMailbox?.id;
+
     return (
         <Link
-            href={`/mailbox/${selectedMailbox?.id}?${queryParams}`}
+            href={`/mailbox/${mailboxIdForUrl}?${queryParams}`}
             onClick={closeLeftPanel}
             shallow={false}
             className={clsx("mailbox__item", {
