@@ -927,6 +927,50 @@ class Thread(BaseModel):
             ]
         )
 
+    def get_linked_threads(self, user=None):
+        """
+        Find threads that share mime_id values with this thread's messages.
+
+        This enables linking related threads across different mailboxes when
+        the same email conversation exists in multiple places.
+
+        Args:
+            user: Optional user to filter by access permissions
+
+        Returns:
+            QuerySet of Thread objects that share message mime_ids with this thread
+        """
+        from django.db.models import Exists, OuterRef
+
+        # Get mime_ids from this thread's messages (exclude nulls)
+        my_mime_ids = list(
+            self.messages.exclude(mime_id__isnull=True)
+            .exclude(mime_id="")
+            .values_list("mime_id", flat=True)
+        )
+
+        if not my_mime_ids:
+            return Thread.objects.none()
+
+        # Find other threads with matching mime_ids
+        queryset = (
+            Thread.objects.filter(messages__mime_id__in=my_mime_ids)
+            .exclude(id=self.id)
+            .distinct()
+        )
+
+        # Optionally filter by user access
+        if user:
+            queryset = queryset.filter(
+                Exists(
+                    ThreadAccess.objects.filter(
+                        mailbox__accesses__user=user, thread=OuterRef("pk")
+                    )
+                )
+            )
+
+        return queryset
+
 
 class Label(BaseModel):
     """Label model to organize threads into folders using slash-based naming."""

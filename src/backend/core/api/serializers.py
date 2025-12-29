@@ -514,6 +514,7 @@ class ThreadSerializer(serializers.ModelSerializer):
     accesses = serializers.SerializerMethodField()
     labels = serializers.SerializerMethodField()
     summary = serializers.CharField(read_only=True)
+    linked_thread_ids = serializers.SerializerMethodField(read_only=True)
 
     @extend_schema_field(ThreadAccessDetailSerializer(many=True))
     def get_accesses(self, instance):
@@ -565,6 +566,15 @@ class ThreadSerializer(serializers.ModelSerializer):
         ).distinct()
         return ThreadLabelSerializer(labels, many=True).data
 
+    @extend_schema_field(serializers.ListSerializer(child=serializers.UUIDField()))
+    def get_linked_thread_ids(self, instance):
+        """Get IDs of threads that share mime_id values with this thread's messages."""
+        request = self.context.get("request")
+        user = request.user if request and hasattr(request, "user") else None
+        return list(
+            instance.get_linked_threads(user=user).values_list("id", flat=True)
+        )
+
     class Meta:
         model = models.Thread
         fields = [
@@ -590,6 +600,7 @@ class ThreadSerializer(serializers.ModelSerializer):
             "accesses",
             "labels",
             "summary",
+            "linked_thread_ids",
         ]
         read_only_fields = fields  # Mark all as read-only for safety
 

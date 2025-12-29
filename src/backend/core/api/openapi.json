@@ -7253,6 +7253,14 @@
                     "summary": {
                         "type": "string",
                         "readOnly": true
+                    },
+                    "linked_thread_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "readOnly": true
                     }
                 },
                 "required": [
@@ -7270,6 +7278,7 @@
                     "is_spam",
                     "is_trashed",
                     "labels",
+                    "linked_thread_ids",
                     "messaged_at",
                     "messages",
                     "sender_names",

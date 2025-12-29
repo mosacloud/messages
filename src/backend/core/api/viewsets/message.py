@@ -47,7 +47,13 @@ class MessageViewSet(
 
         if self.action == "list":
             thread_id = self.request.GET.get("thread_id")
-            if thread_id:
+            thread_ids = self.request.GET.get("thread_ids")
+
+            if thread_ids:
+                # Support fetching messages from multiple threads (comma-separated)
+                ids = [tid.strip() for tid in thread_ids.split(",") if tid.strip()]
+                queryset = queryset.filter(thread__id__in=ids).order_by("created_at")
+            elif thread_id:
                 queryset = queryset.filter(thread__id=thread_id).order_by("created_at")
             else:
                 return queryset.none()
