@@ -31,7 +31,10 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
     const folderName = useMemo(() => {
         if (searchParams.has('search')) return t('folder.search', { defaultValue: 'Search' });
         if (searchParams.has('label_slug')) return (labelsQuery.data?.data || []).find((label) => label.slug === searchParams.get('label_slug'))?.name;
-        return MAILBOX_FOLDERS().find((folder) => new URLSearchParams(folder.filter).toString() === searchParams.toString())?.name;
+        // Exclude context param (used for thread view) from folder matching
+        const paramsForMatch = new URLSearchParams(searchParams);
+        paramsForMatch.delete('context');
+        return MAILBOX_FOLDERS().find((folder) => new URLSearchParams(folder.filter).toString() === paramsForMatch.toString())?.name;
     }, [searchParams, labelsQuery.data?.data, selectedMailbox])
 
     const title = useMemo(() => {
