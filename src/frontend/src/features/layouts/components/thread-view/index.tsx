@@ -13,6 +13,7 @@ import { Button } from "@gouvfr-lasuite/cunningham-react"
 import { useTranslation } from "react-i18next"
 import { ThreadViewLabelsList } from "./components/thread-view-labels-list"
 import { ThreadSummary } from "./components/thread-summary";
+import { ThreadGroupOverview } from "./components/thread-group-overview";
 import clsx from "clsx";
 import ThreadViewProvider, { useThreadViewContext } from "./provider";
 
@@ -188,7 +189,11 @@ const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages,
 export const ThreadView = () => {
     const searchParams = useSearchParams();
     const isTrashView = searchParams.get('has_trashed') === '1';
+    // In unified view, context param provides the mailbox ID
+    const contextMailboxId = searchParams.get('context');
     const { selectedMailbox, selectedThread, messages, queryStates } = useMailboxContext();
+    // Use selectedMailbox if available, otherwise use context param
+    const mailboxId = selectedMailbox?.id ?? contextMailboxId ?? '';
     const [showTrashedMessages, setShowTrashedMessages] = useState(isTrashView);
     // Nest draft messages under their parent messages
     const messagesWithDraftChildren = useMemo(() => {
@@ -224,7 +229,23 @@ export const ThreadView = () => {
         setShowTrashedMessages(isTrashView);
     }, [selectedThread]);
 
-    if (!selectedMailbox || !selectedThread) return null
+    if (!selectedThread) return null
+
+    // In unified view with no context, show overview if thread has linked threads
+    const hasLinkedThreads = (selectedThread.linked_thread_ids?.length ?? 0) > 0;
+    const hasMultipleMailboxes = (selectedThread.accesses?.length ?? 0) > 1;
+    const showGroupOverview = !selectedMailbox && !contextMailboxId && (hasLinkedThreads || hasMultipleMailboxes);
+
+    if (showGroupOverview) {
+        return (
+            <div className="thread-view">
+                <ThreadGroupOverview thread={selectedThread} />
+            </div>
+        );
+    }
+
+    // Need either selectedMailbox or context param to show messages
+    if (!selectedMailbox && !contextMailboxId) return null
 
     if (queryStates.messages.isLoading) {
         return (
@@ -237,7 +258,7 @@ export const ThreadView = () => {
     return (
         <ThreadViewProvider messageIds={filteredMessages.map((m) => m.id) || []}>
             <ThreadViewComponent
-                mailboxId={selectedMailbox!.id}
+                mailboxId={mailboxId}
                 thread={selectedThread!}
                 messages={filteredMessages}
                 showTrashedMessages={showTrashedMessages}

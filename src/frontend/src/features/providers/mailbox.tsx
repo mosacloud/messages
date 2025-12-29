@@ -150,18 +150,26 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
         if (searchParams.get('search')) {
             return [...queryKey, 'search'];
         }
-        return [...queryKey, searchParams.toString()];
+        // Exclude context param from query key (it's for thread view, not thread list)
+        const paramsForKey = new URLSearchParams(searchParams);
+        paramsForKey.delete('context');
+        return [...queryKey, paramsForKey.toString()];
     }, [selectedMailbox?.id, searchParams, isUnifiedView]);
 
     // Build request params based on selectedMailboxIds
     // [] = no filter (all mailboxes), [id] = single mailbox, [id1, id2] = multiple (future)
     const threadRequestParams = useMemo(() => {
         const params = { ...(router.query as Record<string, string>) };
-        // Remove mailboxId from query params (it's a route param, not an API filter)
+        // Remove route params and context (not API filters)
         delete params.mailboxId;
+        delete params.threadId;
+        delete params.context;
         // Only add mailbox_id filter when a single mailbox is selected
         if (selectedMailboxIds.length === 1) {
             params.mailbox_id = selectedMailboxIds[0];
+        } else {
+            // Unified view: include linked threads even if outside pagination
+            params.include_linked = '1';
         }
         // TODO: Future - support multiple mailbox_ids for subset unification
         return params;
@@ -184,11 +192,19 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
 
     /**
      * Flatten the threads paginated query to a single result array
+     * Deduplicates threads that might appear in multiple pages via include_linked
      */
     const flattenThreads = useMemo(() => {
+        const seenIds = new Set<string>();
         return threadsQuery.data?.pages.reduce((acc, page, index) => {
             const isLastPage = index === threadsQuery.data?.pages.length - 1;
-            acc.results.push(...page.data.results);
+            // Deduplicate: only add threads we haven't seen before
+            for (const thread of page.data.results) {
+                if (!seenIds.has(thread.id)) {
+                    seenIds.add(thread.id);
+                    acc.results.push(thread);
+                }
+            }
             if (isLastPage) {
                 acc.count = page.data.count;
                 acc.next = page.data.next;

@@ -25,14 +25,25 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const searchParams = useSearchParams();
     const isSearch = searchParams.has('search');
-    const { threads, selectedMailbox, unselectThread } = useMailboxContext();
+    const { threads, selectedMailbox, unselectThread, isUnifiedView } = useMailboxContext();
     const labelsQuery = useLabelsList({ mailbox_id: selectedMailbox?.id }, { query: { enabled: !!selectedMailbox && !!searchParams.get('label_slug') } })
 
-    const title = useMemo(() => {
+    const folderName = useMemo(() => {
         if (searchParams.has('search')) return t('folder.search', { defaultValue: 'Search' });
         if (searchParams.has('label_slug')) return (labelsQuery.data?.data || []).find((label) => label.slug === searchParams.get('label_slug'))?.name;
         return MAILBOX_FOLDERS().find((folder) => new URLSearchParams(folder.filter).toString() === searchParams.toString())?.name;
     }, [searchParams, labelsQuery.data?.data, selectedMailbox])
+
+    const title = useMemo(() => {
+        if (isUnifiedView) {
+            return folderName;
+        }
+        // Single mailbox view: show email - folder name
+        if (selectedMailbox?.email && folderName) {
+            return `${selectedMailbox.email} - ${folderName}`;
+        }
+        return folderName;
+    }, [isUnifiedView, selectedMailbox?.email, folderName])
 
     const handleSelectAllToggle = () => {
         if (isAllSelected) {

@@ -32,6 +32,13 @@ export const ThreadItem = ({ thread, index, isSelected, onToggleSelection, selec
     const dragPreviewContainer = useRef(document.getElementById(PORTALS.DRAG_PREVIEW));
     const { isUnifiedView } = useMailboxContext();
 
+    // In unified view with single mailbox, add context param for the thread view
+    // If multiple mailboxes, don't add context - show overview instead
+    const hasMultipleMailboxes = (thread.accesses?.length ?? 0) > 1;
+    const contextMailboxId = isUnifiedView && !hasMultipleMailboxes
+        ? thread.accesses?.[0]?.mailbox?.id
+        : null;
+
     const hasSelection = isSelectionMode || selectedThreadIds.size > 0;
     const showCheckbox = hasSelection;
 
@@ -83,7 +90,12 @@ export const ThreadItem = ({ thread, index, isSelected, onToggleSelection, selec
     return (
         <>
             <Link
-                href={`/mailbox/${params?.mailboxId}/thread/${thread.id}?${searchParams}`}
+                href={(() => {
+                    const newParams = new URLSearchParams(searchParams);
+                    newParams.delete('context');
+                    if (contextMailboxId) newParams.set('context', contextMailboxId);
+                    return `/mailbox/${params?.mailboxId}/thread/${thread.id}?${newParams}`;
+                })()}
                 className={clsx(
                     'thread-item',
                     {
@@ -119,25 +131,6 @@ export const ThreadItem = ({ thread, index, isSelected, onToggleSelection, selec
                             )}
                         </div>
                         <div className="thread-item__column thread-item__column--metadata">
-                            {isUnifiedView && thread.accesses?.length > 0 && (
-                                <div className="thread-item__mailboxes">
-                                    {thread.accesses.map((access) => (
-                                        <span
-                                            key={access.id}
-                                            className={clsx('thread-item__mailbox', {
-                                                'thread-item__mailbox--shared': access.origin === 'shared'
-                                            })}
-                                            title={access.origin === 'shared' ? t('Shared') : undefined}
-                                        >
-                                            <Icon
-                                                name={access.origin === 'shared' ? 'share' : 'mail'}
-                                                size={IconSize.SMALL}
-                                            />
-                                            {access.mailbox?.email}
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
                             {thread.messaged_at && (
                                 <span className="thread-item__date">
                                     {DateHelper.formatDate(thread.messaged_at, i18n.resolvedLanguage)}
@@ -175,15 +168,38 @@ export const ThreadItem = ({ thread, index, isSelected, onToggleSelection, selec
                     </div> */}
                         </div>
                     </div>
-                    <div className="thread-item__row">
-                     {thread.labels.length > 0 && (
-                         <div className="thread-item__labels">
-                             {thread.labels.map((label) => (
-                                 <LabelBadge key={label.id} label={label} compact />
-                             ))}
-                         </div>
-                     )}
-                 </div>
+                    {/* Bottom row: mailboxes in unified view, labels otherwise */}
+                    {isUnifiedView ? (
+                        thread.accesses?.length > 0 && (
+                            <div className="thread-item__row">
+                                <div className="thread-item__mailboxes">
+                                    {thread.accesses.map((access) => (
+                                        <Link
+                                            key={access.id}
+                                            href={`/mailbox/${access.mailbox?.id}/thread/${thread.id}?${searchParams}`}
+                                            className={clsx('thread-item__mailbox', {
+                                                'thread-item__mailbox--shared': access.origin === 'shared'
+                                            })}
+                                            title={access.origin === 'shared' ? t('Shared') : access.mailbox?.email}
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            {access.mailbox?.email}
+                                        </Link>
+                                    ))}
+                                </div>
+                            </div>
+                        )
+                    ) : (
+                        thread.labels.length > 0 && (
+                            <div className="thread-item__row">
+                                <div className="thread-item__labels">
+                                    {thread.labels.map((label) => (
+                                        <LabelBadge key={label.id} label={label} compact />
+                                    ))}
+                                </div>
+                            </div>
+                        )
+                    )}
                 </div>
             </Link>
             {isDragging && dragPreviewContainer.current && createPortal(

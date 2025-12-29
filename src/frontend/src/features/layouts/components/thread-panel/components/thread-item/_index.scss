@@ -234,9 +234,18 @@
     border-radius: 4px;
     white-space: nowrap;
     flex-shrink: 0;
+    text-decoration: none;
+
+    &:hover {
+        background-color: var(--c--contextuals--background--semantic--neutral--tertiary);
+    }
 
     &--shared {
         color: var(--c--contextuals--content--semantic--brand--secondary);
         background-color: var(--c--contextuals--background--semantic--brand--tertiary);
+
+        &:hover {
+            background-color: var(--c--contextuals--background--semantic--brand--secondary);
+        }
     }
 }

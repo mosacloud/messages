@@ -1,0 +1,41 @@
+.thread-group {
+    display: flex;
+    flex-direction: column;
+
+    // The header is a button but styled like thread-item
+    &__header {
+        // Reset button styles, inherit from thread-item
+        background: none;
+        border: none;
+        cursor: pointer;
+        font: inherit;
+        text-align: left;
+        width: 100%;
+
+        // Ensure it behaves like thread-item
+        &.thread-item {
+            // Already has thread-item styles
+        }
+    }
+
+    &__chevron {
+        flex-shrink: 0;
+        color: var(--c--contextuals--content--semantic--neutral--secondary);
+    }
+
+    // Expanded child threads
+    &__threads {
+        display: flex;
+        flex-direction: column;
+        padding-left: var(--c--globals--spacings--md);
+        margin-top: var(--c--globals--spacings--3xs);
+        border-left: 2px solid var(--c--contextuals--border--decorative--neutral);
+        margin-left: var(--c--globals--spacings--lg);
+    }
+
+    // When expanded, adjust header border radius
+    &--expanded &__header {
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+    }
+}

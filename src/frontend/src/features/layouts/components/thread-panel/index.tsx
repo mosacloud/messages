@@ -1,5 +1,6 @@
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { ThreadItem } from "./components/thread-item";
+import { ThreadGroup } from "./components/thread-group";
 import { Spinner } from "@gouvfr-lasuite/ui-kit";
 import { useTranslation } from "react-i18next";
 import { Button } from "@gouvfr-lasuite/cunningham-react";
@@ -10,9 +11,10 @@ import Image from "next/image";
 import useAbility, { Abilities } from "@/hooks/use-ability";
 import ThreadPanelHeader from "./components/thread-panel-header";
 import { useThreadSelection } from "./hooks/use-thread-selection";
+import { useLinkedThreadGroups, isThreadGroup } from "./hooks/use-linked-thread-groups";
 
 export const ThreadPanel = () => {
-    const { threads, queryStates, unselectThread, loadNextThreads, selectedThread, selectedMailbox } = useMailboxContext();
+    const { threads, queryStates, unselectThread, loadNextThreads, selectedThread, selectedMailbox, isUnifiedView } = useMailboxContext();
     const searchParams = useSearchParams();
     const isSearch = searchParams.has('search');
     const { t } = useTranslation();
@@ -33,6 +35,9 @@ export const ThreadPanel = () => {
         threads: threads?.results,
         selectedThread,
     });
+
+    // Group linked threads in unified view
+    const { allItems } = useLinkedThreadGroups(threads?.results, isUnifiedView);
 
     const showImportButton = useMemo(() => {
         // Only show import button if there are no threads in inbox or all messages folders and user has ability to import messages
@@ -104,17 +109,31 @@ export const ThreadPanel = () => {
                 onDisableSelectionMode={clearSelection}
             />
             <div className="thread-panel__threads_list">
-                {threads?.results.map((thread, index) => (
-                    <ThreadItem
-                        key={thread.id}
-                        thread={thread}
-                        index={index}
-                        isSelected={selectedThreadIds.has(thread.id)}
-                        onToggleSelection={toggleThreadSelection}
-                        selectedThreadIds={selectedThreadIds}
-                        isSelectionMode={isSelectionMode}
-                    />
-                ))}
+                {allItems.map((item, index) => {
+                    if (isThreadGroup(item)) {
+                        return (
+                            <ThreadGroup
+                                key={`group-${item.primaryThread.id}`}
+                                group={item}
+                                onToggleSelection={toggleThreadSelection}
+                                selectedThreadIds={selectedThreadIds}
+                                isSelectionMode={isSelectionMode}
+                                baseIndex={index}
+                            />
+                        );
+                    }
+                    return (
+                        <ThreadItem
+                            key={item.id}
+                            thread={item}
+                            index={index}
+                            isSelected={selectedThreadIds.has(item.id)}
+                            onToggleSelection={toggleThreadSelection}
+                            selectedThreadIds={selectedThreadIds}
+                            isSelectionMode={isSelectionMode}
+                        />
+                    );
+                })}
                 {threads!.next && (
                     <div className="thread-panel__page-loader" ref={loaderRef}>
                         {queryStates.threads.isFetchingNextPage && (

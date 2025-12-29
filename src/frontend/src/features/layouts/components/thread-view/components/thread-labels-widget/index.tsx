@@ -18,12 +18,13 @@ export const ThreadLabelsWidget = ({ threadId, selectedLabels = [] }: ThreadLabe
     const { selectedMailbox } = useMailboxContext();
     const canManageLabels = useAbility(Abilities.CAN_MANAGE_MAILBOX_LABELS, selectedMailbox);
     const {data: labelsList, isLoading: isLoadingLabelsList } = useLabelsList(
-        { mailbox_id: selectedMailbox!.id },
-        { query: { enabled: canManageLabels } }
+        { mailbox_id: selectedMailbox?.id ?? '' },
+        { query: { enabled: canManageLabels && !!selectedMailbox } }
     );
     const [isPopupOpen, setIsPopupOpen] = useState(false);
 
-    if (!canManageLabels) return null;
+    // In unified view (no selectedMailbox), hide labels widget
+    if (!selectedMailbox || !canManageLabels) return null;
 
     if (isLoadingLabelsList) {
         return (

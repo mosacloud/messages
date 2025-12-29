@@ -40,4 +40,6 @@ export interface Thread {
   readonly accesses: readonly ThreadAccessDetail[];
   readonly labels: readonly ThreadLabel[];
   readonly summary: string;
+  /** IDs of threads linked via shared mime_id (same conversation in other mailboxes) */
+  readonly linked_thread_ids: readonly string[];
 }
