@@ -6632,6 +6632,11 @@
                         "default": false,
                         "description": "Set as forced template"
                     },
+                    "is_default": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Set as default template (auto-loaded when composing a new message)"
+                    },
                     "created_at": {
                         "type": "string",
                         "format": "date-time",
@@ -6688,6 +6693,11 @@
                         "type": "boolean",
                         "default": false,
                         "description": "Set as forced template"
+                    },
+                    "is_default": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Set as default template (auto-loaded when composing a new message)"
                     }
                 },
                 "required": [
@@ -7006,6 +7016,11 @@
                         "type": "boolean",
                         "default": false,
                         "description": "Set as forced template"
+                    },
+                    "is_default": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Set as default template (auto-loaded when composing a new message)"
                     }
                 }
             },
@@ -7072,6 +7087,11 @@
                         "readOnly": true,
                         "description": "Whether this template is forced; no other template of the same type can be used in the same scope"
                     },
+                    "is_default": {
+                        "type": "boolean",
+                        "readOnly": true,
+                        "description": "Whether this template is the default; it will be automatically loaded when composing a new message"
+                    },
                     "created_at": {
                         "type": "string",
                         "format": "date-time",
@@ -7092,6 +7112,7 @@
                     "html_body",
                     "id",
                     "is_active",
+                    "is_default",
                     "is_forced",
                     "name",
                     "raw_body",

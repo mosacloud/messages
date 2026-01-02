@@ -656,6 +656,7 @@ class MessageTemplateAdmin(admin.ModelAdmin):
         "name",
         "type",
         "is_forced",
+        "is_default",
         "is_active",
         "mailbox",
         "maildomain",
@@ -664,6 +665,7 @@ class MessageTemplateAdmin(admin.ModelAdmin):
     list_filter = (
         "type",
         "is_forced",
+        "is_default",
         "created_at",
     )
     autocomplete_fields = ("mailbox", "maildomain")

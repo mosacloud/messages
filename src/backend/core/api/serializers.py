@@ -334,6 +334,7 @@ class ReadOnlyMessageTemplateSerializer(serializers.ModelSerializer):
             "type",
             "is_active",
             "is_forced",
+            "is_default",
             "created_at",
             "updated_at",
         ]
@@ -1366,6 +1367,11 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
     is_forced = serializers.BooleanField(
         required=False, default=False, help_text="Set as forced template"
     )
+    is_default = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="Set as default template (auto-loaded when composing a new message)",
+    )
     html_body = serializers.CharField(required=False)
     text_body = serializers.CharField(required=False)
     raw_body = serializers.CharField(required=False)
@@ -1381,6 +1387,7 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
             "type",
             "is_active",
             "is_forced",
+            "is_default",
             "created_at",
             "updated_at",
         ]

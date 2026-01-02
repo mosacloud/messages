@@ -1,12 +1,12 @@
-import { MailDomainAdmin, MessageTemplate, MessageTemplateTypeChoices, useMaildomainsMessageTemplatesCreate, useMaildomainsMessageTemplatesUpdate } from "@/features/api/gen";
-import { RhfCheckbox } from "@/features/forms/components/react-hook-form/rhf-checkbox";
+import { Mailbox, MessageTemplate, MessageTemplateTypeChoices, useMailboxesMessageTemplatesCreate, useMailboxesMessageTemplatesUpdate, getMailboxesMessageTemplatesListUrl } from "@/features/api/gen";
 import { RhfInput } from "@/features/forms/components/react-hook-form/rhf-input";
-import { useAdminMailDomain } from "@/features/providers/admin-maildomain";
+import { RhfCheckbox } from "@/features/forms/components/react-hook-form/rhf-checkbox";
+import { useMailboxContext } from "@/features/providers/mailbox";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button, Modal, ModalSize } from "@gouvfr-lasuite/cunningham-react";
 import { FormProvider, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import z from "zod";
+import { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { SignatureComposer } from "@/features/signatures/components/signature-composer";
 import { addToast, ToasterItem } from "@/features/ui/components/toaster";
@@ -14,25 +14,29 @@ import i18n from "@/features/i18n/initI18n";
 import { handle } from "@/features/utils/errors";
 
 /**
- * Modal component to compose a signature for a mail domain.
+ * Modal component to compose a signature for a mailbox.
  */
-type ModalComposeSignatureProps = {
+type ModalComposeMailboxSignatureProps = {
     isOpen: boolean;
     onClose: () => void;
     signature?: MessageTemplate;
 }
 
-export const ModalComposeSignature = ({ isOpen, onClose, signature }: ModalComposeSignatureProps) => {
+export const ModalComposeMailboxSignature = ({ isOpen, onClose, signature }: ModalComposeMailboxSignatureProps) => {
     const { t } = useTranslation();
-    const { selectedMailDomain } = useAdminMailDomain();
-    const domainName = selectedMailDomain?.name || "";
+    const { selectedMailbox } = useMailboxContext();
     const queryClient = useQueryClient();
-    const invalidateMessageTemplates = async () => {
-        await queryClient.invalidateQueries({ queryKey: [`/api/v1.0/maildomains/${selectedMailDomain?.id}/message-templates/`], exact: false });
+
+    if (!selectedMailbox) {
+        return null;
+    }
+
+    const invalidateSignatures = async () => {
+        await queryClient.invalidateQueries({ queryKey: [getMailboxesMessageTemplatesListUrl(selectedMailbox.id)], exact: false });
     }
 
     const handleSuccess = async () => {
-        await invalidateMessageTemplates();
+        await invalidateSignatures();
         onClose();
         addToast(
             <ToasterItem type="info">
@@ -46,64 +50,58 @@ export const ModalComposeSignature = ({ isOpen, onClose, signature }: ModalCompo
     return (
         <Modal
             isOpen={isOpen}
-            title={t('Create a new signature for {{domain}}', { domain: domainName })}
+            title={signature ? t('Edit signature "{{signature}}"', { signature: signature.name }) : t("Create a new signature")}
             size={ModalSize.LARGE}
             onClose={onClose}
         >
             <div className="modal-compose-signature">
-                <SignatureComposeForm domain={selectedMailDomain!} defaultValue={signature} onSuccess={handleSuccess} />
+                <SignatureComposeForm mailbox={selectedMailbox} defaultValue={signature} onSuccess={handleSuccess} />
             </div>
         </Modal>
     );
 };
 
 type SignatureComposerFormProps = {
-    domain: MailDomainAdmin;
+    mailbox: Mailbox;
     defaultValue?: MessageTemplate;
     onSuccess?: () => void;
 }
 
-const signatureComposerSchema = z.object({
+const signatureComposerSchema = () => z.object({
     name: z.string().min(1, { error: i18n.t("Name is required") }),
-    is_active: z.boolean(),
-    is_forced: z.boolean(),
     is_default: z.boolean(),
     htmlBody: z.string().min(1, { error: i18n.t("Content is required") }),
     textBody: z.string().min(1, { error: i18n.t("Content is required") }),
     rawBody: z.string().min(1, { error: i18n.t("Content is required") }),
 });
 
-type SignatureComposerFormData = z.infer<typeof signatureComposerSchema>;
+type SignatureComposerFormData = z.infer<ReturnType<typeof signatureComposerSchema>>;
 
-const SignatureComposeForm = ({ domain, defaultValue, onSuccess }: SignatureComposerFormProps) => {
+const SignatureComposeForm = ({ mailbox, defaultValue, onSuccess }: SignatureComposerFormProps) => {
     const { t } = useTranslation();
     const form = useForm<SignatureComposerFormData>({
-        resolver: zodResolver(signatureComposerSchema),
+        resolver: zodResolver(signatureComposerSchema()),
         defaultValues: {
             name: defaultValue?.name ?? "",
-            is_active: defaultValue?.is_active ?? true,
-            is_forced: defaultValue?.is_forced ?? false,
             is_default: defaultValue?.is_default ?? false,
             htmlBody: defaultValue?.html_body,
             textBody: defaultValue?.text_body,
-            rawBody: defaultValue?.raw_body ?? undefined,
+            rawBody: defaultValue?.raw_body,
         }
     });
-    const { mutateAsync: createSignature, isPending } = useMaildomainsMessageTemplatesCreate();
-    const { mutateAsync: updateSignature, isPending: isUpdating } = useMaildomainsMessageTemplatesUpdate();
+    const { mutateAsync: createSignature, isPending } = useMailboxesMessageTemplatesCreate();
+    const { mutateAsync: updateSignature, isPending: isUpdating } = useMailboxesMessageTemplatesUpdate();
     const isSubmitting = isPending || isUpdating;
 
-    const onSubmit = async (data: SignatureComposerFormData) => {
+    const onSubmit = async (data: SignatureComposerFormData): Promise<void> => {
         try {
             if (defaultValue?.id) {
                 await updateSignature({
-                    maildomainPk: domain.id,
+                    mailboxId: mailbox.id,
                     id: defaultValue.id,
                     data: {
                         name: data.name,
                         type: MessageTemplateTypeChoices.signature,
-                        is_active: data.is_active,
-                        is_forced: data.is_forced,
                         is_default: data.is_default,
                         html_body: data.htmlBody,
                         text_body: data.textBody,
@@ -112,12 +110,10 @@ const SignatureComposeForm = ({ domain, defaultValue, onSuccess }: SignatureComp
                 });
             } else {
                 await createSignature({
-                    maildomainPk: domain.id,
+                    mailboxId: mailbox.id,
                     data: {
                         name: data.name,
                         type: MessageTemplateTypeChoices.signature,
-                        is_active: data.is_active,
-                        is_forced: data.is_forced,
                         is_default: data.is_default,
                         html_body: data.htmlBody,
                         text_body: data.textBody,
@@ -127,6 +123,12 @@ const SignatureComposeForm = ({ domain, defaultValue, onSuccess }: SignatureComp
             }
         } catch (error) {
             handle(error);
+            addToast(
+                <ToasterItem type="error">
+                    <span>{t("Failed to save signature. Please try again.")}</span>
+                </ToasterItem>,
+            );
+            return;
         }
         onSuccess?.();
     }
@@ -151,21 +153,9 @@ const SignatureComposeForm = ({ domain, defaultValue, onSuccess }: SignatureComp
                 </div>
                 <div className="form-field-row">
                     <RhfCheckbox
-                        label={t('Active')}
-                        name="is_active"
-                        text={t('While the signature is disabled, it will not be available to the users.')}
-                        fullWidth
-                    />
-                    <RhfCheckbox
                         label={t('Default signature')}
                         name="is_default"
                         text={t('The default signature will be automatically loaded when composing a new message.')}
-                        fullWidth
-                    />
-                    <RhfCheckbox
-                        label={t('Forced signature')}
-                        name="is_forced"
-                        text={t('The forced signature will be the only one usable for new messages.')}
                         fullWidth
                     />
                 </div>
@@ -174,7 +164,6 @@ const SignatureComposeForm = ({ domain, defaultValue, onSuccess }: SignatureComp
                         {isSubmitting ? t('Saving...') : t('Save')}
                     </Button>
                 </div>
-
             </form>
         </FormProvider>
     );

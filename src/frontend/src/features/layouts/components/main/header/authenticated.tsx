@@ -138,14 +138,23 @@ const ApplicationMenu = () => {
               }] : []),
               ...(canImportMessages ? [importMessageOption] : []),
               ...(canManageMessageTemplates ? [{
-                label: t("Message templates"),
+                label: t("My message templates"),
                 icon: <Icon name="description" />,
                 callback: () => {
                     if (selectedMailbox) {
                         router.push(`/mailbox/${selectedMailbox.id}/message-templates`);
                     }
                 }
-            }] : []),
+              },
+              {
+                label: t("My signatures"),
+                icon: <Icon name="draw" />,
+                callback: () => {
+                    if (selectedMailbox) {
+                        router.push(`/mailbox/${selectedMailbox.id}/signatures`);
+                    }
+                }
+              }] : []),
           ]}
       >
       <Button

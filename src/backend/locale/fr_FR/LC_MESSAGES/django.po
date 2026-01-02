@@ -551,6 +551,12 @@ msgstr "est forcé"
 msgid "Whether this template is forced; no other template of the same type can be used in the same scope"
 msgstr "Si ce modèle est forcé ; aucun autre modèle du même type ne peut être utilisé dans le même périmètre"
 
+msgid "is default"
+msgstr "est par défaut"
+
+msgid "Whether this template is the default; it will be automatically loaded when composing a new message"
+msgstr "Si ce modèle est celui par défaut ; il sera automatiquement chargé lors de la composition d'un nouveau message"
+
 msgid "message template"
 msgstr "modèle de message"
 
