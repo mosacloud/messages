@@ -751,7 +751,7 @@ class Base(Configuration):
         default=False, environ_name="FEATURE_AI_AUTOLABELS", environ_prefix=None
     )
     FEATURE_MESSAGE_TEMPLATES = values.BooleanValue(
-        default=False, environ_name="FEATURE_MESSAGE_TEMPLATES", environ_prefix=None
+        default=True, environ_name="FEATURE_MESSAGE_TEMPLATES", environ_prefix=None
     )
     FEATURE_IMPORT_MESSAGES = values.BooleanValue(
         default=True, environ_name="FEATURE_IMPORT_MESSAGES", environ_prefix=None
