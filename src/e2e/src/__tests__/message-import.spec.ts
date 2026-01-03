@@ -94,7 +94,7 @@ test.describe("Import Message", () => {
 
     // Then expect the new message to be visible in the thread list
     await expect(
-      page.getByRole("link", { name: "Sardine 18 Nov An old message" })
+      page.getByRole("link", { name: "Sardine 18/11/2025 An old message" })
     ).toBeVisible();
   });
 
