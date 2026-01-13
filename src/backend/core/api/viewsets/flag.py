@@ -18,7 +18,7 @@ from core import models
 from .. import permissions
 
 # Define allowed flag types
-ALLOWED_FLAGS = ["unread", "starred", "trashed", "archived"]
+ALLOWED_FLAGS = ["unread", "starred", "trashed", "archived", "spam"]
 
 
 class ChangeFlagView(APIView):
@@ -72,7 +72,7 @@ class ChangeFlagView(APIView):
             ),
         },
         description=(
-            "Change a specific flag (unread, starred, trashed) for multiple messages "
+            "Change a specific flag (unread, starred, trashed, archived, spam) for multiple messages "
             "or all messages within multiple threads. Uses request body."
         ),
         examples=[
@@ -122,7 +122,7 @@ class ChangeFlagView(APIView):
     )
     def post(self, request, *args, **kwargs):
         """
-        Change a specific flag (unread, starred, trashed) for messages or threads.
+        Change a specific flag (unread, starred, trashed, archived, spam) for messages or threads.
         Expects data in the request body, not query parameters.
 
         Request Body Parameters:
@@ -202,6 +202,8 @@ class ChangeFlagView(APIView):
                         batch_update_data["archived_at"] = (
                             current_time if value else None
                         )
+                    elif flag == "spam":
+                        batch_update_data["is_spam"] = value
 
                     messages_to_update.update(**batch_update_data)
                     # Collect threads affected by direct message updates
@@ -241,6 +243,8 @@ class ChangeFlagView(APIView):
                         batch_update_data["archived_at"] = (
                             current_time if value else None
                         )
+                    elif flag == "spam":
+                        batch_update_data["is_spam"] = value
                     # Note: Trashing or Archiving a thread might have other side effects (e.g., updating thread state)
                     # This current logic only updates the is_trashed or is_archived flag on messages within.
                     # If Thread model itself has state, update threads_to_process separately.

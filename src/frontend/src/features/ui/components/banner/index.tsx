@@ -3,7 +3,7 @@ import { Button, ButtonProps } from "@gouvfr-lasuite/cunningham-react";
 import clsx from "clsx";
 import { useId } from "react";
 
-type BannerAction = Omit<ButtonProps, 'fullWidth' | 'size' | 'iconPosition' | 'icon'> & {
+type BannerAction = Omit<ButtonProps, 'fullWidth' | 'size' | 'iconPosition'> & {
     label: string;
 }
 

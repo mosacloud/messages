@@ -8,18 +8,20 @@ import { useTranslation } from "react-i18next";
 import { ThreadAccessesWidget } from "../thread-accesses-widget";
 import { ThreadLabelsWidget } from "../thread-labels-widget";
 import useArchive from "@/features/message/use-archive";
+import useSpam from "@/features/message/use-spam";
 
-type ActionBarProps = {
+type ThreadActionBarProps = {
     canUndelete: boolean;
     canUnarchive: boolean;
 }
 
-export const ActionBar = ({ canUndelete, canUnarchive }: ActionBarProps) => {
+export const ThreadActionBar = ({ canUndelete, canUnarchive }: ThreadActionBarProps) => {
     const { t } = useTranslation();
     const { selectedThread, unselectThread } = useMailboxContext();
     const { markAsUnread } = useRead();
     const { markAsTrashed, markAsUntrashed } = useTrash();
     const { markAsArchived, markAsUnarchived } = useArchive();
+    const { markAsSpam, markAsNotSpam } = useSpam();
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
     return (
@@ -29,31 +31,19 @@ export const ActionBar = ({ canUndelete, canUnarchive }: ActionBarProps) => {
                     onClick={unselectThread}
                     variant="tertiary"
                     aria-label={t('Close this thread')}
-                    size="small"
-                    icon={<Icon name="chevron_left" />}
-                    // style={{ marginRight: '-0.5rem' }}
+                    size="nano"
+                    icon={<Icon name="close" />}
                 />
             </Tooltip>
-            <VerticalSeparator withPadding={false} />
-            <ThreadAccessesWidget accesses={selectedThread!.accesses} />
-            <ThreadLabelsWidget threadId={selectedThread!.id} selectedLabels={selectedThread!.labels} />
-            <Tooltip content={t('Mark as unread')}>
-                <Button
-                    variant="tertiary"
-                    aria-label={t('Mark as unread')}
-                    size="small"
-                    icon={<Icon name="mark_email_unread" type={IconType.OUTLINED} />}
-                    onClick={() => markAsUnread({ threadIds: [selectedThread!.id], onSuccess: unselectThread })}
-                />
-            </Tooltip>
-            {
+            <VerticalSeparator />
+            {!selectedThread?.is_spam && (
                 canUnarchive ? (
                     (
                         <Tooltip content={t('Unarchive')}>
                             <Button
                                 variant="tertiary"
                                 aria-label={t('Unarchive')}
-                                size="small"
+                                size="nano"
                                 icon={<Icon name="unarchive" type={IconType.OUTLINED} />}
                                 onClick={() => markAsUnarchived({ threadIds: [selectedThread!.id], onSuccess: unselectThread })}
                             />
@@ -64,25 +54,72 @@ export const ActionBar = ({ canUndelete, canUnarchive }: ActionBarProps) => {
                         <Button
                             variant="tertiary"
                             aria-label={t('Archive')}
-                            size="small"
+                            size="nano"
                             icon={<Icon name="archive" type={IconType.OUTLINED} />}
                             onClick={() => markAsArchived({ threadIds: [selectedThread!.id], onSuccess: unselectThread })}
                         />
                     </Tooltip>
                 )
+            )}
+            {
+                !selectedThread?.is_spam ? (
+                    <Tooltip content={t('Report as spam')}>
+                        <Button
+                            variant="tertiary"
+                            aria-label={t('Report as spam')}
+                            size="nano"
+                            icon={<Icon name="report" type={IconType.OUTLINED} />}
+                            onClick={() => markAsSpam({ threadIds: [selectedThread!.id], onSuccess: unselectThread })}
+                        />
+                    </Tooltip>
+                ) : (
+                    <Tooltip content={t('Remove spam report')}>
+                        <Button
+                            variant="tertiary"
+                            aria-label={t('Remove spam report')}
+                            size="nano"
+                            icon={<Icon name="report_off" type={IconType.OUTLINED} />}
+                            onClick={() => markAsNotSpam({ threadIds: [selectedThread!.id], onSuccess: unselectThread })}
+                        />
+                    </Tooltip>
+                )
             }
+            {
+                canUndelete ? (
+                    (
+                        <Tooltip content={t('Undelete')}>
+                            <Button
+                                variant="tertiary"
+                                aria-label={t('Undelete')}
+                                size="nano"
+                                icon={<Icon name="restore_from_trash" type={IconType.OUTLINED} />}
+                                onClick={() => markAsUntrashed({ threadIds: [selectedThread!.id], onSuccess: unselectThread })}
+                            />
+                        </Tooltip>
+                    )
+                ) : (
+                    <Tooltip content={t('Delete')}>
+                        <Button
+                            variant="tertiary"
+                            aria-label={t('Delete')}
+                            size="nano"
+                            icon={<Icon name="delete" type={IconType.OUTLINED} />}
+                            onClick={() => markAsTrashed({ threadIds: [selectedThread!.id], onSuccess: unselectThread })}
+                        />
+                    </Tooltip>
+                )
+            }
+            <VerticalSeparator />
+            <ThreadLabelsWidget threadId={selectedThread!.id} selectedLabels={selectedThread!.labels} />
+            <ThreadAccessesWidget accesses={selectedThread!.accesses} />
             <DropdownMenu
                 isOpen={isDropdownOpen}
                 onOpenChange={setIsDropdownOpen}
                 options={[
-                    canUndelete ? {
-                        label: t('Undelete'),
-                        icon: <Icon name="restore_from_trash" type={IconType.OUTLINED} />,
-                        callback: () => markAsUntrashed({ threadIds: [selectedThread!.id], onSuccess: unselectThread }),
-                    } : {
-                        label: t('Delete'),
-                        icon: <Icon name="delete" type={IconType.OUTLINED} />,
-                        callback: () => markAsTrashed({ threadIds: [selectedThread!.id], onSuccess: unselectThread }),
+                    {
+                        label: t('Mark as unread'),
+                        icon: <Icon name="mark_email_unread" type={IconType.OUTLINED} />,
+                        callback: () => markAsUnread({ threadIds: [selectedThread!.id], onSuccess: unselectThread })
                     }
                 ]}
             >
@@ -92,7 +129,7 @@ export const ActionBar = ({ canUndelete, canUnarchive }: ActionBarProps) => {
                         icon={<Icon name="more_vert" type={IconType.OUTLINED} />}
                         variant="tertiary"
                         aria-label={t('More options')}
-                        size="small"
+                        size="nano"
                     />
                 </Tooltip>
             </DropdownMenu>

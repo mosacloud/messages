@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { AttachmentList } from "../thread-attachment-list";
 import { ThreadMessageFooterProps } from "./types";
+import { Icon, IconType } from "@gouvfr-lasuite/ui-kit";
 
 const ThreadMessageFooter = ({
     message,
@@ -12,7 +13,6 @@ const ThreadMessageFooter = ({
     intersectionRef,
 }: ThreadMessageFooterProps) => {
     const { t } = useTranslation();
-
     const hasAttachments = !message.is_draft && (message.attachments.length > 0 || driveAttachments.length > 0);
 
     return (
@@ -32,7 +32,7 @@ const ThreadMessageFooter = ({
                             color="brand"
                             variant="primary"
                             size="small"
-                            icon={<span className="material-icons">reply_all</span>}
+                            icon={<Icon name="reply_all" type={IconType.OUTLINED} />}
                             aria-label={t('Reply all')}
                             onClick={() => onSetReplyFormMode('reply_all')}
                         >
@@ -41,7 +41,7 @@ const ThreadMessageFooter = ({
                     )}
                     <Button
                         variant={hasSeveralRecipients ? 'tertiary' : 'primary'}
-                        icon={<span className="material-icons">reply</span>}
+                        icon={<Icon name="reply" type={IconType.OUTLINED} />}
                         aria-label={t('Reply')}
                         size="small"
                         onClick={() => onSetReplyFormMode('reply')}
@@ -51,7 +51,7 @@ const ThreadMessageFooter = ({
                     <Button
                         variant='tertiary'
                         size="small"
-                        icon={<span className="material-icons">forward</span>}
+                        icon={<Icon name="forward" type={IconType.OUTLINED} />}
                         onClick={() => onSetReplyFormMode('forward')}
                     >
                         {t('Forward')}

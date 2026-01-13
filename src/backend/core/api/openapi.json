@@ -1298,7 +1298,7 @@
         "/api/v1.0/flag/": {
             "post": {
                 "operationId": "flag_create",
-                "description": "Change a specific flag (unread, starred, trashed) for multiple messages or all messages within multiple threads. Uses request body.",
+                "description": "Change a specific flag (unread, starred, trashed, archived, spam) for multiple messages or all messages within multiple threads. Uses request body.",
                 "tags": [
                     "flags"
                 ],
@@ -5403,10 +5403,11 @@
                     "unread",
                     "starred",
                     "trashed",
-                    "archived"
+                    "archived",
+                    "spam"
                 ],
                 "type": "string",
-                "description": "* `unread` - unread\n* `starred` - starred\n* `trashed` - trashed\n* `archived` - archived"
+                "description": "* `unread` - unread\n* `starred` - starred\n* `trashed` - trashed\n* `archived` - archived\n* `spam` - spam"
             },
             "ImportFileRequest": {
                 "type": "object",

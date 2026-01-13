@@ -37,7 +37,7 @@ export const ThreadLabelsWidget = ({ threadId, selectedLabels = [] }: ThreadLabe
                     }
                 >
                     <Button
-                        size="small"
+                        size="nano"
                         variant="tertiary"
                         aria-label={t('Add label')}
                         icon={<Icon type={IconType.OUTLINED} name="new_label" />}
@@ -52,7 +52,7 @@ export const ThreadLabelsWidget = ({ threadId, selectedLabels = [] }: ThreadLabe
             <Tooltip content={t('Add label')}>
                 <Button
                     onClick={() => setIsPopupOpen(true)}
-                    size="small"
+                    size="nano"
                     variant="tertiary"
                     aria-label={t('Add label')}
                     icon={<Icon type={IconType.OUTLINED} name="new_label" />}

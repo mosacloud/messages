@@ -111,7 +111,7 @@ export const ThreadAccessesWidget = ({ accesses }: ThreadAccessesWidgetProps) =>
             <Tooltip content={t('See members of this thread ({{count}} members)', { count: accesses.length })}>
                 <Button
                     variant="tertiary"
-                    size="small"
+                    size="nano"
                     aria-label={t('See members of this thread ({{count}} members)', { count: accesses.length })}
                     className="thread-accesses-widget"
                     onClick={() => setIsShareModalOpen(true)}

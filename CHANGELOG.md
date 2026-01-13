@@ -17,6 +17,7 @@ and this project adheres to
 - Add to select multiple threads in thread panel
 - Add image proxy endpoint to display external images in messages
 - Add `to_exact` modifier to search query
+- Allow to toggle spam status of a thread
 
 ### Changed
 

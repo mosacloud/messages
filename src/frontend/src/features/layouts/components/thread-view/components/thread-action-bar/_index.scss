@@ -7,7 +7,11 @@
     border-radius: 4px;
     box-shadow: 0 2px 5px 0 var(--c--contextuals--background--semantic--contextual--primary-hover);
     padding: var(--c--globals--spacings--3xs);
-    gap: var(--c--globals--spacings--4xs);
+    gap: var(--c--globals--spacings--2xs);
+
+    & > .c__separator--vertical.with-padding {
+        margin-inline: var(--c--globals--spacings--3xs);
+    }
 }
 
 .thread-action-bar > div {

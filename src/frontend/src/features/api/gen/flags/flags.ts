@@ -25,7 +25,7 @@ import { fetchAPI } from "../../fetch-api";
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 /**
- * Change a specific flag (unread, starred, trashed) for multiple messages or all messages within multiple threads. Uses request body.
+ * Change a specific flag (unread, starred, trashed, archived, spam) for multiple messages or all messages within multiple threads. Uses request body.
  */
 export type flagCreateResponse200 = {
   data: FlagCreate200;

@@ -513,3 +513,68 @@ def test_api_flag_mark_messages_unarchived_success(api_client):
 
     thread.refresh_from_db()
     assert thread.has_archived is False
+
+# --- Tests for Spam Flag ---
+def test_api_flag_mark_messages_spam_success(api_client):
+    """Test marking messages as spam successfully."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    thread = ThreadFactory()
+    ThreadAccessFactory(
+        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    msg1 = MessageFactory(thread=thread, is_spam=False)
+    msg2 = MessageFactory(thread=thread, is_spam=True)  # Already spam
+
+    thread.refresh_from_db()
+    thread.update_stats()
+    # To know if the thread is spam, we check the first message
+    assert thread.is_spam is False
+
+    message_ids = [str(msg1.id)]
+    data = {"flag": "spam", "value": True, "message_ids": message_ids}
+    response = api_client.post(API_URL, data=data, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["updated_threads"] == 1
+
+    msg1.refresh_from_db()
+    msg2.refresh_from_db()
+    assert msg1.is_spam is True
+    assert msg2.is_spam is True
+
+    thread.refresh_from_db()
+    assert thread.is_spam is True
+
+
+def test_api_flag_mark_messages_not_spam_success(api_client):
+    """Test marking messages as not spam successfully."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    thread = ThreadFactory()
+    ThreadAccessFactory(
+        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    msg1 = MessageFactory(thread=thread, is_spam=True)
+    msg2 = MessageFactory(thread=thread, is_spam=False)  # Already not spam
+
+    thread.refresh_from_db()
+    thread.update_stats()
+    assert thread.is_spam is True
+
+    message_ids = [str(msg1.id)]
+    data = {"flag": "spam", "value": False, "message_ids": message_ids}
+    response = api_client.post(API_URL, data=data, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["updated_threads"] == 1
+
+    msg1.refresh_from_db()
+    msg2.refresh_from_db()
+    assert msg1.is_spam is False
+    assert msg2.is_spam is False
+
+    thread.refresh_from_db()
+    assert thread.is_spam is False

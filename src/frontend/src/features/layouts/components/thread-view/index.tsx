@@ -1,20 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { FEATURE_KEYS, useFeatureFlag } from "@/hooks/use-feature";
-import { ActionBar } from "./components/thread-action-bar"
+import { ThreadActionBar } from "./components/thread-action-bar"
 import { ThreadMessage } from "./components/thread-message"
 import { useMailboxContext } from "@/features/providers/mailbox"
 import useRead from "@/features/message/use-read"
 import { useDebounceCallback } from "@/hooks/use-debounce-callback"
 import { Message, Thread } from "@/features/api/gen/models"
-import { Spinner } from "@gouvfr-lasuite/ui-kit"
+import { Icon, IconType, Spinner } from "@gouvfr-lasuite/ui-kit"
 import { useSearchParams } from "next/navigation"
 import { Banner } from "@/features/ui/components/banner"
-import { Button } from "@gouvfr-lasuite/cunningham-react"
 import { useTranslation } from "react-i18next"
 import { ThreadViewLabelsList } from "./components/thread-view-labels-list"
 import { ThreadSummary } from "./components/thread-summary";
 import clsx from "clsx";
 import ThreadViewProvider, { useThreadViewContext } from "./provider";
+import useSpam from "@/features/message/use-spam";
+import { SearchHelper } from "@/features/utils/search-helper";
 
 type MessageWithDraftChild = Message & {
     draft_message?: Message;
@@ -35,6 +36,7 @@ const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages,
     const toMarkAsReadQueue = useRef<string[]>([]);
     const stickyContainerRef = useRef<HTMLDivElement>(null);
     const { markAsRead } = useRead();
+    const { markAsNotSpam } = useSpam();
     const debouncedMarkAsRead = useDebounceCallback(() => {
         if (toMarkAsReadQueue.current.length === 0) return;
         markAsRead({ messageIds: toMarkAsReadQueue.current });
@@ -122,7 +124,7 @@ const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages,
             <div className="thread-view__sticky-container" ref={stickyContainerRef}>
                 <header className="thread-view__header">
                     <div className="thread-view__header__top">
-                        <ActionBar canUndelete={isThreadTrashed} canUnarchive={isThreadArchived} />
+                        <ThreadActionBar canUndelete={isThreadTrashed} canUnarchive={isThreadArchived} />
                         <h2 className="thread-view__subject">{thread.subject || t('No subject')}</h2>
                     </div>
                 </header>
@@ -142,28 +144,28 @@ const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages,
                 />
             )}
             <div className="thread-view__messages-list">
+                {thread.is_spam && (
+                    <Banner
+                        icon={<Icon name="report" type={IconType.OUTLINED} />}
+                        type="warning"
+                        actions={[{ label: t('Remove report'), onClick: () => markAsNotSpam({ threadIds: [thread.id] }) }]}
+                    >
+                        <p>{t('This thread has been reported as spam.')}</p>
+                    </Banner>
+                )}
                 {stats.trashed > 0 && !showTrashedMessages && (
-                    <Banner icon={<span className="material-icons">delete</span>} type="info">
-                        <div className="thread-view__trashed-banner__content">
-                            <p>
-                                {t(
-                                    '{{count}} messages of this thread have been deleted.',
-                                    {
-                                        count: stats.trashed,
-                                        defaultValue_one: "{{count}} message of this thread has been deleted.",
-                                    }
-                                )}
-                            </p>
-                            <div className="thread-view__trashed-banner__actions">
-                                <Button
-                                    onClick={() => setShowTrashedMessages(!showTrashedMessages)}
-                                    variant="tertiary"
-                                    size="nano"
-                                >
-                                    {t('Show')}
-                                </Button>
-                            </div>
-                        </div>
+                    <Banner
+                        icon={<Icon name="delete" type={IconType.OUTLINED} />}
+                        type="info" actions={[{ label: t('Show'),
+                        onClick: () => setShowTrashedMessages(!showTrashedMessages) }]}
+                    >
+                        {t(
+                            '{{count}} messages of this thread have been deleted.',
+                            {
+                                count: stats.trashed,
+                                defaultValue_one: "{{count}} message of this thread has been deleted.",
+                            }
+                        )}
                     </Banner>
                 )}
                 {messages.map((message) => {
@@ -187,7 +189,7 @@ const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages,
 
 export const ThreadView = () => {
     const searchParams = useSearchParams();
-    const isTrashView = searchParams.get('has_trashed') === '1';
+    const isTrashView = searchParams.get('has_trashed') === '1' || SearchHelper.parseSearchQuery(searchParams.get('search') || '')?.in === 'trash';
     const { selectedMailbox, selectedThread, messages, queryStates } = useMailboxContext();
     const [showTrashedMessages, setShowTrashedMessages] = useState(isTrashView);
     // Nest draft messages under their parent messages

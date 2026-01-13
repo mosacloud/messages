@@ -1,30 +1,29 @@
-import { useMailboxContext } from "../providers/mailbox";
 import { useTranslation } from "react-i18next";
 import useFlag from "./use-flag";
+import { useMailboxContext } from "../providers/mailbox";
 
 /**
- * Hook to mark messages or threads as trashed
+ * Hook to mark messages or threads as spam
  */
-const useTrash = () => {
+const useSpam = () => {
     const { t } = useTranslation();
     const { invalidateThreadMessages, invalidateThreadsStats } = useMailboxContext();
-
-    const { mark, unmark, status } = useFlag('trashed', {
+    const { mark, unmark, status } = useFlag('spam', {
         toastMessages: {
-            thread: t('The thread has been deleted.'),
-            message: t('The message has been deleted.'),
+            thread: t('The thread has been marked as spam.'),
+            message: t('The message has been marked as spam.'),
         },
         onSuccess: () => {
             invalidateThreadMessages();
             invalidateThreadsStats();
-        }
+        },
     });
 
     return {
-        markAsTrashed: mark,
-        markAsUntrashed: unmark,
+        markAsSpam: mark,
+        markAsNotSpam: unmark,
         status
     };
 };
 
-export default useTrash;
+export default useSpam;
