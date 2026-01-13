@@ -398,6 +398,30 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
         message=message11, contact=contact1, type=enums.MessageRecipientTypeChoices.TO
     )
 
+    # Thread 12: A trashed spam message
+    thread12 = ThreadFactory(subject="Trashed Boring ad")
+    threads.append(thread12)
+    ThreadAccessFactory(
+        mailbox=mailbox1, thread=thread12, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    message12 = MessageFactory(
+        thread=thread12,
+        subject="Trashed Boring ad",
+        sender=contact3,
+        is_spam=True,
+        is_trashed=True,
+        raw_mime=(
+            f"From: {contact3.email}\r\n"
+            f"To: {contact1.email}\r\n"
+            f"Subject: Trashed Boring ad\r\n"
+            f"Content-Type: text/plain\r\n\r\n"
+            f"This is a boring ad that should be in trashed folder."
+        ).encode("utf-8"),
+    )
+    MessageRecipientFactory(
+        message=message12, contact=contact1, type=enums.MessageRecipientTypeChoices.TO
+    )
+
     # Update stats for all threads
     for thread in threads:
         thread.update_stats()
@@ -461,24 +485,36 @@ class TestSearchModifiersE2E:
         assert response.status_code == 200
 
         # Check if the correct threads are found
+        assert len(response.data["results"]) == 4
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread1"].id) in thread_ids
+        assert str(test_threads["thread3"].id) in thread_ids
+        assert str(test_threads["thread9"].id) in thread_ids
+        assert str(test_threads["thread10"].id) in thread_ids
 
         # Test French version
         response = api_client.get(f"{test_url}?search=de:john@example.com")
 
         # Verify the same results
         assert response.status_code == 200
+        assert len(response.data["results"]) == 4
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread1"].id) in thread_ids
+        assert str(test_threads["thread3"].id) in thread_ids
+        assert str(test_threads["thread9"].id) in thread_ids
+        assert str(test_threads["thread10"].id) in thread_ids
 
         # Test partial name search
         response = api_client.get(f"{test_url}?search=from:John")
 
         # Verify correct threads are found
         assert response.status_code == 200
+        assert len(response.data["results"]) == 4
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread1"].id) in thread_ids
+        assert str(test_threads["thread3"].id) in thread_ids
+        assert str(test_threads["thread9"].id) in thread_ids
+        assert str(test_threads["thread10"].id) in thread_ids
 
     def test_search_e2e_modifiers_to_search_modifier(
         self, setup_search, api_client, test_url, test_threads
@@ -563,6 +599,7 @@ class TestSearchModifiersE2E:
         assert response.status_code == 200
 
         # Check if the correct threads are found
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread2"].id) in thread_ids
 
@@ -571,6 +608,7 @@ class TestSearchModifiersE2E:
 
         # Verify the same results
         assert response.status_code == 200
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread2"].id) in thread_ids
 
@@ -585,6 +623,7 @@ class TestSearchModifiersE2E:
         assert response.status_code == 200
 
         # Check if the correct threads are found
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread2"].id) in thread_ids
 
@@ -593,6 +632,7 @@ class TestSearchModifiersE2E:
 
         # Verify the same results
         assert response.status_code == 200
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread2"].id) in thread_ids
 
@@ -607,6 +647,7 @@ class TestSearchModifiersE2E:
         assert response.status_code == 200
 
         # Check if the correct threads are found
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread1"].id) in thread_ids
 
@@ -615,6 +656,7 @@ class TestSearchModifiersE2E:
 
         # Verify the same results
         assert response.status_code == 200
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread1"].id) in thread_ids
 
@@ -628,6 +670,7 @@ class TestSearchModifiersE2E:
         assert response.status_code == 200
 
         # Check if the correct threads are found
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread8"].id) in thread_ids
 
@@ -649,16 +692,20 @@ class TestSearchModifiersE2E:
         assert response.status_code == 200
 
         # Check if the correct threads are found
+        assert len(response.data["results"]) == 2
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread4"].id) in thread_ids
+        assert str(test_threads["thread12"].id) in thread_ids
 
         # Test French version
         response = api_client.get(f"{test_url}?search=dans:corbeille")
 
         # Verify the same results
         assert response.status_code == 200
+        assert len(response.data["results"]) == 2
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread4"].id) in thread_ids
+        assert str(test_threads["thread12"].id) in thread_ids
 
     def test_search_e2e_modifiers_in_archives_search_modifier(
         self, setup_search, api_client, test_url, test_threads
@@ -671,6 +718,7 @@ class TestSearchModifiersE2E:
         assert response.status_code == 200
 
         # Check if the correct threads are found
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread5"].id) in thread_ids
 
@@ -679,6 +727,7 @@ class TestSearchModifiersE2E:
 
         # Verify the same results
         assert response.status_code == 200
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread5"].id) in thread_ids
 
@@ -693,6 +742,7 @@ class TestSearchModifiersE2E:
         assert response.status_code == 200
 
         # Check if the correct threads are found
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread11"].id) in thread_ids
 
@@ -701,6 +751,7 @@ class TestSearchModifiersE2E:
 
         # Verify the same results
         assert response.status_code == 200
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread11"].id) in thread_ids
 
@@ -715,6 +766,7 @@ class TestSearchModifiersE2E:
         assert response.status_code == 200
 
         # Check if the correct threads are found
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert thread_ids == [str(test_threads["thread10"].id)]
 
@@ -723,6 +775,7 @@ class TestSearchModifiersE2E:
 
         # Verify the same results
         assert response.status_code == 200
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread10"].id) in thread_ids
 
@@ -731,6 +784,7 @@ class TestSearchModifiersE2E:
 
         # Verify the same results
         assert response.status_code == 200
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread10"].id) in thread_ids
 
@@ -745,6 +799,7 @@ class TestSearchModifiersE2E:
         assert response.status_code == 200
 
         # Check if the correct threads are found
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread3"].id) in thread_ids
 
@@ -753,6 +808,7 @@ class TestSearchModifiersE2E:
 
         # Verify the same results
         assert response.status_code == 200
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread3"].id) in thread_ids
 
@@ -767,6 +823,7 @@ class TestSearchModifiersE2E:
         assert response.status_code == 200
 
         # Check if the correct threads are found
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread6"].id) in thread_ids
 
@@ -775,6 +832,7 @@ class TestSearchModifiersE2E:
 
         # Verify the same results
         assert response.status_code == 200
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread6"].id) in thread_ids
 
@@ -789,16 +847,32 @@ class TestSearchModifiersE2E:
         assert response.status_code == 200
 
         # Check if the correct threads are found
+        assert len(response.data["results"]) == 8
         thread_ids = [t["id"] for t in response.data["results"]]
+        assert str(test_threads["thread1"].id) in thread_ids
+        assert str(test_threads["thread2"].id) in thread_ids
+        assert str(test_threads["thread3"].id) in thread_ids
         assert str(test_threads["thread5"].id) in thread_ids
+        assert str(test_threads["thread6"].id) in thread_ids
+        assert str(test_threads["thread8"].id) in thread_ids
+        assert str(test_threads["thread9"].id) in thread_ids
+        assert str(test_threads["thread10"].id) in thread_ids
 
         # Test French version
         response = api_client.get(f"{test_url}?search=est:lu")
 
         # Verify the same results
         assert response.status_code == 200
+        assert len(response.data["results"]) == 8
         thread_ids = [t["id"] for t in response.data["results"]]
+        assert str(test_threads["thread1"].id) in thread_ids
+        assert str(test_threads["thread2"].id) in thread_ids
+        assert str(test_threads["thread3"].id) in thread_ids
         assert str(test_threads["thread5"].id) in thread_ids
+        assert str(test_threads["thread6"].id) in thread_ids
+        assert str(test_threads["thread8"].id) in thread_ids
+        assert str(test_threads["thread9"].id) in thread_ids
+        assert str(test_threads["thread10"].id) in thread_ids
 
     def test_search_e2e_modifiers_is_unread_search_modifier(
         self, setup_search, api_client, test_url, test_threads
@@ -811,6 +885,7 @@ class TestSearchModifiersE2E:
         assert response.status_code == 200
 
         # Check if the correct threads are found
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread7"].id) in thread_ids
 
@@ -819,6 +894,7 @@ class TestSearchModifiersE2E:
 
         # Verify the same results
         assert response.status_code == 200
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread7"].id) in thread_ids
 
@@ -835,6 +911,7 @@ class TestSearchModifiersE2E:
         assert response.status_code == 200
 
         # Check if the correct threads are found
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread1"].id) in thread_ids
 
@@ -843,6 +920,7 @@ class TestSearchModifiersE2E:
 
         # Verify correct results
         assert response.status_code == 200
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread7"].id) in thread_ids
 
@@ -857,6 +935,7 @@ class TestSearchModifiersE2E:
         assert response.status_code == 200
 
         # Check if the correct threads are found
+        assert len(response.data["results"]) == 1
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread8"].id) in thread_ids
 

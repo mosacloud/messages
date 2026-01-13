@@ -1,3 +1,4 @@
+# pylint: disable=too-many-lines
 """Tests for the Thread API list endpoint."""
 
 from datetime import timedelta
@@ -137,15 +138,38 @@ def test_list_threads_filter_has_trashed(api_client):
         role=enums.ThreadAccessRoleChoices.EDITOR,
     )
     MessageFactory(thread=thread2, is_trashed=False)
+    # Thread 3: Has spam but no trashed message
+    thread3 = ThreadFactory()
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread3,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+    MessageFactory(thread=thread3, is_trashed=False, is_spam=True)
+
+    # Thread 4: Has spam and trashed message
+    thread4 = ThreadFactory()
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread4,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+    MessageFactory(thread=thread4, is_trashed=True, is_spam=True)
 
     thread1.update_stats()
     thread2.update_stats()
+    thread3.update_stats()
+    thread4.update_stats()
 
+    # Spam messages should be included in the results for trashed threads look up
     response = api_client.get(API_URL, {"has_trashed": "1"})
     assert response.status_code == status.HTTP_200_OK
-    assert response.data["count"] == 1
-    assert response.data["results"][0]["id"] == str(thread1.id)
+    assert response.data["count"] == 2
+    thread_ids = [t["id"] for t in response.data["results"]]
+    assert str(thread1.id) in thread_ids
+    assert str(thread4.id) in thread_ids
 
+    # Spam messages should not be included in the results for non-trashed threads look up
     response = api_client.get(API_URL, {"has_trashed": "0"})
     assert response.status_code == status.HTTP_200_OK
     assert response.data["count"] == 1
@@ -231,7 +255,16 @@ def test_list_threads_filter_combined(api_client):
         thread=thread4, is_starred=False, is_trashed=True
     )  # Not starred, trashed
 
-    for t in [thread1, thread2, thread3, thread4]:
+    # Thread 5 : Is spam not trashed
+    thread5 = ThreadFactory()
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread5,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+    MessageFactory(thread=thread5, is_spam=True, is_trashed=False)
+
+    for t in [thread1, thread2, thread3, thread4, thread5]:
         t.update_stats()
 
     # Filter: has_starred=1 AND has_trashed=1 (thread has both starred non-trashed AND trashed messages)
@@ -250,13 +283,31 @@ def test_list_threads_filter_combined(api_client):
     response = api_client.get(API_URL, {"has_starred": "0", "has_trashed": "0"})
     assert response.status_code == status.HTTP_200_OK
     assert response.data["count"] == 1
-    assert response.data["results"][0]["id"] == str(thread1.id)
+    thread_ids = [t["id"] for t in response.data["results"]]
+    assert str(thread1.id) in thread_ids
 
     # Filter: has_starred=0 AND has_trashed=1 (thread has no starred non-trashed messages, but has trashed messages)
     response = api_client.get(API_URL, {"has_starred": "0", "has_trashed": "1"})
     assert response.status_code == status.HTTP_200_OK
     assert response.data["count"] == 1
     assert response.data["results"][0]["id"] == str(thread2.id)
+
+    # Filter: has_spam=1 AND has_trashed=0 (thread has spam non-trashed messages, no trashed messages)
+    response = api_client.get(API_URL, {"is_spam": "1", "has_trashed": "0"})
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["count"] == 1
+    assert response.data["results"][0]["id"] == str(thread5.id)
+
+    # Filter: has_spam=1 AND has_trashed=0 (thread has spam non-trashed messages, no trashed messages)
+    response = api_client.get(API_URL, {"is_spam": "1", "has_trashed": "0"})
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["count"] == 1
+    assert response.data["results"][0]["id"] == str(thread5.id)
+
+    # Filter: has_spam=1 AND has_trashed=1 (thread has spam non-trashed messages, no trashed messages)
+    response = api_client.get(API_URL, {"is_spam": "1", "has_trashed": "1"})
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["count"] == 0
 
 
 @pytest.mark.django_db

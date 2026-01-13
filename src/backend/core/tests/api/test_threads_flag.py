@@ -23,6 +23,7 @@ FLAG_API_URL = reverse("change-flag")
 
 # -- Generic tests for all flags --
 
+
 def test_api_flag_thread_unauthorized(api_client):
     """Test trashing a thread without authentication."""
     thread = factories.ThreadFactory()
@@ -76,6 +77,7 @@ def test_api_flag_non_existent_thread(api_client):
 
 
 # --- Tests for Trashed Flag ---
+
 
 def test_api_flag_trash_single_thread_success(api_client):
     """Test marking a single thread as trashed successfully via flag endpoint."""
@@ -224,7 +226,9 @@ def test_api_flag_trash_multiple_threads_success(api_client):
     msg3.refresh_from_db()
     assert msg3.is_trashed is True  # Remained trashed
 
+
 # --- Tests for Spam Flag ---
+
 
 def test_api_flag_spam_single_thread_success(api_client):
     """Test marking a single thread as spam successfully via flag endpoint."""
@@ -329,9 +333,7 @@ def test_api_flag_spam_multiple_threads_success(api_client):
         thread=thread3,
         role=enums.ThreadAccessRoleChoices.EDITOR,
     )
-    msg3 = factories.MessageFactory(
-        thread=thread3, is_spam=True, trashed_at=timezone.now()
-    )
+    msg3 = factories.MessageFactory(thread=thread3, is_spam=True)
 
     thread1.refresh_from_db()
     thread1.update_stats()

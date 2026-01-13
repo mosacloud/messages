@@ -94,9 +94,11 @@ class ThreadViewSet(
                 value = query_params.get(
                     param, None if query_params.get("has_trashed") == "1" else "0"
                 )
-            # Exclude spam by default
+            # Exclude spam by default except if we are looking for trashed threads
             elif exclude_spam and param == "is_spam":
-                value = query_params.get(param, "0")
+                value = query_params.get(
+                    param, None if query_params.get("has_trashed") == "1" else "0"
+                )
             else:
                 value = query_params.get(param)
 

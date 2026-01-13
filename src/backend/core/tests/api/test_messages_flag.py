@@ -514,6 +514,7 @@ def test_api_flag_mark_messages_unarchived_success(api_client):
     thread.refresh_from_db()
     assert thread.has_archived is False
 
+
 # --- Tests for Spam Flag ---
 def test_api_flag_mark_messages_spam_success(api_client):
     """Test marking messages as spam successfully."""

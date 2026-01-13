@@ -177,8 +177,9 @@ def search_threads(
             )
         if parsed_query.get("in_spam"):
             search_body["query"]["bool"]["filter"].append({"term": {"is_spam": True}})
-        else:
+        elif not parsed_query.get("in_trash", False):
             # Spam messages should be excluded from search results until the user explicitly searches for spam
+            # or is looking for trashed threads
             search_body["query"]["bool"]["filter"].append({"term": {"is_spam": False}})
 
         # Add is: filters (starred, read, unread)
