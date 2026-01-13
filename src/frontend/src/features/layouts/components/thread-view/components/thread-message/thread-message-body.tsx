@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Attachment } from "@/features/api/gen/models";
 import { getRequestUrl, getApiOrigin } from "@/features/api/utils";
 import { getBlobDownloadRetrieveUrl } from "@/features/api/gen/blob/blob";
 import { UnquoteMessage } from '@/features/utils/unquote-message';
@@ -12,16 +11,8 @@ import { Icon } from "@gouvfr-lasuite/ui-kit";
 import { Banner } from "@/features/ui/components/banner";
 import { getMailboxesImageProxyListUrl } from "@/features/api/gen/mailboxes/mailboxes";
 import { EXTERNAL_IMAGES_CONSENT_KEY } from "@/features/config/constants";
-import { BodyPart, renderBodyParts } from "./renderers";
-
-type MessageBodyProps = {
-    /** Array of body parts to render (from htmlBody or textBody) */
-    bodyParts: readonly BodyPart[];
-    attachments?: readonly Attachment[];
-    messageId: string;
-    isHidden?: boolean;
-    onLoad?: () => void;
-}
+import { renderBodyParts } from "./renderers";
+import { ThreadMessageBodyProps } from "./types";
 
 const CSP = [
     // Allow images from our domain, data URIs, and API endpoints
@@ -51,7 +42,7 @@ const CSP = [
     "frame-ancestors 'none'",
 ].join('; ');
 
-const MessageBody = ({ bodyParts, attachments = [], isHidden = false, messageId, onLoad }: MessageBodyProps) => {
+const ThreadMessageBody = ({ bodyParts, attachments = [], isHidden = false, messageId, onLoad }: ThreadMessageBodyProps) => {
     const { t } = useTranslation();
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const { cunninghamTheme, variant } = useTheme();
@@ -394,4 +385,4 @@ const MessageBody = ({ bodyParts, attachments = [], isHidden = false, messageId,
     )
 }
 
-export default MessageBody;
+export default ThreadMessageBody;

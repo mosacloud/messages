@@ -1,0 +1,145 @@
+import { useState, useMemo, useCallback } from "react";
+import { useTranslation } from "react-i18next";
+import { Button, Tooltip } from "@gouvfr-lasuite/cunningham-react";
+import { DropdownMenu, Icon, IconType } from "@gouvfr-lasuite/ui-kit";
+import { getMessagesEmlRetrieveUrl } from "@/features/api/gen/messages/messages";
+import { getRequestUrl } from "@/features/api/utils";
+import { useMailboxContext } from "@/features/providers/mailbox";
+import useRead from "@/features/message/use-read";
+import useTrash from "@/features/message/use-trash";
+import { ThreadMessageActionsProps } from "./types";
+
+const ThreadMessageActions = ({
+    message,
+    isFolded,
+    isLatest,
+    canSendMessages,
+    hasSeveralRecipients,
+    onSetReplyFormMode,
+    onToggleFold,
+}: ThreadMessageActionsProps) => {
+    const { t } = useTranslation();
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+    // Hooks and state specific to actions
+    const { unselectThread, selectedThread, messages } = useMailboxContext();
+    const { markAsUnread, markAsRead } = useRead();
+    const { markAsTrashed } = useTrash();
+
+    const hasSiblingMessages = useMemo(() => {
+        if (!selectedThread) return false;
+        return selectedThread?.messages?.length > 1;
+    }, [selectedThread]);
+
+    // Handlers specific to actions
+    const toggleReadStateFrom = useCallback((is_unread: boolean) => {
+        const offsetIndex = messages?.findIndex((m) => m.id === message.id) ?? -1;
+        if (offsetIndex < 0) return;
+        if (is_unread) {
+            const nextSiblingMessageIds = messages?.slice(offsetIndex).map((m) => m.id);
+            markAsUnread({ messageIds: nextSiblingMessageIds, onSuccess: unselectThread });
+        } else {
+            const previousSiblingMessageIds = messages?.slice(0, offsetIndex + 1).map((m) => m.id);
+            markAsRead({ messageIds: previousSiblingMessageIds });
+        }
+    }, [messages, message.id, unselectThread, markAsUnread, markAsRead]);
+
+    const handleMarkAsTrashed = useCallback(() => {
+        markAsTrashed({ messageIds: [message.id] });
+    }, [markAsTrashed, message.id]);
+
+    const handleDownloadRawEmail = useCallback(() => {
+        const downloadUrl = getRequestUrl(getMessagesEmlRetrieveUrl(message.id));
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = `message-${message.id}.eml`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }, [message.id]);
+
+    const dropdownOptions = [
+        ...(canSendMessages && hasSeveralRecipients ? [{
+            label: t('Reply all'),
+            icon: <Icon type={IconType.FILLED} name="reply_all" />,
+            callback: () => onSetReplyFormMode('reply_all')
+        }] : []),
+        ...(canSendMessages ? [{
+            label: t('Forward'),
+            icon: <Icon type={IconType.FILLED} name="forward" />,
+            callback: () => onSetReplyFormMode('forward'),
+            showSeparator: true
+        }] : []),
+        ...(message.is_unread ? [{
+            label: hasSiblingMessages ? t('Mark as read from here') : t('Mark as read'),
+            icon: <Icon type={IconType.FILLED} name="mark_email_read" />,
+            callback: () => toggleReadStateFrom(false)
+        }] :
+        [{
+            label: hasSiblingMessages ? t('Mark as unread from here') : t('Mark as unread'),
+            icon: <Icon type={IconType.FILLED} name="mark_email_unread" />,
+            callback: () => toggleReadStateFrom(true)
+        }]),
+        {
+            label: t('Download raw email'),
+            icon: <Icon type={IconType.FILLED} name="download" />,
+            callback: handleDownloadRawEmail
+        },
+        ...(message.is_trashed ? [] : [{
+            label: t('Delete'),
+            icon: <Icon type={IconType.FILLED} name="delete" />,
+            callback: handleMarkAsTrashed
+        }]),
+    ];
+
+    return (
+        <div className="thread-message__header-actions">
+            {!isFolded && (
+                <>
+                    {canSendMessages && (
+                        <Tooltip content={t('Reply')}>
+                            <Button
+                                color="brand"
+                                variant="tertiary"
+                                size="small"
+                                icon={<Icon type={IconType.FILLED} name="reply" />}
+                                aria-label={t('Reply')}
+                                onClick={() => onSetReplyFormMode('reply')}
+                            />
+                        </Tooltip>
+                    )}
+                    <DropdownMenu
+                        isOpen={isDropdownOpen}
+                        onOpenChange={setIsDropdownOpen}
+                        options={dropdownOptions}
+                    >
+                        <Tooltip content={t('More options')}>
+                            <Button
+                                onClick={() => setIsDropdownOpen(true)}
+                                icon={<Icon type={IconType.FILLED} name="more_vert" />}
+                                color="brand"
+                                variant="tertiary"
+                                aria-label={t('More options')}
+                                size="small"
+                            />
+                        </Tooltip>
+                    </DropdownMenu>
+                </>
+            )}
+            {!isLatest && (
+                <Tooltip content={isFolded ? t('Unfold message') : t('Fold message')}>
+                    <Button
+                        color="brand"
+                        variant="tertiary"
+                        size="small"
+                        icon={<Icon type={IconType.FILLED} name={isFolded ? "unfold_more" : "unfold_less"} />}
+                        aria-label={isFolded ? t('Unfold message') : t('Fold message')}
+                        onClick={onToggleFold}
+                    />
+                </Tooltip>
+            )}
+        </div>
+    );
+};
+
+export default ThreadMessageActions;
