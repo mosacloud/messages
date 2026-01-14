@@ -420,6 +420,7 @@
   "To be able to import emails from an IMAP server, you may need to allow IMAP access on your account.": "Pour pouvoir importer des courriels depuis un serveur IMAP, vous aurez peut-être à autoriser les connexions IMAP à votre compte.",
   "To:": "À :",
   "To: ": "À : ",
+  "Today": "Aujourd'hui",
   "Trash": "Corbeille",
   "Type": "Type",
   "Unable to copy credentials.": "Impossible de copier les identifiants.",

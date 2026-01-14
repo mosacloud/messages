@@ -388,6 +388,7 @@
   "To be able to import emails from an IMAP server, you may need to allow IMAP access on your account.": "To be able to import emails from an IMAP server, you may need to allow IMAP access on your account.",
   "To:": "To:",
   "To: ": "To: ",
+  "Today": "Today",
   "Trash": "Trash",
   "Type": "Type",
   "Unable to copy credentials.": "Unable to copy credentials.",
