@@ -62,8 +62,41 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
             setIsFolded(!isFolded);
         }
 
-        const [htmlBody, driveAttachments] = MailHelper.extractDriveAttachmentsFromHtmlBody(message.htmlBody[0]?.content as string);
-        const [textBody,] = MailHelper.extractDriveAttachmentsFromTextBody(message.textBody[0]?.content as string);
+        // Extract drive attachments from HTML body parts
+        const [processedHtmlBody, driveAttachments] = useMemo(() => {
+            if (message.htmlBody.length === 0) {
+                return [[], []] as const;
+            }
+            // Process each HTML body part for drive attachments
+            const allDriveAttachments: ReturnType<typeof MailHelper.extractDriveAttachmentsFromHtmlBody>[1] = [];
+            const processedParts = message.htmlBody.map(part => {
+                const partContent = part?.content || "";
+                const partType = part?.type || "text/html";
+                const partId = part?.partId || "";
+                const [content, attachments] = MailHelper.extractDriveAttachmentsFromHtmlBody(partContent);
+                allDriveAttachments.push(...attachments);
+                return { partId, type: partType, content };
+            });
+            return [processedParts, allDriveAttachments] as const;
+        }, [message.htmlBody]);
+
+        // Process text body parts
+        const processedTextBody = useMemo(() => {
+            if (message.textBody.length === 0) {
+                return [];
+            }
+            return message.textBody.map(part => {
+                const partContent = part?.content || "";
+                const partType = part?.type || "text/plain";
+                const partId = part?.partId || "";
+                // Extract and process drive attachment URLs from text content
+                const [content] = MailHelper.extractDriveAttachmentsFromTextBody(partContent);
+                return { partId, type: partType, content };
+            });
+        }, [message.textBody]);
+
+        // Determine which body parts to render (prefer HTML if available)
+        const bodyPartsToRender = processedHtmlBody.length > 0 ? processedHtmlBody : processedTextBody;
 
         const getRecipientDeliveryStatus = (recipient: MessageRecipient): ContactChipDeliveryStatus | undefined => {
             // If the message has just been sent, it has not delivery status but for the sender it is useful to show that the message is being delivered
@@ -343,8 +376,7 @@ export const ThreadMessage = forwardRef<HTMLElement, ThreadMessageProps>(
                     </div>
                 </header>
                 <MessageBody
-                    rawTextBody={textBody}
-                    rawHtmlBody={htmlBody}
+                    bodyParts={bodyPartsToRender}
                     attachments={message.attachments}
                     messageId={message.id}
                     isHidden={isFolded || !isMessageReady}

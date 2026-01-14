@@ -617,6 +617,22 @@ class MessageRecipientSerializer(serializers.ModelSerializer):
         ]
 
 
+class MessageBodyItemSerializer(serializers.Serializer):
+    """Message body item serializer."""
+
+    partId = serializers.CharField()
+    type = serializers.CharField()
+    content = serializers.CharField(allow_blank=True)
+
+    def create(self, validated_data):
+        """Do not allow creating instances from this serializer."""
+        raise RuntimeError(f"{self.__class__.__name__} does not support create method")
+
+    def update(self, instance, validated_data):
+        """Do not allow updating instances from this serializer."""
+        raise RuntimeError(f"{self.__class__.__name__} does not support update method")
+
+
 class MessageSerializer(serializers.ModelSerializer):
     """
     Serialize messages, getting parsed details from the Message model.
@@ -653,12 +669,12 @@ class MessageSerializer(serializers.ModelSerializer):
         """Return the STMSG headers of the message."""
         return instance.get_stmsg_headers()
 
-    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    @extend_schema_field(MessageBodyItemSerializer(many=True))
     def get_textBody(self, instance):  # pylint: disable=invalid-name
         """Return the list of text body parts (JMAP style)."""
         return instance.get_parsed_field("textBody") or []
 
-    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    @extend_schema_field(MessageBodyItemSerializer(many=True))
     def get_htmlBody(self, instance):  # pylint: disable=invalid-name
         """Return the list of HTML body parts (JMAP style)."""
         return instance.get_parsed_field("htmlBody") or []
