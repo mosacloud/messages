@@ -19,6 +19,7 @@
     text-decoration: none;
 }
 
+.mailbox__item--drag-over,
 .mailbox__item:not(.mailbox__item--active):hover,
 .mailbox__item:not(.mailbox__item--active):focus {
     background-color: var(--c--contextuals--background--semantic--contextual--primary);

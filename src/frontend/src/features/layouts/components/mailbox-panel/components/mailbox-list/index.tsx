@@ -3,11 +3,17 @@ import { useMailboxContext } from "@/features/providers/mailbox"
 import clsx from "clsx"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useLayoutContext } from "../../../main"
 import { useTranslation } from "react-i18next"
 import { Icon, IconType } from "@gouvfr-lasuite/ui-kit"
 import i18n from "@/features/i18n/initI18n";
+import useArchive from "@/features/message/use-archive";
+import useTrash from "@/features/message/use-trash";
+import useSpam from "@/features/message/use-spam";
+import { handle } from "@/features/utils/errors";
+import ViewHelper from "@/features/utils/view-helper";
+import { addToast, ToasterItem } from "@/features/ui/components/toaster";
 
 // @TODO: replace with real data when folder will be ready
 type Folder = {
@@ -102,11 +108,22 @@ type FolderItemProps = {
     folder: Folder
 }
 
+// Folders that accept thread drops
+const DROPPABLE_FOLDER_IDS = ['inbox', 'archives', 'spam', 'trash'] as const;
+type DroppableFolderId = typeof DROPPABLE_FOLDER_IDS[number];
+
 const FolderItem = ({ folder }: FolderItemProps) => {
     const { t } = useTranslation();
     const { selectedMailbox } = useMailboxContext();
     const { closeLeftPanel } = useLayoutContext();
     const searchParams = useSearchParams()
+    const [isDragOver, setIsDragOver] = useState(false);
+
+    // Hooks for thread actions
+    const { markAsArchived, markAsUnarchived } = useArchive();
+    const { markAsTrashed, markAsUntrashed } = useTrash();
+    const { markAsSpam, markAsNotSpam } = useSpam();
+
     const queryParams = useMemo(() => {
         const params = new URLSearchParams(Object.entries(folder.filter || {}));
         return params.toString();
@@ -136,14 +153,138 @@ const FolderItem = ({ folder }: FolderItemProps) => {
         });
     }, [searchParams, folder.filter]);
 
+    // View checks for determining allowed actions (same logic as thread-panel-header.tsx)
+    const isTrashedView = ViewHelper.isTrashedView();
+    const isSpamView = ViewHelper.isSpamView();
+    const isArchivedView = ViewHelper.isArchivedView();
+    const isDraftsView = ViewHelper.isDraftsView();
+    const isSentView = ViewHelper.isSentView();
+
+    // Determine if this folder can accept drops based on current view
+    const isDroppable = useMemo(() => {
+        if (!DROPPABLE_FOLDER_IDS.includes(folder.id as DroppableFolderId)) return false;
+
+        switch (folder.id) {
+            case 'inbox':
+                // Inbox accepts drops to restore threads from archive, spam, or trash views
+                return isArchivedView || isSpamView || isTrashedView;
+            case 'archives':
+                // Archive allowed from all views except drafts and archives itself
+                return !isDraftsView && !isSpamView && !isTrashedView && !isArchivedView;
+            case 'spam':
+                // Spam not allowed from trash, sent, or drafts views
+                return !isTrashedView && !isSentView && !isDraftsView && !isSpamView;
+            case 'trash':
+                // Trash not allowed from drafts view
+                return !isDraftsView && !isTrashedView;
+            default:
+                return false;
+        }
+    }, [folder.id, isArchivedView, isSpamView, isTrashedView, isDraftsView, isSentView]);
+
+    const handleDragOver = (e: React.DragEvent<HTMLAnchorElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'link';
+        setIsDragOver(true);
+    };
+
+    const handleDragLeave = () => {
+        setIsDragOver(false);
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLAnchorElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+
+        const rawData = e.dataTransfer.getData('application/json');
+        if (!rawData) return;
+
+        try {
+            const data = JSON.parse(rawData);
+            if (data.type !== 'thread' || !data.threadIds?.length) return;
+
+            const threadIds = data.threadIds as string[];
+
+            // Call the appropriate action based on folder
+            switch (folder.id) {
+                case 'inbox':
+                    // Restore threads based on current view with toast and undo
+                    if (isArchivedView) {
+                        markAsUnarchived({
+                            threadIds,
+                            onSuccess: () => {
+                                addToast(
+                                    <ToasterItem
+                                        type="info"
+                                        actions={[{ label: t('Undo'), onClick: () => markAsArchived({ threadIds }) }]}
+                                    >
+                                        <Icon name="unarchive" type={IconType.OUTLINED} />
+                                        <span>{t('{{count}} threads have been unarchived.', { count: threadIds.length, defaultValue_one: 'The thread has been unarchived.' })}</span>
+                                    </ToasterItem>
+                                );
+                            }
+                        });
+                    } else if (isSpamView) {
+                        markAsNotSpam({
+                            threadIds,
+                            onSuccess: () => {
+                                addToast(
+                                    <ToasterItem
+                                        type="info"
+                                        actions={[{ label: t('Undo'), onClick: () => markAsSpam({ threadIds }) }]}
+                                    >
+                                        <Icon name="report_off" type={IconType.OUTLINED} />
+                                        <span>{t('Spam report removed from {{count}} threads.', { count: threadIds.length, defaultValue_one: 'Spam report removed from the thread.' })}</span>
+                                    </ToasterItem>
+                                );
+                            }
+                        });
+                    } else if (isTrashedView) {
+                        markAsUntrashed({
+                            threadIds,
+                            onSuccess: () => {
+                                addToast(
+                                    <ToasterItem
+                                        type="info"
+                                        actions={[{ label: t('Undo'), onClick: () => markAsTrashed({ threadIds }) }]}
+                                    >
+                                        <Icon name="restore_from_trash" type={IconType.OUTLINED} />
+                                        <span>{t('{{count}} threads have been restored.', { count: threadIds.length, defaultValue_one: 'The thread has been restored.' })}</span>
+                                    </ToasterItem>
+                                );
+                            }
+                        });
+                    }
+                    break;
+                case 'archives':
+                    markAsArchived({ threadIds });
+                    break;
+                case 'spam':
+                    markAsSpam({ threadIds });
+                    break;
+                case 'trash':
+                    markAsTrashed({ threadIds });
+                    break;
+            }
+        } catch (error) {
+            handle(new Error('Error parsing drag data.'), { extra: { error } });
+        }
+    };
+
     return (
         <Link
             href={`/mailbox/${selectedMailbox?.id}?${queryParams}`}
             onClick={closeLeftPanel}
             shallow={false}
             className={clsx("mailbox__item", {
-                "mailbox__item--active": isActive
+                "mailbox__item--active": isActive,
+                "mailbox__item--drag-over": isDragOver
             })}
+            onDragOver={isDroppable ? handleDragOver : undefined}
+            onDragLeave={isDroppable ? handleDragLeave : undefined}
+            onDrop={isDroppable ? handleDrop : undefined}
         >
             <p className="mailbox__item-label">
                 <Icon name={folder.icon} type={IconType.OUTLINED} aria-hidden="true" />
