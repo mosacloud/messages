@@ -10,8 +10,8 @@ const useSpam = () => {
     const { invalidateThreadMessages, invalidateThreadsStats } = useMailboxContext();
     const { mark, unmark, status } = useFlag('spam', {
         toastMessages: {
-            thread: t('The thread has been marked as spam.'),
-            message: t('The message has been marked as spam.'),
+            thread: (count: number) => t('{{count}} threads have been reported as spam.', { count: count, defaultValue_one: 'The thread has been reported as spam.' }),
+            message: (count: number) => t('{{count}} messages have been reported as spam.', { count: count, defaultValue_one: 'The message has been reported as spam.' }),
         },
         onSuccess: () => {
             invalidateThreadMessages();

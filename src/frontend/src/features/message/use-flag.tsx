@@ -17,8 +17,8 @@ type FlagOptions = {
 }
 
 type FlagToastMessages = {
-    thread: string;
-    message: string;
+    thread: (count: number) => string;
+    message: (count: number) => string;
 }
 
 /**
@@ -94,7 +94,12 @@ const FlagUpdateSuccessToast = ({ flag, threadIds = [], messageIds = [], toastId
             type="info"
             actions={[{ label: t('Undo'), onClick: undo }]}
         >
-            <span>{threadIds.length > 0 ? (messages?.thread ?? t('The thread has been updated.')) : (messages?.message ?? t('The message has been updated.'))}</span>
+            <span>{
+                threadIds.length > 0 ?
+                (messages?.thread?.(threadIds.length) ?? t('{{count}} threads have been updated.', { count: threadIds.length, defaultValue_one: 'The thread has been updated.' })) :
+                (messages?.message?.(messageIds.length) ?? t('{{count}} messages have been updated.', { count: messageIds.length, defaultValue_one: 'The message has been updated.' }))
+                }
+            </span>
         </ToasterItem>
     )
 };

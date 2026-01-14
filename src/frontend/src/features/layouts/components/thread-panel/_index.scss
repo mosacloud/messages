@@ -37,12 +37,18 @@
                     height: var(--c--components--forms-checkbox--size);
                 }
             }
+
+            .thread-panel__header--count {
+                white-space: nowrap;
+            }
         }
     }
 
     .thread-panel__bar {
         display: flex;
         flex-direction: row;
+        align-items: center;
+        gap: var(--c--globals--spacings--4xs);
     }
 
     .thread-panel__threads_list {

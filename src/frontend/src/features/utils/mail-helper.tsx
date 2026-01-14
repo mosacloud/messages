@@ -1,7 +1,6 @@
 import { renderToString } from "react-dom/server";
 import { Markdown } from "@react-email/components";
 import DetectionMap from "@/features/i18n/attachments-detection-map.json";
-import React from "react";
 import z from "zod";
 import { DriveFile } from "../forms/components/message-form/drive-attachment-picker";
 import { handle } from "./errors";

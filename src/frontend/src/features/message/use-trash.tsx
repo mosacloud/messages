@@ -11,8 +11,8 @@ const useTrash = () => {
 
     const { mark, unmark, status } = useFlag('trashed', {
         toastMessages: {
-            thread: t('The thread has been deleted.'),
-            message: t('The message has been deleted.'),
+            thread: (count: number) => t('{{count}} threads have been deleted.', { count: count, defaultValue_one: 'The thread has been deleted.' }),
+            message: (count: number) => t('{{count}} messages have been deleted.', { count: count, defaultValue_one: 'The message has been deleted.' }),
         },
         onSuccess: () => {
             invalidateThreadMessages();

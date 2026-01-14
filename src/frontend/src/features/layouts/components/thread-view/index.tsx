@@ -7,7 +7,6 @@ import useRead from "@/features/message/use-read"
 import { useDebounceCallback } from "@/hooks/use-debounce-callback"
 import { Message, Thread } from "@/features/api/gen/models"
 import { Icon, IconType, Spinner } from "@gouvfr-lasuite/ui-kit"
-import { useSearchParams } from "next/navigation"
 import { Banner } from "@/features/ui/components/banner"
 import { useTranslation } from "react-i18next"
 import { ThreadViewLabelsList } from "./components/thread-view-labels-list"
@@ -15,7 +14,7 @@ import { ThreadSummary } from "./components/thread-summary";
 import clsx from "clsx";
 import ThreadViewProvider, { useThreadViewContext } from "./provider";
 import useSpam from "@/features/message/use-spam";
-import { SearchHelper } from "@/features/utils/search-helper";
+import ViewHelper from "@/features/utils/view-helper";
 
 type MessageWithDraftChild = Message & {
     draft_message?: Message;
@@ -27,11 +26,10 @@ type ThreadViewComponentProps = {
     thread: Thread,
     showTrashedMessages: boolean,
     setShowTrashedMessages: (show: boolean) => void,
-    searchParams: URLSearchParams,
     stats: { trashed: number, archived: number, total: number },
 }
 
-const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages, setShowTrashedMessages, stats, searchParams }: ThreadViewComponentProps) => {
+const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages, setShowTrashedMessages, stats }: ThreadViewComponentProps) => {
     const { t } = useTranslation();
     const toMarkAsReadQueue = useRef<string[]>([]);
     const stickyContainerRef = useRef<HTMLDivElement>(null);
@@ -139,7 +137,6 @@ const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages,
                     threadId={thread.id}
                     summary={thread.summary}
                     selectedMailboxId={mailboxId}
-                    searchParams={searchParams}
                     selectedThread={thread}
                 />
             )}
@@ -188,8 +185,7 @@ const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages,
 }
 
 export const ThreadView = () => {
-    const searchParams = useSearchParams();
-    const isTrashView = searchParams.get('has_trashed') === '1' || SearchHelper.parseSearchQuery(searchParams.get('search') || '')?.in === 'trash';
+    const isTrashView = ViewHelper.isTrashedView();
     const { selectedMailbox, selectedThread, messages, queryStates } = useMailboxContext();
     const [showTrashedMessages, setShowTrashedMessages] = useState(isTrashView);
     // Nest draft messages under their parent messages
@@ -245,7 +241,6 @@ export const ThreadView = () => {
                 showTrashedMessages={showTrashedMessages}
                 setShowTrashedMessages={setShowTrashedMessages}
                 stats={messagesStats}
-                searchParams={searchParams}
             />
         </ThreadViewProvider>
     )

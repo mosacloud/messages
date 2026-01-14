@@ -186,6 +186,10 @@ body {
   margin: var(--c--globals--spacings--base);
 }
 
+.hidden {
+  visibility: hidden;
+}
+
 .text-nowrap {
   white-space: nowrap;
 }

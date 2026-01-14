@@ -18,7 +18,7 @@ type Folder = {
     searchable?: boolean;
 }
 
-export const MAILBOX_FOLDERS = (): Folder[] => [
+export const MAILBOX_FOLDERS = () => [
     {
         id: "inbox",
         name: i18n.t("Inbox"),
@@ -82,7 +82,7 @@ export const MAILBOX_FOLDERS = (): Folder[] => [
             has_trashed: "1",
         },
     },
-];
+] as const satisfies readonly Folder[];
 
 export const MailboxList = () => {
 
