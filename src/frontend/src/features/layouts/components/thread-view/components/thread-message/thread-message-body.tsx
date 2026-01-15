@@ -219,7 +219,7 @@ const ThreadMessageBody = ({ bodyParts, attachments = [], isHidden = false, mess
                 }
 
                 img {
-                    max-width: 100vw;
+                    max-width: 100%;
                 }
 
                 pre {
