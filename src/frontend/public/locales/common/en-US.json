@@ -301,7 +301,7 @@
   "Message content": "Message content",
   "Message sent successfully": "Message sent successfully",
   "Message templates for {{mailbox}}": "Message templates for {{mailbox}}",
-  "Messaging": "Messaging",
+  "Messaging": "Mosa Mail",
   "Missing": "Missing",
   "Modify": "Modify",
   "Monthly": "Monthly",
@@ -519,5 +519,6 @@
   "You must confirm this statement.": "You must confirm this statement.",
   "Your email...": "Your email...",
   "Your messages have been imported successfully!": "Your messages have been imported successfully!",
-  "Your session has expired. Please log in again.": "Your session has expired. Please log in again."
+  "Your session has expired. Please log in again.": "Your session has expired. Please log in again.",
+  "Log in": "Log in"
 }

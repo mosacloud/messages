@@ -255,7 +255,7 @@
   "Message content": "Содержимое сообщения",
   "Message sent successfully": "Сообщение успешно отправлено",
   "Message templates for {{mailbox}}": "Шаблоны сообщений для {{mailbox}}",
-  "Messaging": "Переписка",
+  "Messaging": "Mosa Mail",
   "Missing": "Отсутствует",
   "Modify": "Изменить",
   "More": "Ещё",
@@ -441,5 +441,6 @@
   "You must confirm this statement.": "Вы должны подтвердить это утверждение.",
   "Your email...": "Ваш e-mail...",
   "Your messages have been imported successfully!": "Ваши сообщения успешно импортированы!",
-  "Your session has expired. Please log in again.": "Время сеанса истекло. Пожалуйста, войдите снова."
+  "Your session has expired. Please log in again.": "Время сеанса истекло. Пожалуйста, войдите снова.",
+  "Log in": "Войти"
 }
