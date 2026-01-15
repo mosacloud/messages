@@ -52,6 +52,7 @@ const MainLayoutContent = ({ children }: PropsWithChildren<{ simple?: boolean }>
                 isLeftPanelOpen={leftPanelOpen}
                 setIsLeftPanelOpen={setLeftPanelOpen}
                 leftPanelContent={<LeftPanel hasNoMailbox={hasNoMailbox} />}
+                // icon={<img src={`/images/${theme}/app-logo-${variant}.svg`} alt="logo" height={40} />}
                 icon={<img src={`/images/${theme}/app-logo-${variant}.svg`} alt="logo" height={40} />}
                 hideLeftPanelOnDesktop={hasNoMailbox}
                 isDragging={isDragging}
