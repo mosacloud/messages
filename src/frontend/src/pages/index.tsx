@@ -1,6 +1,6 @@
-import { useAuth } from "@/features/auth";
-import { MainLayout } from "@/features/layouts/components/main";
-import { MosaLoginPage } from "@/features/home";
+import { useAuth } from '@/features/auth';
+import { MainLayout } from '@/features/layouts/components/main';
+import { MosaLoginPage } from '@/features/home';
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -9,5 +9,6 @@ export default function HomePage() {
     return <MainLayout />;
   }
 
+  // NOTE: Do not replace during rebase
   return <MosaLoginPage />;
 }
