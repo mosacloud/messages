@@ -234,7 +234,7 @@
   "Mark as unread": "Markeer als gelezen",
   "Mark as unread from here": "Markeer als ongelezen vanaf hier",
   "Message sent successfully": "Bericht succesvol verzonden",
-  "Messaging": "Berichten",
+  "Messaging": "Mosa Mail",
   "Missing": "Ontbreekt",
   "Modify": "Wijzig",
   "More": "Meer",
@@ -377,5 +377,6 @@
   "You must confirm this statement.": "U moet deze verklaring bevestigen.",
   "Your email...": "Jouw email...",
   "Your messages have been imported successfully!": "Je berichten zijn succesvol geïmporteerd!",
-  "Your session has expired. Please log in again.": "Je sessie is verlopen. Log opnieuw in."
+  "Your session has expired. Please log in again.": "Je sessie is verlopen. Log opnieuw in.",
+  "Log in": "Inloggen"
 }

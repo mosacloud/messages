@@ -328,7 +328,7 @@
   "Message from {referer_domain}": "Повідомлення від {referer_domain}",
   "Message sent successfully": "Повідомлення успішно відправлено",
   "Message templates for {{mailbox}}": "Шаблони повідомлень для {{mailbox}}",
-  "Messaging": "Листування",
+  "Messaging": "Mosa Mail",
   "Missing": "Відсутнє",
   "Modify": "Змінити",
   "Monthly": "Щомісяця",
@@ -553,5 +553,6 @@
   "You must confirm this statement.": "Ви повинні підтвердити цей запит.",
   "Your email...": "Ваша ел. адреса...",
   "Your messages have been imported successfully!": "Ваші повідомлення успішно імпортовано!",
-  "Your session has expired. Please log in again.": "Ваш сеанс закінчився. Будь ласка, увійдіть знову."
+  "Your session has expired. Please log in again.": "Ваш сеанс закінчився. Будь ласка, увійдіть знову.",
+  "Log in": "Увійти"
 }
