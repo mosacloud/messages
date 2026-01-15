@@ -7,11 +7,11 @@ import { AppLayout } from "@/features/layouts/components/main/layout";
 import { LeftPanel } from "@/features/layouts/components/main/left-panel";
 import { FeedbackWidget } from "@/features/ui/components/feedback-widget";
 import { useTheme } from "@/features/providers/theme";
-import { Button } from "@openfun/cunningham-react";
+import { Button } from "@gouvfr-lasuite/cunningham-react";
 
 export default function HomePage() {
   const { t } = useTranslation();
-  const { theme, variant, themeConfig } = useTheme();
+  const { themeConfig } = useTheme();
   const { user } = useAuth();
 
   if (user) {
@@ -40,7 +40,7 @@ export default function HomePage() {
             banner="/images/banner.webp"
             subtitle={t("Send and receive your messages in an instant.")}
             mainButton={
-              <Button onClick={login}>{t("home.mainButtonLogin")}</Button>
+              <Button onClick={login}>{t("Log in")}</Button>
             }
           />
         </HomeGutter>
