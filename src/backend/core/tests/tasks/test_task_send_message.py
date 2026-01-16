@@ -1,5 +1,7 @@
 """Tests for send_message_task."""
 
+# pylint: disable=no-value-for-parameter,unused-argument
+
 from unittest.mock import MagicMock, patch
 
 import pytest

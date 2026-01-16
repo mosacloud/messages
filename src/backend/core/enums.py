@@ -79,6 +79,13 @@ class CompressionTypeChoices(models.IntegerChoices):
     ZSTD = 1, "Zstd"
 
 
+class BlobStorageLocationChoices(models.IntegerChoices):
+    """Defines where blob content is stored (tiered storage)."""
+
+    POSTGRES = 1, "PostgreSQL"
+    OBJECT_STORAGE = 2, "Object Storage"
+
+
 class DKIMAlgorithmChoices(models.IntegerChoices):
     """Defines the possible DKIM signing algorithms."""
 

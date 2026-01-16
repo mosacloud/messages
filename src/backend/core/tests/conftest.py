@@ -1,5 +1,7 @@
 """Fixtures for tests in the messages core application"""
 
+# pylint: disable=import-outside-toplevel,broad-exception-caught
+
 from unittest import mock
 
 from django.db.models import F
@@ -9,6 +11,40 @@ import pytest
 USER = "user"
 TEAM = "team"
 VIA = [USER, TEAM]
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_storage_buckets():
+    """
+    Ensure all required S3 buckets exist before running tests.
+
+    This is a session-scoped fixture that runs once at the start of the test session.
+    It creates any missing buckets in MinIO/S3 that are needed for tests.
+    """
+    from django.core.files.storage import storages
+
+    buckets_to_ensure = ["message-imports", "message-blobs"]
+
+    for storage_name in buckets_to_ensure:
+        if storage_name not in storages.backends:
+            continue
+
+        try:
+            storage = storages[storage_name]
+            # Use boto3 to create bucket if it doesn't exist
+            if hasattr(storage, "bucket"):
+                client = storage.bucket.meta.client
+                bucket_name = storage.bucket.name
+                try:
+                    client.head_bucket(Bucket=bucket_name)
+                except client.exceptions.NoSuchBucket:
+                    client.create_bucket(Bucket=bucket_name)
+                except Exception:
+                    # Bucket exists or other error, continue
+                    pass
+        except Exception:
+            # Storage not configured or other error, skip
+            pass
 
 
 @pytest.fixture

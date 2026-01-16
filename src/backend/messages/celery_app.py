@@ -50,4 +50,9 @@ if not settings.DISABLE_CELERY_BEAT_SCHEDULE:
             "schedule": settings.SEARCH_REINDEX_TASKS_INTERVAL,
             "options": {"queue": "reindex"},
         },
+        "offload-blobs-to-object-storage": {
+            "task": "core.services.tiered_storage_tasks.offload_blobs_task",
+            "schedule": 3600.0,  # Every hour
+            "options": {"queue": "default"},
+        },
     }

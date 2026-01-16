@@ -10,6 +10,7 @@ from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import receiver
 
 from core import enums, models
+from core.enums import BlobStorageLocationChoices
 from core.services.identity.keycloak import (
     sync_mailbox_to_keycloak_user,
     sync_maildomain_to_keycloak_group,
@@ -19,6 +20,7 @@ from core.services.search.coalescer import (
     enqueue_thread_delete,
     enqueue_thread_reindex,
 )
+from core.services.tiered_storage import TieredStorageService
 from core.utils import ThreadReindexDeferrer, ThreadStatsUpdateDeferrer
 
 logger = logging.getLogger(__name__)
@@ -147,6 +149,19 @@ def delete_message_blobs(sender, instance, **kwargs):
         instance.blob.delete()
     if instance.draft_blob:
         instance.draft_blob.delete()
+
+
+@receiver(post_delete, sender=models.Blob)
+def cleanup_blob_storage(sender, instance, **kwargs):
+    """Clean up object storage when a blob is deleted.
+
+    Uses a post_delete signal instead of a model delete() override to ensure
+    cleanup also runs during CASCADE and QuerySet bulk deletes.
+    """
+    if instance.storage_location == BlobStorageLocationChoices.OBJECT_STORAGE:
+        service = TieredStorageService()
+        if service.enabled:
+            service.delete_if_orphaned(bytes(instance.sha256))
 
 
 # @receiver(post_delete, sender=models.Attachment)

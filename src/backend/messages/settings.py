@@ -333,6 +333,32 @@ class Base(Configuration):
                 ),
             },
         },
+        "message-blobs": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "endpoint_url": values.Value(
+                    environ_name="STORAGE_MESSAGE_BLOBS_ENDPOINT_URL",
+                    environ_prefix=None,
+                ),
+                "bucket_name": values.Value(
+                    "msg-blobs",
+                    environ_name="STORAGE_MESSAGE_BLOBS_BUCKET_NAME",
+                    environ_prefix=None,
+                ),
+                "access_key": values.Value(
+                    environ_name="STORAGE_MESSAGE_BLOBS_ACCESS_KEY",
+                    environ_prefix=None,
+                ),
+                "secret_key": values.Value(
+                    environ_name="STORAGE_MESSAGE_BLOBS_SECRET_KEY",
+                    environ_prefix=None,
+                ),
+                "region_name": values.Value(
+                    environ_name="STORAGE_MESSAGE_BLOBS_REGION_NAME",
+                    environ_prefix=None,
+                ),
+            },
+        },
     }
     # MDA settings
     MDA_API_SECRET = values.Value(
@@ -451,6 +477,30 @@ class Base(Configuration):
     # Blob compression settings
     MESSAGES_BLOB_ZSTD_LEVEL = values.PositiveIntegerValue(
         default=3, environ_name="MESSAGES_BLOB_ZSTD_LEVEL", environ_prefix=None
+    )
+
+    # Blob encryption keys (dict mapping key_id -> key for stable key rotation)
+    # Format: {"1": "base64-fernet-key", "2": "another-key"}
+    # key_id=0 in DB means no encryption, key_id>=1 refers to dict key
+    # Works for both PostgreSQL and object storage blobs
+    MESSAGES_BLOB_ENCRYPTION_KEYS = JSONValue(
+        {}, environ_name="MESSAGES_BLOB_ENCRYPTION_KEYS", environ_prefix=None
+    )
+    # Which key ID to use for new encryptions (must exist in MESSAGES_BLOB_ENCRYPTION_KEYS)
+    MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID = values.PositiveIntegerValue(
+        default=0,
+        environ_name="MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID",
+        environ_prefix=None,
+    )
+
+    # Tiered Storage offload settings
+    # Offload blobs older than N days
+    TIERED_STORAGE_OFFLOAD_AFTER_DAYS = values.PositiveIntegerValue(
+        default=3, environ_name="TIERED_STORAGE_OFFLOAD_AFTER_DAYS", environ_prefix=None
+    )
+    # Minimum blob size in bytes to offload (0 = all)
+    TIERED_STORAGE_OFFLOAD_MIN_SIZE = values.PositiveIntegerValue(
+        default=0, environ_name="TIERED_STORAGE_OFFLOAD_MIN_SIZE", environ_prefix=None
     )
 
     # Django fernet encrypted fields settings
