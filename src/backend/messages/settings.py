@@ -771,6 +771,9 @@ class Base(Configuration):
     FEATURE_IMPORT_MESSAGES = values.BooleanValue(
         default=True, environ_name="FEATURE_IMPORT_MESSAGES", environ_prefix=None
     )
+    FEATURE_MAILBOX_ADMIN_CHANNELS = values.ListValue(
+        default=[], environ_name="FEATURE_MAILBOX_ADMIN_CHANNELS", environ_prefix=None
+    )
 
     # Logging
     # We want to make it easy to log to console but by default we log production
