@@ -15,4 +15,5 @@ export const MessageDeliveryStatusChoices = {
   sent: "sent",
   failed: "failed",
   retry: "retry",
+  cancelled: "cancelled",
 } as const;

@@ -31,4 +31,6 @@ export type ConfigRetrieve200 = {
   readonly MAX_RECIPIENTS_PER_MESSAGE: number;
   /** Whether external images should be proxied */
   readonly IMAGE_PROXY_ENABLED: boolean;
+  /** Maximum age in seconds for a message to be eligible for manual retry of failed deliveries */
+  readonly MESSAGES_MANUAL_RETRY_MAX_AGE: number;
 };

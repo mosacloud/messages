@@ -342,6 +342,13 @@ class Base(Configuration):
         environ_prefix=None,
     )
 
+    # Manual retry settings
+    MESSAGES_MANUAL_RETRY_MAX_AGE = values.PositiveIntegerValue(
+        7 * 24 * 60 * 60,  # 7 days in seconds
+        environ_name="MESSAGES_MANUAL_RETRY_MAX_AGE",
+        environ_prefix=None,
+    )
+
     # Blob compression settings
     MESSAGES_BLOB_ZSTD_LEVEL = values.PositiveIntegerValue(
         default=3, environ_name="MESSAGES_BLOB_ZSTD_LEVEL", environ_prefix=None

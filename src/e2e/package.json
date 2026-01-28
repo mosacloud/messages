@@ -18,7 +18,8 @@
     "django": "./bin/backend-manage.sh",
     "db:flush": "npm run django flush -- --no-input",
     "db:bootstrap": "npm run django e2e_demo",
-    "db:reset": "npm run db:flush && npm run db:bootstrap"
+    "db:reset": "npm run db:flush && npm run db:bootstrap",
+    "db:outbox-data": "npm run django e2e_outbox"
   },
   "keywords": ["e2e", "playwright", "testing"],
   "author": "",

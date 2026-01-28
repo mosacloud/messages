@@ -41,6 +41,7 @@ test.describe("Send Message", () => {
 
     await page.getByRole("button", { name: "Send" }).click();
     await page.getByText("Sending message...").waitFor({ state: "visible" });
+
     await page.getByText("Message sent successfully").waitFor({ state: "visible" });
 
     // Once message is sent, the number of drafts should be decremented by 1

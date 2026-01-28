@@ -123,6 +123,7 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
     }, [router.query.mailboxId, mailboxQuery.data])
 
     const previousUnreadMessagesCount = usePrevious(selectedMailbox?.count_unread_messages);
+    const previousDeliveringCount = usePrevious(selectedMailbox?.count_delivering);
     const threadQueryKey = useMemo(() => {
         const queryKey = ['threads', selectedMailbox?.id];
         if (searchParams.get('search')) {
@@ -328,14 +329,23 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
         }
     }, [flattenThreads]);
 
-    // Invalidate the threads query to refresh the threads list when the unread messages count changes
+    // Invalidate the threads query when mailbox stats change (unread messages or delivering count)
     useEffect(() => {
-        if (!selectedMailbox || previousUnreadMessagesCount === undefined) return;
-        if (previousUnreadMessagesCount !== selectedMailbox.count_unread_messages) {
+        if (!selectedMailbox) return;
+
+        const hasUnreadCountChanged =
+            previousUnreadMessagesCount !== undefined &&
+            previousUnreadMessagesCount !== selectedMailbox.count_unread_messages;
+
+        const hasDeliveringCountChanged =
+            previousDeliveringCount !== undefined &&
+            previousDeliveringCount !== selectedMailbox.count_delivering;
+
+        if (hasUnreadCountChanged || hasDeliveringCountChanged) {
             invalidateThreadsStats();
             queryClient.invalidateQueries({ queryKey: ['threads', selectedMailbox?.id] });
         }
-    }, [selectedMailbox?.count_unread_messages]);
+    }, [selectedMailbox?.count_unread_messages, selectedMailbox?.count_delivering]);
 
     // Invalidate the thread messages query to refresh the thread messages when there is a new message
     useEffect(() => {

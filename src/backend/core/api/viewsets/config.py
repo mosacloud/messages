@@ -106,6 +106,14 @@ class ConfigView(drf.views.APIView):
                             "description": "Whether external images should be proxied",
                             "readOnly": True,
                         },
+                        "MESSAGES_MANUAL_RETRY_MAX_AGE": {
+                            "type": "integer",
+                            "description": (
+                                "Maximum age in seconds for a message to be eligible "
+                                "for manual retry of failed deliveries"
+                            ),
+                            "readOnly": True,
+                        },
                     },
                     "required": [
                         "ENVIRONMENT",
@@ -122,6 +130,7 @@ class ConfigView(drf.views.APIView):
                         "MAX_INCOMING_EMAIL_SIZE",
                         "MAX_RECIPIENTS_PER_MESSAGE",
                         "IMAGE_PROXY_ENABLED",
+                        "MESSAGES_MANUAL_RETRY_MAX_AGE",
                     ],
                 },
             )
@@ -140,6 +149,12 @@ class ConfigView(drf.views.APIView):
             "SCHEMA_CUSTOM_ATTRIBUTES_USER",
             "SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN",
             "IMAGE_PROXY_ENABLED",
+            "MESSAGES_MANUAL_RETRY_MAX_AGE",
+            "FEATURE_MAILBOX_ADMIN_CHANNELS",
+            "MAX_OUTGOING_ATTACHMENT_SIZE",
+            "MAX_OUTGOING_BODY_SIZE",
+            "MAX_INCOMING_EMAIL_SIZE",
+            "MAX_RECIPIENTS_PER_MESSAGE",
         ]
         dict_settings = {}
         for setting in array_settings:
@@ -150,21 +165,6 @@ class ConfigView(drf.views.APIView):
         dict_settings["AI_ENABLED"] = is_ai_enabled()
         dict_settings["FEATURE_AI_SUMMARY"] = is_ai_summary_enabled()
         dict_settings["FEATURE_AI_AUTOLABELS"] = is_auto_labels_enabled()
-
-        # Feature flags - return as list
-        dict_settings["FEATURE_MAILBOX_ADMIN_CHANNELS"] = list(
-            settings.FEATURE_MAILBOX_ADMIN_CHANNELS
-        )
-
-        # Email size limits
-        dict_settings["MAX_OUTGOING_ATTACHMENT_SIZE"] = (
-            settings.MAX_OUTGOING_ATTACHMENT_SIZE
-        )
-        dict_settings["MAX_OUTGOING_BODY_SIZE"] = settings.MAX_OUTGOING_BODY_SIZE
-        dict_settings["MAX_INCOMING_EMAIL_SIZE"] = settings.MAX_INCOMING_EMAIL_SIZE
-        dict_settings["MAX_RECIPIENTS_PER_MESSAGE"] = (
-            settings.MAX_RECIPIENTS_PER_MESSAGE
-        )
 
         # Drive service
         if base_url := settings.DRIVE_CONFIG.get("base_url"):

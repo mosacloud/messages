@@ -27,6 +27,7 @@ enum MaildomainAbilities {
 
 enum ThreadAccessAbilities {
   CAN_MANAGE_THREAD_ACCESS = "manage_thread_access",
+  CAN_MANAGE_THREAD_DELIVERY_STATUSES = "manage_thread_delivery_statuses",
 }
 
 export const Abilities = {
@@ -81,6 +82,7 @@ function useAbility(
     case Abilities.CAN_MANAGE_MAILDOMAIN_ACCESSES:
     case Abilities.CAN_MANAGE_SOME_MAILDOMAIN_ACCESSES:
       return (resource as ResourceWithAbilities).abilities[ability] === true;
+    case Abilities.CAN_MANAGE_THREAD_DELIVERY_STATUSES:
     case Abilities.CAN_MANAGE_THREAD_ACCESS:
       const [mailbox, thread] = resource as [Mailbox, Thread];
       return (

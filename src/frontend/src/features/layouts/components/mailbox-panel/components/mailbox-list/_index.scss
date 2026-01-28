@@ -43,9 +43,21 @@
     font-weight: 500;
 }
 
+.mailbox__item__metadata {
+    display: flex;
+    flex-direction: row;
+    gap: var(--c--globals--spacings--4xs);
+    align-items: center;
+}
+
 .mailbox__item-counter {
     color: var(--c--contextuals--content--semantic--neutral--tertiary);
     font-weight: 500;
     font-size: var(--c--globals--font--sizes--sm);
     padding: var(--c--globals--spacings--4xs) var(--c--globals--spacings--3xs);
+}
+
+.mailbox__item-warning {
+    color: var(--c--contextuals--content--semantic--error--tertiary);
+    font-size: var(--c--globals--font--sizes--xl);
 }

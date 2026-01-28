@@ -29,6 +29,10 @@ export interface Thread {
   readonly has_attachments: boolean;
   readonly has_sender: boolean;
   readonly has_messages: boolean;
+  /** True if thread has messages with permanent delivery failure. */
+  readonly has_delivery_failed: boolean;
+  /** True if thread has messages awaiting successful delivery (sending, retrying, or failed). */
+  readonly has_delivery_pending: boolean;
   readonly is_spam: boolean;
   readonly has_active: boolean;
   /** @nullable */

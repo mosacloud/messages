@@ -83,6 +83,7 @@ class ThreadViewSet(
             "has_active": "has_active",
             "has_messages": "has_messages",
             "has_attachments": "has_attachments",
+            "has_delivery_pending": "has_delivery_pending",
             "is_trashed": "is_trashed",
             "is_spam": "is_spam",
         }
@@ -184,13 +185,22 @@ class ThreadViewSet(
                 description="Filter threads with messages sent by the user (1=true, 0=false).",
             ),
             OpenApiParameter(
+                name="has_delivery_pending",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Filter threads with delivery pending messages: sending, retry or failed (1=true, 0=false)."
+                ),
+            ),
+            OpenApiParameter(
                 name="stats_fields",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
                 required=True,
                 description="""Comma-separated list of fields to aggregate.
                 Special values: 'all' (count all threads), 'all_unread' (count all unread threads).
-                Boolean fields: has_trashed, has_draft, has_starred, has_attachments, has_sender, has_active, is_spam, has_messages.
+                Boolean fields: has_trashed, has_draft, has_starred, has_attachments, has_archived,
+                has_sender, has_active, has_delivery_pending, has_delivery_failed, is_spam, has_messages.
                 Unread variants ('_unread' suffix): count threads where the condition is true AND the thread is unread.
                 Examples: 'all,all_unread', 'has_starred,has_starred_unread', 'is_spam,is_spam_unread'""",
                 enum=list(enums.THREAD_STATS_FIELDS_MAP.keys()),
@@ -251,6 +261,8 @@ class ThreadViewSet(
             "has_attachments",
             "has_sender",
             "has_active",
+            "has_delivery_failed",
+            "has_delivery_pending",
             "is_spam",
             "has_messages",
         }
@@ -398,6 +410,14 @@ class ThreadViewSet(
                 type=OpenApiTypes.INT,
                 location=OpenApiParameter.QUERY,
                 description="Filter threads that are spam (1=true, 0=false).",
+            ),
+            OpenApiParameter(
+                name="has_delivery_pending",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Filter threads that have delivery pending messages: sending, retry or failed (1=true, 0=false)."
+                ),
             ),
         ],
     )

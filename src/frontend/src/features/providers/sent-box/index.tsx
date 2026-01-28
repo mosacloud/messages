@@ -25,6 +25,8 @@ export const SentBoxProvider = ({ children }: PropsWithChildren) => {
 
     const addQueuedMessage = (taskId: string, closeThread: boolean = false) => {
         setQueuedMessages(prev => [...prev, [taskId, closeThread]]);
+        // Invalidate stats immediately so the outbox folder appears
+        invalidateThreadsStats();
     }
 
     const removeQueuedMessage = (taskId: string) => {

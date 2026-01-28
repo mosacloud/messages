@@ -17,6 +17,7 @@ from core.factories import (
     MailboxFactory,
     MailDomainFactory,
     MessageFactory,
+    MessageRecipientFactory,
     ThreadAccessFactory,
     ThreadFactory,
     UserFactory,
@@ -336,6 +337,7 @@ def test_list_threads_filter_combined(api_client):
     assert response.data["count"] == 0
 
 
+# pylint: disable=too-many-public-methods
 @pytest.mark.django_db
 class TestThreadStatsAPI:
     """Test the GET /threads/stats/ endpoint."""
@@ -893,6 +895,188 @@ class TestThreadStatsAPI:
 
         response = api_client.get(url)
         assert response.status_code == 401
+
+    def test_filter_threads_by_has_delivery_pending(self, api_client):
+        """Test filtering threads by has_delivery_pending flag."""
+        user = UserFactory()
+        api_client.force_authenticate(user=user)
+        mailbox = MailboxFactory()
+        MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.VIEWER,
+        )
+
+        # Thread with delivering message and failed delivery
+        thread_delivering = ThreadFactory(
+            has_delivery_pending=True, has_delivery_failed=True
+        )
+        ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread_delivering,
+            role=enums.ThreadAccessRoleChoices.VIEWER,
+        )
+
+        # Thread without delivering message
+        thread_ok = ThreadFactory(has_delivery_pending=False, has_delivery_failed=False)
+        ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread_ok,
+            role=enums.ThreadAccessRoleChoices.VIEWER,
+        )
+
+        # Filter for has_delivery_pending=1
+        response = api_client.get(reverse("threads-list"), {"has_delivery_pending": 1})
+        assert response.status_code == status.HTTP_200_OK
+        results = response.json()["results"]
+        thread_ids = [t["id"] for t in results]
+        assert str(thread_delivering.id) in thread_ids
+        assert str(thread_ok.id) not in thread_ids
+
+        # Check that serializer includes delivery fields
+        delivering_thread_data = next(
+            t for t in results if t["id"] == str(thread_delivering.id)
+        )
+        assert delivering_thread_data["has_delivery_pending"] is True
+        assert delivering_thread_data["has_delivery_failed"] is True
+
+        # Filter for has_delivery_pending=0
+        response = api_client.get(reverse("threads-list"), {"has_delivery_pending": 0})
+        assert response.status_code == status.HTTP_200_OK
+        results = response.json()["results"]
+        thread_ids = [t["id"] for t in results]
+        assert str(thread_ok.id) in thread_ids
+        assert str(thread_delivering.id) not in thread_ids
+
+        # Check delivery fields for non-delivering thread
+        ok_thread_data = next(t for t in results if t["id"] == str(thread_ok.id))
+        assert ok_thread_data["has_delivery_pending"] is False
+        assert ok_thread_data["has_delivery_failed"] is False
+
+    def test_stats_with_none_delivery_status(self, api_client, url):
+        """Test that None delivery_status (sending) sets has_delivery_pending=True."""
+        user = UserFactory()
+        api_client.force_authenticate(user=user)
+        mailbox = MailboxFactory()
+        MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.VIEWER,
+        )
+
+        thread = ThreadFactory()
+        ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.VIEWER,
+        )
+        message = MessageFactory(
+            thread=thread,
+            is_sender=True,
+            is_draft=False,
+            is_trashed=False,
+        )
+        # Create recipient with None status (initial state when sending)
+        MessageRecipientFactory(
+            message=message,
+            delivery_status=None,
+        )
+        thread.update_stats()
+
+        response = api_client.get(
+            url,
+            {"stats_fields": "has_delivery_pending"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json() == {"has_delivery_pending": 1}
+
+    def test_stats_with_cancelled_status_not_delivering(self, api_client, url):
+        """Test that CANCELLED status does not count as delivering."""
+        user = UserFactory()
+        api_client.force_authenticate(user=user)
+        mailbox = MailboxFactory()
+        MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.VIEWER,
+        )
+
+        thread = ThreadFactory()
+        ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.VIEWER,
+        )
+        message = MessageFactory(
+            thread=thread,
+            is_sender=True,
+            is_draft=False,
+            is_trashed=False,
+        )
+        # Create recipient with CANCELLED status
+        MessageRecipientFactory(
+            message=message,
+            delivery_status=enums.MessageDeliveryStatusChoices.CANCELLED,
+        )
+        thread.update_stats()
+
+        response = api_client.get(
+            url,
+            {"stats_fields": "has_delivery_pending"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json() == {"has_delivery_pending": 0}
+
+    def test_stats_mixed_delivery_statuses(self, api_client, url):
+        """Test stats with mixed delivery statuses."""
+        user = UserFactory()
+        api_client.force_authenticate(user=user)
+        mailbox = MailboxFactory()
+        MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.VIEWER,
+        )
+
+        thread = ThreadFactory()
+        ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.VIEWER,
+        )
+        message = MessageFactory(
+            thread=thread,
+            is_sender=True,
+            is_draft=False,
+            is_trashed=False,
+        )
+
+        # SENT - should not affect flags
+        MessageRecipientFactory(
+            message=message,
+            delivery_status=enums.MessageDeliveryStatusChoices.SENT,
+        )
+        # FAILED - should set has_delivery_failed
+        MessageRecipientFactory(
+            message=message,
+            delivery_status=enums.MessageDeliveryStatusChoices.FAILED,
+        )
+        # CANCELLED - should not affect flags
+        MessageRecipientFactory(
+            message=message,
+            delivery_status=enums.MessageDeliveryStatusChoices.CANCELLED,
+        )
+        thread.update_stats()
+
+        response = api_client.get(
+            url,
+            {"stats_fields": "has_delivery_pending"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json() == {"has_delivery_pending": 1}
 
 
 # TODO: merge first tests below with the ones above

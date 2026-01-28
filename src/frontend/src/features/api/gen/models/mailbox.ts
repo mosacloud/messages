@@ -18,6 +18,7 @@ export interface Mailbox {
   readonly role: MailboxRoleChoices;
   readonly count_unread_messages: string;
   readonly count_messages: string;
+  readonly count_delivering: string;
   /** Instance permissions and capabilities */
   readonly abilities: MailboxAbilities;
 }

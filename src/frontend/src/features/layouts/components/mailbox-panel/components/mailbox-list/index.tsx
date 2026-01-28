@@ -14,6 +14,7 @@ import useSpam from "@/features/message/use-spam";
 import { handle } from "@/features/utils/errors";
 import ViewHelper from "@/features/utils/view-helper";
 import { addToast, ToasterItem } from "@/features/ui/components/toaster";
+import { Tooltip } from "@gouvfr-lasuite/cunningham-react"
 
 // @TODO: replace with real data when folder will be ready
 type Folder = {
@@ -22,6 +23,7 @@ type Folder = {
     icon: string;
     filter?: Record<string, string>;
     searchable?: boolean;
+    conditional?: boolean;
 }
 
 export const MAILBOX_FOLDERS = () => [
@@ -53,12 +55,24 @@ export const MAILBOX_FOLDERS = () => [
         },
     },
     {
+        id: "outbox",
+        name: i18n.t("Outbox"),
+        icon: "schedule_send",
+        searchable: false,
+        conditional: true,
+        filter: {
+            has_sender: "1",
+            has_delivery_pending: "1"
+        },
+    },
+    {
         id: "sent",
         name: i18n.t("Sent"),
         icon: "outbox",
         searchable: true,
         filter: {
-            has_sender: "1"
+            has_sender: "1",
+            has_delivery_pending: "0"
         },
     },
     {
@@ -89,6 +103,20 @@ export const MAILBOX_FOLDERS = () => [
         },
     },
 ] as const satisfies readonly Folder[];
+
+/**
+ * Combines multiple stats fields into a comma-separated string for the API.
+ * The API accepts a comma-separated list of fields (e.g., "all,has_delivery_failed").
+ * This function provides type-safety for the individual field values while
+ * producing the combined string format the API expects.
+ */
+const combineStatsFields = (
+    ...fields: ThreadsStatsRetrieveStatsFields[]
+): ThreadsStatsRetrieveStatsFields => {
+    // The API type doesn't model comma-separated values, but the backend accepts them.
+    // This cast is intentional - see backend/core/api/viewsets/thread.py:200-205
+    return fields.join(',') as ThreadsStatsRetrieveStatsFields;
+};
 
 export const MailboxList = () => {
 
@@ -129,12 +157,15 @@ const FolderItem = ({ folder }: FolderItemProps) => {
         return params.toString();
     }, [folder.filter]);
     const stats_fields = useMemo(() => {
-        if (folder.filter?.has_draft === "1") return ThreadsStatsRetrieveStatsFields.all;
+        if (folder.id === 'drafts') return ThreadsStatsRetrieveStatsFields.all;
+        if (folder.id === 'outbox') return ThreadsStatsRetrieveStatsFields.all;
         return ThreadsStatsRetrieveStatsFields.all_unread;
-    }, []);
+    }, [folder.id]);
     const { data } = useThreadsStatsRetrieve({
         mailbox_id: selectedMailbox?.id,
-        stats_fields,
+        stats_fields: folder.id === "outbox"
+            ? combineStatsFields(stats_fields, ThreadsStatsRetrieveStatsFields.has_delivery_failed)
+            : stats_fields,
         ...folder.filter
     }, {
         query: {
@@ -143,15 +174,6 @@ const FolderItem = ({ folder }: FolderItemProps) => {
     });
 
     const folderStats = data?.data as ThreadsStatsRetrieve200;
-
-    const isActive = useMemo(() => {
-        const folderFilter = Object.entries(folder.filter || {});
-        if (folderFilter.length !== searchParams.size) return false;
-
-        return folderFilter.every(([key, value]) => {
-            return searchParams.get(key) === value;
-        });
-    }, [searchParams, folder.filter]);
 
     // View checks for determining allowed actions (same logic as thread-panel-header.tsx)
     const isTrashedView = ViewHelper.isTrashedView();
@@ -181,6 +203,18 @@ const FolderItem = ({ folder }: FolderItemProps) => {
                 return false;
         }
     }, [folder.id, isArchivedView, isSpamView, isTrashedView, isDraftsView, isSentView]);
+
+    const isActive = useMemo(() => {
+        const folderFilter = Object.entries(folder.filter || {});
+        if (folderFilter.length !== searchParams.size) return false;
+
+        return folderFilter.every(([key, value]) => {
+            return searchParams.get(key) === value;
+        });
+    }, [searchParams, folder.filter]);
+
+    const folderCount = folderStats?.[stats_fields] ?? 0;
+    const hasDeliveryFailed = (folderStats?.[ThreadsStatsRetrieveStatsFields.has_delivery_failed] ?? 0) > 0;
 
     const handleDragOver = (e: React.DragEvent<HTMLAnchorElement>) => {
         e.preventDefault();
@@ -281,6 +315,10 @@ const FolderItem = ({ folder }: FolderItemProps) => {
         }
     };
 
+    if (folder.conditional && folderCount === 0) {
+        return null;
+    }
+
     return (
         <Link
             href={`/mailbox/${selectedMailbox?.id}?${queryParams}`}
@@ -298,7 +336,12 @@ const FolderItem = ({ folder }: FolderItemProps) => {
                 <Icon name={folder.icon} type={IconType.OUTLINED} aria-hidden="true" />
                 {t(folder.name)}
             </p>
-            {(folderStats?.[stats_fields] ?? 0) > 0 && <span className="mailbox__item-counter">{folderStats[stats_fields]}</span>}
+            <div className="mailbox__item__metadata">
+            {
+                hasDeliveryFailed ? <Tooltip content={t("Some messages have not been delivered to all recipients.")} placement="left"><Icon name="error" type={IconType.OUTLINED} aria-label={t("Delivery failed")} className="mailbox__item-warning" /></Tooltip>:
+                folderCount > 0 && <span className="mailbox__item-counter">{folderCount}</span>
+            }
+            </div>
         </Link>
     )
 }

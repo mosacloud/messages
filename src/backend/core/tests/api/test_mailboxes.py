@@ -62,8 +62,8 @@ class TestMailboxViewSet:
             role=models.MailboxRoleChoices.EDITOR,
         )
 
-        # create a thread with one unread message for user_mailbox1
-        thread1 = factories.ThreadFactory()
+        # create a thread with one unread message for user_mailbox1 (with delivering)
+        thread1 = factories.ThreadFactory(has_delivery_pending=True)
         factories.ThreadAccessFactory(
             mailbox=user_mailbox1,
             thread=thread1,
@@ -71,8 +71,8 @@ class TestMailboxViewSet:
         )
         factories.MessageFactory(thread=thread1, read_at=None)
 
-        # create a thread with one read message for user_mailbox2
-        thread2 = factories.ThreadFactory()
+        # create a thread with one read message for user_mailbox2 (with delivering)
+        thread2 = factories.ThreadFactory(has_delivery_pending=True)
         factories.ThreadAccessFactory(
             mailbox=user_mailbox2,
             thread=thread2,
@@ -80,8 +80,8 @@ class TestMailboxViewSet:
         )
         factories.MessageFactory(thread=thread2, read_at=timezone.now())
 
-        # create a thread with one unread message for user_mailbox2
-        thread3 = factories.ThreadFactory()
+        # create a thread with one unread message for user_mailbox2 (no delivering)
+        thread3 = factories.ThreadFactory(has_delivery_pending=False)
         factories.ThreadAccessFactory(
             mailbox=user_mailbox2,
             thread=thread3,
@@ -104,12 +104,14 @@ class TestMailboxViewSet:
         assert response.data[0]["role"] == "editor"
         assert response.data[0]["count_unread_messages"] == 1
         assert response.data[0]["count_messages"] == 2
+        assert response.data[0]["count_delivering"] == 1
 
         assert response.data[1]["id"] == str(user_mailbox1.id)
         assert response.data[1]["email"] == str(user_mailbox1)
         assert response.data[1]["role"] == "viewer"
         assert response.data[1]["count_unread_messages"] == 1
         assert response.data[1]["count_messages"] == 1
+        assert response.data[1]["count_delivering"] == 1
 
     def test_list_unauthorized(self):
         """Anonymous user cannot access the list of mailboxes."""
@@ -278,8 +280,8 @@ class TestMailboxViewSet:
             role=models.MailboxRoleChoices.EDITOR,
         )
 
-        # Create a thread with one unread message for the mailbox
-        thread = factories.ThreadFactory()
+        # Create a thread with one unread message for the mailbox (with delivering)
+        thread = factories.ThreadFactory(has_delivery_pending=True)
         factories.ThreadAccessFactory(
             mailbox=mailbox,
             thread=thread,
@@ -303,6 +305,7 @@ class TestMailboxViewSet:
         assert response.data["role"] == "editor"
         assert response.data["count_unread_messages"] == 1
         assert response.data["count_messages"] == 1
+        assert response.data["count_delivering"] == 1
 
     def test_retrieve_mailbox_unauthorized(self):
         """Test that users cannot retrieve mailboxes they don't have access to."""

@@ -38,6 +38,10 @@ class ViewHelper {
     static isDraftsView() {
         return new ViewHelper().#isView('drafts');
     }
+
+    static isOutboxView() {
+        return new ViewHelper().#isView('outbox');
+    }
 }
 
 export default ViewHelper;

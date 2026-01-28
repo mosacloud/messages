@@ -1,15 +1,57 @@
 """API ViewSet for Message model."""
 
+import uuid
+from datetime import timedelta
+
+from django.conf import settings
+from django.db import transaction
 from django.db.models import Exists, OuterRef
 from django.http import HttpResponse
+from django.utils import timezone
 
 import rest_framework as drf
+from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import mixins, status, viewsets
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 
 from core import models
+from core.enums import MessageDeliveryStatusChoices
+from core.utils import ThreadStatsUpdateDeferrer
 
 from .. import permissions, serializers
+
+# Allowed delivery status transitions
+DELIVERY_STATUS_TRANSITIONS = {
+    MessageDeliveryStatusChoices.FAILED: [
+        MessageDeliveryStatusChoices.CANCELLED,
+        MessageDeliveryStatusChoices.RETRY,
+    ],
+    MessageDeliveryStatusChoices.RETRY: [
+        MessageDeliveryStatusChoices.CANCELLED,
+    ],
+}
+
+# Map status names to enum values
+DELIVERY_STATUS_MAP = {
+    "failed": MessageDeliveryStatusChoices.FAILED,
+    "retry": MessageDeliveryStatusChoices.RETRY,
+    "cancelled": MessageDeliveryStatusChoices.CANCELLED,
+}
+
+
+def validate_manual_retry(message):
+    """Validate that a manual retry is allowed for this message."""
+    max_age = timedelta(seconds=settings.MESSAGES_MANUAL_RETRY_MAX_AGE)
+    message_age = timezone.now() - (message.sent_at or message.created_at)
+
+    if message_age > max_age:
+        return (
+            False,
+            f"Message sent more than {max_age} ago. Manual retry not allowed.",
+        )
+
+    return (True, None)
 
 
 class MessageViewSet(
@@ -86,3 +128,136 @@ class MessageViewSet(
             headers=headers,
         )
         return resp
+
+    @extend_schema(
+        request={
+            "type": "object",
+            "additionalProperties": {
+                "$ref": "#/components/schemas/MessageDeliveryStatusChoices"
+            },
+        },
+        responses={
+            200: inline_serializer(
+                name="DeliveryStatusUpdateResponse",
+                fields={"updated_count": drf_serializers.IntegerField()},
+            ),
+        },
+        description=(
+            "Update delivery status of message recipients.\n\n"
+            "Request body should be a dict mapping MessageRecipient IDs to target "
+            "statuses.\n"
+            'Example: {"recipient_id_1": "cancelled", "recipient_id_2": "retry"}\n\n'
+            "Allowed transitions:\n"
+            "- FAILED -> CANCELLED\n"
+            "- FAILED -> RETRY manual retry, only for messages sent within "
+            "the configured max age: MESSAGES_MANUAL_RETRY_MAX_AGE\n"
+            "- RETRY -> CANCELLED"
+        ),
+    )
+    @transaction.atomic
+    @action(detail=True, methods=["patch"], url_path="delivery-statuses")
+    def delivery_statuses(self, request, *args, **kwargs):
+        """Update delivery status of message recipients."""
+        message = self.get_object()
+
+        # Only allow updating delivery status on sent messages
+        if not message.is_sender or message.is_draft or message.is_trashed:
+            return drf.response.Response(
+                {
+                    "error": "Cannot update delivery status on received, draft or trashed messages"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate request body
+        if not isinstance(request.data, dict) or not request.data:
+            return drf.response.Response(
+                {"error": "Request body must be a non-empty dict"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get all recipient IDs from request and validate they are valid UUIDs
+        recipient_ids = list(request.data.keys())
+        try:
+            recipient_uuids = [uuid.UUID(rid) for rid in recipient_ids]
+        except ValueError:
+            return drf.response.Response(
+                {"error": "Recipient IDs must be valid UUIDs"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Fetch recipients that belong to this message
+        recipients = message.recipients.filter(id__in=recipient_uuids)
+        recipients_by_id = {str(r.id): r for r in recipients}
+
+        # Validate all recipients exist and belong to this message
+        missing_ids = set(recipient_ids) - set(recipients_by_id.keys())
+        if missing_ids:
+            return drf.response.Response(
+                {"error": f"Recipients not found: {', '.join(missing_ids)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate all transitions
+        errors = []
+        updates = []
+        for recipient_id, target_status in request.data.items():
+            if target_status not in DELIVERY_STATUS_MAP:
+                errors.append(f"Invalid status '{target_status}' for {recipient_id}")
+                continue
+
+            recipient = recipients_by_id[recipient_id]
+            current_status = recipient.delivery_status
+            target_status_value = DELIVERY_STATUS_MAP[target_status]
+
+            if current_status not in DELIVERY_STATUS_TRANSITIONS:
+                errors.append(
+                    f"Cannot update from current status for recipient {recipient_id}"
+                )
+                continue
+
+            if target_status_value not in DELIVERY_STATUS_TRANSITIONS[current_status]:
+                current_status_name = (
+                    MessageDeliveryStatusChoices(current_status).label
+                    if current_status
+                    else "None"
+                )
+                errors.append(
+                    f"Transition from '{current_status_name}' to "
+                    f"'{target_status}' not allowed for {recipient_id}"
+                )
+                continue
+
+            # Validate age constraint for manual retry
+            if target_status_value == MessageDeliveryStatusChoices.RETRY:
+                is_valid, error_message = validate_manual_retry(message)
+                if not is_valid:
+                    errors.append(error_message)
+                    continue
+
+            updates.append((recipient, target_status_value))
+
+        if errors:
+            return drf.response.Response(
+                {"error": errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Apply updates (signal will update thread stats via context manager)
+        with ThreadStatsUpdateDeferrer.defer():
+            for recipient, new_status in updates:
+                recipient.delivery_status = new_status
+                update_fields = ["delivery_status"]
+
+                # Reset retry-related fields when transitioning to RETRY
+                if new_status == MessageDeliveryStatusChoices.RETRY:
+                    recipient.retry_count = 0
+                    recipient.retry_at = None
+                    recipient.delivery_message = None
+                    update_fields.extend(
+                        ["retry_count", "retry_at", "delivery_message"]
+                    )
+
+                recipient.save(update_fields=update_fields)
+
+        return drf.response.Response({"updated_count": len(updates)})

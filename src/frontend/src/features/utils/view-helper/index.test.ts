@@ -82,7 +82,7 @@ describe('ViewHelper', () => {
 
     describe('isSentView', () => {
         it('should return true when has_sender=1 is in search params', () => {
-            setLocationSearch('?has_sender=1');
+            setLocationSearch('?has_sender=1&has_delivery_pending=0');
             expect(ViewHelper.isSentView()).toBe(true);
         });
 

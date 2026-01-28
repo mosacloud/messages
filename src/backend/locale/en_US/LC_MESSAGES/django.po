@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: lasuite-docs\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-01-22 11:32+0000\n"
+"POT-Creation-Date: 2026-02-03 18:09+0000\n"
 "PO-Revision-Date: 2025-01-27 09:27\n"
 "Last-Translator: \n"
 "Language-Team: English\n"
@@ -38,6 +38,21 @@ msgstr ""
 msgid "Important dates"
 msgstr ""
 
+msgid "Mail domain not found."
+msgstr ""
+
+#, python-format
+msgid "DNS provisioning successful via %(provider)s: %(changes)s"
+msgstr ""
+
+#, python-format
+msgid "DNS provisioning successful via %(provider)s (no changes needed)."
+msgstr ""
+
+#, python-format
+msgid "DNS provisioning failed: %(error)s"
+msgstr ""
+
 msgid "Statistics"
 msgstr ""
 
@@ -69,6 +84,9 @@ msgid ""
 msgstr ""
 
 msgid "Keys"
+msgstr ""
+
+msgid "Error"
 msgstr ""
 
 msgid "A mailbox with this local part already exists in this domain."
@@ -329,6 +347,12 @@ msgstr ""
 msgid "has active"
 msgstr ""
 
+msgid "has delivery pending"
+msgstr ""
+
+msgid "has delivery failed"
+msgstr ""
+
 msgid "messaged at"
 msgstr ""
 
@@ -559,6 +583,12 @@ msgstr ""
 msgid "Messages that use this attachment"
 msgstr ""
 
+msgid "content ID"
+msgstr ""
+
+msgid "Content-ID for inline images"
+msgstr ""
+
 msgid "attachment"
 msgstr ""
 
@@ -658,6 +688,9 @@ msgid "message template"
 msgstr ""
 
 msgid "message templates"
+msgstr ""
+
+msgid "Provision DNS records"
 msgstr ""
 
 msgid "Retry to send to pending recipients"

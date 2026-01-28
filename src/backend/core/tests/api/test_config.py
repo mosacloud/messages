@@ -30,6 +30,7 @@ pytestmark = pytest.mark.django_db
     MAX_INCOMING_EMAIL_SIZE=10485760,  # 10MB
     MAX_RECIPIENTS_PER_MESSAGE=42,
     IMAGE_PROXY_ENABLED=False,
+    MESSAGES_MANUAL_RETRY_MAX_AGE=86400,  # 1 day in seconds
 )
 @pytest.mark.parametrize("is_authenticated", [False, True])
 def test_api_config(is_authenticated):
@@ -57,6 +58,7 @@ def test_api_config(is_authenticated):
         "MAX_OUTGOING_BODY_SIZE": 5242880,
         "MAX_RECIPIENTS_PER_MESSAGE": 42,
         "IMAGE_PROXY_ENABLED": False,
+        "MESSAGES_MANUAL_RETRY_MAX_AGE": 86400,
     }
 
 

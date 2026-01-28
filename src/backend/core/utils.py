@@ -1,8 +1,110 @@
 """Root utils for the core application."""
 
 import json
+import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from configurations import values
+
+logger = logging.getLogger(__name__)
+
+
+class ThreadStatsUpdateDeferrer:
+    """
+    Manages deferred thread.update_stats() calls.
+
+    Use the context manager to batch multiple delivery status updates
+    and trigger a single update_stats() call per affected thread.
+
+    Example:
+        with ThreadStatsUpdateDeferrer.defer():
+            for recipient in recipients:
+                recipient.delivery_status = new_status
+                recipient.save()
+        # update_stats() called once per affected thread at exit
+
+    Errors during update_stats() are logged but do not propagate,
+    ensuring the main logic is not impacted by stats update failures.
+    """
+
+    # Set of thread IDs to ensure uniqueness even if the same thread
+    # is loaded via different ORM queries within the defer() block
+    _deferred_thread_ids: ContextVar[set | None] = ContextVar(
+        "deferred_thread_ids", default=None
+    )
+
+    @classmethod
+    def _get_deferred_thread_ids(cls):
+        """Get the set of thread IDs pending stats update, or None if not deferring."""
+        return cls._deferred_thread_ids.get()
+
+    @classmethod
+    def _set_deferred_thread_ids(cls, thread_ids):
+        """Set the deferred thread IDs set."""
+        cls._deferred_thread_ids.set(thread_ids)
+
+    @classmethod
+    def is_deferred(cls):
+        """Check if thread stats updates are currently being deferred."""
+        return cls._get_deferred_thread_ids() is not None
+
+    @classmethod
+    def defer_for(cls, thread):
+        """
+        Mark a thread for deferred stats update.
+
+        If deferring is active, adds the thread ID to the deferred set and returns True.
+        If not deferring, returns False (caller should update immediately).
+        """
+        deferred = cls._get_deferred_thread_ids()
+        if deferred is not None:
+            deferred.add(thread.id)
+            return True
+        return False
+
+    @classmethod
+    @contextmanager
+    def defer(cls):
+        """
+        Context manager to defer thread.update_stats() calls.
+
+        Use this when performing bulk updates that could trigger thread.update_stats()
+        multiple times unnecessarily (e.g. updating delivery status of multiple recipients).
+        With this context manager, stats will be updated once when exiting the context.
+
+        Supports nested contexts - only the outermost one triggers updates.
+
+        Errors during update_stats() are caught and logged to ensure the main
+        logic is not impacted by stats update failures.
+        """
+        already_deferring = cls.is_deferred()
+
+        if not already_deferring:
+            cls._set_deferred_thread_ids(set())
+
+        try:
+            yield
+        finally:
+            if not already_deferring:
+                deferred_ids = cls._get_deferred_thread_ids()
+                cls._set_deferred_thread_ids(None)
+
+                # Update stats for all affected threads
+                # Errors are caught to not impact the main logic
+                if deferred_ids:
+                    # Import here to avoid circular imports
+                    # pylint: disable-next=import-outside-toplevel
+                    from core.models import Thread
+
+                    for thread in Thread.objects.filter(id__in=deferred_ids):
+                        try:
+                            thread.update_stats()
+                        # pylint: disable=broad-exception-caught
+                        except Exception:
+                            logger.exception(
+                                "Failed to update stats for thread %s", thread.id
+                            )
 
 
 class JSONValue(values.Value):

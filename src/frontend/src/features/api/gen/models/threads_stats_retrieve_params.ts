@@ -17,6 +17,10 @@ export type ThreadsStatsRetrieveParams = {
    */
   has_attachments?: number;
   /**
+   * Filter threads with delivery pending messages: sending, retry or failed (1=true, 0=false).
+   */
+  has_delivery_pending?: number;
+  /**
    * Filter threads with draft messages (1=true, 0=false).
    */
   has_draft?: number;
@@ -47,7 +51,8 @@ export type ThreadsStatsRetrieveParams = {
   /**
  * Comma-separated list of fields to aggregate.
                 Special values: 'all' (count all threads), 'all_unread' (count all unread threads).
-                Boolean fields: has_trashed, has_draft, has_starred, has_attachments, has_sender, has_active, is_spam, has_messages.
+                Boolean fields: has_trashed, has_draft, has_starred, has_attachments, has_archived,
+                has_sender, has_active, has_delivery_pending, has_delivery_failed, is_spam, has_messages.
                 Unread variants ('_unread' suffix): count threads where the condition is true AND the thread is unread.
                 Examples: 'all,all_unread', 'has_starred,has_starred_unread', 'is_spam,is_spam_unread'
  */

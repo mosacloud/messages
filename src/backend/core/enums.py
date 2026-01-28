@@ -61,6 +61,7 @@ class MessageDeliveryStatusChoices(models.IntegerChoices):
     SENT = 2, "sent"
     FAILED = 3, "failed"
     RETRY = 4, "retry"
+    CANCELLED = 5, "cancelled"
 
 
 class MailDomainAccessRoleChoices(models.IntegerChoices):
@@ -86,6 +87,8 @@ class DKIMAlgorithmChoices(models.IntegerChoices):
 THREAD_STATS_FIELDS_MAP = {
     "all": "all",
     "all_unread": "all_unread",
+    "has_delivery_pending": "has_delivery_pending",
+    "has_delivery_failed": "has_delivery_failed",
 }
 
 

@@ -12,6 +12,8 @@ import type { MessageRecipientDeliveryStatus } from "./message_recipient_deliver
  * Serialize message recipients.
  */
 export interface MessageRecipient {
+  /** primary key for the record as UUID */
+  readonly id: string;
   readonly contact: Contact;
   /** @nullable */
   readonly delivery_status: MessageRecipientDeliveryStatus;

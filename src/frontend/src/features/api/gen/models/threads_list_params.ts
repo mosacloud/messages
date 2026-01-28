@@ -20,6 +20,10 @@ export type ThreadsListParams = {
    */
   has_attachments?: number;
   /**
+   * Filter threads that have delivery pending messages: sending, retry or failed (1=true, 0=false).
+   */
+  has_delivery_pending?: number;
+  /**
    * Filter threads with draft messages (1=true, 0=false).
    */
   has_draft?: number;

@@ -772,6 +772,19 @@ class Thread(BaseModel):
     has_attachments = models.BooleanField(_("has attachments"), default=False)
     is_spam = models.BooleanField(_("is spam"), default=False)
     has_active = models.BooleanField(_("has active"), default=False)
+    has_delivery_pending = models.BooleanField(
+        _("has delivery pending"),
+        default=False,
+        help_text=_(
+            "True if thread has messages awaiting successful delivery "
+            "(sending, retrying, or failed)."
+        ),
+    )
+    has_delivery_failed = models.BooleanField(
+        _("has delivery failed"),
+        default=False,
+        help_text=_("True if thread has messages with permanent delivery failure."),
+    )
     messaged_at = models.DateTimeField(_("messaged at"), null=True, blank=True)
     sender_names = models.JSONField(_("sender names"), null=True, blank=True)
     summary = models.TextField(_("summary"), null=True, blank=True, default=None)
@@ -819,6 +832,8 @@ class Thread(BaseModel):
             self.has_active = False
             self.messaged_at = None
             self.sender_names = None
+            self.has_delivery_pending = False
+            self.has_delivery_failed = False
         else:
             # Compute stats in Python
             self.has_unread = any(
@@ -860,6 +875,30 @@ class Thread(BaseModel):
                 and not msg["is_trashed"]
                 and not msg["is_draft"]
                 for msg in message_data
+            )
+
+            # Fetch recipient delivery statuses for outbox fields
+            recipient_statuses = list(
+                MessageRecipient.objects.filter(
+                    message__thread=self,
+                    message__is_sender=True,
+                    message__is_draft=False,
+                    message__is_trashed=False,
+                ).values_list("delivery_status", flat=True)
+            )
+
+            self.has_delivery_failed = any(
+                s == MessageDeliveryStatusChoices.FAILED for s in recipient_statuses
+            )
+            # Consider as pending if sending, retrying OR FAILED
+            self.has_delivery_pending = any(
+                s
+                in [
+                    None,
+                    MessageDeliveryStatusChoices.RETRY,
+                    MessageDeliveryStatusChoices.FAILED,
+                ]
+                for s in recipient_statuses
             )
 
             # Set messaged_at to the creation time of the most recent non-trashed message
@@ -910,6 +949,8 @@ class Thread(BaseModel):
                 "has_attachments",
                 "is_spam",
                 "has_active",
+                "has_delivery_pending",
+                "has_delivery_failed",
                 "messaged_at",
                 "sender_names",
             ]

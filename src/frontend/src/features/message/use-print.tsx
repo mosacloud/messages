@@ -25,12 +25,12 @@ const usePrint = () => {
         });
 
         const headers = [
-            { label: t('From'), value: formatContact(message.sender) },
-            { label: t('To'), value: message.to.map((r) => formatContact(r.contact)).join(', ') },
-            ...(message.cc.length ? [{ label: t('Cc'), value: message.cc.map((r) => formatContact(r.contact)).join(', ') }] : []),
-            ...(message.bcc.length ? [{ label: t('Bcc'), value: message.bcc.map((r) => formatContact(r.contact)).join(', ') }] : []),
-            { label: t('Date'), value: formattedDate },
-            { label: t('Subject'), value: message.subject ?? '' },
+            { label: t('From: '), value: formatContact(message.sender) },
+            { label: t('To: '), value: message.to.map((r) => formatContact(r.contact)).join(', ') },
+            ...(message.cc.length ? [{ label: t('CC: '), value: message.cc.map((r) => formatContact(r.contact)).join(', ') }] : []),
+            ...(message.bcc.length ? [{ label: t('BCC: '), value: message.bcc.map((r) => formatContact(r.contact)).join(', ') }] : []),
+            { label: t('Date: '), value: formattedDate },
+            { label: t('Subject: '), value: message.subject ?? '' },
         ];
 
         const html = '<!DOCTYPE html>' + renderToStaticMarkup(

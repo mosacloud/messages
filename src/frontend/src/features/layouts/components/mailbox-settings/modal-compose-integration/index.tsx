@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { Channel } from "@/features/api/gen";
 import { WidgetIntegrationForm } from "./widget-integration-form";
 import { useConfig } from "@/features/providers/config";
+import i18n from "@/features/i18n/initI18n";
 
 type ModalComposeIntegrationProps = {
     isOpen: boolean;
@@ -35,14 +36,14 @@ type ChannelTypeMetadata = {
 const CHANNEL_TYPE_METADATA: Record<ChannelType, ChannelTypeMetadata> = {
     widget: {
         type: "widget",
-        title: "Website Widget",
-        description: "Add a contact form widget to your website to receive messages directly in your mailbox.",
+        title: i18n.t("Website Widget"),
+        description: i18n.t("Add a contact form widget to your website to receive messages directly in your mailbox."),
         icon: "widgets",
     },
     api_key: {
         type: "api_key",
-        title: "API Key",
-        description: "Generate an API key to send messages programmatically from your applications.",
+        title: i18n.t("API Key"),
+        description: i18n.t("Generate an API key to send messages programmatically from your applications."),
         icon: "key",
         disabled: true
     },
@@ -165,7 +166,7 @@ export const ModalComposeIntegration = ({
                             {enabledChannelTypes.map((channelType) => {
                                 const metadata = CHANNEL_TYPE_METADATA[channelType as ChannelType];
                                 if (!metadata) return null;
-                                
+
                                 return (
                                     <ChannelTypeCard
                                         key={channelType}

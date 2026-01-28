@@ -33,6 +33,39 @@
     outline-width: 2px;
 }
 
+.thread-message--delivery-failed,
+.thread-message--delivery-retry {
+    padding-top: 0;
+    padding-inline: 0;
+
+    > .banner:first-child {
+        border-radius: 6px 6px 0 0;
+        border: none;
+    }
+
+    > .thread-message__header,
+    > .thread-message__body,
+    > .thread-message__footer,
+    > .thread-message__reply-form,
+    > .thread-message__loading {
+        padding-inline: var(--c--globals--spacings--base);
+    }
+
+    > .thread-message__header {
+        padding-top: var(--c--globals--spacings--2xs);
+    }
+}
+
+.thread-message--delivery-failed {
+    outline-color: var(--c--contextuals--border--semantic--error--tertiary);
+    outline-width: 2px;
+}
+
+.thread-message--delivery-retry {
+    outline-color: var(--c--contextuals--border--semantic--warning--tertiary);
+    outline-width: 2px;
+}
+
 .thread-message__header {
     border-bottom: 1px solid var(--c--contextuals--border--surface--primary);
     padding-bottom: var(--c--globals--spacings--base);

@@ -1,11 +1,11 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Tooltip } from "@gouvfr-lasuite/cunningham-react";
 import { Icon, IconType, IconSize, UserAvatar } from "@gouvfr-lasuite/ui-kit";
 import { MessageDeliveryStatusChoices, MessageRecipient } from "@/features/api/gen/models";
 import { Banner } from "@/features/ui/components/banner";
 import { Badge } from "@/features/ui/components/badge";
-import { ContactChip, ContactChipDeliveryStatus } from "@/features/ui/components/contact-chip";
+import { ContactChip, ContactChipDeliveryStatus, ContactChipDeliveryAction } from "@/features/ui/components/contact-chip";
 import { DateHelper } from "@/features/utils/date-helper";
 import useTrash from "@/features/message/use-trash";
 import { ThreadMessageHeaderProps } from "./types";
@@ -17,9 +17,11 @@ const ThreadMessageHeader = ({
     isLatest,
     isFolded,
     canSendMessages,
+    canRetry,
     hasSeveralRecipients,
     onToggleFold,
     onSetReplyFormMode,
+    onUpdateRecipientStatus,
 }: ThreadMessageHeaderProps) => {
     const { t, i18n } = useTranslation();
     const { markAsUntrashed } = useTrash();
@@ -42,6 +44,8 @@ const ThreadMessageHeader = ({
                 return { status: 'undelivered', timestamp: recipient.retry_at, message: recipient.delivery_message };
             case MessageDeliveryStatusChoices.retry:
                 return { status: 'delivering', timestamp: recipient.retry_at, message: recipient.delivery_message };
+            case MessageDeliveryStatusChoices.cancelled:
+                return { status: 'cancelled', timestamp: recipient.retry_at, message: recipient.delivery_message };
             case MessageDeliveryStatusChoices.sent:
             case MessageDeliveryStatusChoices.internal:
                 return { status: 'delivered', timestamp: recipient.delivered_at, message: recipient.delivery_message };
@@ -49,6 +53,52 @@ const ThreadMessageHeader = ({
                 return undefined;
         }
     }, [message.is_sender, message.is_draft]);
+
+    // Sort recipients by delivery status: failed first, then retry/null, then others
+    const sortRecipientsByDeliveryStatus = useCallback((recipients: readonly MessageRecipient[]) => {
+        return [...recipients].sort((a, b) => {
+            const getPriority = (r: MessageRecipient) => {
+                if (r.delivery_status === MessageDeliveryStatusChoices.failed) return 0;
+                if (r.delivery_status === MessageDeliveryStatusChoices.retry || r.delivery_status === null) return 1;
+                return 2;
+            };
+            return getPriority(a) - getPriority(b);
+        });
+    }, []);
+
+    const sortedTo = useMemo(() => sortRecipientsByDeliveryStatus(message.to), [message.to, sortRecipientsByDeliveryStatus]);
+    const sortedCc = useMemo(() => sortRecipientsByDeliveryStatus(message.cc), [message.cc, sortRecipientsByDeliveryStatus]);
+    const sortedBcc = useMemo(() => sortRecipientsByDeliveryStatus(message.bcc), [message.bcc, sortRecipientsByDeliveryStatus]);
+
+    // Get delivery actions for a recipient based on their current status
+    const getRecipientDeliveryActions = useCallback((recipient: MessageRecipient): ContactChipDeliveryAction[] | undefined => {
+        if (!onUpdateRecipientStatus) return undefined;
+
+        const actions: ContactChipDeliveryAction[] = [];
+
+        // FAILED -> can retry (if allowed) or dismiss
+        if (recipient.delivery_status === MessageDeliveryStatusChoices.failed) {
+            if (canRetry) {
+                actions.push({
+                    label: t('Retry'),
+                    onClick: () => onUpdateRecipientStatus(recipient.id, 'retry'),
+                });
+            }
+            actions.push({
+                label: t('Dismiss'),
+                onClick: () => onUpdateRecipientStatus(recipient.id, 'cancelled'),
+            });
+        }
+        // RETRY -> can cancel
+        else if (recipient.delivery_status === MessageDeliveryStatusChoices.retry) {
+            actions.push({
+                label: t('Cancel'),
+                onClick: () => onUpdateRecipientStatus(recipient.id, 'cancelled'),
+            });
+        }
+
+        return actions.length > 0 ? actions : undefined;
+    }, [onUpdateRecipientStatus, canRetry, t]);
 
     return (
         <header className="thread-message__header">
@@ -148,43 +198,46 @@ const ThreadMessageHeader = ({
                         <div className="thread-message__header-rows">
                             <div className="thread-message__header-column thread-message__header-column--left">
                                 <dl className="thread-message__correspondents">
-                                    {message.to.length > 0 && (
+                                    {sortedTo.length > 0 && (
                                         <>
                                             <dt>{t('To: ')}</dt>
                                             <dd className="recipient-chip-list">
-                                                {message.to.map((recipient) => (
+                                                {sortedTo.map((recipient) => (
                                                     <ContactChip
-                                                        key={`to-${recipient.contact.id}`}
+                                                        key={`to-${recipient.id}`}
                                                         contact={recipient.contact}
                                                         status={getRecipientDeliveryStatus(recipient)}
+                                                        deliveryActions={getRecipientDeliveryActions(recipient)}
                                                     />
                                                 ))}
                                             </dd>
                                         </>
                                     )}
-                                    {message.cc.length > 0 && (
+                                    {sortedCc.length > 0 && (
                                         <>
                                             <dt>{t('Copy: ')}</dt>
                                             <dd className="recipient-chip-list">
-                                                {message.cc.map((recipient) => (
+                                                {sortedCc.map((recipient) => (
                                                     <ContactChip
-                                                        key={`cc-${recipient.contact.id}`}
+                                                        key={`cc-${recipient.id}`}
                                                         contact={recipient.contact}
                                                         status={getRecipientDeliveryStatus(recipient)}
+                                                        deliveryActions={getRecipientDeliveryActions(recipient)}
                                                     />
                                                 ))}
                                             </dd>
                                         </>
                                     )}
-                                    {message.bcc.length > 0 && (
+                                    {sortedBcc.length > 0 && (
                                         <>
                                             <dt>{t('BCC: ')}</dt>
                                             <dd className="recipient-chip-list">
-                                                {message.bcc.map((recipient) => (
+                                                {sortedBcc.map((recipient) => (
                                                     <ContactChip
-                                                        key={`bcc-${recipient.contact.id}`}
+                                                        key={`bcc-${recipient.id}`}
                                                         contact={recipient.contact}
                                                         status={getRecipientDeliveryStatus(recipient)}
+                                                        deliveryActions={getRecipientDeliveryActions(recipient)}
                                                     />
                                                 ))}
                                             </dd>

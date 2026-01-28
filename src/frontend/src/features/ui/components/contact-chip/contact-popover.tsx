@@ -1,14 +1,40 @@
 import { Contact } from "@/features/api/gen";
 import { Icon, IconSize, IconType, UserAvatar } from "@gouvfr-lasuite/ui-kit";
+import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { Popover, PopoverProps } from "react-aria-components";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import clsx from "clsx";
 import { handle } from "@/features/utils/errors";
+import type { ContactChipDeliveryStatus, ContactChipDeliveryAction } from "./index";
 
 type ContactPopoverProps = PopoverProps & {
     contact: Contact;
+    deliveryStatus?: ContactChipDeliveryStatus;
+    deliveryActions?: ContactChipDeliveryAction[];
 };
 
-export const ContactPopover = ({ contact, ...popoverProps }: ContactPopoverProps) => {
+type StatusVariant = 'error' | 'warning' | 'neutral';
+
+const getStatusConfig = (
+    status: ContactChipDeliveryStatus['status'],
+    t: (key: string) => string
+): { icon: string; variant: StatusVariant; label: string } | null => {
+    switch (status) {
+        case 'undelivered':
+            return { icon: 'error', variant: 'error', label: t('Delivery failed') };
+        case 'delivering':
+            return { icon: 'schedule', variant: 'warning', label: t('Delivering') };
+        case 'cancelled':
+            return { icon: 'cancel', variant: 'neutral', label: t('Delivery cancelled') };
+        // Don't show anything for delivered - keep it discreet
+        default:
+            return null;
+    }
+};
+
+export const ContactPopover = ({ contact, deliveryStatus, deliveryActions, ...popoverProps }: ContactPopoverProps) => {
+    const { t } = useTranslation();
     const [copied, setCopied] = useState(false);
     const timeoutRef = useRef<NodeJS.Timeout | null>(null);
     const popoverRef = useRef<HTMLDivElement>(null);
@@ -32,6 +58,9 @@ export const ContactPopover = ({ contact, ...popoverProps }: ContactPopoverProps
         }
     }, []);
 
+    const statusConfig = deliveryStatus ? getStatusConfig(deliveryStatus.status, t) : null;
+    const showDeliverySection = statusConfig !== null;
+
     return (
         <Popover {...popoverProps}>
             <div ref={popoverRef} className="contact-popover">
@@ -47,6 +76,42 @@ export const ContactPopover = ({ contact, ...popoverProps }: ContactPopoverProps
                         </button>
                     </div>
                 </div>
+                {showDeliverySection && statusConfig && (
+                    <div className="contact-popover__delivery">
+                        <div className="contact-popover__delivery-row">
+                            <div className="contact-popover__delivery-info">
+                                <Icon
+                                    name={statusConfig.icon}
+                                    type={IconType.OUTLINED}
+                                    size={IconSize.SMALL}
+                                    className={clsx("contact-popover__delivery-icon", `contact-popover__delivery-icon--${statusConfig.variant}`)}
+                                />
+                                <span className="contact-popover__delivery-label">{statusConfig.label}</span>
+                            </div>
+                            {deliveryActions && deliveryActions.length > 0 && (
+                            <div className="contact-popover__delivery-actions">
+                                {deliveryActions.map((action, index) => (
+                                    <Button
+                                        key={index}
+                                        size="nano"
+                                        color="neutral"
+                                        variant="secondary"
+                                        onClick={action.onClick}
+                                    >
+                                        {action.label}
+                                    </Button>
+                                ))}
+                            </div>
+                            )}
+                        </div>
+                        {deliveryStatus?.message && (
+                            <details className="contact-chip__delivery-logs">
+                                <summary>{t('Show logs')}</summary>
+                                <pre>{deliveryStatus.message}</pre>
+                            </details>
+                        )}
+                    </div>
+                )}
             </div>
         </Popover>
     );

@@ -239,6 +239,11 @@
                                             "type": "boolean",
                                             "description": "Whether external images should be proxied",
                                             "readOnly": true
+                                        },
+                                        "MESSAGES_MANUAL_RETRY_MAX_AGE": {
+                                            "type": "integer",
+                                            "description": "Maximum age in seconds for a message to be eligible for manual retry of failed deliveries",
+                                            "readOnly": true
                                         }
                                     },
                                     "required": [
@@ -255,7 +260,8 @@
                                         "MAX_OUTGOING_BODY_SIZE",
                                         "MAX_INCOMING_EMAIL_SIZE",
                                         "MAX_RECIPIENTS_PER_MESSAGE",
-                                        "IMAGE_PROXY_ENABLED"
+                                        "IMAGE_PROXY_ENABLED",
+                                        "MESSAGES_MANUAL_RETRY_MAX_AGE"
                                     ]
                                 }
                             }
@@ -4334,6 +4340,60 @@
                 }
             }
         },
+        "/api/v1.0/messages/{id}/delivery-statuses/": {
+            "patch": {
+                "operationId": "messages_delivery_statuses_partial_update",
+                "description": "Update delivery status of message recipients.\n\nRequest body should be a dict mapping MessageRecipient IDs to target statuses.\nExample: {\"recipient_id_1\": \"cancelled\", \"recipient_id_2\": \"retry\"}\n\nAllowed transitions:\n- FAILED -> CANCELLED\n- FAILED -> RETRY manual retry, only for messages sent within the configured max age: MESSAGES_MANUAL_RETRY_MAX_AGE\n- RETRY -> CANCELLED",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "description": "primary key for the record as UUID"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "messages"
+                ],
+                "requestBody": {
+                    "content": {
+                        "type": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": {},
+                                "description": "Unspecified request body"
+                            }
+                        },
+                        "additionalProperties": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MessageDeliveryStatusChoices"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DeliveryStatusUpdateResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
         "/api/v1.0/messages/{id}/eml/": {
             "get": {
                 "operationId": "messages_eml_retrieve",
@@ -4660,6 +4720,14 @@
                             "type": "integer"
                         },
                         "description": "Filter threads with attachments (1=true, 0=false)."
+                    },
+                    {
+                        "in": "query",
+                        "name": "has_delivery_pending",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Filter threads that have delivery pending messages: sending, retry or failed (1=true, 0=false)."
                     },
                     {
                         "in": "query",
@@ -5262,6 +5330,14 @@
                     },
                     {
                         "in": "query",
+                        "name": "has_delivery_pending",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Filter threads with delivery pending messages: sending, retry or failed (1=true, 0=false)."
+                    },
+                    {
+                        "in": "query",
                         "name": "has_draft",
                         "schema": {
                             "type": "integer"
@@ -5324,10 +5400,12 @@
                             "type": "string",
                             "enum": [
                                 "all",
-                                "all_unread"
+                                "all_unread",
+                                "has_delivery_failed",
+                                "has_delivery_pending"
                             ]
                         },
-                        "description": "Comma-separated list of fields to aggregate.\n                Special values: 'all' (count all threads), 'all_unread' (count all unread threads).\n                Boolean fields: has_trashed, has_draft, has_starred, has_attachments, has_sender, has_active, is_spam, has_messages.\n                Unread variants ('_unread' suffix): count threads where the condition is true AND the thread is unread.\n                Examples: 'all,all_unread', 'has_starred,has_starred_unread', 'is_spam,is_spam_unread'",
+                        "description": "Comma-separated list of fields to aggregate.\n                Special values: 'all' (count all threads), 'all_unread' (count all unread threads).\n                Boolean fields: has_trashed, has_draft, has_starred, has_attachments, has_archived,\n                has_sender, has_active, has_delivery_pending, has_delivery_failed, is_spam, has_messages.\n                Unread variants ('_unread' suffix): count threads where the condition is true AND the thread is unread.\n                Examples: 'all,all_unread', 'has_starred,has_starred_unread', 'is_spam,is_spam_unread'",
                         "required": true,
                         "explode": false,
                         "style": "form"
@@ -5708,6 +5786,17 @@
                     "target",
                     "type",
                     "value"
+                ]
+            },
+            "DeliveryStatusUpdateResponse": {
+                "type": "object",
+                "properties": {
+                    "updated_count": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "updated_count"
                 ]
             },
             "DraftMessageRequestRequest": {
@@ -6172,6 +6261,10 @@
                         "type": "string",
                         "readOnly": true
                     },
+                    "count_delivering": {
+                        "type": "string",
+                        "readOnly": true
+                    },
                     "abilities": {
                         "type": "object",
                         "description": "Instance permissions and capabilities",
@@ -6239,6 +6332,7 @@
                 },
                 "required": [
                     "abilities",
+                    "count_delivering",
                     "count_messages",
                     "count_unread_messages",
                     "email",
@@ -6946,13 +7040,20 @@
                     "internal",
                     "sent",
                     "failed",
-                    "retry"
+                    "retry",
+                    "cancelled"
                 ]
             },
             "MessageRecipient": {
                 "type": "object",
                 "description": "Serialize message recipients.",
                 "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true,
+                        "description": "primary key for the record as UUID"
+                    },
                     "contact": {
                         "allOf": [
                             {
@@ -6993,6 +7094,7 @@
                     "delivered_at",
                     "delivery_message",
                     "delivery_status",
+                    "id",
                     "retry_at"
                 ]
             },
@@ -7724,6 +7826,16 @@
                         "type": "boolean",
                         "readOnly": true
                     },
+                    "has_delivery_failed": {
+                        "type": "boolean",
+                        "readOnly": true,
+                        "description": "True if thread has messages with permanent delivery failure."
+                    },
+                    "has_delivery_pending": {
+                        "type": "boolean",
+                        "readOnly": true,
+                        "description": "True if thread has messages awaiting successful delivery (sending, retrying, or failed)."
+                    },
                     "is_spam": {
                         "type": "boolean",
                         "readOnly": true
@@ -7784,6 +7896,8 @@
                     "has_active",
                     "has_archived",
                     "has_attachments",
+                    "has_delivery_failed",
+                    "has_delivery_pending",
                     "has_draft",
                     "has_messages",
                     "has_sender",

@@ -260,6 +260,7 @@ _Those settings are deprecated and will be removed in the future._
 |----------|---------|-------------|----------|
 | `TRASHBIN_CUTOFF_DAYS` | `30` | Days before permanent deletion | Optional |
 | `INVITATION_VALIDITY_DURATION` | `604800` | Invitation validity (7 days) | Optional |
+| `MESSAGES_MANUAL_RETRY_MAX_AGE` | `604800` | Maximum age in seconds for a message to be eligible for manual retry of failed deliveries (7 days) | Optional |
 
 ### Model custom attributes schema
 

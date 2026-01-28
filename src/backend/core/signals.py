@@ -14,6 +14,7 @@ from core.services.identity.keycloak import (
 )
 from core.services.search import MESSAGE_INDEX, get_opensearch_client
 from core.services.search.tasks import index_message_task, reindex_thread_task
+from core.utils import ThreadStatsUpdateDeferrer
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,44 @@ def index_message_recipient_post_save(sender, instance, created, **kwargs):
             instance.message.id,
             e,
         )
+
+
+@receiver(post_save, sender=models.MessageRecipient)
+def update_thread_stats_on_delivery_status_change(sender, instance, **kwargs):
+    """
+    Update thread stats when a MessageRecipient delivery_status changes.
+
+    Only triggers for outbound messages (is_sender=True) that are not drafts
+    or trashed, since only those affect thread delivery stats.
+
+    Supports batching via defer_thread_stats_update() context manager.
+    """
+    update_fields = kwargs.get("update_fields")
+
+    # Only proceed if delivery_status was updated (or if update_fields is None,
+    # meaning all fields were saved)
+    if update_fields is not None and "delivery_status" not in update_fields:
+        return
+
+    message = instance.message
+
+    # Only update stats for outbound messages that are not drafts or trashed
+    # (matches the filter in Thread.update_stats())
+    if not message.is_sender or message.is_draft or message.is_trashed:
+        return
+
+    thread = message.thread
+
+    # If deferring is active, mark thread for later update
+    if ThreadStatsUpdateDeferrer.defer_for(thread):
+        return
+
+    # Otherwise update immediately
+    try:
+        thread.update_stats()
+    # pylint: disable=broad-exception-caught
+    except Exception:
+        logger.exception("Failed to update stats for thread %s", thread.id)
 
 
 @receiver(post_save, sender=models.Thread)

@@ -85,6 +85,10 @@
     color: var(--c--contextuals--content--semantic--success--tertiary);
 }
 
+.contact-chip__icon--muted {
+    color: var(--c--contextuals--content--semantic--neutral--tertiary);
+}
+
 // == ContactPopover
 .contact-popover {
     padding: var(--c--globals--spacings--base);
@@ -168,4 +172,79 @@
     }
 }
 
+// Delivery status section (only shown for failed/delivering)
+.contact-popover__delivery {
+    border-top: 1px solid var(--c--contextuals--border--surface--primary);
+    padding-top: var(--c--globals--spacings--xs);
+    display: flex;
+    flex-direction: column;
+    gap: var(--c--globals--spacings--2xs);
+}
 
+.contact-popover__delivery-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--c--globals--spacings--xs);
+}
+
+.contact-popover__delivery-info {
+    display: flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--2xs);
+    font-size: var(--c--globals--font--sizes--xs);
+    color: var(--c--contextuals--content--semantic--neutral--secondary);
+}
+
+.contact-popover__delivery-icon {
+    flex-shrink: 0;
+
+    &--error {
+        color: var(--c--contextuals--content--semantic--error--tertiary);
+    }
+
+    &--warning {
+        color: var(--c--contextuals--content--semantic--warning--tertiary);
+    }
+}
+
+.contact-popover__delivery-label {
+    font-size: var(--c--globals--font--sizes--xs);
+}
+
+.contact-popover__delivery-timestamp {
+    font-size: var(--c--globals--font--sizes--2xs);
+    color: var(--c--contextuals--content--semantic--neutral--tertiary);
+}
+
+.contact-popover__delivery-actions {
+    display: flex;
+    gap: var(--c--globals--spacings--2xs);
+    flex-shrink: 0;
+}
+
+.contact-chip__delivery-logs {
+    font-size: var(--c--globals--font--sizes--xs);
+    color: var(--c--contextuals--content--semantic--neutral--tertiary);
+
+    summary {
+        cursor: pointer;
+        user-select: none;
+
+        &:hover {
+            text-decoration: underline;
+        }
+    }
+
+    pre {
+        margin: var(--c--globals--spacings--2xs) 0 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: var(--c--globals--font--sizes--2xs);
+        background-color: var(--c--contextuals--background--surface--tertiary);
+        padding: var(--c--globals--spacings--xs);
+        border-radius: 4px;
+        max-height: 80px;
+        overflow-y: auto;
+    }
+}

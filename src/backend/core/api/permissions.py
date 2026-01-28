@@ -146,11 +146,11 @@ class IsAllowedToAccess(IsAuthenticated):
             if not has_access:
                 return False
 
-            # Only EDITOR, SENDER or ADMIN role can destroy. SENDER or ADMIN can send.
-            if view.action in ["destroy", "send"]:
+            # Only EDITOR, SENDER or ADMIN role can destroy/send/delivery_statuses.
+            if view.action in ["destroy", "send", "delivery_statuses"]:
                 # filter only mailboxes with editor role on thread
-                # and check if user has enough role on those mailboxes to destroy or send the message
-                if view.action == "destroy":
+                # and check if user has enough role on those mailboxes
+                if view.action in ["destroy", "delivery_statuses"]:
                     role_list = enums.MAILBOX_ROLES_CAN_EDIT
                 else:
                     role_list = enums.MAILBOX_ROLES_CAN_SEND

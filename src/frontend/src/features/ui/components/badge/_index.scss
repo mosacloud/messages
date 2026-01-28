@@ -50,3 +50,63 @@
         color: var(--c--contextuals--content--semantic--neutral--tertiary);
     }
 }
+
+.badge--error {
+    &.badge--primary {
+        background-color: var(--c--contextuals--background--semantic--error--primary);
+        color: var(--c--contextuals--content--semantic--error--on-error);
+    }
+    &.badge--secondary {
+        background-color: var(--c--contextuals--background--semantic--error--secondary);
+        color: var(--c--contextuals--content--semantic--error--secondary);
+    }
+    &.badge--tertiary {
+        background-color: transparent;
+        color: var(--c--contextuals--content--semantic--error--tertiary);
+    }
+}
+
+.badge--success {
+    &.badge--primary {
+        background-color: var(--c--contextuals--background--semantic--success--primary);
+        color: var(--c--contextuals--content--semantic--success--on-success);
+    }
+    &.badge--secondary {
+        background-color: var(--c--contextuals--background--semantic--success--secondary);
+        color: var(--c--contextuals--content--semantic--success--secondary);
+    }
+    &.badge--tertiary {
+        background-color: transparent;
+        color: var(--c--contextuals--content--semantic--success--tertiary);
+    }
+}
+
+.badge--warning {
+    &.badge--primary {
+        background-color: var(--c--contextuals--background--semantic--warning--primary);
+        color: var(--c--contextuals--content--semantic--warning--on-warning);
+    }
+    &.badge--secondary {
+        background-color: var(--c--contextuals--background--semantic--warning--secondary);
+        color: var(--c--contextuals--content--semantic--warning--secondary);
+    }
+    &.badge--tertiary {
+        background-color: transparent;
+        color: var(--c--contextuals--content--semantic--warning--tertiary);
+    }
+}
+
+.badge--info {
+    &.badge--primary {
+        background-color: var(--c--contextuals--background--semantic--info--primary);
+        color: var(--c--contextuals--content--semantic--info--on-info);
+    }
+    &.badge--secondary {
+        background-color: var(--c--contextuals--background--semantic--info--secondary);
+        color: var(--c--contextuals--content--semantic--info--secondary);
+    }
+    &.badge--tertiary {
+        background-color: transparent;
+        color: var(--c--contextuals--content--semantic--info--tertiary);
+    }
+}

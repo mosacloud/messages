@@ -14,9 +14,11 @@ export type ThreadMessageHeaderProps = {
     isLatest: boolean;
     isFolded: boolean;
     canSendMessages: boolean;
+    canRetry: boolean;
     hasSeveralRecipients: boolean;
     onToggleFold: () => void;
     onSetReplyFormMode: (mode: MessageFormMode) => void;
+    onUpdateRecipientStatus?: (recipientId: string, status: 'cancelled' | 'retry') => void;
 };
 
 export type ThreadMessageActionsProps = {

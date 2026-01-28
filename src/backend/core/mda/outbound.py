@@ -24,6 +24,7 @@ from core.mda.rfc5322 import (
 )
 from core.mda.signing import sign_message_dkim, verify_message_dkim
 from core.mda.smtp import send_smtp_mail
+from core.utils import ThreadStatsUpdateDeferrer
 
 logger = logging.getLogger(__name__)
 
@@ -334,176 +335,184 @@ def send_message(message: models.Message, force_mta_out: bool = False):
         return
 
     try:
-        blob_content = message.blob.get_content()
-        try:
-            parsed_email = parse_email_message(blob_content)
-        except EmailParseError as e:
-            logger.error(
-                "Failed to parse email for message %s: %s",
-                message.id,
-                e,
-            )
-            # Mark all recipients as failed
-            for recipient in message.recipients.all():
-                recipient.delivery_status = MessageDeliveryStatusChoices.FAILED
-                recipient.delivery_message = "Internal error: failed to parse email"
-                recipient.save(update_fields=["delivery_status", "delivery_message"])
-            return
+        # Use context manager to batch thread stats updates for all delivery status changes
+        with ThreadStatsUpdateDeferrer.defer():
+            blob_content = message.blob.get_content()
+            try:
+                parsed_email = parse_email_message(blob_content)
+            except EmailParseError as e:
+                logger.error(
+                    "Failed to parse email for message %s: %s",
+                    message.id,
+                    e,
+                )
+                # Mark all recipients as failed
+                for recipient in message.recipients.all():
+                    recipient.delivery_status = MessageDeliveryStatusChoices.FAILED
+                    recipient.delivery_message = "Internal error: failed to parse email"
+                    recipient.save(
+                        update_fields=["delivery_status", "delivery_message"]
+                    )
+                return
 
-        if parsed_email.get("from", {}).get("email") != message.sender.email:
-            raise ValueError("Mailbox email does not match the raw message sender")
+            if parsed_email.get("from", {}).get("email") != message.sender.email:
+                raise ValueError("Mailbox email does not match the raw message sender")
 
-        message.sent_at = timezone.now()
-        message.save(update_fields=["sent_at"])
+            message.sent_at = timezone.now()
+            message.save(update_fields=["sent_at"])
 
-        # Include all recipients in the envelope that have not been delivered yet, including BCC
-        envelope_to = {
-            recipient.contact.email: recipient
-            for recipient in message.recipients.select_related("contact").all()
-            if recipient.delivery_status
-            in {
-                None,
-                MessageDeliveryStatusChoices.RETRY,
+            # Include all recipients in the envelope that have not been delivered yet, including BCC
+            envelope_to = {
+                recipient.contact.email: recipient
+                for recipient in message.recipients.select_related("contact").all()
+                if recipient.delivery_status
+                in {
+                    None,
+                    MessageDeliveryStatusChoices.RETRY,
+                }
+                and (recipient.retry_at is None or recipient.retry_at <= timezone.now())
             }
-            and (recipient.retry_at is None or recipient.retry_at <= timezone.now())
-        }
 
-        def _mark_delivered(
-            recipient_email: str,
-            delivered: bool,
-            internal: bool,
-            error: Optional[str] = None,
-            retry: Optional[bool] = False,
-            smtp_host: Optional[str] = None,
-        ) -> None:
-            status = "delivered" if delivered else "failed"
-            relay = smtp_host if not internal else "internal"
+            def _mark_delivered(
+                recipient_email: str,
+                delivered: bool,
+                internal: bool,
+                error: Optional[str] = None,
+                retry: Optional[bool] = False,
+                smtp_host: Optional[str] = None,
+            ) -> None:
+                status = "delivered" if delivered else "failed"
+                relay = smtp_host if not internal else "internal"
 
-            logger.info(
-                "module=core.mda.outbound.send_message message_id=%s to=%s from=%s relay=%s status=%s error=(%s)",
-                message.id,
-                recipient_email,
-                message.sender.email,
-                relay,
-                status,
-                error or "nil",
-            )
-            if delivered:
-                # TODO also update message.updated_at?
-                envelope_to[recipient_email].delivered_at = timezone.now()
-                envelope_to[recipient_email].delivery_message = None
-                envelope_to[recipient_email].delivery_status = (
-                    MessageDeliveryStatusChoices.INTERNAL
-                    if internal
-                    else MessageDeliveryStatusChoices.SENT
+                logger.info(
+                    "module=core.mda.outbound.send_message message_id=%s to=%s from=%s relay=%s status=%s error=(%s)",
+                    message.id,
+                    recipient_email,
+                    message.sender.email,
+                    relay,
+                    status,
+                    error or "nil",
                 )
-                envelope_to[recipient_email].save(
-                    update_fields=[
-                        "delivered_at",
-                        "delivery_message",
-                        "delivery_status",
-                    ]
-                )
-            elif retry and envelope_to[recipient_email].retry_count < len(
-                RETRY_INTERVALS
-            ):
-                envelope_to[recipient_email].retry_at = (
-                    timezone.now()
-                    + RETRY_INTERVALS[envelope_to[recipient_email].retry_count]
-                )
-                envelope_to[recipient_email].retry_count += 1
-                envelope_to[
-                    recipient_email
-                ].delivery_status = MessageDeliveryStatusChoices.RETRY
-                envelope_to[recipient_email].delivery_message = error
-                envelope_to[recipient_email].save(
-                    update_fields=[
-                        "retry_at",
-                        "retry_count",
-                        "delivery_status",
-                        "delivery_message",
-                    ]
-                )
-            else:
-                envelope_to[
-                    recipient_email
-                ].delivery_status = MessageDeliveryStatusChoices.FAILED
-                envelope_to[recipient_email].delivery_message = error
-                envelope_to[recipient_email].save(
-                    update_fields=["delivery_status", "delivery_message"]
-                )
-
-        external_recipients = set()
-        for recipient_email in envelope_to:
-            if (
-                check_local_recipient(recipient_email, create_if_missing=True)
-                and not force_mta_out
-            ):
-                try:
-                    delivered = deliver_inbound_message(
-                        recipient_email,
-                        parsed_email,
-                        blob_content,
-                        skip_inbound_queue=True,
+                if delivered:
+                    # TODO also update message.updated_at?
+                    envelope_to[recipient_email].delivered_at = timezone.now()
+                    envelope_to[recipient_email].delivery_message = None
+                    envelope_to[recipient_email].delivery_status = (
+                        MessageDeliveryStatusChoices.INTERNAL
+                        if internal
+                        else MessageDeliveryStatusChoices.SENT
                     )
-                    _mark_delivered(recipient_email, delivered, True)
-                except Exception as e:
-                    logger.error(
-                        "Failed to deliver internal message to %s: %s",
-                        recipient_email,
-                        e,
+                    envelope_to[recipient_email].save(
+                        update_fields=[
+                            "delivered_at",
+                            "delivery_message",
+                            "delivery_status",
+                        ]
                     )
-                    _mark_delivered(recipient_email, False, True, str(e), False)
-
-            else:
-                external_recipients.add(recipient_email)
-
-        if external_recipients:
-            # Verify DKIM signature if enabled (only for external recipients)
-            if settings.MESSAGES_DKIM_VERIFY_OUTGOING:
-                sender_domain = message.sender.mailbox.domain
-
-                if not verify_message_dkim(blob_content):
-                    error_msg = (
-                        f"DKIM verification failed for domain {sender_domain.name}"
+                elif retry and envelope_to[recipient_email].retry_count < len(
+                    RETRY_INTERVALS
+                ):
+                    envelope_to[recipient_email].retry_at = (
+                        timezone.now()
+                        + RETRY_INTERVALS[envelope_to[recipient_email].retry_count]
                     )
-                    logger.warning(
-                        "DKIM verification failed for message %s (domain: %s), marking recipients for retry",
+                    envelope_to[recipient_email].retry_count += 1
+                    envelope_to[
+                        recipient_email
+                    ].delivery_status = MessageDeliveryStatusChoices.RETRY
+                    envelope_to[recipient_email].delivery_message = error
+                    envelope_to[recipient_email].save(
+                        update_fields=[
+                            "retry_at",
+                            "retry_count",
+                            "delivery_status",
+                            "delivery_message",
+                        ]
+                    )
+                else:
+                    envelope_to[
+                        recipient_email
+                    ].delivery_status = MessageDeliveryStatusChoices.FAILED
+                    envelope_to[recipient_email].delivery_message = error
+                    envelope_to[recipient_email].save(
+                        update_fields=["delivery_status", "delivery_message"]
+                    )
+
+            external_recipients = set()
+            for recipient_email in envelope_to:
+                if (
+                    check_local_recipient(recipient_email, create_if_missing=True)
+                    and not force_mta_out
+                ):
+                    try:
+                        delivered = deliver_inbound_message(
+                            recipient_email,
+                            parsed_email,
+                            blob_content,
+                            skip_inbound_queue=True,
+                        )
+                        _mark_delivered(recipient_email, delivered, True)
+                    except Exception as e:
+                        logger.error(
+                            "Failed to deliver internal message to %s: %s",
+                            recipient_email,
+                            e,
+                        )
+                        _mark_delivered(recipient_email, False, True, str(e), False)
+
+                else:
+                    external_recipients.add(recipient_email)
+
+            if external_recipients:
+                # Verify DKIM signature if enabled (only for external recipients)
+                if settings.MESSAGES_DKIM_VERIFY_OUTGOING:
+                    sender_domain = message.sender.mailbox.domain
+
+                    if not verify_message_dkim(blob_content):
+                        error_msg = (
+                            f"DKIM verification failed for domain {sender_domain.name}"
+                        )
+                        logger.warning(
+                            "DKIM verification failed for message %s (domain: %s), marking recipients for retry",
+                            message.id,
+                            sender_domain.name,
+                        )
+                        for recipient_email in external_recipients:
+                            _mark_delivered(
+                                recipient_email, False, False, error_msg, True
+                            )
+                        return
+                    logger.info(
+                        "DKIM verification successful for message %s (domain: %s)",
                         message.id,
                         sender_domain.name,
                     )
-                    for recipient_email in external_recipients:
-                        _mark_delivered(recipient_email, False, False, error_msg, True)
-                    return
-                logger.info(
-                    "DKIM verification successful for message %s (domain: %s)",
-                    message.id,
-                    sender_domain.name,
-                )
 
-            try:
-                statuses = send_outbound_message(
-                    external_recipients, message, blob_content
-                )
-                for recipient_email, status in statuses.items():
-                    _mark_delivered(
-                        recipient_email,
-                        status["delivered"],
-                        False,
-                        status.get("error"),
-                        status.get("retry", False),
-                        status.get("smtp_host"),
+                try:
+                    statuses = send_outbound_message(
+                        external_recipients, message, blob_content
                     )
-            except Exception as e:  # pylint: disable=broad-exception-caught
-                logger.error("Failed to send outbound message: %s", e, exc_info=True)
-                for recipient_email in external_recipients:
-                    _mark_delivered(
-                        recipient_email,
-                        False,
-                        False,
-                        "Internal error while delivering",
-                        True,
+                    for recipient_email, status in statuses.items():
+                        _mark_delivered(
+                            recipient_email,
+                            status["delivered"],
+                            False,
+                            status.get("error"),
+                            status.get("retry", False),
+                            status.get("smtp_host"),
+                        )
+                except Exception as e:  # pylint: disable=broad-exception-caught
+                    logger.error(
+                        "Failed to send outbound message: %s", e, exc_info=True
                     )
+                    for recipient_email in external_recipients:
+                        _mark_delivered(
+                            recipient_email,
+                            False,
+                            False,
+                            "Internal error while delivering",
+                            True,
+                        )
     finally:
         # Always release the lock when done
         cache.delete(lock_key)

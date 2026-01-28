@@ -162,6 +162,16 @@ export const ThreadItem = ({ thread, index, isSelected, onToggleSelection, selec
                                     <Icon name="attachment" size={IconSize.SMALL} />
                                 </Badge>
                             ) : null}
+                            {thread.has_delivery_failed && (
+                                <Badge aria-label={t('Delivery failed')} title={t('Some recipients have not received this message!')} color="error" variant="tertiary" compact>
+                                    <Icon name="error" type={IconType.OUTLINED} size={IconSize.SMALL} />
+                                </Badge>
+                            )}
+                            {!thread.has_delivery_failed && thread.has_delivery_pending && (
+                                <Badge aria-label={t('Delivering')} title={t('This message has not yet been delivered to all recipients.')} color="warning" variant="tertiary" compact>
+                                    <Icon name="update" type={IconType.OUTLINED} size={IconSize.SMALL} />
+                                </Badge>
+                            )}
                             {/* <div className="thread-item__actions">
                         <Tooltip placement="bottom" content={t('Mark as important')}>
                             <Button color="tertiary-text" className="thread-item__action">

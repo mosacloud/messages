@@ -8,7 +8,7 @@ import { DateHelper } from "@/features/utils/date-helper";
 import clsx from "clsx";
 
 
-type DeliveryStatus = 'undelivered' | 'delivering' | 'delivered';
+type DeliveryStatus = 'undelivered' | 'delivering' | 'delivered' | 'cancelled';
 export type ContactChipDeliveryStatus = {
     status: DeliveryStatus;
     timestamp: string | null;
@@ -16,17 +16,26 @@ export type ContactChipDeliveryStatus = {
 }
 type ContactChipSenderStatus = 'unverified';
 
+export type ContactChipDeliveryAction = {
+    label: string;
+    onClick: () => void;
+};
+
 type ContactChipProps = {
     contact: Contact;
     status?: ContactChipDeliveryStatus | ContactChipSenderStatus;
     displayEmail?: boolean;
     isUser?: boolean;
+    deliveryActions?: ContactChipDeliveryAction[];
 } & React.HTMLAttributes<HTMLDivElement>;
 
-export const ContactChip = ({ contact, status, displayEmail = false, isUser = false, className, ...props }: ContactChipProps) => {
+export const ContactChip = ({ contact, status, displayEmail = false, isUser = false, deliveryActions, className, ...props }: ContactChipProps) => {
     const { t } = useTranslation();
     const popoverTriggerRef = useRef<HTMLButtonElement | null>(null);
     const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+
+    // Get delivery status info for popover (only if status is an object, not 'unverified')
+    const deliveryStatusInfo = status instanceof Object ? status : undefined;
 
     const chipContent = (
         <div className={clsx(["contact-chip", className])} {...props}>
@@ -35,10 +44,13 @@ export const ContactChip = ({ contact, status, displayEmail = false, isUser = fa
                     <Icon name="warning" type={IconType.OUTLINED} size={IconSize.SMALL} className="contact-chip__icon contact-chip__icon--warning" />
                 )}
                 {status instanceof Object && status.status === 'undelivered' && (
-                    <Icon name="cancel" type={IconType.FILLED} size={IconSize.SMALL} className="contact-chip__icon contact-chip__icon--error" />
+                    <Icon name="error" type={IconType.FILLED} size={IconSize.SMALL} className="contact-chip__icon contact-chip__icon--error" />
                 )}
                 {status instanceof Object && status.status === 'delivering' && (
                     <Icon name="update" type={IconType.OUTLINED} size={IconSize.SMALL} className="contact-chip__icon contact-chip__icon--warning" />
+                )}
+                {status instanceof Object && status.status === 'cancelled' && (
+                    <Icon name="cancel" type={IconType.FILLED} size={IconSize.SMALL} className="contact-chip__icon contact-chip__icon--muted" />
                 )}
                 {displayEmail ? (
                     <>
@@ -56,6 +68,8 @@ export const ContactChip = ({ contact, status, displayEmail = false, isUser = fa
                 isOpen={isPopoverOpen}
                 triggerRef={popoverTriggerRef}
                 onOpenChange={setIsPopoverOpen}
+                deliveryStatus={deliveryStatusInfo}
+                deliveryActions={deliveryActions}
             />
         </div>
     );
@@ -68,7 +82,7 @@ export const ContactChip = ({ contact, status, displayEmail = false, isUser = fa
         );
     }
     if (status instanceof Object) {
-        if (['undelivered', 'delivering'].includes(status.status)) {
+        if (['undelivered', 'delivering', 'cancelled'].includes(status.status)) {
             return (
                 <Tooltip content={<DeliveryStatusTooltip status={status} />}>
                     {chipContent}
@@ -85,8 +99,11 @@ const DeliveryStatusTooltip = ({ status }: { status: ContactChipDeliveryStatus }
 
     return (
         <div>
-            {status.status === 'undelivered' && (
+            {['undelivered'].includes(status.status) && (
                 <p>{t("This message has not been delivered.")}</p>
+            )}
+            {status.status === 'cancelled' && (
+                <p>{t("This message has not been delivered. You cancelled the delivery.")}</p>
             )}
             {status.status === 'delivering' && (
                 <p>{t("This message is being delivered.")}</p>
@@ -97,7 +114,10 @@ const DeliveryStatusTooltip = ({ status }: { status: ContactChipDeliveryStatus }
                         <p><em>{t("Last update: {{timestamp}}", { timestamp: DateHelper.formatRelativeTime(status.timestamp) })}</em></p>
                     )}
                     {status.message && (
-                        <details><summary>{t('Show logs')}</summary>{status.message}</details>
+                        <details className="contact-chip__delivery-logs">
+                            <summary>{t('Show logs')}</summary>
+                            <pre>{status.message}</pre>
+                        </details>
                     )}
                 </div>
             )}

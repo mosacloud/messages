@@ -218,10 +218,18 @@ class MailboxSerializer(AbilitiesModelSerializer):
     role = serializers.SerializerMethodField(read_only=True)
     count_unread_messages = serializers.SerializerMethodField(read_only=True)
     count_messages = serializers.SerializerMethodField(read_only=True)
+    count_delivering = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = models.Mailbox
-        fields = ["id", "email", "role", "count_unread_messages", "count_messages"]
+        fields = [
+            "id",
+            "email",
+            "role",
+            "count_unread_messages",
+            "count_messages",
+            "count_delivering",
+        ]
 
     def get_email(self, instance):
         """Return the email of the mailbox."""
@@ -250,19 +258,36 @@ class MailboxSerializer(AbilitiesModelSerializer):
                 return None
         return None
 
+    def _get_cached_counts(self, instance):
+        """Get or compute cached counts for the instance in a single query."""
+        cache_key = f"_counts_{instance.pk}"
+        if not hasattr(self, cache_key):
+            counts = instance.thread_accesses.aggregate(
+                count_unread=Count(
+                    "thread__messages",
+                    filter=Q(thread__messages__read_at__isnull=True),
+                ),
+                count_messages=Count("thread__messages"),
+                count_delivering=Count(
+                    "thread",
+                    filter=Q(thread__has_delivery_pending=True),
+                    distinct=True,
+                ),
+            )
+            setattr(self, cache_key, counts)
+        return getattr(self, cache_key)
+
     def get_count_unread_messages(self, instance):
         """Return the number of unread messages in the mailbox."""
-        return instance.thread_accesses.aggregate(
-            total=Count(
-                "thread__messages", filter=Q(thread__messages__read_at__isnull=True)
-            )
-        )["total"]
+        return self._get_cached_counts(instance)["count_unread"]
 
     def get_count_messages(self, instance):
         """Return the number of messages in the mailbox."""
-        return instance.thread_accesses.aggregate(total=Count("thread__messages"))[
-            "total"
-        ]
+        return self._get_cached_counts(instance)["count_messages"]
+
+    def get_count_delivering(self, instance):
+        """Return the number of threads with messages being delivered."""
+        return self._get_cached_counts(instance)["count_delivering"]
 
     @extend_schema_field(
         {
@@ -579,6 +604,8 @@ class ThreadSerializer(serializers.ModelSerializer):
             "has_attachments",
             "has_sender",
             "has_messages",
+            "has_delivery_failed",
+            "has_delivery_pending",
             "is_spam",
             "has_active",
             "messaged_at",
@@ -608,6 +635,7 @@ class MessageRecipientSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.MessageRecipient
         fields = [
+            "id",
             "contact",
             "delivery_status",
             "delivery_message",

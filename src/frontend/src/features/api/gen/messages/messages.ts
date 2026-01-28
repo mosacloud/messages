@@ -22,6 +22,7 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  DeliveryStatusUpdateResponse,
   DraftCreate2400,
   DraftCreate2403,
   DraftCreate2404,
@@ -36,6 +37,8 @@ import type {
   DraftUpdate403,
   DraftUpdate404,
   Message,
+  MessageDeliveryStatusChoices,
+  MessagesDeliveryStatusesPartialUpdateBodyOne,
   SendCreate400,
   SendCreate403,
   SendCreate503,
@@ -1071,6 +1074,146 @@ export const useMessagesDestroy = <TError = unknown, TContext = unknown>(
   TContext
 > => {
   const mutationOptions = getMessagesDestroyMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * Update delivery status of message recipients.
+
+Request body should be a dict mapping MessageRecipient IDs to target statuses.
+Example: {"recipient_id_1": "cancelled", "recipient_id_2": "retry"}
+
+Allowed transitions:
+- FAILED -> CANCELLED
+- FAILED -> RETRY manual retry, only for messages sent within the configured max age: MESSAGES_MANUAL_RETRY_MAX_AGE
+- RETRY -> CANCELLED
+ */
+export type messagesDeliveryStatusesPartialUpdateResponse200 = {
+  data: DeliveryStatusUpdateResponse;
+  status: 200;
+};
+
+export type messagesDeliveryStatusesPartialUpdateResponseSuccess =
+  messagesDeliveryStatusesPartialUpdateResponse200 & {
+    headers: Headers;
+  };
+export type messagesDeliveryStatusesPartialUpdateResponse =
+  messagesDeliveryStatusesPartialUpdateResponseSuccess;
+
+export const getMessagesDeliveryStatusesPartialUpdateUrl = (id: string) => {
+  return `/api/v1.0/messages/${id}/delivery-statuses/`;
+};
+
+export const messagesDeliveryStatusesPartialUpdate = async (
+  id: string,
+  messagesDeliveryStatusesPartialUpdateBody:
+    | MessagesDeliveryStatusesPartialUpdateBodyOne
+    | MessageDeliveryStatusChoices,
+  options?: RequestInit,
+): Promise<messagesDeliveryStatusesPartialUpdateResponse> => {
+  return fetchAPI<messagesDeliveryStatusesPartialUpdateResponse>(
+    getMessagesDeliveryStatusesPartialUpdateUrl(id),
+    {
+      ...options,
+      method: "PATCH",
+      body: JSON.stringify(messagesDeliveryStatusesPartialUpdateBody),
+    },
+  );
+};
+
+export const getMessagesDeliveryStatusesPartialUpdateMutationOptions = <
+  TError = unknown,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof messagesDeliveryStatusesPartialUpdate>>,
+    TError,
+    {
+      id: string;
+      data:
+        | MessagesDeliveryStatusesPartialUpdateBodyOne
+        | MessageDeliveryStatusChoices;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof fetchAPI>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof messagesDeliveryStatusesPartialUpdate>>,
+  TError,
+  {
+    id: string;
+    data:
+      | MessagesDeliveryStatusesPartialUpdateBodyOne
+      | MessageDeliveryStatusChoices;
+  },
+  TContext
+> => {
+  const mutationKey = ["messagesDeliveryStatusesPartialUpdate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof messagesDeliveryStatusesPartialUpdate>>,
+    {
+      id: string;
+      data:
+        | MessagesDeliveryStatusesPartialUpdateBodyOne
+        | MessageDeliveryStatusChoices;
+    }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return messagesDeliveryStatusesPartialUpdate(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MessagesDeliveryStatusesPartialUpdateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof messagesDeliveryStatusesPartialUpdate>>
+>;
+export type MessagesDeliveryStatusesPartialUpdateMutationBody =
+  | MessagesDeliveryStatusesPartialUpdateBodyOne
+  | MessageDeliveryStatusChoices;
+export type MessagesDeliveryStatusesPartialUpdateMutationError = unknown;
+
+export const useMessagesDeliveryStatusesPartialUpdate = <
+  TError = unknown,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof messagesDeliveryStatusesPartialUpdate>>,
+      TError,
+      {
+        id: string;
+        data:
+          | MessagesDeliveryStatusesPartialUpdateBodyOne
+          | MessageDeliveryStatusChoices;
+      },
+      TContext
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof messagesDeliveryStatusesPartialUpdate>>,
+  TError,
+  {
+    id: string;
+    data:
+      | MessagesDeliveryStatusesPartialUpdateBodyOne
+      | MessageDeliveryStatusChoices;
+  },
+  TContext
+> => {
+  const mutationOptions =
+    getMessagesDeliveryStatusesPartialUpdateMutationOptions(options);
 
   return useMutation(mutationOptions, queryClient);
 };
