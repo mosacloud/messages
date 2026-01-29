@@ -27,6 +27,9 @@ import sys
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "messages.settings")
 os.environ.setdefault("DJANGO_CONFIGURATION", "Development")
 
+# Override $APP if set by the host (e.g. Scalingo), as Celery interprets it as the app module
+os.environ.pop("APP", None)
+
 from configurations.importer import install  # pylint: disable=wrong-import-position
 
 install(check_options=True)
@@ -131,8 +134,6 @@ def main():
     # Build worker arguments
     worker_args = [
         "worker",
-        "-A",
-        "messages.celery_app",
         f"--queues={','.join(queues)}",
         f"--loglevel={args.loglevel}",
     ]
