@@ -49,7 +49,7 @@ const DownloadButton = ({
             variant={variant}
             icon={<Icon name="download" type={IconType.OUTLINED} />}
             href={downloadUrl}
-            download={name}
+            download={name.startsWith("unnamed") ? "invitation.ics" : name}
         >
             {t("Download invitation")}
         </Button>
