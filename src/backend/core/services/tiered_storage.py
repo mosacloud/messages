@@ -30,13 +30,9 @@ class TieredStorageService:
 
     def __init__(self):
         """Initialize the service, checking if object storage is configured."""
-        # Check if message-blobs storage has endpoint_url configured
         self._storage = None
-        self.enabled = bool(
-            settings.STORAGES.get("message-blobs", {})
-            .get("OPTIONS", {})
-            .get("endpoint_url")
-        )
+        opts = settings.STORAGES.get("message-blobs", {}).get("OPTIONS", {})
+        self.enabled = bool(opts.get("endpoint_url") or opts.get("access_key"))
         # encryption_keys is a dict: {"1": "key1", "2": "key2"}
         self.encryption_keys = settings.MESSAGES_BLOB_ENCRYPTION_KEYS or {}
         self.active_key_id = settings.MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID
@@ -245,6 +241,11 @@ class TieredStorageService:
         """
         Delete storage object only if no other blobs reference it.
 
+        Counts ALL blobs with the same SHA256 (any storage_location), not just
+        OBJECT_STORAGE ones. This prevents a race condition where a concurrent
+        offload task is about to upload a blob with the same SHA256 that is
+        still in POSTGRES state.
+
         Args:
             sha256_bytes: SHA256 hash of the blob to potentially delete
 
@@ -256,11 +257,11 @@ class TieredStorageService:
 
         from core.models import Blob
 
-        # Count remaining references
-        refs = Blob.objects.filter(
-            sha256=sha256_bytes,
-            storage_location=BlobStorageLocationChoices.OBJECT_STORAGE,
-        ).count()
+        # Count ALL remaining references (any storage location).
+        # A blob in POSTGRES with the same SHA256 could be offloaded later
+        # and would need this S3 object. Orphaned S3 objects from blobs that
+        # are never offloaded are cleaned up by the verify command.
+        refs = Blob.objects.filter(sha256=sha256_bytes).count()
 
         if refs > 0:
             logger.debug(

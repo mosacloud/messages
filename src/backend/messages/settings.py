@@ -494,7 +494,13 @@ class Base(Configuration):
     )
 
     # Tiered Storage offload settings
-    # Offload blobs older than N days
+    # Master switch - must be explicitly enabled
+    TIERED_STORAGE_OFFLOAD_ENABLED = values.BooleanValue(
+        default=False,
+        environ_name="TIERED_STORAGE_OFFLOAD_ENABLED",
+        environ_prefix=None,
+    )
+    # Offload blobs older than N days (0 = immediately)
     TIERED_STORAGE_OFFLOAD_AFTER_DAYS = values.PositiveIntegerValue(
         default=3, environ_name="TIERED_STORAGE_OFFLOAD_AFTER_DAYS", environ_prefix=None
     )
@@ -1351,6 +1357,8 @@ class Test(Base):
 
     SCHEMA_CUSTOM_ATTRIBUTES_USER = {}
     SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN = {}
+
+    TIERED_STORAGE_OFFLOAD_ENABLED = True
 
     ENABLE_PROMETHEUS = True
     PROMETHEUS_API_KEY = "test_api_key"

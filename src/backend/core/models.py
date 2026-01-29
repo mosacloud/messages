@@ -2294,23 +2294,6 @@ class Blob(BaseModel):
             return pyzstd.decompress(compressed)
         raise ValueError(f"Unsupported compression type: {self.compression}")
 
-    def delete(self, *args, **kwargs):
-        """Delete blob, cleaning up object storage if orphaned."""
-        sha256_copy = bytes(self.sha256)
-        storage_location_copy = self.storage_location
-
-        # Delete from DB first
-        super().delete(*args, **kwargs)
-
-        # Then cleanup storage if was in object storage
-        if storage_location_copy == BlobStorageLocationChoices.OBJECT_STORAGE:
-            # pylint: disable-next=import-outside-toplevel
-            from core.services.tiered_storage import TieredStorageService
-
-            service = TieredStorageService()
-            if service.enabled:
-                service.delete_if_orphaned(sha256_copy)
-
 
 class Attachment(BaseModel):
     """Attachment model to link messages with blobs."""

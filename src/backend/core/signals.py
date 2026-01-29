@@ -142,15 +142,6 @@ def index_thread_post_save(sender, instance, created, **kwargs):
     _schedule_thread_reindex(instance.id)
 
 
-@receiver(pre_delete, sender=models.Message)
-def delete_message_blobs(sender, instance, **kwargs):
-    """Delete the blobs associated with a message."""
-    if instance.blob:
-        instance.blob.delete()
-    if instance.draft_blob:
-        instance.draft_blob.delete()
-
-
 @receiver(post_delete, sender=models.Blob)
 def cleanup_blob_storage(sender, instance, **kwargs):
     """Clean up object storage when a blob is deleted.
@@ -162,6 +153,15 @@ def cleanup_blob_storage(sender, instance, **kwargs):
         service = TieredStorageService()
         if service.enabled:
             service.delete_if_orphaned(bytes(instance.sha256))
+
+
+@receiver(pre_delete, sender=models.Message)
+def delete_message_blobs(sender, instance, **kwargs):
+    """Delete the blobs associated with a message."""
+    if instance.blob:
+        instance.blob.delete()
+    if instance.draft_blob:
+        instance.draft_blob.delete()
 
 
 # @receiver(post_delete, sender=models.Attachment)

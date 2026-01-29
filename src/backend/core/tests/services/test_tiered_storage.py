@@ -442,7 +442,7 @@ class TestTieredStorageE2E:
 
             # Now should delete the orphan
             result = service.delete_if_orphaned(bytes.fromhex(blob.sha256.hex()))
-            # Note: blob.delete() already calls delete_if_orphaned, so it may already be gone
+            # Note: blob.delete() triggers post_delete signal which calls delete_if_orphaned
             # Just verify the storage is empty
             assert not service.storage.exists(storage_key)
         finally:
@@ -560,6 +560,65 @@ class TestTieredStorageE2E:
                 service = TieredStorageService()
                 if service.storage and service.storage.exists(storage_key):
                     service.storage.delete(storage_key)
+
+
+@pytest.mark.django_db
+class TestTieredStorageCascadeDelete:
+    """Tests that S3 cleanup works during cascade and bulk deletes."""
+
+    def test_cascade_delete_triggers_storage_cleanup(self):
+        """Test that deleting a mailbox cascade-deletes blobs and cleans S3."""
+        service = TieredStorageService()
+        mailbox = factories.MailboxFactory()
+        blob = mailbox.create_blob(content=b"cascade test", content_type="text/plain")
+
+        storage_key = blob.get_storage_key()
+
+        try:
+            service.upload_blob(blob)
+            blob.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
+            blob.raw_content = None
+            blob.save()
+
+            assert service.storage.exists(storage_key)
+
+            # CASCADE delete via mailbox - Blob.delete() is NOT called,
+            # but the post_delete signal should handle S3 cleanup.
+            mailbox.delete()
+
+            assert not service.storage.exists(storage_key)
+        finally:
+            if service.storage.exists(storage_key):
+                service.storage.delete(storage_key)
+
+    def test_queryset_delete_triggers_storage_cleanup(self):
+        """Test that QuerySet.delete() triggers S3 cleanup via signal."""
+        from core.models import Blob as BlobModel
+
+        service = TieredStorageService()
+        mailbox = factories.MailboxFactory()
+        blob = mailbox.create_blob(
+            content=b"queryset delete test", content_type="text/plain"
+        )
+
+        storage_key = blob.get_storage_key()
+
+        try:
+            service.upload_blob(blob)
+            blob.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
+            blob.raw_content = None
+            blob.save()
+
+            assert service.storage.exists(storage_key)
+
+            # Bulk delete via QuerySet - Blob.delete() is NOT called,
+            # but the post_delete signal should handle S3 cleanup.
+            BlobModel.objects.filter(id=blob.id).delete()
+
+            assert not service.storage.exists(storage_key)
+        finally:
+            if service.storage.exists(storage_key):
+                service.storage.delete(storage_key)
 
 
 @pytest.mark.django_db

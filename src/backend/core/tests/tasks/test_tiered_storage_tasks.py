@@ -33,6 +33,14 @@ _TEST_ENCRYPTION_KEY = Fernet.generate_key().decode()
 class TestOffloadBlobsTaskDisabled:
     """Tests for offload_blobs_task when storage is disabled."""
 
+    @override_settings(TIERED_STORAGE_OFFLOAD_ENABLED=False)
+    def test_task_disabled_by_setting(self):
+        """Test that task returns disabled status when setting is False."""
+        result = offload_blobs_task()
+
+        assert result["status"] == "disabled"
+        assert result["queued"] == 0
+
     def test_task_disabled_when_no_storage(self):
         """Test that task returns disabled status when storage not configured."""
         with patch("core.services.tiered_storage.settings") as mock_settings:
@@ -119,6 +127,38 @@ class TestOffloadBlobsTaskE2E:
         if settings.TIERED_STORAGE_OFFLOAD_MIN_SIZE > 0:
             assert str(small_blob.id) not in queued_ids
 
+    @override_settings(TIERED_STORAGE_OFFLOAD_AFTER_DAYS=0)
+    def test_immediate_offload_with_zero_days(self):
+        """Test that OFFLOAD_AFTER_DAYS=0 offloads blobs immediately.
+
+        With CELERY_TASK_ALWAYS_EAGER=True (test settings), calling .delay()
+        executes the task synchronously, simulating a worker running alongside.
+        """
+        service = TieredStorageService()
+        mailbox = factories.MailboxFactory()
+        content = b"immediate offload test content" * 20
+        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        storage_key = blob.get_storage_key()
+
+        try:
+            # No age manipulation - blob was just created
+            result = offload_blobs_task()
+
+            assert result["status"] == "success"
+            assert result["queued"] == 1
+
+            # With CELERY_TASK_ALWAYS_EAGER, the single blob task already ran
+            blob.refresh_from_db()
+            assert blob.storage_location == BlobStorageLocationChoices.OBJECT_STORAGE
+            assert blob.raw_content is None
+
+            # Verify content is still accessible from S3
+            retrieved = blob.get_content()
+            assert retrieved == content
+        finally:
+            if service.storage.exists(storage_key):
+                service.storage.delete(storage_key)
+
     def test_skips_already_offloaded_blobs(self):
         """Test that task doesn't queue already offloaded blobs."""
         service = TieredStorageService()
@@ -156,6 +196,13 @@ class TestOffloadBlobsTaskE2E:
 @pytest.mark.django_db
 class TestOffloadSingleBlobTaskDisabled:
     """Tests for offload_single_blob_task when storage is disabled."""
+
+    @override_settings(TIERED_STORAGE_OFFLOAD_ENABLED=False)
+    def test_task_disabled_by_setting(self):
+        """Test that task returns disabled status when setting is False."""
+        result = offload_single_blob_task("fake-uuid")
+
+        assert result["status"] == "disabled"
 
     def test_task_disabled_when_no_storage(self):
         """Test that task returns disabled status when storage not configured."""

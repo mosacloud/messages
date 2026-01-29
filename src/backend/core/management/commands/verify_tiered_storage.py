@@ -405,6 +405,10 @@ class Command(BaseCommand):
         """
         Re-encrypt a single blob with the target key.
 
+        Uses select_for_update to prevent concurrent modifications.
+        For object storage blobs, keeps old content in memory so S3 can
+        be restored if the DB update fails.
+
         Args:
             blob: The blob to re-encrypt
             target_key_id: The encryption key ID to use for re-encryption
@@ -426,24 +430,25 @@ class Command(BaseCommand):
             )
             return "success"
 
-        # Get the current encrypted/unencrypted content
         if blob.storage_location == BlobStorageLocationChoices.POSTGRES:
-            if blob.raw_content is None:
-                self.stdout.write(
-                    self.style.WARNING(
-                        f"  SKIP blob {blob.id}: no content in PostgreSQL"
-                    )
-                )
-                return "skipped"
-
-            # Decrypt with old key (or passthrough if key_id=0)
-            decrypted = self.service.decrypt(bytes(blob.raw_content), old_key_id)
-
-            # Re-encrypt with new key
-            encrypted, new_key_id = self.service.encrypt(decrypted)
-
-            # Update blob
             with transaction.atomic():
+                blob = Blob.objects.select_for_update().get(id=blob.id)
+                if blob.encryption_key_id == target_key_id:
+                    return "skipped"
+
+                old_key_id = blob.encryption_key_id
+
+                if blob.raw_content is None:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"  SKIP blob {blob.id}: no content in PostgreSQL"
+                        )
+                    )
+                    return "skipped"
+
+                decrypted = self.service.decrypt(bytes(blob.raw_content), old_key_id)
+                encrypted, new_key_id = self.service.encrypt(decrypted)
+
                 blob.raw_content = encrypted
                 blob.encryption_key_id = new_key_id
                 blob.save(update_fields=["raw_content", "encryption_key_id"])
@@ -463,31 +468,57 @@ class Command(BaseCommand):
                 )
                 return "skipped"
 
-            # Download and decrypt
             storage_key = self.service.compute_storage_key(bytes(blob.sha256))
+
+            # Keep old content in memory so we can restore S3 if the
+            # transaction fails after the S3 overwrite.
+            old_encrypted = None
+            s3_updated = False
+
             try:
-                with self.service.storage.open(storage_key, "rb") as f:
-                    encrypted_content = f.read()
-            except FileNotFoundError:
-                self.stderr.write(
-                    self.style.ERROR(
-                        f"  ERROR blob {blob.id}: not found in storage at {storage_key}"
-                    )
-                )
-                return "error"
+                with transaction.atomic():
+                    blob = Blob.objects.select_for_update().get(id=blob.id)
+                    if blob.encryption_key_id == target_key_id:
+                        return "skipped"
 
-            decrypted = self.service.decrypt(encrypted_content, old_key_id)
+                    old_key_id = blob.encryption_key_id
 
-            # Re-encrypt with new key
-            encrypted, new_key_id = self.service.encrypt(decrypted)
+                    try:
+                        with self.service.storage.open(storage_key, "rb") as f:
+                            old_encrypted = f.read()
+                    except FileNotFoundError:
+                        self.stderr.write(
+                            self.style.ERROR(
+                                f"  ERROR blob {blob.id}: not found in storage at {storage_key}"
+                            )
+                        )
+                        return "error"
 
-            # Upload new encrypted content (overwrites existing)
-            self.service.storage.save(storage_key, ContentFile(encrypted))
+                    decrypted = self.service.decrypt(old_encrypted, old_key_id)
+                    encrypted, new_key_id = self.service.encrypt(decrypted)
 
-            # Update blob metadata
-            with transaction.atomic():
-                blob.encryption_key_id = new_key_id
-                blob.save(update_fields=["encryption_key_id"])
+                    self.service.storage.save(storage_key, ContentFile(encrypted))
+                    s3_updated = True
+
+                    blob.encryption_key_id = new_key_id
+                    blob.save(update_fields=["encryption_key_id"])
+            except Exception:
+                # If S3 was overwritten but the transaction failed (DB error
+                # or commit failure), restore the old S3 content to prevent
+                # leaving the blob in a corrupted state.
+                if s3_updated and old_encrypted is not None:
+                    try:
+                        self.service.storage.save(
+                            storage_key, ContentFile(old_encrypted)
+                        )
+                    except Exception as restore_err:  # pylint: disable=broad-except
+                        self.stderr.write(
+                            self.style.ERROR(
+                                f"  CRITICAL: failed to restore S3 content for "
+                                f"blob {blob.id}: {restore_err}"
+                            )
+                        )
+                raise
 
             self.stdout.write(
                 f"  Re-encrypted blob {blob.id} (OBJECT_STORAGE): "

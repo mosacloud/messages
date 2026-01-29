@@ -12,6 +12,7 @@ from django.conf import settings
 from django.db import OperationalError, transaction
 from django.utils.timezone import now
 
+from botocore.exceptions import BotoCoreError
 from celery.utils.log import get_task_logger
 
 from core.enums import BlobStorageLocationChoices
@@ -21,6 +22,15 @@ from core.services.tiered_storage import TieredStorageService
 from messages.celery_app import app as celery_app
 
 logger = get_task_logger(__name__)
+
+# Transient exceptions that should trigger a Celery retry.
+# BotoCoreError covers connection-level errors (timeouts, DNS, etc.).
+# ClientError is intentionally excluded - it covers HTTP API errors
+# (403, 404, etc.) which are usually permanent and shouldn't be retried.
+_TRANSIENT_EXCEPTIONS = (
+    OSError,
+    BotoCoreError,
+)
 
 
 @celery_app.task(bind=True)
@@ -36,9 +46,13 @@ def offload_blobs_task(self) -> Dict[str, Any]:
     Returns:
         Dict with status and number of blobs queued
     """
+    if not settings.TIERED_STORAGE_OFFLOAD_ENABLED:
+        logger.debug("Tiered storage offload disabled, skipping")
+        return {"status": "disabled", "queued": 0}
+
     service = TieredStorageService()
     if not service.enabled:
-        logger.debug("Tiered storage not enabled, skipping offload task")
+        logger.debug("Object storage not configured, skipping offload task")
         return {"status": "disabled", "queued": 0}
 
     offload_after_days = settings.TIERED_STORAGE_OFFLOAD_AFTER_DAYS
@@ -65,7 +79,7 @@ def offload_blobs_task(self) -> Dict[str, Any]:
     return {"status": "success", "queued": queued_count}
 
 
-@celery_app.task(bind=True)
+@celery_app.task(bind=True, max_retries=3)
 def offload_single_blob_task(self, blob_id: str) -> Dict[str, Any]:
     """
     Offload a single blob to object storage atomically.
@@ -76,12 +90,18 @@ def offload_single_blob_task(self, blob_id: str) -> Dict[str, Any]:
     3. Updates the blob record and clears raw_content
     4. All within a transaction for atomicity
 
+    Transient S3/network errors are automatically retried with exponential
+    backoff (up to 3 retries).
+
     Args:
         blob_id: UUID of the blob to offload
 
     Returns:
         Dict with status and blob_id
     """
+    if not settings.TIERED_STORAGE_OFFLOAD_ENABLED:
+        return {"status": "disabled", "blob_id": blob_id}
+
     service = TieredStorageService()
     if not service.enabled:
         return {"status": "disabled", "blob_id": blob_id}
@@ -128,6 +148,15 @@ def offload_single_blob_task(self, blob_id: str) -> Dict[str, Any]:
 
             return {"status": "success", "blob_id": blob_id, "key_id": key_id}
 
+    except _TRANSIENT_EXCEPTIONS as e:
+        logger.warning(
+            "Transient error offloading blob %s (attempt %d/%d): %s",
+            blob_id,
+            self.request.retries + 1,
+            self.max_retries + 1,
+            e,
+        )
+        raise self.retry(exc=e, countdown=60 * (2**self.request.retries)) from e
     except Exception as e:  # pylint: disable=broad-except
         logger.exception("Failed to offload blob %s: %s", blob_id, e)
         return {"status": "error", "blob_id": blob_id, "error": str(e)}
