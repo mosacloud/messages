@@ -131,6 +131,8 @@ def main():
     # Build worker arguments
     worker_args = [
         "worker",
+        "-A",
+        "messages.celery_app",
         f"--queues={','.join(queues)}",
         f"--loglevel={args.loglevel}",
     ]
