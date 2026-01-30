@@ -7,78 +7,76 @@ name: Build and publish OCI images
 
 jobs:
 
+  get-version:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend_version: ${{ steps.versions.outputs.frontend_version }}
+      backend_version: ${{ steps.versions.outputs.backend_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Extract versions
+        id: versions
+        run: |
+          FRONTEND_VERSION=$(jq -r .version src/frontend/package.json)
+          BACKEND_VERSION=$(grep '^version' src/backend/pyproject.toml | cut -d'"' -f2)
+          echo "frontend_version=${FRONTEND_VERSION}-mosa.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "backend_version=${BACKEND_VERSION}-mosa.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
   docker-publish-mta-in:
+    needs: get-version
     uses: ./.github/workflows/docker-publish.yml
-    permissions:
-      contents: read
-      packages: write
-      attestations: write
-      id-token: write
     secrets: inherit
     with:
       image_name: "mta-in"
       context: "src/mta-in"
       target: runtime-prod
+      version: ${{ needs.get-version.outputs.backend_version }}
 
   docker-publish-mta-out:
+    needs: get-version
     uses: ./.github/workflows/docker-publish.yml
-    permissions:
-      contents: read
-      packages: write
-      attestations: write
-      id-token: write
     secrets: inherit
     with:
       image_name: "mta-out"
       context: "src/mta-out"
       target: runtime-prod
+      version: ${{ needs.get-version.outputs.backend_version }}
 
   docker-publish-socks-proxy:
+    needs: get-version
     uses: ./.github/workflows/docker-publish.yml
-    permissions:
-      contents: read
-      packages: write
-      attestations: write
-      id-token: write
     secrets: inherit
     with:
       image_name: "socks-proxy"
       context: "src/socks-proxy"
+      version: ${{ needs.get-version.outputs.backend_version }}
 
   docker-publish-frontend:
+    needs: get-version
     uses: ./.github/workflows/docker-publish.yml
-    permissions:
-      contents: read
-      packages: write
-      attestations: write
-      id-token: write
     secrets: inherit
     with:
       image_name: "frontend"
       context: "src/frontend"
       target: runtime-prod
+      version: ${{ needs.get-version.outputs.frontend_version }}
 
   docker-publish-backend:
+    needs: get-version
     uses: ./.github/workflows/docker-publish.yml
-    permissions:
-      contents: read
-      packages: write
-      attestations: write
-      id-token: write
     secrets: inherit
     with:
       image_name: "backend"
       context: "src/backend"
       target: runtime-prod
+      version: ${{ needs.get-version.outputs.backend_version }}
 
   docker-publish-keycloak:
+    needs: get-version
     uses: ./.github/workflows/docker-publish.yml
-    permissions:
-      contents: read
-      packages: write
-      attestations: write
-      id-token: write
     secrets: inherit
     with:
       image_name: "keycloak"
       context: "src/keycloak"
+      version: ${{ needs.get-version.outputs.backend_version }}
