@@ -6,7 +6,7 @@ name: Build and Push Container Image
       registry:
         type: string
         required: false
-        default: ghcr.io
+        default: docker.io
         description: The container registry FQDN.
       image_name:
         type: string
@@ -26,16 +26,22 @@ name: Build and Push Container Image
         required: false
         default: ""
         description: "Build arg name to pass first amd64 tag to arm64 build (skips arch-independent build steps)"
+      version:
+        type: string
+        required: false
+        default: ""
+        description: Optional version tag to apply to the image.
+    secrets:
+      DOCKER_HUB_USER:
+        required: true
+      DOCKER_HUB_PASSWORD:
+        required: true
 
-# see https://docs.github.com/en/enterprise-cloud@latest/actions/how-tos/use-cases-and-examples/publishing-packages/publishing-docker-images#publishing-images-to-github-packages
 jobs:
   docker-build-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
-      attestations: write
-      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -43,12 +49,12 @@ jobs:
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Log in to the Container registry
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           registry: ${{ inputs.registry }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKER_HUB_USER }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -58,22 +64,9 @@ jobs:
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-      - name: Generate platform-specific tags
-        id: platform-tags
-        run: |
-          AMD64_TAGS=$(echo "${{ steps.meta.outputs.tags }}" | sed 's/$/-amd64/')
-          ARM64_TAGS=$(echo "${{ steps.meta.outputs.tags }}" | sed 's/$/-arm64/')
-          FIRST_AMD64_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -1)-amd64
-          {
-            echo "amd64<<EOF"
-            echo "$AMD64_TAGS"
-            echo "EOF"
-            echo "arm64<<EOF"
-            echo "$ARM64_TAGS"
-            echo "EOF"
-            echo "amd64_first=$FIRST_AMD64_TAG"
-          } >> "$GITHUB_OUTPUT"
-      - name: Build and push (amd64)
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+      - name: Build and push Docker image
+        id: push
         uses: docker/build-push-action@v6
         with:
           context: ${{ inputs.context }}
@@ -81,54 +74,5 @@ jobs:
           platforms: linux/amd64
           push: true
           provenance: false
-          tags: ${{ steps.platform-tags.outputs.amd64 }}
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-      - name: Build and push (arm64)
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ inputs.context }}
-          target: ${{ inputs.target }}
-          platforms: linux/arm64
-          push: true
-          provenance: false
-          tags: ${{ steps.platform-tags.outputs.arm64 }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            ${{ inputs.arm64_reuse_amd64_build_arg && format('{0}={1}', inputs.arm64_reuse_amd64_build_arg, steps.platform-tags.outputs.amd64_first) || '' }}
-      - name: Create multi-arch manifests
-        id: create-manifest
-        run: |
-          IMAGE="${{ inputs.registry }}/${{ github.repository }}-${{ inputs.image_name }}"
-          readarray -t TAGS <<< "${{ steps.meta.outputs.tags }}"
-          FIRST_TAG=""
-          for tag in "${TAGS[@]}"; do
-            [ -z "$tag" ] && continue
-            docker buildx imagetools create -t "$tag" \
-              "${tag}-amd64" "${tag}-arm64"
-            if [ -z "$FIRST_TAG" ]; then
-              FIRST_TAG="$tag"
-            fi
-          done
-          # Get the digest of the multi-arch manifest for attestation
-          # Note: --format '{{.Manifest.Digest}}' is broken (docker/buildx#1175),
-          # so we compute it from the raw manifest JSON instead.
-          if [ -n "$FIRST_TAG" ]; then
-            DIGEST="sha256:$(docker buildx imagetools inspect "$FIRST_TAG" --raw | sha256sum | awk '{print $1}')"
-            echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-          fi
-      # This pushes a signed SLSA provenance attestation to the registry,
-      # tagged as sha256-<digest>. It proves the image was built by this
-      # workflow from this repo. Verified with: gh attestation verify <image>
-      - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-name: ${{ inputs.registry }}/${{ github.repository }}-${{ inputs.image_name }}
-          subject-digest: ${{ steps.create-manifest.outputs.digest }}
-          push-to-registry: true
-      - name: Delete all untagged container images
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: messages-${{ inputs.image_name }}
-          package-type: 'container'
-          min-versions-to-keep: 0
-          delete-only-untagged-versions: true
