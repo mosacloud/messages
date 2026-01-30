@@ -6,7 +6,7 @@ name: Build and Push Container Image
       registry:
         type: string
         required: false
-        default: ghcr.io
+        default: docker.io
         description: The container registry FQDN.
       image_name:
         type: string
@@ -21,25 +21,31 @@ name: Build and Push Container Image
         required: false
         default: ""
         description: The Dockerfile target stage to build the image for.
+      version:
+        type: string
+        required: false
+        default: ""
+        description: Optional version tag to apply to the image.
+    secrets:
+      DOCKER_HUB_USER:
+        required: true
+      DOCKER_HUB_PASSWORD:
+        required: true
 
-# see https://docs.github.com/en/enterprise-cloud@latest/actions/how-tos/use-cases-and-examples/publishing-packages/publishing-docker-images#publishing-images-to-github-packages
 jobs:
   docker-build-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
-      attestations: write
-      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Log in to the Container registry
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           registry: ${{ inputs.registry }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKER_HUB_USER }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -49,6 +55,7 @@ jobs:
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
       - name: Build and push Docker image
         id: push
         uses: docker/build-push-action@v6
@@ -58,23 +65,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-      - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-name: ${{ inputs.registry }}/${{ github.repository }}-${{ inputs.image_name }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
-      - name: Delete all untagged container images
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: messages-${{ inputs.image_name }}
-          package-type: 'container'
-          min-versions-to-keep: 0
-          delete-only-untagged-versions: true
-      - name: Container images retention
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: messages-${{ inputs.image_name }}
-          package-type: 'container'
-          min-versions-to-keep: 30
-          ignore-versions: '^(latest|main|\\d+\\.\\d+(\\.\\d+)?)$'
