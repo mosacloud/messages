@@ -1,5 +1,5 @@
 import { BlockNoteViewField } from "@/features/blocknote/blocknote-view-field";
-import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from "@blocknote/core";
+import { BlockNoteEditorOptions, BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from "@blocknote/core";
 import { InlineTemplateVariable, TemplateVariableSelector } from "@/features/blocknote/inline-template-variable";
 import * as locales from '@blocknote/core/locales';
 import { useCreateBlockNote } from "@blocknote/react";
@@ -30,7 +30,7 @@ export type TemplateComposerInlineContentSchema = TemplateComposerBlockNoteSchem
 export type TemplateComposerStyleSchema = TemplateComposerBlockNoteSchema['styleSchema'];
 
 type TemplateComposerProps = FieldProps & {
-    blockNoteOptions?: Partial<typeof TEMPLATE_BLOCKNOTE_SCHEMA>
+    blockNoteOptions?: Partial<BlockNoteEditorOptions<TemplateComposerBlockSchema, TemplateComposerInlineContentSchema, TemplateComposerStyleSchema>>,
     defaultValue?: string | null;
     disabled?: boolean;
 }

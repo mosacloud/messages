@@ -149,6 +149,7 @@ const SignatureComposeForm = ({ mailbox, defaultValue, onSuccess }: SignatureCom
                         defaultValue={defaultValue?.raw_body}
                         state={form.formState.errors.textBody?.message ? "error" : "default"}
                         text={form.formState.errors.textBody?.message && t(form.formState.errors.textBody.message)}
+                        blockNoteOptions={{ autofocus: "end" }}
                     />
                 </div>
                 <div className="form-field-row">

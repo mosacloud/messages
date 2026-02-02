@@ -1,5 +1,5 @@
 import { BlockNoteViewField } from "@/features/blocknote/blocknote-view-field";
-import { BlockNoteEditor, BlockNoteSchema, defaultInlineContentSpecs, PartialBlock } from "@blocknote/core";
+import { BlockNoteEditor, BlockNoteEditorOptions, BlockNoteSchema, defaultInlineContentSpecs, PartialBlock } from "@blocknote/core";
 import { filterSuggestionItems } from "@blocknote/core/extensions";
 import * as locales from '@blocknote/core/locales';
 import { SuggestionMenuController, useCreateBlockNote } from "@blocknote/react";
@@ -27,7 +27,7 @@ export type SignatureComposerStyleSchema = SignatureComposerBlockNoteSchema['sty
 export type PartialSignatureComposerBlockSchema = PartialBlock<SignatureComposerBlockSchema, SignatureComposerInlineContentSchema, SignatureComposerStyleSchema>;
 
 type SignatureComposerProps = FieldProps & {
-    blockNoteOptions?: Partial<typeof SIGNATURE_BLOCKNOTE_SCHEMA>
+    blockNoteOptions?: Partial<BlockNoteEditorOptions<SignatureComposerBlockSchema, SignatureComposerInlineContentSchema, SignatureComposerStyleSchema>>,
     defaultValue?: string | null;
     disabled?: boolean;
 }
@@ -46,6 +46,7 @@ export const SignatureComposer = ({ blockNoteOptions, defaultValue, disabled = f
     const editor = useCreateBlockNote({
         schema: SIGNATURE_BLOCKNOTE_SCHEMA,
         tabBehavior: "prefer-navigate-ui",
+        autofocus: "end",
         initialContent: defaultValue ? JSON.parse(defaultValue): [{ type: "paragraph", content: "" }],
         trailingBlock: false,
         dictionary: {

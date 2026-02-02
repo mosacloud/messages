@@ -251,8 +251,8 @@ export const MessageForm = ({
 
     const initialAttachments = useMemo((): (Attachment | DriveFile)[] => {
         // Include parent message attachments when forwarding
-        const forwardedAttachments = (mode === "forward" && !draft && parentMessage?.attachments) 
-            ? parentMessage.attachments 
+        const forwardedAttachments = (mode === "forward" && !draft && parentMessage?.attachments)
+            ? parentMessage.attachments
             : [];
         return [...(draft?.attachments ?? []), ...forwardedAttachments, ...(driveAttachments ?? [])];
     }, [draft, driveAttachments, mode, parentMessage]);
@@ -639,6 +639,7 @@ export const MessageForm = ({
                         disabled={!canWriteMessages}
                         draft={draft}
                         submitDraft={form.handleSubmit(saveDraft)}
+                        blockNoteOptions={{ autofocus: canWriteMessages ? "end" : undefined }}
                     />
                 </div>
 

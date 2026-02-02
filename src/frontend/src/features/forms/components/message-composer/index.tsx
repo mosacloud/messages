@@ -2,7 +2,7 @@
 import * as locales from '@blocknote/core/locales';
 import { useCreateBlockNote } from "@blocknote/react";
 import { useTranslation } from "react-i18next";
-import { BlockNoteEditor, BlockNoteSchema, defaultBlockSpecs, PartialBlock } from '@blocknote/core';
+import { BlockNoteEditor, BlockNoteEditorOptions, BlockNoteSchema, defaultBlockSpecs, PartialBlock } from '@blocknote/core';
 import { MessageTemplateSelector } from '@/features/blocknote/message-template-block';
 import MailHelper from '@/features/utils/mail-helper';
 import { FieldProps } from '@gouvfr-lasuite/cunningham-react';
@@ -34,7 +34,7 @@ export type QuoteType = "reply" | "forward";
 
 type MessageComposerProps = FieldProps & {
     mailboxId: string;
-    blockNoteOptions?: Partial<MessageComposerBlockNoteSchema>
+    blockNoteOptions?: Partial<BlockNoteEditorOptions<MessageComposerBlockSchema, MessageComposerInlineContentSchema, MessageComposerStyleSchema>>,
     defaultValue?: string;
     disabled?: boolean;
     draft?: Message;
