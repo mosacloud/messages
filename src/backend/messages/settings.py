@@ -1074,6 +1074,9 @@ class E2E(Development):
     avoiding cross-origin cookie issues.
     """
 
+    # Include the e2e app only in E2E environment
+    INSTALLED_APPS = Development.INSTALLED_APPS + ["e2e"]
+
     CSRF_TRUSTED_ORIGINS = ["http://nginx", "http://keycloak:8802"]
 
     # Trust X-Forwarded-* headers from nginx proxy

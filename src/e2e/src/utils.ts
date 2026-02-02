@@ -36,16 +36,6 @@ export async function resetDatabase(): Promise<void> {
   await runNpmCommand('db:reset');
 }
 
-/**
- * Create outbox test data for a specific browser.
- * Creates two threads:
- * 1. "Test message with delivery failure" - with FAILED, RETRY, and SENT recipients
- * 2. "Test message with pending delivery" - with only RETRY and SENT recipients
- */
-export async function createOutboxTestData(browser: string): Promise<void> {
-  await runNpmCommand('db:outbox-data', [`--browser=${browser}`]);
-}
-
 export const getStorageStatePath = (username: string): string => {
   return path.join(STORAGE_STATE_PATH, `user-${username}.json`);
 };

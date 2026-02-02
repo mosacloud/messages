@@ -1,16 +1,21 @@
 """
 Django management command to bootstrap E2E demo data.
 
-This command creates demo users, mailboxes, and shared mailboxes for E2E testing
-across different BROWSERS (chromium, firefox, webkit).
+This command creates demo users, mailboxes, shared mailboxes, and outbox test data
+for E2E testing across different browsers (chromium, firefox, webkit).
 """
 
-from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils import timezone
 
 from core import models
-from core.enums import MailboxRoleChoices, MailDomainAccessRoleChoices
+from core.enums import (
+    MailboxRoleChoices,
+    MailDomainAccessRoleChoices,
+    MessageDeliveryStatusChoices,
+    ThreadAccessRoleChoices,
+)
 from core.services.identity.keycloak import get_keycloak_admin_client
 
 BROWSERS = ["chromium", "firefox", "webkit"]
@@ -19,21 +24,17 @@ SHARED_MAILBOX_LOCAL_PART = "shared.e2e"
 
 
 class Command(BaseCommand):
-    """Create data for E2E demo data for testing."""
+    """Create E2E demo data for testing."""
 
-    help = "Create data for E2E demo (users and mailboxes)"
+    help = "Create E2E demo data (users, mailboxes, and outbox test messages)"
 
     @transaction.atomic
     def handle(self, *args, **options):
         """Execute the command."""
-        if not settings.ENVIRONMENT == "e2e":
-            self.stdout.write(self.style.WARNING("Not in E2E environment"))
-            return
-
         self.stdout.write(self.style.WARNING("\n\n|  Creating E2E Demo Data\n"))
 
         # Step 1: Get or create the domain
-        self.stdout.write(f"\n-- 1/4 📦 Setting up domain: {DOMAIN_NAME}")
+        self.stdout.write(f"\n-- 1/5 📦 Setting up domain: {DOMAIN_NAME}")
         domain, domain_created = models.MailDomain.objects.get_or_create(
             name=DOMAIN_NAME,
             defaults={
@@ -50,7 +51,7 @@ class Command(BaseCommand):
 
         # Step 2: Create users per browser
         self.stdout.write(
-            f"\n-- 2/4 👥 Creating users for BROWSERS: {', '.join(BROWSERS)}"
+            f"\n-- 2/5 👥 Creating users for BROWSERS: {', '.join(BROWSERS)}"
         )
 
         regular_users = []
@@ -65,7 +66,7 @@ class Command(BaseCommand):
 
             # Create domain admin user and mailbox
             domain_admin_email = f"domain_admin.e2e.{browser}@{DOMAIN_NAME}"
-            domain_admin_user, domain_admin_mailbox = self._create_user_with_mailbox(
+            self._create_user_with_mailbox(
                 domain_admin_email, domain, is_domain_admin=True
             )
 
@@ -88,7 +89,7 @@ class Command(BaseCommand):
 
         # Step 3: Create shared mailbox
         self.stdout.write(
-            f"\n-- 3/4 📥 Creating shared mailbox: {SHARED_MAILBOX_LOCAL_PART}@{DOMAIN_NAME}"
+            f"\n-- 3/5 📥 Creating shared mailbox: {SHARED_MAILBOX_LOCAL_PART}@{DOMAIN_NAME}"
         )
         shared_mailbox = self._create_shared_mailbox(SHARED_MAILBOX_LOCAL_PART, domain)
         self.stdout.write(
@@ -99,7 +100,7 @@ class Command(BaseCommand):
 
         # Step 4: Add all regular users with sender role to the shared mailbox
         self.stdout.write(
-            "\n-- 4/4 🔐 Adding users to shared mailbox with appropriate roles"
+            "\n-- 4/5 🔐 Adding users to shared mailbox with appropriate roles"
         )
         for user, _ in regular_users:
             self._add_mailbox_access(shared_mailbox, user, MailboxRoleChoices.SENDER)
@@ -116,6 +117,11 @@ class Command(BaseCommand):
                 self.style.SUCCESS(f"  ✓ Added {user.email} as ADMIN to shared mailbox")
             )
 
+        # Step 6: Create outbox test data for each browser
+        self.stdout.write("\n-- 5/5 📬 Creating outbox test data")
+        for browser in BROWSERS:
+            self._create_outbox_test_data(domain, browser)
+
     def _create_user_with_mailbox(
         self, email, domain, is_domain_admin=False, is_superuser=False
     ):
@@ -124,7 +130,7 @@ class Command(BaseCommand):
         full_name = local_part.replace(".", " ").replace("-", " ").title()
 
         # Create or get user
-        user, user_created = models.User.objects.get_or_create(
+        user, _created = models.User.objects.get_or_create(
             email=email,
             defaults={
                 "is_superuser": is_superuser,
@@ -137,7 +143,7 @@ class Command(BaseCommand):
         user_id = None
 
         # Create or get mailbox
-        mailbox, mailbox_created = models.Mailbox.objects.get_or_create(
+        mailbox, _created = models.Mailbox.objects.get_or_create(
             local_part=local_part,
             domain=domain,
             defaults={
@@ -195,7 +201,7 @@ class Command(BaseCommand):
         mailbox_name = local_part.replace("-", " ").title()
 
         # Create or get mailbox
-        mailbox, mailbox_created = models.Mailbox.objects.get_or_create(
+        mailbox, _created = models.Mailbox.objects.get_or_create(
             local_part=local_part,
             domain=domain,
             defaults={
@@ -226,3 +232,159 @@ class Command(BaseCommand):
             access.role = role
             access.save()
         return access
+
+    def _create_outbox_test_data(self, domain, browser):
+        """Create outbox test data for a specific browser."""
+        self.stdout.write(f"\n----  Browser: {browser}")
+
+        # Get the user mailbox
+        try:
+            mailbox = models.Mailbox.objects.get(
+                local_part=f"user.e2e.{browser}", domain=domain
+            )
+        except models.Mailbox.DoesNotExist:
+            self.stdout.write(
+                self.style.ERROR(f"  ✗ Mailbox not found: user.e2e.{browser}")
+            )
+            return
+
+        # Create the sender contact
+        sender_contact, _ = models.Contact.objects.get_or_create(
+            email=str(mailbox),
+            mailbox=mailbox,
+            defaults={"name": f"User E2E {browser}"},
+        )
+
+        # Clean up existing outbox test threads for this mailbox
+        outbox_subjects = [
+            "Test message with delivery failure",
+            "Test message with pending delivery",
+        ]
+        existing_threads = models.Thread.objects.filter(
+            subject__in=outbox_subjects,
+            accesses__mailbox=mailbox,
+        )
+        deleted_count = existing_threads.count()
+        if deleted_count > 0:
+            existing_threads.delete()
+            self.stdout.write(
+                self.style.WARNING(
+                    f"  ⚠ Deleted {deleted_count} existing outbox test thread(s)"
+                )
+            )
+
+        # Thread 1: Message with delivery failure (FAILED + RETRY + SENT)
+        self.stdout.write("  Creating thread with delivery failure...")
+        self._create_thread_with_message(
+            mailbox=mailbox,
+            sender_contact=sender_contact,
+            subject="Test message with delivery failure",
+            recipients=[
+                (
+                    "failed@external.invalid",
+                    "Failed Recipient",
+                    MessageDeliveryStatusChoices.FAILED,
+                    "Recipient address rejected: Domain not found",
+                    {},
+                ),
+                (
+                    "retry@external.invalid",
+                    "Retry Recipient",
+                    MessageDeliveryStatusChoices.RETRY,
+                    "Temporary failure, will retry",
+                    {"retry_at": timezone.now() + timezone.timedelta(hours=1)},
+                ),
+                (
+                    "sent@external.invalid",
+                    "Sent Recipient",
+                    MessageDeliveryStatusChoices.SENT,
+                    None,
+                    {"delivered_at": timezone.now()},
+                ),
+            ],
+        )
+
+        # Thread 2: Message with pending delivery only (RETRY + SENT, no FAILED)
+        self.stdout.write("  Creating thread with pending delivery...")
+        self._create_thread_with_message(
+            mailbox=mailbox,
+            sender_contact=sender_contact,
+            subject="Test message with pending delivery",
+            recipients=[
+                (
+                    "pending1@external.invalid",
+                    "Pending Recipient 1",
+                    MessageDeliveryStatusChoices.RETRY,
+                    "Temporary failure, will retry",
+                    {"retry_at": timezone.now() + timezone.timedelta(hours=1)},
+                ),
+                (
+                    "pending2@external.invalid",
+                    "Pending Recipient 2",
+                    MessageDeliveryStatusChoices.RETRY,
+                    "Server temporarily unavailable",
+                    {"retry_at": timezone.now() + timezone.timedelta(hours=2)},
+                ),
+                (
+                    "delivered@external.invalid",
+                    "Delivered Recipient",
+                    MessageDeliveryStatusChoices.SENT,
+                    None,
+                    {"delivered_at": timezone.now()},
+                ),
+            ],
+        )
+
+        self.stdout.write(
+            self.style.SUCCESS(f"  ✓ Outbox test data created for {browser}")
+        )
+
+    def _create_thread_with_message(self, mailbox, sender_contact, subject, recipients):
+        """
+        Create a thread with a message and recipients.
+
+        Args:
+            mailbox: The mailbox that owns the thread
+            sender_contact: The sender contact
+            subject: The thread/message subject
+            recipients: List of tuples (email, name, status, message, extra_fields)
+
+        Returns:
+            The created thread
+        """
+        thread = models.Thread.objects.create(subject=subject)
+
+        models.ThreadAccess.objects.create(
+            thread=thread,
+            mailbox=mailbox,
+            role=ThreadAccessRoleChoices.EDITOR,
+        )
+
+        message = models.Message.objects.create(
+            thread=thread,
+            sender=sender_contact,
+            subject=subject,
+            is_sender=True,
+            is_draft=False,
+            is_unread=False,
+            sent_at=timezone.now(),
+        )
+
+        for email, name, status, delivery_message, extra_fields in recipients:
+            contact, _ = models.Contact.objects.get_or_create(
+                email=email,
+                mailbox=mailbox,
+                defaults={"name": name},
+            )
+            recipient_data = {
+                "message": message,
+                "contact": contact,
+                "delivery_status": status,
+                "delivery_message": delivery_message,
+                **extra_fields,
+            }
+            models.MessageRecipient.objects.create(**recipient_data)
+
+        thread.update_stats()
+
+        return thread
