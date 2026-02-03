@@ -26,7 +26,6 @@
 }
 
 .mailbox__item--active {
-    pointer-events: none;
     background-color: var(--c--contextuals--background--semantic--contextual--primary);
 
     .mailbox__item-label {

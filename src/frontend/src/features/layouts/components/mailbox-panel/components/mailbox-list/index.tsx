@@ -273,10 +273,18 @@ const FolderItem = ({ folder }: FolderItemProps) => {
         }
     };
 
+    const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+        closeLeftPanel();
+        // Prevent navigation if already on this folder
+        if (isActive) {
+            e.preventDefault();
+        }
+    };
+
     return (
         <Link
             href={`/mailbox/${selectedMailbox?.id}?${queryParams}`}
-            onClick={closeLeftPanel}
+            onClick={handleClick}
             shallow={false}
             className={clsx("mailbox__item", {
                 "mailbox__item--active": isActive,
