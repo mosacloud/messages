@@ -147,7 +147,7 @@ export const MosaLoginPage = () => {
               <img src='/images/mosa/mosa.svg' alt='mosa.cloud' />
             </AppIcon>
             <BrandTitle>mosa.cloud</BrandTitle>
-            <BrandTagline>{t('Your open source workspace')}</BrandTagline>
+            <BrandTagline>{t('Collaborate without compromise')}</BrandTagline>
           </BrandContent>
 
           <BrandFooter>
@@ -175,7 +175,7 @@ export const MosaLoginPage = () => {
               <h2>
                 {t('Welcome to')} <ProductHighlight>Mail</ProductHighlight>
               </h2>
-              <p>{t('Professional email')}</p>
+              <p>{t('Email without boundaries')}</p>
             </FormHeader>
 
             <Actions>
