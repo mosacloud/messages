@@ -1,5 +1,8 @@
+import { vi } from 'vitest';
 import MailHelper, { SUPPORTED_IMAP_DOMAINS, ATTACHMENT_SEPARATORS } from './mail-helper';
 import DetectionMap from '@/features/i18n/attachments-detection-map.json';
+
+vi.mock('./errors', () => ({ handle: vi.fn() }));
 
 describe('MailHelper', () => {
   describe('markdownToHtml', () => {
@@ -340,14 +343,7 @@ describe('MailHelper', () => {
       expect(result).toMatchInlineSnapshot(`
         "<h1>Hello, how are you today?</h1>
         ---------- Drive attachments ----------
-        <ul>
-        <li>
-        <a class="drive-attachment" href="https://example.com/test.pdf" data-id="1" data-name="test.pdf" data-type="application/pdf" data-size="100" data-created_at="2021-01-01">test.pdf</a>
-        </li>
-        <li>
-        <a class="drive-attachment" href="https://example.com/test.docx" data-id="2" data-name="test.docx" data-type="application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-size="200" data-created_at="2021-01-02">test.docx</a>
-        </li>
-        </ul>
+        <ul><li><a class="drive-attachment" href="https://example.com/test.pdf" data-id="1" data-name="test.pdf" data-type="application/pdf" data-size="100" data-created_at="2021-01-01">test.pdf</a></li><li><a class="drive-attachment" href="https://example.com/test.docx" data-id="2" data-name="test.docx" data-type="application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-size="200" data-created_at="2021-01-02">test.docx</a></li></ul>
 
         "
       `);
@@ -367,11 +363,7 @@ describe('MailHelper', () => {
       expect(result).toMatchInlineSnapshot(`
         "
         ---------- Drive attachments ----------
-        <ul>
-        <li>
-        <a class="drive-attachment" href="https://example.com/test.pdf" data-id="1" data-name="test.pdf" data-type="application/pdf" data-size="100" data-created_at="2021-01-01">test.pdf</a>
-        </li>
-        </ul>
+        <ul><li><a class="drive-attachment" href="https://example.com/test.pdf" data-id="1" data-name="test.pdf" data-type="application/pdf" data-size="100" data-created_at="2021-01-01">test.pdf</a></li></ul>
 
         "
       `);
@@ -385,11 +377,7 @@ describe('MailHelper', () => {
       expect(result).toMatchInlineSnapshot(`
         "
         ---------- Drive attachments ----------
-        <ul>
-        <li>
-        <a class="drive-attachment" href="https://example.com/test.pdf" data-id="1" data-name="test.pdf" data-type="application/pdf" data-size="100" data-created_at="2021-01-01">test.pdf</a>
-        </li>
-        </ul>
+        <ul><li><a class="drive-attachment" href="https://example.com/test.pdf" data-id="1" data-name="test.pdf" data-type="application/pdf" data-size="100" data-created_at="2021-01-01">test.pdf</a></li></ul>
 
         "
       `);
@@ -399,6 +387,19 @@ describe('MailHelper', () => {
       const htmlBody = '<h1>Hello, how are you today?</h1>';
       const result = MailHelper.attachDriveAttachmentsToHtmlBody(htmlBody, undefined);
       expect(result).toBe('<h1>Hello, how are you today?</h1>');
+    });
+
+    it('should escape malicious strings in attachment attributes', () => {
+      const htmlBody = '<h1>Hello</h1>';
+      const attachments = [
+        { id: '1"><script>alert("xss")</script>', name: '<img src=x onerror=alert(1)>', url: 'https://example.com/"><script>alert(1)</script>', type: 'application/pdf', size: 100, created_at: '2021-01-01' }
+      ];
+      const result = MailHelper.attachDriveAttachmentsToHtmlBody(htmlBody, attachments);
+      // No unescaped script or img tags
+      expect(result).not.toContain('<script>');
+      expect(result).not.toContain('<img ');
+      // Malicious name is properly escaped in both attribute and text content
+      expect(result).toContain('&lt;img src=x onerror=alert(1)&gt;');
     });
   });
 
@@ -728,6 +729,32 @@ describe('MailHelper', () => {
           { id: 'test-id-1', name: 'test file (1).pdf', url: 'https://example.com/test%20file%20(1).pdf', type: 'application/pdf', size: 100, created_at: '2021-01-01T10:30:00Z' }
         ]
       ]);
+    });
+
+    it('should decode HTML entities in extracted attribute values (round-trip with &)', () => {
+      const htmlBody = '<h1>Hello</h1>';
+      const attachments = [
+        { id: '1', name: 'report&summary.pdf', url: 'https://example.com/file?a=1&b=2', type: 'application/pdf', size: 100, created_at: '2021-01-01' }
+      ];
+      const html = MailHelper.attachDriveAttachmentsToHtmlBody(htmlBody, attachments);
+      const [body, extracted] = MailHelper.extractDriveAttachmentsFromHtmlBody(html);
+      expect(body).toBe('<h1>Hello</h1>');
+      expect(extracted).toHaveLength(1);
+      expect(extracted[0].name).toBe('report&summary.pdf');
+      expect(extracted[0].url).toBe('https://example.com/file?a=1&b=2');
+    });
+
+    it('should decode HTML entities in extracted attribute values (round-trip with special chars)', () => {
+      const htmlBody = '<h1>Hello</h1>';
+      const attachments = [
+        { id: '1', name: 'file<2>.pdf', url: 'https://example.com/file?q="test"&x=1', type: 'text/plain', size: 50, created_at: '2021-06-15' }
+      ];
+      const html = MailHelper.attachDriveAttachmentsToHtmlBody(htmlBody, attachments);
+      const [body, extracted] = MailHelper.extractDriveAttachmentsFromHtmlBody(html);
+      expect(body).toBe('<h1>Hello</h1>');
+      expect(extracted).toHaveLength(1);
+      expect(extracted[0].name).toBe('file<2>.pdf');
+      expect(extracted[0].type).toBe('text/plain');
     });
 
     it('should handle anchor elements with missing required attributes', () => {

@@ -1,9 +1,20 @@
-import { renderToString } from "react-dom/server";
+import { renderToString, renderToStaticMarkup } from "react-dom/server";
 import { Markdown } from "@react-email/components";
 import DetectionMap from "@/features/i18n/attachments-detection-map.json";
 import z from "zod";
 import { DriveFile } from "../forms/components/message-form/drive-attachment-picker";
 import { handle } from "./errors";
+
+/**
+ * Decode HTML entities produced by renderToStaticMarkup in attribute values.
+ * &amp; must be decoded last to avoid double-decoding (e.g. &amp;lt; → &lt; → <).
+ */
+const decodeHtmlEntities = (str: string): string =>
+    str.replace(/&lt;/g, '<')
+       .replace(/&gt;/g, '>')
+       .replace(/&quot;/g, '"')
+       .replace(/&#x27;/g, "'")
+       .replace(/&amp;/g, '&');
 
 type ImapConfig = {
     host: string;
@@ -167,15 +178,16 @@ class MailHelper {
         if (attachments.length === 0) return htmlBody;
         return htmlBody
         + `\n${ATTACHMENT_SEPARATOR}\n`
-        + `<ul>\n`
-        + attachments.map(
-            a => '<li>\n'
-            +`<a class="drive-attachment" href="${a.url}" data-id="${a.id}" data-name="${a.name}" data-type="${a.type}" data-size="${a.size}" data-created_at="${a.created_at}">`
-            + a.name
-            + '</a>\n'
-            + '</li>'
-            ).join('\n')
-        + `\n</ul>\n\n`;
+        + renderToStaticMarkup(
+            <ul>
+                {attachments.map((a) => (
+                    <li key={a.id}>
+                        <a className="drive-attachment" href={a.url} data-id={a.id} data-name={a.name} data-type={a.type} data-size={String(a.size)} data-created_at={a.created_at}>{a.name}</a>
+                    </li>
+                ))}
+            </ul>
+        )
+        + '\n\n';
     }
 
     /**
@@ -221,7 +233,7 @@ class MailHelper {
         const attachments: DriveFile[] = [];
 
         // Parse anchor elements with drive-attachment class
-        const anchorRegex = /<a[^>]*class="drive-attachment"[^>]*>.*<\/a>/g;
+        const anchorRegex = /<a[^>]*class="drive-attachment"[^>]*>.*?<\/a>/g;
         let anchorMatch;
 
         while ((anchorMatch = anchorRegex.exec(matches[2])) !== null) {
@@ -231,7 +243,7 @@ class MailHelper {
             const extractDataAttribute = (attr: string): string | null => {
                 const regex = new RegExp(`data-${attr}="([^"]*)"`, 'i');
                 const anchorMatch = anchorElement.match(regex);
-                return anchorMatch ? anchorMatch[1] : null;
+                return anchorMatch ? decodeHtmlEntities(anchorMatch[1]) : null;
             };
 
             const id = extractDataAttribute('id');
@@ -242,7 +254,7 @@ class MailHelper {
 
             // Extract href attribute
             const hrefMatch = anchorElement.match(/href="([^"]*)"/);
-            const url = hrefMatch ? hrefMatch[1] : '';
+            const url = hrefMatch ? decodeHtmlEntities(hrefMatch[1]) : '';
 
             if (id && name && url) {
                 attachments.push({
