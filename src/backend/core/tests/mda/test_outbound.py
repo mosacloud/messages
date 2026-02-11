@@ -1,6 +1,7 @@
 """Tests for the core.mda.outbound module."""
 # pylint: disable=unused-argument,too-many-lines
 
+import re
 import threading
 import time
 from unittest.mock import MagicMock, call, patch
@@ -10,6 +11,7 @@ from django.test import TransactionTestCase, override_settings
 
 import dns.resolver
 import pytest
+import rest_framework as drf
 
 from core import enums, factories, models
 from core.mda import outbound
@@ -1051,3 +1053,179 @@ class TestSendMessageDKIMVerification:
 
         # Verify internal delivery was attempted
         assert mock_deliver_inbound.called
+
+
+# 1x1 red pixel PNG, small enough to be used in tests
+TINY_PNG_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4"
+    "2mP8z8BQDwADhQGAWjR9awAAAABJRU5ErkJggg=="
+)
+
+
+@pytest.mark.django_db
+class TestPrepareOutboundMessageBase64Images:
+    """Test base64 image extraction in prepare_outbound_message."""
+
+    def _make_message(self, mailbox_sender, signature=None):
+        """Helper to create a draft message with a recipient."""
+        thread = factories.ThreadFactory()
+        factories.ThreadAccessFactory(
+            mailbox=mailbox_sender,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        sender_contact = factories.ContactFactory(mailbox=mailbox_sender)
+        message = factories.MessageFactory(
+            thread=thread,
+            sender=sender_contact,
+            is_draft=True,
+            subject="Test Base64 Images",
+            signature=signature,
+        )
+        # Add a recipient so compose_email succeeds
+        to_contact = factories.ContactFactory(
+            mailbox=mailbox_sender, email="to@example.com"
+        )
+        factories.MessageRecipientFactory(
+            message=message,
+            contact=to_contact,
+            type=models.MessageRecipientTypeChoices.TO,
+        )
+        return message
+
+    def test_prepare_outbound_base64_in_signature_converted_to_inline_attachments(
+        self, mailbox_sender, user, mailbox_access
+    ):
+        """Base64 images in the signature are extracted to inline CID attachments."""
+        sig = factories.MessageTemplateFactory(
+            name="Sig with image",
+            html_body=f'<p>Regards</p><img src="data:image/png;base64,{TINY_PNG_B64}">',
+            text_body="Regards",
+            type=enums.MessageTemplateTypeChoices.SIGNATURE,
+            is_active=True,
+            mailbox=mailbox_sender,
+        )
+        message = self._make_message(mailbox_sender, signature=sig)
+
+        outbound.prepare_outbound_message(
+            mailbox_sender, message, "Hello", "<p>Hello</p>", user
+        )
+
+        message.refresh_from_db()
+        raw = message.blob.get_content().decode(errors="replace")
+
+        # The base64 data URI must no longer appear in the body
+        assert "data:image/png;base64," not in raw
+        # A CID reference must be present
+        assert "cid:" in raw
+
+    def test_prepare_outbound_base64_in_body_converted_to_inline_attachments(
+        self, mailbox_sender
+    ):
+        """Base64 images in the HTML body itself are extracted to inline CID attachments."""
+        message = self._make_message(mailbox_sender)
+        html_body = f'<p>See image:</p><img src="data:image/png;base64,{TINY_PNG_B64}">'
+
+        outbound.prepare_outbound_message(
+            mailbox_sender, message, "See image", html_body
+        )
+
+        message.refresh_from_db()
+        raw = message.blob.get_content().decode(errors="replace")
+
+        assert "data:image/png;base64," not in raw
+        assert "cid:" in raw
+
+    def test_prepare_outbound_base64_has_attachments_set_when_present(
+        self, mailbox_sender
+    ):
+        """has_attachments is True when base64 images are present even without blob attachments."""
+        message = self._make_message(mailbox_sender)
+        html_body = f'<img src="data:image/png;base64,{TINY_PNG_B64}">'
+
+        outbound.prepare_outbound_message(mailbox_sender, message, "text", html_body)
+
+        message.refresh_from_db()
+        assert message.has_attachments is True
+
+    def test_prepare_outbound_base64_has_attachments_false_when_none(
+        self, mailbox_sender
+    ):
+        """has_attachments is False when there are no attachments nor base64 images."""
+        message = self._make_message(mailbox_sender)
+
+        outbound.prepare_outbound_message(
+            mailbox_sender, message, "Hello", "<p>Hello</p>"
+        )
+
+        message.refresh_from_db()
+        assert message.has_attachments is False
+
+    @override_settings(MAX_OUTGOING_ATTACHMENT_SIZE=10)
+    def test_prepare_outbound_base64_count_toward_attachment_size_limit(
+        self, mailbox_sender
+    ):
+        """A base64 image whose decoded size exceeds MAX_OUTGOING_ATTACHMENT_SIZE raises ValidationError."""
+        message = self._make_message(mailbox_sender)
+        # The tiny PNG decodes to ~69 bytes, well above the 10-byte limit
+        html_body = f'<img src="data:image/png;base64,{TINY_PNG_B64}">'
+
+        with pytest.raises(drf.exceptions.ValidationError) as exc_info:
+            outbound.prepare_outbound_message(
+                mailbox_sender, message, "text", html_body
+            )
+
+        assert "attachment size" in str(exc_info.value.detail).lower()
+
+    @override_settings(MAX_OUTGOING_ATTACHMENT_SIZE=200)
+    def test_prepare_outbound_base64_combined_blob_size_validation(
+        self, mailbox_sender
+    ):
+        """Blob attachments + base64 images that together exceed the limit raise ValidationError."""
+        message = self._make_message(mailbox_sender)
+
+        # Create a blob attachment of 150 bytes (under the 200 byte limit alone)
+        attachment = factories.AttachmentFactory(
+            mailbox=mailbox_sender,
+            blob_size=150,
+            name="file.bin",
+        )
+        attachment.messages.add(message)
+
+        # The tiny PNG (~69 bytes) + 150 bytes blob > 200 byte limit
+        html_body = f'<img src="data:image/png;base64,{TINY_PNG_B64}">'
+
+        with pytest.raises(drf.exceptions.ValidationError) as exc_info:
+            outbound.prepare_outbound_message(
+                mailbox_sender, message, "text", html_body
+            )
+
+        assert "attachment size" in str(exc_info.value.detail).lower()
+
+    def test_prepare_outbound_base64_deduplicated_across_text_and_html(
+        self, mailbox_sender
+    ):
+        """The same base64 image in both text and HTML bodies produces only one attachment."""
+        message = self._make_message(mailbox_sender)
+
+        img_data_uri = f"data:image/png;base64,{TINY_PNG_B64}"
+        text_body = f"![img]({img_data_uri})"
+        html_body = f'<img src="{img_data_uri}">'
+
+        outbound.prepare_outbound_message(mailbox_sender, message, text_body, html_body)
+
+        message.refresh_from_db()
+        raw = message.blob.get_content().decode(errors="replace")
+
+        # Both text and HTML bodies should reference the same CID.
+        # Extract all cid references from the raw MIME.
+        cid_refs = re.findall(r"cid:([a-zA-Z0-9@._-]+)", raw)
+        # Deduplicate: all references should point to the same single CID
+        unique_cids = set(cid_refs)
+        assert len(unique_cids) == 1, (
+            f"Expected exactly 1 unique CID (deduplicated), got {len(unique_cids)}: {unique_cids}"
+        )
+        # There should be at least 2 references (one in text part, one in HTML part)
+        assert len(cid_refs) >= 2, (
+            f"Expected at least 2 CID references (text + HTML), got {len(cid_refs)}"
+        )

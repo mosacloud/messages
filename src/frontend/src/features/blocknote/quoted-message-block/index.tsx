@@ -22,7 +22,7 @@ export const QuotedMessageBlock = createReactBlockSpec(
             const { t, i18n } = useTranslation();
 
             return (
-                <div data-content-type="quote">
+                <div data-content-type="quote" style={{ userSelect: 'none' }}>
                     <blockquote>
                         <p>{props.mode === "reply" ? t('In reply to') : t('Forwarded message')}</p>
                         <p><strong>{t('From:')}</strong> {props.sender}</p>

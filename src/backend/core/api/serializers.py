@@ -15,6 +15,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 
 from core import enums, models
+from core.mda.rfc5322 import extract_base64_images_from_html
 
 
 class IntegerChoicesField(serializers.ChoiceField):
@@ -1501,6 +1502,43 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "All content fields (html_body, text_body, raw_body) must be provided together."
                 )
+
+        if "html_body" in attrs:
+            _html, images = extract_base64_images_from_html(attrs["html_body"])
+            total_image_size = 0
+            for image in images:
+                total_image_size += image["size"]
+                if image["size"] > settings.MAX_TEMPLATE_IMAGE_SIZE:
+                    max_mb = settings.MAX_TEMPLATE_IMAGE_SIZE / (1024 * 1024)
+                    image_mb = image["size"] / (1024 * 1024)
+                    raise serializers.ValidationError(
+                        {
+                            "html_body": _(
+                                'Image "%(name)s" (%(size)s MB) exceeds'
+                                " the %(max)s MB limit."
+                            )
+                            % {
+                                "name": image["name"],
+                                "size": f"{image_mb:.1f}",
+                                "max": f"{max_mb:.0f}",
+                            }
+                        }
+                    )
+                if total_image_size > settings.MAX_OUTGOING_ATTACHMENT_SIZE:
+                    max_mb = settings.MAX_OUTGOING_ATTACHMENT_SIZE / (1024 * 1024)
+                    total_mb = total_image_size / (1024 * 1024)
+                    raise serializers.ValidationError(
+                        {
+                            "html_body": _(
+                                "Total attachment size (%(total_size)s MB) exceeds the %(max_size)s MB limit. "
+                                "Please remove or reduce attachments."
+                            )
+                            % {
+                                "total_size": f"{total_mb:.1f}",
+                                "max_size": f"{max_mb:.0f}",
+                            }
+                        }
+                    )
 
         return super().validate(attrs)
 

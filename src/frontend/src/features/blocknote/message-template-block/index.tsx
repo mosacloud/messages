@@ -2,21 +2,25 @@ import { useBlockNoteEditor, useComponentsContext, useEditorState } from "@block
 import { useTranslation } from "react-i18next";
 import { Icon, IconSize, Spinner } from "@gouvfr-lasuite/ui-kit";
 import { Modal, ModalSize } from "@gouvfr-lasuite/cunningham-react";
-import { MessageTemplateTypeChoices, ReadOnlyMessageTemplate, useMailboxesMessageTemplatesAvailableList, mailboxesMessageTemplatesRenderRetrieve, MailboxesMessageTemplatesRenderRetrieveParams } from "@/features/api/gen";
+import { MessageTemplateTypeChoices, ReadOnlyMessageTemplate, useMailboxesMessageTemplatesAvailableList, draftPlaceholdersRetrieve, DraftPlaceholdersRetrieve200 } from "@/features/api/gen";
 import { MessageComposerBlockSchema, MessageComposerInlineContentSchema, MessageComposerStyleSchema, PartialMessageComposerBlockSchema } from "@/features/forms/components/message-composer";
 import { useModal } from "@gouvfr-lasuite/cunningham-react";
 import { handle } from "@/features/utils/errors";
+import MailHelper from "@/features/utils/mail-helper";
+import { resolveTemplateVariables } from "@/features/blocknote/utils";
 
 type MessageTemplateSelectorProps = {
     mailboxId: string;
-    context?: Record<string, string>;
+    messageId?: string;
+    ensureDraft?: () => Promise<string | undefined>;
+    uploadInlineImage?: (file: File) => Promise<{ url: string; blobId: string } | null>;
 }
 
 /**
  * A BlockNote toolbar selector which allows the user to select a message template
  * from all active templates for a given mailbox.
  */
-export const MessageTemplateSelector = ({ mailboxId, context = {} }: MessageTemplateSelectorProps) => {
+export const MessageTemplateSelector = ({ mailboxId, messageId, ensureDraft, uploadInlineImage }: MessageTemplateSelectorProps) => {
     const { t } = useTranslation();
     const editor = useBlockNoteEditor<MessageComposerBlockSchema, MessageComposerInlineContentSchema, MessageComposerStyleSchema>();
     const Components = useComponentsContext()!;
@@ -45,24 +49,58 @@ export const MessageTemplateSelector = ({ mailboxId, context = {} }: MessageTemp
     const handleSelect = async (template: ReadOnlyMessageTemplate) => {
         if (!template.raw_body || !template.id) return;
 
-        try {
-            // Get rendered template content (allows to use placeholders)
-            const { data: renderedTemplate } = await mailboxesMessageTemplatesRenderRetrieve(
-                mailboxId,
-                template.id,
-                context as MailboxesMessageTemplatesRenderRetrieveParams,
-            );
-            if (!renderedTemplate?.html_body) {
-                handle(new Error("Failed to render template."), { extra: { templateId: template.id, mailboxId: mailboxId } });
-                return;
-            }
+        const resolvedMessageId = messageId ?? await ensureDraft?.();
+        if (!resolvedMessageId) return;
 
-            // Parse template blocks for signature
+        try {
+            // Resolve placeholder values from the draft context
+            const { data: resolvedPlaceholders } = await draftPlaceholdersRetrieve(
+                resolvedMessageId,
+            ) as { data: DraftPlaceholdersRetrieve200 };
+
+            // Parse raw blocks and resolve template variables client-side
             const blocks = JSON.parse(template.raw_body);
             const templateSignature = blocks.find((block: { type: string }) => block.type === "signature");
+            const templateBlocks = blocks.filter((block: { type: string }) => block.type !== "signature");
+            const contentBlocks = resolveTemplateVariables(templateBlocks, resolvedPlaceholders) as PartialMessageComposerBlockSchema[];
 
-            // Convert HTML to blocks using BlockNote's built-in parser
-            const contentBlocks = await editor.tryParseHTMLToBlocks(renderedTemplate.html_body) as PartialMessageComposerBlockSchema[];
+            // Convert base64 images to blobs via upload
+            if (uploadInlineImage) {
+                const blocksToRemove = new Set<number>();
+                await Promise.all(
+                    contentBlocks.map(async (block, index) => {
+                        if (block.type !== 'image' || !block.props?.url?.startsWith('data:')) return;
+
+                        const file = MailHelper.dataUrlToFile(block.props.url, `template-image-${index}.png`);
+                        if (!file) {
+                            blocksToRemove.add(index);
+                            return;
+                        }
+                        try {
+                            const result = await uploadInlineImage(file);
+                            if (result) {
+                                contentBlocks[index] = {
+                                    ...block,
+                                    props: { ...block.props, url: result.url },
+                                } as PartialMessageComposerBlockSchema;
+                            } else {
+                                blocksToRemove.add(index);
+                            }
+                        } catch (error) {
+                            handle(
+                                new Error("Failed to upload inline image."),
+                                { extra: { error, block, index } }
+                            );
+                            blocksToRemove.add(index);
+                            return;
+                        }
+                    })
+                );
+                // Remove failed blocks (reverse order to preserve indices)
+                for (const index of Array.from(blocksToRemove).sort((a, b) => b - a)) {
+                    contentBlocks.splice(index, 1);
+                }
+            }
 
             // Check if there's already a signature in the editor
             const editorSignature = editor.getBlock("signature");
@@ -73,7 +111,8 @@ export const MessageTemplateSelector = ({ mailboxId, context = {} }: MessageTemp
                     ...templateSignature,
                     props: {
                         ...templateSignature.props,
-                        mailboxId
+                        mailboxId,
+                        messageId: resolvedMessageId,
                     }
                 } as PartialMessageComposerBlockSchema);
             }

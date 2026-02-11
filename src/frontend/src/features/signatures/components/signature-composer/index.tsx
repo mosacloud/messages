@@ -1,19 +1,22 @@
 import { BlockNoteViewField } from "@/features/blocknote/blocknote-view-field";
-import { BlockNoteEditor, BlockNoteEditorOptions, BlockNoteSchema, defaultInlineContentSpecs, PartialBlock } from "@blocknote/core";
+import { BlockNoteEditor, BlockNoteEditorOptions, BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs, PartialBlock } from "@blocknote/core";
 import { filterSuggestionItems } from "@blocknote/core/extensions";
-import * as locales from '@blocknote/core/locales';
-import { SuggestionMenuController, useCreateBlockNote } from "@blocknote/react";
+import { SuggestionMenuController } from "@blocknote/react";
 import { FieldProps } from "@gouvfr-lasuite/cunningham-react";
-import { useEffect } from "react";
-import { useFormContext } from "react-hook-form";
-import { useTranslation } from "react-i18next";
 
 import { InlineTemplateVariable, TemplateVariableSelector } from "@/features/blocknote/inline-template-variable";
 import { Toolbar } from "@/features/blocknote/toolbar";
 import { usePlaceholdersRetrieve } from "@/features/api/gen";
-import MailHelper from "@/features/utils/mail-helper";
+import { imageBlockSpec } from "@/features/blocknote/image-block";
+import { ImageUploadButton } from "@/features/blocknote/image-upload-button";
+import { useBase64Composer } from "@/features/blocknote/hooks/use-base64-composer";
+import { BodyHiddenInputs } from "@/features/blocknote/body-hidden-inputs";
 
 const SIGNATURE_BLOCKNOTE_SCHEMA = BlockNoteSchema.create({
+    blockSpecs: {
+        ...defaultBlockSpecs,
+        'image': imageBlockSpec,
+    },
     inlineContentSpecs: {
         ...defaultInlineContentSpecs,
         'template-variable': InlineTemplateVariable,
@@ -37,50 +40,23 @@ type SignatureComposerProps = FieldProps & {
  * Used by both admin (maildomain) and mailbox signature modals.
  */
 export const SignatureComposer = ({ blockNoteOptions, defaultValue, disabled = false, ...props }: SignatureComposerProps) => {
-    const { t, i18n } = useTranslation();
-    const form = useFormContext();
-    const { data: { data: placeholders = {} } = {}, isLoading: isLoadingPlaceholders } = usePlaceholdersRetrieve();
-    const canShowPlaceholdersMenu = !isLoadingPlaceholders && !!placeholders;
-
-    const locale = i18n.resolvedLanguage?.split('-')[0] || 'en';
-    const editor = useCreateBlockNote({
+    const { editor, handleChange } = useBase64Composer({
         schema: SIGNATURE_BLOCKNOTE_SCHEMA,
-        tabBehavior: "prefer-navigate-ui",
-        autofocus: "end",
-        initialContent: defaultValue ? JSON.parse(defaultValue): [{ type: "paragraph", content: "" }],
-        trailingBlock: false,
-        dictionary: {
-            ...(locales[locale as keyof typeof locales] || locales.en),
-            placeholders: {
-                ...(locales[locale as keyof typeof locales] || locales.en).placeholders,
-                emptyDocument: t('Start typing...'),
-                default: t('Start typing...'),
-            }
-        },
-        ...blockNoteOptions,
-    }, [i18n.resolvedLanguage]);
+        defaultValue,
+        blockNoteOptions: { autofocus: "end", ...blockNoteOptions },
+    });
 
-    const handleChange = async () => {
-        const markdown = await editor.blocksToMarkdownLossy(editor.document);
-        const html = await MailHelper.markdownToHtml(markdown);
-        form.setValue("rawBody", JSON.stringify(editor.document), { shouldDirty: true });
-        form.setValue("textBody", markdown);
-        form.setValue("htmlBody", html);
-    }
+    const { data: { data: placeholders = {} } = {}, isLoading: isLoadingPlaceholders } = usePlaceholdersRetrieve();
+    const canShowPlaceholdersMenu = !isLoadingPlaceholders && !!Object.keys(placeholders).length;
 
     const getPlaceholderMenuItems = (editor: BlockNoteEditor<SignatureComposerBlockSchema, SignatureComposerInlineContentSchema, SignatureComposerStyleSchema>) => {
         return Object.entries(placeholders).map(([value, label]) => ({
             title: label,
             onItemClick: () => {
-                editor.insertInlineContent([{ type: "template-variable", props: { value: value, label: label } }, " "]);
+                editor.insertInlineContent([{ type: "template-variable", props: { value, label } }, " "]);
             }
         }));
-    }
-
-
-    useEffect(() => {
-        handleChange();
-    }, [])
+    };
 
     return (
         <>
@@ -95,8 +71,9 @@ export const SignatureComposer = ({ blockNoteOptions, defaultValue, disabled = f
                 }}
             >
                 <Toolbar>
+                    <ImageUploadButton />
                     {canShowPlaceholdersMenu &&
-                        <TemplateVariableSelector key={"templateVariableSelector"} variables={placeholders} isLoading={isLoadingPlaceholders} />
+                        <TemplateVariableSelector key="templateVariableSelector" variables={placeholders} isLoading={isLoadingPlaceholders} />
                     }
                 </Toolbar>
                 {canShowPlaceholdersMenu &&
@@ -106,10 +83,7 @@ export const SignatureComposer = ({ blockNoteOptions, defaultValue, disabled = f
                     />
                 }
             </BlockNoteViewField>
-            <input {...form.register("htmlBody")} type="hidden" />
-            <input {...form.register("textBody")} type="hidden" />
-            <input {...form.register("rawBody")} type="hidden" />
+            <BodyHiddenInputs />
         </>
-    )
+    );
 };
-

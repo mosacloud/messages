@@ -1,11 +1,10 @@
 "use client";
-import * as locales from '@blocknote/core/locales';
 import { useCreateBlockNote } from "@blocknote/react";
 import { useTranslation } from "react-i18next";
 import { BlockNoteEditor, BlockNoteEditorOptions, BlockNoteSchema, defaultBlockSpecs, PartialBlock } from '@blocknote/core';
 import { MessageTemplateSelector } from '@/features/blocknote/message-template-block';
 import { imageBlockSpec, ALLOWED_IMAGE_MIME_TYPES } from '@/features/blocknote/image-block';
-import MailHelper from '@/features/utils/mail-helper';
+import { EmailExporter } from '@/features/blocknote/email-exporter';
 import { FieldProps } from '@gouvfr-lasuite/cunningham-react';
 import { useFormContext } from 'react-hook-form';
 import { useEffect, useRef } from 'react';
@@ -19,6 +18,7 @@ import { MessageTemplateTypeChoices, useMailboxesMessageTemplatesAvailableList }
 import { Attachment } from '@/features/api/gen/models/attachment';
 import { MessageComposerHelper } from '@/features/utils/composer-helper';
 import { SmartTrailingBlock } from '@/features/blocknote/smart-trailing-block';
+import { createBlockNoteDictionary } from '@/features/blocknote/utils';
 import { MessageFormValues } from '../message-form';
 import { DriveFile } from '../message-form/drive-attachment-picker';
 
@@ -41,6 +41,8 @@ export type MessageComposerInlineContentSchema = MessageComposerBlockNoteSchema[
 export type MessageComposerStyleSchema = MessageComposerBlockNoteSchema['styleSchema'];
 export type PartialMessageComposerBlockSchema = PartialBlock<MessageComposerBlockSchema, MessageComposerInlineContentSchema, MessageComposerStyleSchema>;
 
+const emailExporter = new EmailExporter();
+
 export type QuoteType = "reply" | "forward";
 
 type MessageComposerProps = FieldProps & {
@@ -50,6 +52,7 @@ type MessageComposerProps = FieldProps & {
     disabled?: boolean;
     draft?: Message;
     submitDraft?: () => void;
+    ensureDraft?: () => Promise<string | undefined>;
     quotedMessage?: Message;
     quoteType?: QuoteType;
     uploadInlineImage: (file: File) => Promise<{ url: string; blobId: string } | null>;
@@ -69,7 +72,7 @@ type MessageComposerProps = FieldProps & {
  * to retrieve all the content of the message.
  */
 
-export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quotedMessage, quoteType, disabled = false, draft, submitDraft, uploadInlineImage, uploadFiles, removeInlineImage, attachments, ...props }: MessageComposerProps) => {
+export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quotedMessage, quoteType, disabled = false, draft, submitDraft, ensureDraft, uploadInlineImage, uploadFiles, removeInlineImage, attachments, ...props }: MessageComposerProps) => {
     const form = useFormContext<MessageFormValues>();
     const { t, i18n } = useTranslation();
     const { data: { data: activeSignatures = [] } = {}, isLoading: isLoadingSignatures } = useMailboxesMessageTemplatesAvailableList(
@@ -107,9 +110,17 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
     const uploadFilesRef = useRef(uploadFiles);
     uploadFilesRef.current = uploadFiles;
 
-    const uploadFile = async (file: File) => {
+    const editorRef = useRef<BlockNoteEditor<MessageComposerBlockSchema, MessageComposerInlineContentSchema, MessageComposerStyleSchema>>(null);
+
+    const uploadFile = async (file: File, blockId?: string) => {
         const attachment = await uploadInlineImageRef.current(file);
-        return attachment?.url || "#";
+        if (!attachment) {
+            if (blockId) {
+                setTimeout(() => editorRef.current?.removeBlocks([blockId]), 0);
+            }
+            return '';
+        }
+        return attachment.url;
     };
 
     // Intercept non-image file drops/pastes before BlockNote processes them.
@@ -166,14 +177,7 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
         trailingBlock: false,
         initialContent: getInitialContent(),
         uploadFile,
-        dictionary: {
-            ...(locales[locale as keyof typeof locales] || locales.en),
-            placeholders: {
-                ...(locales[locale as keyof typeof locales] || locales.en).placeholders,
-                emptyDocument: t('Start typing...'),
-                default: t('Start typing...'),
-            }
-        },
+        dictionary: createBlockNoteDictionary(locale, t),
         ...blockNoteOptions,
         _tiptapOptions: {
             extensions: [SmartTrailingBlock],
@@ -243,6 +247,8 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
         },
     }, [locale]);
 
+    editorRef.current = editor;
+
     /**
      * Register one-time load listeners on image blocks whose <img> is still
      * loading. Once ALL pending images have loaded, handleChange is re-triggered
@@ -273,19 +279,10 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
     };
 
     const handleChange = async (editor: BlockNoteEditor<MessageComposerBlockSchema, MessageComposerInlineContentSchema, MessageComposerStyleSchema>, submitNeeded: boolean = true) => {
-        // Remove image blocks whose upload failed (url is "#")
-        const failedImageBlocks = editor.document.filter(
-            (block) => block.type === 'image' && block.props.url === "#",
-        );
-        if (failedImageBlocks.length > 0) {
-            editor.removeBlocks(failedImageBlocks.map((b) => b.id));
-            return;
-        }
-
         registerImageLoadListeners(editor);
         const blocks = editor.document;
         const markdown = await editor.blocksToMarkdownLossy(blocks);
-        const html = await MailHelper.markdownToHtml(markdown);
+        const html = emailExporter.exportBlocks(blocks, editor.domElement ?? null, { wrapInSection: true });
         form.setValue("messageDraftBody", JSON.stringify(editor.document), { shouldDirty: true });
         form.setValue("messageTextBody", markdown);
         form.setValue("messageHtmlBody", html);
@@ -321,6 +318,7 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
      * Process the html and text content of the message when the editor is mounted.
      */
     useEffect(() => {
+        editorRef.current = editor;
         if (!editor) return;
         handleChange(editor, false);
     }, [editor])
@@ -380,6 +378,7 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
                 props: {
                     templateId: signatureToUse.id,
                     mailboxId: mailboxId,
+                    messageId: draft?.id,
                 }
             };
 
@@ -398,6 +397,21 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
             form.setValue('signatureId', undefined);
         }
     }, [editor, isLoadingSignatures, activeSignatures, draft?.signature?.id]);
+
+    // When a draft is created after the signature block was inserted,
+    // update the block's messageId so placeholders can be resolved.
+    useEffect(() => {
+        if (!editor || !draft?.id) return;
+        const signatureBlock = editor.getBlock('signature');
+        if (signatureBlock) {
+            const blockProps = signatureBlock.props as BlockSignatureConfigProps;
+            if (blockProps.messageId !== draft.id) {
+                editor.updateBlock('signature', {
+                    props: { messageId: draft.id }
+                });
+            }
+        }
+    }, [editor, draft?.id]);
 
     // Sync direction: attachments → editor.
     // Removes image blocks whose attachment was deleted externally (e.g. via AttachmentUploader).
@@ -436,16 +450,16 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
                     <ImageUploadButton />
                     <MessageTemplateSelector
                         mailboxId={mailboxId}
-                        context={{
-                            recipient_name: draft
-                                ? draft.to.map(to => to.contact.name).join(", ")
-                                : quotedMessage?.sender?.name || ""
-                        }}
+                        messageId={draft?.id}
+                        ensureDraft={ensureDraft}
+                        uploadInlineImage={uploadInlineImage}
                     />
                     <SignatureTemplateSelector
                         templates={activeSignatures}
                         isLoading={isLoadingSignatures}
                         mailboxId={mailboxId}
+                        messageId={draft?.id}
+                        ensureDraft={ensureDraft}
                         defaultSelected={draft?.signature?.id}
                     />
                 </Toolbar>

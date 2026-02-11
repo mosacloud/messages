@@ -20,6 +20,8 @@ from core.mda.rfc5322 import (
     compose_email,
     create_forward_message,
     create_reply_message,
+    extract_base64_images_from_html,
+    extract_base64_images_from_text,
     parse_email_message,
 )
 from core.mda.signing import sign_message_dkim, verify_message_dkim
@@ -94,7 +96,7 @@ def prepare_outbound_message(
     if message.signature:
         try:
             signatures = message.signature.render_template(
-                mailbox=mailbox_sender, user=user
+                mailbox=mailbox_sender, user=user, message=message
             )
             if signatures:
                 text_body = (
@@ -148,6 +150,25 @@ def prepare_outbound_message(
         if nested_data.get("htmlBody"):
             html_body = nested_data["htmlBody"][0]["content"]
 
+    # Extract base64 images from text and HTML bodies (e.g. from signatures
+    # and templates) and convert them to inline CID attachments.
+    # A shared known_images dict deduplicates identical images across both bodies
+    # so the same image is attached only once.
+    known_images: dict[str, str] = {}
+    base64_inline_attachments = []
+
+    if text_body:
+        text_body, text_images = extract_base64_images_from_text(
+            text_body, known_images=known_images
+        )
+        base64_inline_attachments.extend(text_images)
+
+    if html_body:
+        html_body, html_images = extract_base64_images_from_html(
+            html_body, known_images=known_images
+        )
+        base64_inline_attachments.extend(html_images)
+
     # Generate the MIME data dictionary
     mime_data = {
         "from": [
@@ -166,39 +187,20 @@ def prepare_outbound_message(
         "message_id": message.mime_id,
     }
 
-    # Add attachments if present
-    if message.attachments.exists():
-        attachments = []
-        total_attachment_size = 0
-
-        for attachment in message.attachments.select_related("blob").all():
-            # Get the blob data
-            blob = attachment.blob
-            total_attachment_size += blob.size
-
-            # Add the attachment to the MIME data
-            # Use inline disposition if attachment has a Content-ID (for inline images)
-            attachments.append(
-                {
-                    "content": blob.get_content(),  # Decompressed binary content
-                    "type": blob.content_type,  # MIME type
-                    "name": attachment.name,  # Original filename
-                    "disposition": "inline" if attachment.cid else "attachment",
-                    "cid": attachment.cid,  # Content-ID for inline images
-                    "size": blob.size,  # Size in bytes
-                }
-            )
-
-        # Validate total attachment size before composing
-        if total_attachment_size > settings.MAX_OUTGOING_ATTACHMENT_SIZE:
+    # Add attachments if present and ensure they don't exceed the limit
+    def _validate_attachments_size(total_size: int) -> None:
+        """
+        Validate that the total size of the attachments does not exceed the limit.
+        """
+        if total_size > settings.MAX_OUTGOING_ATTACHMENT_SIZE:
             # Use binary MB (MiB) to match frontend formatting
-            total_mb = total_attachment_size / (1024 * 1024)
+            total_mb = total_size / (1024 * 1024)
             max_mb = settings.MAX_OUTGOING_ATTACHMENT_SIZE / (1024 * 1024)
 
             logger.error(
                 "Total attachment size for message %s exceeds limit: %d bytes (%.1f MB) > %d bytes (%.0f MB)",
                 message.id,
-                total_attachment_size,
+                total_size,
                 total_mb,
                 settings.MAX_OUTGOING_ATTACHMENT_SIZE,
                 max_mb,
@@ -217,9 +219,48 @@ def prepare_outbound_message(
                 }
             )
 
-        # Add attachments to the MIME data
-        if attachments:
-            mime_data["attachments"] = attachments
+    attachments = []
+    total_attachment_size = 0
+
+    if message.attachments.exists():
+        for attachment in message.attachments.select_related("blob").all():
+            # Get the blob data
+            blob = attachment.blob
+            total_attachment_size += blob.size
+
+            # Add the attachment to the MIME data
+            # Use inline disposition if attachment has a Content-ID (for inline images)
+            attachments.append(
+                {
+                    "content": blob.get_content(),  # Decompressed binary content
+                    "type": blob.content_type,  # MIME type
+                    "name": attachment.name,  # Original filename
+                    "disposition": "inline" if attachment.cid else "attachment",
+                    "cid": attachment.cid,  # Content-ID for inline images
+                    "size": blob.size,  # Size in bytes
+                }
+            )
+            _validate_attachments_size(total_attachment_size)
+
+    # Add base64-extracted inline images as attachments
+    if base64_inline_attachments:
+        for img in base64_inline_attachments:
+            total_attachment_size += img["size"]
+            attachments.append(
+                {
+                    "content": img["content"],
+                    "type": img["content_type"],
+                    "name": img["name"],
+                    "disposition": "inline",
+                    "cid": img["cid"],
+                    "size": img["size"],
+                }
+            )
+            _validate_attachments_size(total_attachment_size)
+
+    # Add attachments to the MIME data
+    if attachments:
+        mime_data["attachments"] = attachments
 
     # Assemble the raw mime message
     try:
@@ -285,6 +326,7 @@ def prepare_outbound_message(
     message.blob = blob
     message.is_draft = False
     message.draft_blob = None
+    message.has_attachments = len(attachments) > 0
     message.created_at = timezone.now()
     message.updated_at = timezone.now()
     message.save(
@@ -294,6 +336,7 @@ def prepare_outbound_message(
             "mime_id",
             "is_draft",
             "draft_blob",
+            "has_attachments",
             "created_at",
         ]
     )

@@ -400,12 +400,14 @@ export const MessageForm = ({
 
     /**
      * Update or create a draft message if any field to change.
+     * When `force` is true, bypass the dirty-fields check (used by ensureDraft).
+     * Returns the draft id on success.
      */
-    const saveDraft = async () => {
+    const saveDraftInner = async (force = false): Promise<string | undefined> => {
         const data = form.getValues();
-        if (!canWriteMessages || isSavingDraft) return;
+        if (!canWriteMessages || isSavingDraft) return draft?.id;
 
-        const saveDraftNeeded = (
+        const saveDraftNeeded = force || (
             Object.keys(form.formState.dirtyFields).length > 0
             && (
                 !!draft || (
@@ -422,7 +424,7 @@ export const MessageForm = ({
         )
 
         if (!saveDraftNeeded) {
-            return;
+            return draft?.id;
         }
 
         const payload = {
@@ -447,7 +449,7 @@ export const MessageForm = ({
                 });
             } else if (form.formState.dirtyFields.from) {
                 await handleChangeSender(payload);
-                return;
+                return draft?.id;
             } else {
                 response = await draftUpdateMutation.mutateAsync({
                     messageId: draft.id,
@@ -457,11 +459,24 @@ export const MessageForm = ({
 
             const newDraft = response.data as Message;
             setDraft(newDraft);
+            return newDraft.id;
         } catch (error) {
             console.warn("Error in saveDraft:", error);
+            return draft?.id;
         } finally {
             startAutoSave();
         }
+    }
+
+    const saveDraft = () => saveDraftInner(false);
+
+    /**
+     * Ensure a draft exists, creating one if necessary.
+     * Returns the draft id.
+     */
+    const ensureDraft = async (): Promise<string | undefined> => {
+        if (draft) return draft.id;
+        return saveDraftInner(true);
     }
 
     saveDraftRef.current = form.handleSubmit(saveDraft);
@@ -645,6 +660,7 @@ export const MessageForm = ({
                         disabled={!canWriteMessages}
                         draft={draft}
                         submitDraft={form.handleSubmit(saveDraft)}
+                        ensureDraft={ensureDraft}
                         blockNoteOptions={{ autofocus: canWriteMessages ? "end" : undefined }}
                         uploadInlineImage={attachmentHook.uploadInlineImage}
                         uploadFiles={attachmentHook.uploadFiles}
