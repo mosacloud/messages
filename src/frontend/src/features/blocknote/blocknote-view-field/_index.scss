@@ -49,6 +49,8 @@
     }
 }
 .composer-field-input {
+    --min-height: 20rem;
+    --toolbar-height: 43px;
     border-radius: var(--c--components--forms-input--border-radius);
     border-width: var(--c--components--forms-input--border-width);
     border-color: var(--c--components--forms-input--border-color);
@@ -59,7 +61,7 @@
     gap: var(--c--globals--spacings--2xs);
     background-color: var(--bn-colors-editor-background);
     position: relative;
-    min-height: 20rem;
+    min-height: var(--min-height);
     transition:
           border var(--c--globals--transitions--duration) var(--c--globals--transitions--ease-out),
           border-radius var(--c--globals--transitions--duration) var(--c--globals--transitions--ease-out);
@@ -74,15 +76,16 @@
         width: 100%;
         border-bottom: 1px solid var(--c--components--forms-input--border-color);
         padding-block: var(--c--globals--spacings--2xs);
-        flex: 0 0 43px;
-        height: 43px;
+        flex-wrap: wrap;
+        flex-shrink: 0;
+        min-height: var(--toolbar-height);
     }
 
     & .bn-editor {
         // Even in dark mode, the editor stays light so we used global tokens color
         color: var(--c--globals--colors--gray-850);
         border-radius: var(--c--components--forms-input--border-radius);
-        min-height: calc(100% - 43px);
+        min-height: calc(100% - var(--toolbar-height));
         padding-inline: var(--c--globals--spacings--base);
         flex: 1;
 
@@ -91,6 +94,10 @@
             color: var(--c--globals--colors--gray-550);
             border-color: var(--c--globals--colors--gray-550);
         }
+    }
 
+    .tiptap > .bn-block-group {
+        min-height: calc(var(--min-height) - var(--toolbar-height));
+        max-width: 70ch;
     }
 }

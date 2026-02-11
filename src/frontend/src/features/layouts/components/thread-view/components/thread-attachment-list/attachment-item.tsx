@@ -25,6 +25,9 @@ export const isAttachment = (attachment: Attachment | File | DriveFile): attachm
 export const isDriveFile = (attachment: Attachment | File | DriveFile): attachment is DriveFile => {
     return 'url' in attachment;
 }
+export const isInlineImage = (attachment: Attachment | File | DriveFile): boolean => {
+    return isAttachment(attachment) && !!attachment.cid;
+}
 
 export const AttachmentItem = ({ attachment, isLoading = false, canDownload = true, variant = "default", errorMessage, errorAction, onDelete }: AttachmentItemProps) => {
     const { t, i18n } = useTranslation();
@@ -42,6 +45,7 @@ export const AttachmentItem = ({ attachment, isLoading = false, canDownload = tr
                             <>
                                 <img className="attachment-item-icon" src={icon} alt="" />
                                 {isDriveFile(attachment) && <DriveIcon className="attachment-item-icon-drive" size="small" />}
+                                {isInlineImage(attachment) && <Icon name="wysiwyg" className="attachment-item-icon-inline" />}
                             </>
                         )
                     }

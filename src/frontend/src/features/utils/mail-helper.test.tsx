@@ -783,6 +783,36 @@ describe('MailHelper', () => {
     });
   });
 
+  describe('replaceBlobUrlsWithCid', () => {
+    it('should replace blob download URLs with cid: references', () => {
+      const html = '<p>Hello</p><img src="https://localhost:8000/api/v1.0/blob/a1b2c3d4-e5f6-7890-abcd-ef1234567890/download/" />';
+      const result = MailHelper.replaceBlobUrlsWithCid(html);
+      expect(result).toBe('<p>Hello</p><img src="cid:a1b2c3d4-e5f6-7890-abcd-ef1234567890" />');
+    });
+
+    it('should replace multiple blob URLs', () => {
+      const html = '<img src="https://example.com/api/v1.0/blob/aaaa-bbbb/download/" /><img src="https://example.com/api/v1.0/blob/cccc-dddd/download/" />';
+      const result = MailHelper.replaceBlobUrlsWithCid(html);
+      expect(result).toBe('<img src="cid:aaaa-bbbb" /><img src="cid:cccc-dddd" />');
+    });
+
+    it('should handle relative blob URLs (without origin)', () => {
+      const html = '<img src="/api/v1.0/blob/a1b2c3d4-e5f6-7890-abcd-ef1234567890/download/" />';
+      const result = MailHelper.replaceBlobUrlsWithCid(html);
+      expect(result).toBe('<img src="cid:a1b2c3d4-e5f6-7890-abcd-ef1234567890" />');
+    });
+
+    it('should return html unchanged when no blob URLs are present', () => {
+      const html = '<p>Hello World</p><img src="https://example.com/image.png" />';
+      const result = MailHelper.replaceBlobUrlsWithCid(html);
+      expect(result).toBe(html);
+    });
+
+    it('should handle empty string', () => {
+      expect(MailHelper.replaceBlobUrlsWithCid('')).toBe('');
+    });
+  });
+
   describe('DetectionMap', () => {
     it('should not have invalid regex patterns', () => {
       // A test guard to ensure that the detection map does not contain malformed regex patterns

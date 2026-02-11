@@ -1,4 +1,13 @@
-import { BasicTextStyleButton, BlockTypeSelect, CreateLinkButton, FormattingToolbar } from "@blocknote/react";
+import {
+    BasicTextStyleButton,
+    BlockTypeSelect,
+    CreateLinkButton,
+    FileCaptionButton,
+    FileDeleteButton,
+    FilePreviewButton,
+    FileReplaceButton,
+    FormattingToolbar,
+} from "@blocknote/react";
 
 type ToolbarProps = {
     children?: React.ReactNode;
@@ -7,6 +16,10 @@ export const Toolbar = ({ children }: ToolbarProps) => {
     return (
         <FormattingToolbar>
             <BlockTypeSelect key={"blockTypeSelect"} />
+            <FileCaptionButton key={"fileCaptionButton"} />
+            <FileReplaceButton key={"fileReplaceButton"} />
+            <FileDeleteButton key={"fileDeleteButton"} />
+            <FilePreviewButton key={"filePreviewButton"} />
             <BasicTextStyleButton
                 basicTextStyle={"bold"}
                 key={"boldStyleButton"}

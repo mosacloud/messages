@@ -4,6 +4,7 @@ import DetectionMap from "@/features/i18n/attachments-detection-map.json";
 import z from "zod";
 import { DriveFile } from "../forms/components/message-form/drive-attachment-picker";
 import { handle } from "./errors";
+import { getBlobDownloadRetrieveUrl } from "@/features/api/gen/blob/blob";
 
 /**
  * Decode HTML entities produced by renderToStaticMarkup in attribute values.
@@ -55,6 +56,27 @@ class MailHelper {
         return renderToString(<Markdown>{markdown}</Markdown>)
             .replace(/(^<div data-id="react-email-markdown">|<\/div>$)/g, '')
             .trim();
+    }
+
+    /**
+     * Replace blob download URLs in HTML with cid: references for email embedding.
+     * This converts image sources from API URLs to Content-ID references
+     * that email clients can resolve using the MIME multipart/related structure.
+     *
+     * The URL pattern is derived from the Orval-generated getBlobDownloadRetrieveUrl
+     * so it stays in sync with the API spec.
+     */
+    static replaceBlobUrlsWithCid(html: string): string {
+        // Use the Orval-generated URL function with a placeholder to derive the pattern
+        const placeholder = '__BLOB_ID__';
+        const urlTemplate = getBlobDownloadRetrieveUrl(placeholder);
+        // Escape regex special chars in the template, then replace the placeholder with a capture group
+        const pattern = urlTemplate
+            .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            .replace(placeholder, '([a-f0-9-]+)');
+        // Allow an optional origin prefix (full URLs from getRequestUrl)
+        const regex = new RegExp(`(?:https?://[^/]+)?${pattern}`, 'g');
+        return html.replace(regex, 'cid:$1');
     }
 
     /**

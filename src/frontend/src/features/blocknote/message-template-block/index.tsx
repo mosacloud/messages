@@ -1,4 +1,4 @@
-import { useBlockNoteEditor, useComponentsContext } from "@blocknote/react";
+import { useBlockNoteEditor, useComponentsContext, useEditorState } from "@blocknote/react";
 import { useTranslation } from "react-i18next";
 import { Icon, IconSize, Spinner } from "@gouvfr-lasuite/ui-kit";
 import { Modal, ModalSize } from "@gouvfr-lasuite/cunningham-react";
@@ -22,12 +22,24 @@ export const MessageTemplateSelector = ({ mailboxId, context = {} }: MessageTemp
     const Components = useComponentsContext()!;
     const modal = useModal();
 
+    const hasInlineContent = useEditorState({
+        editor,
+        selector: ({ editor }) => {
+            const selectedBlocks = editor.getSelection()?.blocks || [
+                editor.getTextCursorPosition().block,
+            ];
+            return selectedBlocks.some((block) => block.content !== undefined);
+        },
+    });
+
     const { data: { data: templates = [] } = {}, isLoading } = useMailboxesMessageTemplatesAvailableList(
         mailboxId,
         {
             type: MessageTemplateTypeChoices.message,
         },
-        {}
+        {
+            query: { enabled: hasInlineContent }
+        }
     );
 
     const handleSelect = async (template: ReadOnlyMessageTemplate) => {
@@ -86,6 +98,8 @@ export const MessageTemplateSelector = ({ mailboxId, context = {} }: MessageTemp
         }
     };
 
+    if (!hasInlineContent) return null;
+
     if (isLoading) {
         return (
             <Components.FormattingToolbar.Button
@@ -98,14 +112,7 @@ export const MessageTemplateSelector = ({ mailboxId, context = {} }: MessageTemp
     }
 
     if (templates.length === 0) {
-        return (
-            <Components.FormattingToolbar.Button
-                icon={<Icon name="description" size={IconSize.SMALL} />}
-                isDisabled={true}
-                label={t("No templates available")}
-                mainTooltip={t("No templates available")}
-            />
-        );
+        return null;
     }
 
     return (

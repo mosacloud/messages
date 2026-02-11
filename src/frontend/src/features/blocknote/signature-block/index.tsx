@@ -1,4 +1,4 @@
-import { createReactBlockSpec, useBlockNoteEditor, useComponentsContext, useEditorSelectionChange, useEditorChange } from "@blocknote/react";
+import { createReactBlockSpec, useBlockNoteEditor, useComponentsContext, useEditorSelectionChange, useEditorChange, useEditorState } from "@blocknote/react";
 import { Icon, IconSize, Spinner } from "@gouvfr-lasuite/ui-kit";
 import { useState } from "react";
 import { Props } from "@blocknote/core";
@@ -25,6 +25,16 @@ export const SignatureTemplateSelector = ({ mailboxId, templates = [], defaultSe
     const { t } = useTranslation();
     const Components = useComponentsContext()!;
 
+    const hasInlineContent = useEditorState({
+        editor,
+        selector: ({ editor }) => {
+            const selectedBlocks = editor.getSelection()?.blocks || [
+                editor.getTextCursorPosition().block,
+            ];
+            return selectedBlocks.some((block) => block.content !== undefined);
+        },
+    });
+
     // Tracks whether the text & background are both blue.
     const [isSelected, setIsSelected] = useState<string | null>(defaultSelected ?? null);
     const forcedTemplate = templates.find(template => template.is_forced);
@@ -43,8 +53,17 @@ export const SignatureTemplateSelector = ({ mailboxId, templates = [], defaultSe
     useEditorSelectionChange(handleEditorContentOrSelectionChange, editor);
     useEditorChange(handleEditorContentOrSelectionChange, editor);
 
+    if (!hasInlineContent) return null;
+
     if (isLoading) {
-        return <Spinner size="sm" />;
+        return (
+            <Components.FormattingToolbar.Button
+                icon={<Spinner size="sm" />}
+                isDisabled={true}
+                label={t("Loading templates...")}
+                mainTooltip={t("Loading templates...")}
+            />
+        );
     }
 
     if (templates.length === 0) {

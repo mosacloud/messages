@@ -19,13 +19,14 @@ import { AttachmentUploader } from "./attachment-uploader";
 import { DateHelper } from "@/features/utils/date-helper";
 import { Banner } from "@/features/ui/components/banner";
 import { RhfContactComboBox } from "../react-hook-form/rhf-contact-combobox";
-import { DriveFile } from "./drive-attachment-picker";
 import useAbility, { Abilities } from "@/hooks/use-ability";
 import i18n from "@/features/i18n/initI18n";
 import { DropdownButton } from "@/features/ui/components/dropdown-button";
 import { PREFER_SEND_MODE_KEY, PreferSendMode } from "@/features/config/constants";
 import { useSearchParams } from "next/navigation";
 import { useConfig } from "@/features/providers/config";
+import { DriveFile } from "./drive-attachment-picker";
+import { useAttachments } from "@/features/forms/hooks/use-attachments";
 
 export type MessageFormMode = "new" | "reply" | "reply_all" | "forward";
 
@@ -46,6 +47,7 @@ const attachmentSchema = z.object({
     blobId: z.string(), // Can be UUID or msg_{messageId}_{index} format
     name: z.string(),
     cid: z.string().optional().nullable(),
+    size: z.number().optional(), // Size in bytes, present for inline images
 });
 const driveAttachmentSchema = z.object({
     id: z.string(),
@@ -68,6 +70,8 @@ const messageFormSchema = z.object({
     driveAttachments: z.array(driveAttachmentSchema).optional(),
     signatureId: z.string().optional().nullable(),
 });
+
+export type MessageFormValues = z.infer<typeof messageFormSchema>;
 
 const DRAFT_TOAST_ID = "MESSAGE_FORM_DRAFT_TOAST";
 
@@ -108,6 +112,7 @@ export const MessageForm = ({
     const hasQueuedMutation = pendingMutation.size > 0;
     const [currentTime, setCurrentTime] = useState(new Date());
     const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const saveDraftRef = useRef<() => void>(() => {});
     const quoteType: QuoteType | undefined = mode !== "new" ? (mode === "forward" ? "forward" : "reply") : undefined;
     const { selectedMailbox, mailboxes, invalidateThreadMessages, invalidateThreadsStats, unselectThread } = useMailboxContext();
     const hideSubjectField = Boolean(draftMessage?.parent_id ?? parentMessage);
@@ -215,16 +220,6 @@ export const MessageForm = ({
         name: "messageDraftBody",
     }) || "";
 
-    const attachments = useWatch({
-        control: form.control,
-        name: "attachments",
-    }) || [];
-
-    const driveAttachments = useWatch({
-        control: form.control,
-        name: "driveAttachments",
-    }) || [];
-
     const currentToRecipients = useWatch({
         control: form.control,
         name: "to",
@@ -254,12 +249,21 @@ export const MessageForm = ({
         const forwardedAttachments = (mode === "forward" && !draft && parentMessage?.attachments)
             ? parentMessage.attachments
             : [];
-        return [...(draft?.attachments ?? []), ...forwardedAttachments, ...(driveAttachments ?? [])];
-    }, [draft, driveAttachments, mode, parentMessage]);
+        const [, draftDriveAttachments] = MailHelper.extractDriveAttachmentsFromDraft(draft?.draftBody ?? '');
+        return [...(draft?.attachments ?? []), ...forwardedAttachments, ...(draftDriveAttachments ?? [])];
+    }, [draft, mode, parentMessage]);
+
+    const attachmentHook = useAttachments({
+        mailboxId: currentSenderId,
+        initialAttachments,
+        form,
+        onChange: () => saveDraftRef.current(),
+        maxAttachmentSize: config.MAX_OUTGOING_ATTACHMENT_SIZE,
+    });
 
     const showAttachmentsForgetAlert = useMemo(() => {
-        return MailHelper.areAttachmentsMentionedInDraft(messageDraftBody) && attachments.length === 0 && driveAttachments.length === 0;
-    }, [messageDraftBody, attachments, driveAttachments]);
+        return MailHelper.areAttachmentsMentionedInDraft(messageDraftBody) && attachmentHook.attachments.length === 0;
+    }, [messageDraftBody, attachmentHook.attachments]);
 
     const totalRecipients = useMemo(() => {
         return (currentToRecipients?.length || 0) + (currentCcRecipients?.length || 0) + (currentBccRecipients?.length || 0);
@@ -460,6 +464,8 @@ export const MessageForm = ({
         }
     }
 
+    saveDraftRef.current = form.handleSubmit(saveDraft);
+
     /**
      * Send the draft message
      */
@@ -640,6 +646,10 @@ export const MessageForm = ({
                         draft={draft}
                         submitDraft={form.handleSubmit(saveDraft)}
                         blockNoteOptions={{ autofocus: canWriteMessages ? "end" : undefined }}
+                        uploadInlineImage={attachmentHook.uploadInlineImage}
+                        uploadFiles={attachmentHook.uploadFiles}
+                        removeInlineImage={attachmentHook.removeInlineImage}
+                        attachments={attachmentHook.attachments}
                     />
                 </div>
 
@@ -656,9 +666,16 @@ export const MessageForm = ({
                 }
 
                 <AttachmentUploader
-                    initialAttachments={initialAttachments}
-                    onChange={form.handleSubmit(saveDraft)}
+                    attachments={attachmentHook.attachments}
+                    uploadingQueue={attachmentHook.uploadingQueue}
+                    failedQueue={attachmentHook.failedQueue}
+                    onUploadFiles={attachmentHook.uploadFiles}
+                    onRemove={attachmentHook.removeAttachment}
+                    onRemoveFailedUpload={attachmentHook.removeFailedUpload}
+                    onRetry={attachmentHook.retryUpload}
+                    onDriveAttachmentPick={attachmentHook.addDriveFiles}
                     disabled={!canWriteMessages}
+                    maxAttachmentSize={attachmentHook.maxAttachmentSize}
                 />
 
 

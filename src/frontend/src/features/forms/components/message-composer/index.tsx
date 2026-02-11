@@ -4,21 +4,32 @@ import { useCreateBlockNote } from "@blocknote/react";
 import { useTranslation } from "react-i18next";
 import { BlockNoteEditor, BlockNoteEditorOptions, BlockNoteSchema, defaultBlockSpecs, PartialBlock } from '@blocknote/core';
 import { MessageTemplateSelector } from '@/features/blocknote/message-template-block';
+import { imageBlockSpec, ALLOWED_IMAGE_MIME_TYPES } from '@/features/blocknote/image-block';
 import MailHelper from '@/features/utils/mail-helper';
 import { FieldProps } from '@gouvfr-lasuite/cunningham-react';
 import { useFormContext } from 'react-hook-form';
-import { useEffect, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { QuotedMessageBlock } from '@/features/blocknote/quoted-message-block';
 import { Message } from '@/features/api/gen/models/message';
 import { BlockNoteViewField } from '@/features/blocknote/blocknote-view-field';
 import { Toolbar } from '@/features/blocknote/toolbar';
 import { BlockSignature, BlockSignatureConfigProps, SignatureTemplateSelector } from '@/features/blocknote/signature-block';
+import { ImageUploadButton } from '@/features/blocknote/image-upload-button';
 import { MessageTemplateTypeChoices, useMailboxesMessageTemplatesAvailableList } from '@/features/api/gen';
+import { Attachment } from '@/features/api/gen/models/attachment';
 import { MessageComposerHelper } from '@/features/utils/composer-helper';
+import { SmartTrailingBlock } from '@/features/blocknote/smart-trailing-block';
+import { MessageFormValues } from '../message-form';
+import { DriveFile } from '../message-form/drive-attachment-picker';
+
+
+// Re-export for consumers that import from message-composer
+export { ALLOWED_IMAGE_MIME_TYPES } from '@/features/blocknote/image-block';
 
 const BLOCKNOTE_SCHEMA = BlockNoteSchema.create({
     blockSpecs: {
         ...defaultBlockSpecs,
+        'image': imageBlockSpec,
         'signature': BlockSignature(),
         'quoted-message': QuotedMessageBlock(),
     }
@@ -41,6 +52,10 @@ type MessageComposerProps = FieldProps & {
     submitDraft?: () => void;
     quotedMessage?: Message;
     quoteType?: QuoteType;
+    uploadInlineImage: (file: File) => Promise<{ url: string; blobId: string } | null>;
+    uploadFiles: (files: File[]) => Promise<void>;
+    removeInlineImage: (blobId: string) => void;
+    attachments: (Attachment | DriveFile)[];
 }
 
 /**
@@ -54,8 +69,8 @@ type MessageComposerProps = FieldProps & {
  * to retrieve all the content of the message.
  */
 
-export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quotedMessage, quoteType, disabled = false, draft, submitDraft, ...props }: MessageComposerProps) => {
-    const form = useFormContext();
+export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quotedMessage, quoteType, disabled = false, draft, submitDraft, uploadInlineImage, uploadFiles, removeInlineImage, attachments, ...props }: MessageComposerProps) => {
+    const form = useFormContext<MessageFormValues>();
     const { t, i18n } = useTranslation();
     const { data: { data: activeSignatures = [] } = {}, isLoading: isLoadingSignatures } = useMailboxesMessageTemplatesAvailableList(
         mailboxId,
@@ -70,6 +85,52 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
         }
     );
 
+    // Guard to prevent image load listeners from calling handleChange after unmount.
+    const isMountedRef = useRef(true);
+
+    // Track image blocks whose <img> is still loading, to avoid duplicate listeners.
+    const loadingImageBlocksRef = useRef(new Set<string>());
+
+    // Previous set of image block URLs in the editor, used to detect
+    // which inline images the user removed between two onChange calls.
+    const prevImageUrlsRef = useRef(new Set<string>());
+
+    // Keep stable refs so callbacks captured by the BlockNote editor
+    // (which only re-creates when [locale] changes) always read the
+    // latest values without stale closures.
+    const attachmentsRef = useRef(attachments);
+    attachmentsRef.current = attachments;
+
+    const uploadInlineImageRef = useRef(uploadInlineImage);
+    uploadInlineImageRef.current = uploadInlineImage;
+
+    const uploadFilesRef = useRef(uploadFiles);
+    uploadFilesRef.current = uploadFiles;
+
+    const uploadFile = async (file: File) => {
+        const attachment = await uploadInlineImageRef.current(file);
+        return attachment?.url || "#";
+    };
+
+    // Intercept non-image file drops/pastes before BlockNote processes them.
+    // Without this, BlockNote routes unknown MIME types to the "file" block
+    // (removed from schema) which causes a crash.
+    //
+    // BlockNote's SideMenu plugin dispatches synthetic drop events (isTrusted=false)
+    // on the editor when the real drop lands within 250px of the editor bounds.
+    // Furthermore when a drop is outside the editor boundary, it is not trusted and
+    // event client coordinates are the same as the editor boundaries.
+    // This causes duplicate uploads when the user drops on the attachment uploader
+    // located below the editor. We consume these synthetic file drops early to
+    // prevent any processing while still allowing synthetic block-drag events
+    // (which carry no files) to pass through.
+    // https://github.com/TypeCellOS/BlockNote/blob/da821317f19adc5596a8f0f1128b948b001a87a3/packages/core/src/extensions/SideMenu/SideMenu.ts#L365-L377
+    const interceptNotAllowedFiles = (files: File[]) => {
+        const nonImageFiles = files.filter(f => !ALLOWED_IMAGE_MIME_TYPES.includes(f.type));
+        if (nonImageFiles.length === 0) return false;
+        uploadFilesRef.current(nonImageFiles.filter(f => f.type));
+        return true;
+    };
 
     /**
      * Prepare initial content of the editor
@@ -98,11 +159,13 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
     };
 
     const locale = i18n.resolvedLanguage?.split('-')[0] || 'en';
+
     const editor = useCreateBlockNote({
         schema: BLOCKNOTE_SCHEMA,
         tabBehavior: "prefer-navigate-ui",
         trailingBlock: false,
         initialContent: getInitialContent(),
+        uploadFile,
         dictionary: {
             ...(locales[locale as keyof typeof locales] || locales.en),
             placeholders: {
@@ -112,14 +175,136 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
             }
         },
         ...blockNoteOptions,
+        _tiptapOptions: {
+            extensions: [SmartTrailingBlock],
+            editorProps: {
+                handleDOMEvents: {
+                    blur: (_view: unknown, event: FocusEvent) => {
+                        // If focus moves to another element within the BlockNote
+                        // container (bn-container), this is not a real blur.
+                        // This happens when clicking on image toolbar buttons,
+                        // formatting toolbar, etc. which are siblings of bn-editor.
+                        const container = (event.target as HTMLElement).closest('.bn-container');
+                        if (container?.contains(event.relatedTarget as Node)) {
+                            return false;
+                        }
+                        const cursorPos = editor.getTextCursorPosition();
+                        if (cursorPos.block.content === undefined) {
+                            const target = [cursorPos.nextBlock, cursorPos.prevBlock]
+                                .find((b) => b?.content !== undefined);
+                            if (!target) {
+                                editor.insertBlocks(
+                                    [{ type: 'paragraph' }],
+                                    cursorPos.block.id,
+                                    'after',
+                                );
+                            }
+                            const blockIdx = editor.document.findIndex(
+                                (b) => b.id === cursorPos.block.id,
+                            );
+                            const dest = target || editor.document[blockIdx + 1];
+                            if (dest) {
+                                editor.setTextCursorPosition(dest.id);
+                            }
+                        }
+                        return false;
+                    },
+                    drop: (_view: unknown, event: DragEvent) => {
+                        const files = Array.from(event.dataTransfer?.files || []);
+                        if (files.length === 0) return;
+
+                        // Only check if the drop is inside the editor boundary.
+                        let prevent = false;
+                        if (!event.isTrusted) {
+                            const editorEl = (event.target as HTMLElement).firstElementChild;
+                            if (!editorEl) return false;
+                            const boundaries = editorEl.getBoundingClientRect();
+                            const { clientX, clientY } = event;
+                            const isOutsideEditorBoundary = clientX === boundaries.left || clientX === boundaries.right || clientY === boundaries.top || clientY === boundaries.bottom;
+                            prevent = isOutsideEditorBoundary;
+                        }
+                        if (!prevent) {
+                            prevent = interceptNotAllowedFiles(files);
+                        }
+
+                        if (prevent) {
+                            event.preventDefault();
+                            return true;
+                        }
+                        return false;
+                    },
+                    paste: (_view: unknown, event: ClipboardEvent) => {
+                        const files = Array.from(event.clipboardData?.files || []);
+                        if (files.length === 0) return;
+                        return interceptNotAllowedFiles(files);
+                    }
+                },
+            },
+        },
     }, [locale]);
 
-    const handleChange = useCallback(async (editor: BlockNoteEditor<MessageComposerBlockSchema, MessageComposerInlineContentSchema, MessageComposerStyleSchema>, submitNeeded: boolean = true) => {
-        const markdown = await editor.blocksToMarkdownLossy(editor.document);
+    /**
+     * Register one-time load listeners on image blocks whose <img> is still
+     * loading. Once ALL pending images have loaded, handleChange is re-triggered
+     * so the exported HTML includes the correct width attributes.
+     * Width resolution itself is handled by the imageBlockSpec's toExternalHTML.
+     */
+    const registerImageLoadListeners = (editor: BlockNoteEditor<MessageComposerBlockSchema, MessageComposerInlineContentSchema, MessageComposerStyleSchema>) => {
+        editor.document.forEach(block => {
+            if (block.type !== 'image' || !block.props.url) return;
+            if (loadingImageBlocksRef.current.has(block.id)) return;
+
+            const imgEl = editor.domElement?.querySelector<HTMLImageElement>(
+                `[data-id="${block.id}"] img`,
+            );
+            if (!imgEl || imgEl.complete) return;
+
+            loadingImageBlocksRef.current.add(block.id);
+            const onSettled = () => {
+                loadingImageBlocksRef.current.delete(block.id);
+                if (!isMountedRef.current) return;
+                if (loadingImageBlocksRef.current.size === 0) {
+                    handleChange(editor, false);
+                }
+            };
+            imgEl.addEventListener('load', onSettled, { once: true });
+            imgEl.addEventListener('error', onSettled, { once: true });
+        });
+    };
+
+    const handleChange = async (editor: BlockNoteEditor<MessageComposerBlockSchema, MessageComposerInlineContentSchema, MessageComposerStyleSchema>, submitNeeded: boolean = true) => {
+        // Remove image blocks whose upload failed (url is "#")
+        const failedImageBlocks = editor.document.filter(
+            (block) => block.type === 'image' && block.props.url === "#",
+        );
+        if (failedImageBlocks.length > 0) {
+            editor.removeBlocks(failedImageBlocks.map((b) => b.id));
+            return;
+        }
+
+        registerImageLoadListeners(editor);
+        const blocks = editor.document;
+        const markdown = await editor.blocksToMarkdownLossy(blocks);
         const html = await MailHelper.markdownToHtml(markdown);
         form.setValue("messageDraftBody", JSON.stringify(editor.document), { shouldDirty: true });
         form.setValue("messageTextBody", markdown);
         form.setValue("messageHtmlBody", html);
+
+        // Detect inline image blocks that were removed since the last change
+        // and delete their corresponding attachment. If no attachment matches
+        // (e.g. forwarded inline images that are never in the editor), it's a noop.
+        const imageBlocks = editor.document.filter(block => block.type === 'image');
+        const currentImageUrls = new Set(imageBlocks.map(img => img.props.url).filter(Boolean));
+
+        Array.from(prevImageUrlsRef.current)
+            .filter(url => !currentImageUrls.has(url))
+            .forEach(removedUrl => {
+                const attachment = attachmentsRef.current.find(
+                    (a): a is Attachment => 'blobId' in a && !!a.cid && removedUrl.includes(a.blobId),
+                );
+                if (attachment) removeInlineImage(attachment.blobId);
+            });
+        prevImageUrlsRef.current = currentImageUrls;
 
         // Update signatureId
         const signatureBlock = editor.getBlock('signature');
@@ -130,14 +315,14 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
         if (submitNeeded && signatureId !== draft?.signature?.id) {
             submitDraft?.();
         }
-    }, [form, submitDraft, draft?.signature?.id]);
+    }
 
     /**
      * Process the html and text content of the message when the editor is mounted.
      */
     useEffect(() => {
         if (!editor) return;
-        handleChange(editor,false);
+        handleChange(editor, false);
     }, [editor])
 
     useEffect(() => {
@@ -214,6 +399,29 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
         }
     }, [editor, isLoadingSignatures, activeSignatures, draft?.signature?.id]);
 
+    // Sync direction: attachments → editor.
+    // Removes image blocks whose attachment was deleted externally (e.g. via AttachmentUploader).
+    // The reverse direction (editor → attachments) lives in handleChange above.
+    // No loop occurs because:
+    //  - This effect removing a block triggers handleChange, but the attachment is already gone
+    //    from attachmentsRef so handleChange finds nothing to remove.
+    //  - handleChange calling removeInlineImage returns the same array ref (via guard)
+    //    when the attachment is already absent, so this effect doesn't re-fire.
+    useEffect(() => {
+        if (!editor) return;
+        const inlineImages = editor.document.filter(block => block.type === 'image');
+        if (inlineImages.length === 0) return;
+        const blobAttachments = attachments.filter((a): a is Attachment => 'blobId' in a);
+        const inlineImagesToRemove = inlineImages.filter(image =>
+            editor.getBlock(image.id) && !blobAttachments.some(a => image.props.url.includes(a.blobId)),
+        );
+        if (inlineImagesToRemove.length > 0) {
+            editor.removeBlocks(inlineImagesToRemove.map(image => image.id));
+        }
+    }, [attachments]);
+
+    useEffect(() => () => { isMountedRef.current = false; }, []);
+
     return (
         <>
             <BlockNoteViewField
@@ -225,6 +433,7 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
                 }}
             >
                 <Toolbar>
+                    <ImageUploadButton />
                     <MessageTemplateSelector
                         mailboxId={mailboxId}
                         context={{
