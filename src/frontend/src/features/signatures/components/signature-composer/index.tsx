@@ -3,12 +3,10 @@ import { BlockNoteEditor, BlockNoteEditorOptions, BlockNoteSchema, defaultBlockS
 import { filterSuggestionItems } from "@blocknote/core/extensions";
 import { SuggestionMenuController } from "@blocknote/react";
 import { FieldProps } from "@gouvfr-lasuite/cunningham-react";
-
 import { InlineTemplateVariable, TemplateVariableSelector } from "@/features/blocknote/inline-template-variable";
 import { Toolbar } from "@/features/blocknote/toolbar";
 import { usePlaceholdersRetrieve } from "@/features/api/gen";
 import { imageBlockSpec } from "@/features/blocknote/image-block";
-import { ImageUploadButton } from "@/features/blocknote/image-upload-button";
 import { useBase64Composer } from "@/features/blocknote/hooks/use-base64-composer";
 import { BodyHiddenInputs } from "@/features/blocknote/body-hidden-inputs";
 
@@ -71,7 +69,6 @@ export const SignatureComposer = ({ blockNoteOptions, defaultValue, disabled = f
                 }}
             >
                 <Toolbar>
-                    <ImageUploadButton />
                     {canShowPlaceholdersMenu &&
                         <TemplateVariableSelector key="templateVariableSelector" variables={placeholders} isLoading={isLoadingPlaceholders} />
                     }

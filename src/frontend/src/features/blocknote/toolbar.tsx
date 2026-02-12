@@ -1,6 +1,7 @@
 import {
     BasicTextStyleButton,
     BlockTypeSelect,
+    ColorStyleButton,
     CreateLinkButton,
     FileCaptionButton,
     FileDeleteButton,
@@ -9,6 +10,11 @@ import {
     FormattingToolbar,
     TextAlignButton,
 } from "@blocknote/react";
+import { ImageUploadButton } from "./image-upload-button";
+
+const ToolbarSeparator = () => (
+    <div className="bn-toolbar-separator" role="separator" />
+);
 
 type ToolbarProps = {
     children?: React.ReactNode;
@@ -17,6 +23,10 @@ export const Toolbar = ({ children }: ToolbarProps) => {
     return (
         <FormattingToolbar>
             <BlockTypeSelect key={"blockTypeSelect"} />
+            <ImageUploadButton />
+
+            <ToolbarSeparator key={"separator-1"} />
+
             <FileCaptionButton key={"fileCaptionButton"} />
             <FileReplaceButton key={"fileReplaceButton"} />
             <FileDeleteButton key={"fileDeleteButton"} />
@@ -37,9 +47,19 @@ export const Toolbar = ({ children }: ToolbarProps) => {
                 basicTextStyle={"strike"}
                 key={"strikeStyleButton"}
             />
+
+            <ToolbarSeparator key={"separator-2"} />
+
+            <ColorStyleButton key={"colorStyleButton"} />
+
+            <ToolbarSeparator key={"separator-3"} />
+
             <TextAlignButton textAlignment={"left"} key={"textAlignLeftButton"} />
             <TextAlignButton textAlignment={"center"} key={"textAlignCenterButton"} />
             <TextAlignButton textAlignment={"right"} key={"textAlignRightButton"} />
+
+            <ToolbarSeparator key={"separator-4"} />
+
             <CreateLinkButton key={"createLinkButton"} />
             {children}
         </FormattingToolbar>

@@ -79,6 +79,23 @@
         flex-wrap: wrap;
         flex-shrink: 0;
         min-height: var(--toolbar-height);
+
+        .bn-toolbar-separator {
+            width: 1px;
+            align-self: stretch;
+            margin-block: var(--c--globals--spacings--3xs);
+            background-color: var(--c--components--forms-input--border-color);
+
+            // Hide separators without a visible neighbor:
+            // - at the start of the toolbar (no element before)
+            // - at the end of the toolbar (no element after)
+            // - consecutive (all elements between them are absent from the DOM)
+            &:first-child,
+            &:last-child,
+            & + .bn-toolbar-separator {
+                display: none;
+            }
+        }
     }
 
     & .bn-editor {

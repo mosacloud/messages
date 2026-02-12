@@ -1,5 +1,5 @@
 import { BlockNoteViewField } from "@/features/blocknote/blocknote-view-field";
-import { BlockNoteEditorOptions, BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from "@blocknote/core";
+import { BlockNoteEditor, BlockNoteEditorOptions, BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from "@blocknote/core";
 import { InlineTemplateVariable, TemplateVariableSelector } from "@/features/blocknote/inline-template-variable";
 import { FieldProps } from "@gouvfr-lasuite/cunningham-react";
 import { useEffect } from "react";
@@ -8,10 +8,11 @@ import { BlockSignature, BlockSignatureConfigProps, SignatureTemplateSelector } 
 import { MessageTemplateTypeChoices, useMailboxesMessageTemplatesAvailableList, usePlaceholdersRetrieve } from "@/features/api/gen";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { imageBlockSpec } from "@/features/blocknote/image-block";
-import { ImageUploadButton } from "@/features/blocknote/image-upload-button";
 import { SmartTrailingBlock } from "@/features/blocknote/smart-trailing-block";
 import { useBase64Composer } from "@/features/blocknote/hooks/use-base64-composer";
 import { BodyHiddenInputs } from "@/features/blocknote/body-hidden-inputs";
+import { SuggestionMenuController } from "@blocknote/react";
+import { filterSuggestionItems } from "@blocknote/core/extensions";
 
 const TEMPLATE_BLOCKNOTE_SCHEMA = BlockNoteSchema.create({
     blockSpecs: {
@@ -56,6 +57,15 @@ export const TemplateComposer = ({ blockNoteOptions, defaultValue, disabled = fa
             refetchOnWindowFocus: true,
         }
     });
+    const canShowPlaceholdersMenu = !isLoadingPlaceholders && !!Object.keys(placeholders).length;
+    const getPlaceholderMenuItems = (editor: BlockNoteEditor<TemplateComposerBlockSchema, TemplateComposerInlineContentSchema, TemplateComposerStyleSchema>) => {
+        return Object.entries(placeholders).map(([value, label]) => ({
+            title: label,
+            onItemClick: () => {
+                editor.insertInlineContent([{ type: "template-variable", props: { value, label } }, " "]);
+            }
+        }));
+    };
 
     const { data: { data: activeSignatures = [] } = {}, isLoading: isLoadingSignatures } = useMailboxesMessageTemplatesAvailableList(
         selectedMailbox?.id || "",
@@ -137,17 +147,24 @@ export const TemplateComposer = ({ blockNoteOptions, defaultValue, disabled = fa
                 }}
             >
                 <Toolbar>
-                    <ImageUploadButton />
                     <SignatureTemplateSelector
                         templates={activeSignatures}
                         isLoading={isLoadingSignatures}
                         mailboxId={selectedMailbox?.id}
                     />
-                    <TemplateVariableSelector
-                        variables={placeholders}
-                        isLoading={isLoadingPlaceholders}
-                    />
+                    {canShowPlaceholdersMenu &&
+                        <TemplateVariableSelector
+                            variables={placeholders}
+                            isLoading={isLoadingPlaceholders}
+                        />
+                    }
                 </Toolbar>
+                {canShowPlaceholdersMenu &&
+                    <SuggestionMenuController
+                        triggerCharacter="{"
+                        getItems={async (query) => filterSuggestionItems(getPlaceholderMenuItems(editor), query)}
+                    />
+                }
             </BlockNoteViewField>
             <BodyHiddenInputs />
         </>

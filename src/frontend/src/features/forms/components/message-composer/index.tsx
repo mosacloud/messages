@@ -13,7 +13,6 @@ import { Message } from '@/features/api/gen/models/message';
 import { BlockNoteViewField } from '@/features/blocknote/blocknote-view-field';
 import { Toolbar } from '@/features/blocknote/toolbar';
 import { BlockSignature, BlockSignatureConfigProps, SignatureTemplateSelector } from '@/features/blocknote/signature-block';
-import { ImageUploadButton } from '@/features/blocknote/image-upload-button';
 import { MessageTemplateTypeChoices, useMailboxesMessageTemplatesAvailableList } from '@/features/api/gen';
 import { Attachment } from '@/features/api/gen/models/attachment';
 import { MessageComposerHelper } from '@/features/utils/composer-helper';
@@ -447,7 +446,6 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
                 }}
             >
                 <Toolbar>
-                    <ImageUploadButton />
                     <MessageTemplateSelector
                         mailboxId={mailboxId}
                         messageId={draft?.id}

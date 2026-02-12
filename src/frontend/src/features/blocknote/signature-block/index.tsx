@@ -81,7 +81,7 @@ export const SignatureTemplateSelector = ({ mailboxId, messageId, ensureDraft, t
             >
                 <div className="signature-block-selector__content">
                     <Icon name="lock" size={IconSize.SMALL} />
-                    <p>{t('Signature: {{name}}', { name:  forcedTemplate.name })}</p>
+                    <p>{forcedTemplate.name}</p>
                 </div>
             </Components.FormattingToolbar.Button>;
     }
@@ -100,7 +100,7 @@ export const SignatureTemplateSelector = ({ mailboxId, messageId, ensureDraft, t
             },
           },
           ...templates.map((template) => ({
-            text: t('Signature: {{name}}', { name:  template.name }),
+            text: template.name,
             isSelected: isSelected === template.id,
             isDisabled: template.is_forced,
             icon: <Icon name={template.is_forced ? "lock" : "drive_file_rename_outline"} size={IconSize.SMALL} />,

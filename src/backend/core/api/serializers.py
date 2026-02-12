@@ -1,4 +1,3 @@
-# pylint: disable=too-many-lines
 """Client serializers for the messages core app."""
 # pylint: disable=too-many-lines
 
