@@ -2,15 +2,15 @@ import { BlockNoteViewField } from "@/features/blocknote/blocknote-view-field";
 import { BlockNoteEditor, BlockNoteEditorOptions, BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from "@blocknote/core";
 import { InlineTemplateVariable, TemplateVariableSelector } from "@/features/blocknote/inline-template-variable";
 import { FieldProps } from "@gouvfr-lasuite/cunningham-react";
-import { useEffect } from "react";
+import { forwardRef, useEffect, useImperativeHandle } from "react";
+import { useFormContext } from "react-hook-form";
 import { Toolbar } from "@/features/blocknote/toolbar";
 import { BlockSignature, BlockSignatureConfigProps, SignatureTemplateSelector } from "@/features/blocknote/signature-block";
 import { MessageTemplateTypeChoices, useMailboxesMessageTemplatesAvailableList, usePlaceholdersRetrieve } from "@/features/api/gen";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { imageBlockSpec } from "@/features/blocknote/image-block";
 import { SmartTrailingBlock } from "@/features/blocknote/smart-trailing-block";
-import { useBase64Composer } from "@/features/blocknote/hooks/use-base64-composer";
-import { BodyHiddenInputs } from "@/features/blocknote/body-hidden-inputs";
+import { useBase64Composer, Base64ComposerHandle } from "@/features/blocknote/hooks/use-base64-composer";
 import { SuggestionMenuController } from "@blocknote/react";
 import { filterSuggestionItems } from "@blocknote/core/extensions";
 
@@ -40,16 +40,19 @@ type TemplateComposerProps = FieldProps & {
 /**
  * The composer component for the template content.
  */
-export const TemplateComposer = ({ blockNoteOptions, defaultValue, disabled = false, ...props }: TemplateComposerProps) => {
+export const TemplateComposer = forwardRef<Base64ComposerHandle, TemplateComposerProps>(({ blockNoteOptions, defaultValue, disabled = false, ...props }, ref) => {
+    const form = useFormContext();
     const { selectedMailbox } = useMailboxContext();
 
-    const { editor, handleChange } = useBase64Composer({
+    const { editor, handleChange, exportContent } = useBase64Composer({
         schema: TEMPLATE_BLOCKNOTE_SCHEMA,
         defaultValue,
         blockNoteOptions,
         trailingBlock: false,
         extensions: [SmartTrailingBlock],
     });
+
+    useImperativeHandle(ref, () => ({ exportContent }), [exportContent]);
 
     const { data: { data: placeholders = {} } = {}, isLoading: isLoadingPlaceholders } = usePlaceholdersRetrieve({
         query: {
@@ -166,7 +169,8 @@ export const TemplateComposer = ({ blockNoteOptions, defaultValue, disabled = fa
                     />
                 }
             </BlockNoteViewField>
-            <BodyHiddenInputs />
+            <input {...form.register("rawBody")} type="hidden" />
         </>
     );
-};
+});
+TemplateComposer.displayName = "TemplateComposer";

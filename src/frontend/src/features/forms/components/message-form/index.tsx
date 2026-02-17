@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Attachment, DraftMessageRequestRequest, Message, sendCreateResponse200, useDraftCreate, useDraftUpdate2, useMessagesDestroy, useSendCreate } from "@/features/api/gen";
-import { MessageComposer, QuoteType } from "@/features/forms/components/message-composer";
+import { MessageComposer, MessageComposerHandle, QuoteType } from "@/features/forms/components/message-composer";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import MailHelper from "@/features/utils/mail-helper";
 import { RhfInput, RhfSelect } from "../react-hook-form";
@@ -63,8 +63,6 @@ const messageFormSchema = z.object({
     cc: emailArraySchema.optional(),
     bcc: emailArraySchema.optional(),
     subject: z.string().trim(),
-    messageHtmlBody: z.string().optional().readonly(),
-    messageTextBody: z.string().optional().readonly(),
     messageDraftBody: z.string().optional().readonly(),
     attachments: z.array(attachmentSchema).optional(),
     driveAttachments: z.array(driveAttachmentSchema).optional(),
@@ -86,6 +84,7 @@ export const MessageForm = ({
     const router = useRouter();
     const searchParams = useSearchParams();
     const config = useConfig();
+    const composerRef = useRef<MessageComposerHandle>(null);
     const [draft, setDraft] = useState<Message | undefined>(draftMessage);
     const [preferredSendMode, setPreferredSendMode] = useState<PreferSendMode>(() => {
         if (mode === 'new') return PreferSendMode.SEND;
@@ -199,8 +198,6 @@ export const MessageForm = ({
             bcc: draft?.bcc?.map(({ contact }) => contact.email) ?? [],
             subject: getDefaultSubject(),
             messageDraftBody: draftBody,
-            messageHtmlBody: undefined,
-            messageTextBody: undefined,
             attachments: getDefaultAttachments(),
             driveAttachments: draftDriveAttachments,
             signatureId: draft?.signature?.id,
@@ -415,7 +412,7 @@ export const MessageForm = ({
                     || data.to.length > 0
                     || (data.cc?.length ?? 0) > 0
                     || (data.bcc?.length ?? 0) > 0
-                    || (data.messageTextBody?.length ?? 0) > 0
+                    || (data.messageDraftBody?.length ?? 0) > 0
                     || (data.attachments?.length ?? 0) > 0
                     || (data.driveAttachments?.length ?? 0) > 0
                     || (data.signatureId?.length ?? 0) > 0
@@ -494,14 +491,19 @@ export const MessageForm = ({
             form.setError("to", { message: t("At least one recipient is required.") });
             return;
         }
-        if (!draft || !canSendMessages) return;
+        if (!draft || !canSendMessages || !composerRef.current) return;
+
+        // Generate HTML and text body from the editor at send time to avoid
+        // calling blocksToMarkdownLossy on every keystroke (which creates real
+        // <img> DOM elements and triggers unwanted blob download requests).
+        const { htmlBody, textBody } = await composerRef.current.exportContent();
 
         messageMutation.mutate({
             data: {
                 messageId: draft.id,
                 senderId: data.from,
-                htmlBody: MailHelper.attachDriveAttachmentsToHtmlBody(data.messageHtmlBody, data.driveAttachments),
-                textBody: MailHelper.attachDriveAttachmentsToTextBody(data.messageTextBody, data.driveAttachments),
+                htmlBody: MailHelper.attachDriveAttachmentsToHtmlBody(htmlBody, data.driveAttachments),
+                textBody: MailHelper.attachDriveAttachmentsToTextBody(textBody, data.driveAttachments),
                 archive,
             }
         });
@@ -650,6 +652,7 @@ export const MessageForm = ({
 
                 <div className="form-field-row">
                     <MessageComposer
+                        ref={composerRef}
                         mailboxId={form.getValues('from')}
                         defaultValue={form.getValues('messageDraftBody')}
                         fullWidth

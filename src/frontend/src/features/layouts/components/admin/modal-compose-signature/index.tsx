@@ -7,8 +7,10 @@ import { Button, Modal, ModalSize } from "@gouvfr-lasuite/cunningham-react";
 import { FormProvider, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import z from "zod";
+import { useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { SignatureComposer } from "@/features/signatures/components/signature-composer";
+import { Base64ComposerHandle } from "@/features/blocknote/hooks/use-base64-composer";
 import { addToast, ToasterItem } from "@/features/ui/components/toaster";
 import i18n from "@/features/i18n/initI18n";
 import { handle } from "@/features/utils/errors";
@@ -68,8 +70,6 @@ const signatureComposerSchema = z.object({
     is_active: z.boolean(),
     is_forced: z.boolean(),
     is_default: z.boolean(),
-    htmlBody: z.string().min(1, { error: i18n.t("Content is required") }),
-    textBody: z.string().min(1, { error: i18n.t("Content is required") }),
     rawBody: z.string().min(1, { error: i18n.t("Content is required") }),
 });
 
@@ -77,6 +77,7 @@ type SignatureComposerFormData = z.infer<typeof signatureComposerSchema>;
 
 const SignatureComposeForm = ({ domain, defaultValue, onSuccess }: SignatureComposerFormProps) => {
     const { t } = useTranslation();
+    const composerRef = useRef<Base64ComposerHandle>(null);
     const form = useForm<SignatureComposerFormData>({
         resolver: zodResolver(signatureComposerSchema),
         defaultValues: {
@@ -84,8 +85,6 @@ const SignatureComposeForm = ({ domain, defaultValue, onSuccess }: SignatureComp
             is_active: defaultValue?.is_active ?? true,
             is_forced: defaultValue?.is_forced ?? false,
             is_default: defaultValue?.is_default ?? false,
-            htmlBody: defaultValue?.html_body,
-            textBody: defaultValue?.text_body,
             rawBody: defaultValue?.raw_body ?? undefined,
         }
     });
@@ -94,6 +93,11 @@ const SignatureComposeForm = ({ domain, defaultValue, onSuccess }: SignatureComp
     const isSubmitting = isPending || isUpdating;
 
     const onSubmit = async (data: SignatureComposerFormData) => {
+        const { htmlBody, textBody } = await composerRef.current!.exportContent();
+        if (!textBody) {
+            form.setError("rawBody", { message: t("Content is required") });
+            return;
+        }
         try {
             if (defaultValue?.id) {
                 await updateSignature({
@@ -105,8 +109,8 @@ const SignatureComposeForm = ({ domain, defaultValue, onSuccess }: SignatureComp
                         is_active: data.is_active,
                         is_forced: data.is_forced,
                         is_default: data.is_default,
-                        html_body: data.htmlBody,
-                        text_body: data.textBody,
+                        html_body: htmlBody,
+                        text_body: textBody,
                         raw_body: data.rawBody,
                     }
                 });
@@ -119,14 +123,20 @@ const SignatureComposeForm = ({ domain, defaultValue, onSuccess }: SignatureComp
                         is_active: data.is_active,
                         is_forced: data.is_forced,
                         is_default: data.is_default,
-                        html_body: data.htmlBody,
-                        text_body: data.textBody,
+                        html_body: htmlBody,
+                        text_body: textBody,
                         raw_body: data.rawBody,
                     }
                 });
             }
         } catch (error) {
             handle(error);
+            addToast(
+                <ToasterItem type="error">
+                    <span>{t("Failed to save signature. Please try again.")}</span>
+                </ToasterItem>,
+            );
+            return;
         }
         onSuccess?.();
     }
@@ -144,9 +154,10 @@ const SignatureComposeForm = ({ domain, defaultValue, onSuccess }: SignatureComp
                 </div>
                 <div className="form-field-row">
                     <SignatureComposer
+                        ref={composerRef}
                         defaultValue={defaultValue?.raw_body}
-                        state={form.formState.errors.textBody?.message ? "error" : "default"}
-                        text={form.formState.errors.textBody?.message && t(form.formState.errors.textBody.message)}
+                        state={form.formState.errors.rawBody?.message ? "error" : "default"}
+                        text={form.formState.errors.rawBody?.message && t(form.formState.errors.rawBody.message)}
                         blockNoteOptions={{ autofocus: "end" }}
                     />
                 </div>

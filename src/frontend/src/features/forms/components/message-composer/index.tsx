@@ -7,7 +7,7 @@ import { imageBlockSpec, ALLOWED_IMAGE_MIME_TYPES } from '@/features/blocknote/i
 import { EmailExporter } from '@/features/blocknote/email-exporter';
 import { FieldProps } from '@gouvfr-lasuite/cunningham-react';
 import { useFormContext } from 'react-hook-form';
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useImperativeHandle, useRef } from 'react';
 import { QuotedMessageBlock } from '@/features/blocknote/quoted-message-block';
 import { Message } from '@/features/api/gen/models/message';
 import { BlockNoteViewField } from '@/features/blocknote/blocknote-view-field';
@@ -44,6 +44,10 @@ const emailExporter = new EmailExporter();
 
 export type QuoteType = "reply" | "forward";
 
+export type MessageComposerHandle = {
+    exportContent: () => Promise<{ htmlBody: string; textBody: string }>;
+};
+
 type MessageComposerProps = FieldProps & {
     mailboxId: string;
     blockNoteOptions?: Partial<BlockNoteEditorOptions<MessageComposerBlockSchema, MessageComposerInlineContentSchema, MessageComposerStyleSchema>>,
@@ -64,14 +68,13 @@ type MessageComposerProps = FieldProps & {
  * A component that allows the user to edit a message in a BlockNote editor.
  * !!! This component must be used within a FormProvider (from react-hook-form)
  *
- * 4 hidden inputs (`htmlBody`, `textBody`, `draftBody`, `signatureId`) are rendered to store
- * the HTML, text, raw content of the message and the signature id used. Their values are updated
- * when the editor is blurred. About the signature, the value is updated immediately
- * when the signature block is changed. Those inputs must be used in the parent form
- * to retrieve all the content of the message.
+ * 2 hidden inputs (`draftBody`, `signatureId`) are rendered to store the raw
+ * content of the message and the signature id used. HTML and text body are
+ * generated on demand via `exportContent()` (exposed through ref) to avoid
+ * creating real DOM elements on every keystroke.
  */
 
-export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quotedMessage, quoteType, disabled = false, draft, submitDraft, ensureDraft, uploadInlineImage, uploadFiles, removeInlineImage, attachments, ...props }: MessageComposerProps) => {
+export const MessageComposer = React.forwardRef<MessageComposerHandle, MessageComposerProps>(({ mailboxId, blockNoteOptions, defaultValue, quotedMessage, quoteType, disabled = false, draft, submitDraft, ensureDraft, uploadInlineImage, uploadFiles, removeInlineImage, attachments, ...props }, ref) => {
     const form = useFormContext<MessageFormValues>();
     const { t, i18n } = useTranslation();
     const { data: { data: activeSignatures = [] } = {}, isLoading: isLoadingSignatures } = useMailboxesMessageTemplatesAvailableList(
@@ -246,7 +249,19 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
         },
     }, [locale]);
 
-    editorRef.current = editor;
+    // Expose an export function so the parent can generate HTML and text body
+    // on demand (e.g. at send time) instead of on every keystroke.
+    // This avoids calling blocksToMarkdownLossy in handleChange, which creates
+    // real <img> DOM elements via ProseMirror's DOMSerializer and triggers
+    // unwanted blob download requests for inline images.
+    useImperativeHandle(ref, () => ({
+        exportContent: async () => {
+            const blocks = editor.document;
+            const textBody = await editor.blocksToMarkdownLossy(blocks);
+            const htmlBody = emailExporter.exportBlocks(blocks, editor.domElement ?? null);
+            return { htmlBody, textBody };
+        },
+    }), [editor]);
 
     /**
      * Register one-time load listeners on image blocks whose <img> is still
@@ -279,12 +294,7 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
 
     const handleChange = async (editor: BlockNoteEditor<MessageComposerBlockSchema, MessageComposerInlineContentSchema, MessageComposerStyleSchema>, submitNeeded: boolean = true) => {
         registerImageLoadListeners(editor);
-        const blocks = editor.document;
-        const markdown = await editor.blocksToMarkdownLossy(blocks);
-        const html = emailExporter.exportBlocks(blocks, editor.domElement ?? null, { wrapInSection: true });
         form.setValue("messageDraftBody", JSON.stringify(editor.document), { shouldDirty: true });
-        form.setValue("messageTextBody", markdown);
-        form.setValue("messageHtmlBody", html);
 
         // Detect inline image blocks that were removed since the last change
         // and delete their corresponding attachment. If no attachment matches
@@ -462,11 +472,11 @@ export const MessageComposer = ({ mailboxId, blockNoteOptions, defaultValue, quo
                     />
                 </Toolbar>
             </BlockNoteViewField>
-            <input {...form.register("messageHtmlBody")} type="hidden" />
-            <input {...form.register("messageTextBody")} type="hidden" />
             <input {...form.register("messageDraftBody")} type="hidden" />
             <input {...form.register("signatureId")} type="hidden" />
         </>
     );
-};
+});
+
+MessageComposer.displayName = 'MessageComposer';
 

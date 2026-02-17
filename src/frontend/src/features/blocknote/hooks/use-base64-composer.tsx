@@ -15,6 +15,10 @@ import { handle } from '@/features/utils/errors';
 
 const emailExporter = new EmailExporter();
 
+export type Base64ComposerHandle = {
+    exportContent: () => Promise<{ htmlBody: string; textBody: string }>;
+};
+
 type UseBase64ComposerOptions<
     B extends BlockSpecs,
     I extends InlineContentSpecs,
@@ -110,6 +114,15 @@ export const useBase64Composer = <
         form.setValue("rawBody", resolveObjectUrls(JSON.stringify(editor.document)), { shouldDirty: true });
     }, [editor, form, resolveObjectUrls]);
 
+    const exportContent = useCallback(async () => {
+        const markdown = await editor.blocksToMarkdownLossy(editor.document);
+        const html = emailExporter.exportBlocks(editor.document, editor.domElement ?? null);
+        return {
+            htmlBody: resolveObjectUrls(html),
+            textBody: resolveObjectUrls(markdown),
+        };
+    }, [editor, resolveObjectUrls]);
+
     useEffect(() => {
         handleChange();
     }, []);
@@ -118,5 +131,5 @@ export const useBase64Composer = <
         editorRef.current = editor;
     }, [editor]);
 
-    return { editor, handleChange };
+    return { editor, handleChange, exportContent };
 };

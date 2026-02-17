@@ -6,8 +6,10 @@ import { Button, Modal, ModalSize } from "@gouvfr-lasuite/cunningham-react";
 import { FormProvider, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
+import { useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { TemplateComposer } from "./template-composer";
+import { Base64ComposerHandle } from "@/features/blocknote/hooks/use-base64-composer";
 import { addToast, ToasterItem } from "@/features/ui/components/toaster";
 import i18n from "@/features/i18n/initI18n";
 import { handle } from "@/features/utils/errors";
@@ -63,8 +65,6 @@ type TemplateComposerFormProps = {
 
 const templateComposerSchema = () => z.object({
     name: z.string().min(1, { error: i18n.t("Name is required") }),
-    htmlBody: z.string().min(1, { error: i18n.t("Content is required") }),
-    textBody: z.string().min(1, { error: i18n.t("Content is required") }),
     rawBody: z.string().min(1, { error: i18n.t("Content is required") }),
 });
 
@@ -72,12 +72,11 @@ type TemplateComposerFormData = z.infer<ReturnType<typeof templateComposerSchema
 
 const TemplateComposeForm = ({ mailbox, defaultValue, onSuccess }: TemplateComposerFormProps) => {
     const { t } = useTranslation();
+    const composerRef = useRef<Base64ComposerHandle>(null);
     const form = useForm<TemplateComposerFormData>({
         resolver: zodResolver(templateComposerSchema()),
         defaultValues: {
             name: defaultValue?.name ?? "",
-            htmlBody: defaultValue?.html_body,
-            textBody: defaultValue?.text_body,
             rawBody: defaultValue?.raw_body ?? undefined,
         }
     });
@@ -86,6 +85,12 @@ const TemplateComposeForm = ({ mailbox, defaultValue, onSuccess }: TemplateCompo
     const isSubmitting = isPending || isUpdating;
 
     const onSubmit = async (data: TemplateComposerFormData): Promise<void> => {
+        const { htmlBody, textBody } = await composerRef.current!.exportContent();
+        if (!textBody) {
+            form.setError("rawBody", { message: t("Content is required") });
+            return;
+        }
+
         try {
             if (defaultValue?.id) {
                 await updateTemplate({
@@ -94,8 +99,8 @@ const TemplateComposeForm = ({ mailbox, defaultValue, onSuccess }: TemplateCompo
                     data: {
                         name: data.name,
                         type: MessageTemplateTypeChoices.message,
-                        html_body: data.htmlBody,
-                        text_body: data.textBody,
+                        html_body: htmlBody,
+                        text_body: textBody,
                         raw_body: data.rawBody,
                     }
                 });
@@ -105,8 +110,8 @@ const TemplateComposeForm = ({ mailbox, defaultValue, onSuccess }: TemplateCompo
                     data: {
                         name: data.name,
                         type: MessageTemplateTypeChoices.message,
-                        html_body: data.htmlBody,
-                        text_body: data.textBody,
+                        html_body: htmlBody,
+                        text_body: textBody,
                         raw_body: data.rawBody,
                     }
                 });
@@ -118,7 +123,7 @@ const TemplateComposeForm = ({ mailbox, defaultValue, onSuccess }: TemplateCompo
                     <span>{t("Failed to save template. Please try again.")}</span>
                 </ToasterItem>,
             );
-                return;
+            return;
         }
         onSuccess?.();
     }
@@ -136,9 +141,10 @@ const TemplateComposeForm = ({ mailbox, defaultValue, onSuccess }: TemplateCompo
                 </div>
                 <div className="form-field-row">
                     <TemplateComposer
+                        ref={composerRef}
                         defaultValue={defaultValue?.raw_body}
-                        state={form.formState.errors.textBody?.message ? "error" : "default"}
-                        text={form.formState.errors.textBody?.message && t(form.formState.errors.textBody.message)}
+                        state={form.formState.errors.rawBody?.message ? "error" : "default"}
+                        text={form.formState.errors.rawBody?.message && t(form.formState.errors.rawBody.message)}
                         blockNoteOptions={{ autofocus: "end" }}
                     />
                 </div>

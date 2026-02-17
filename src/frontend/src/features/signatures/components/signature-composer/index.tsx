@@ -3,12 +3,13 @@ import { BlockNoteEditor, BlockNoteEditorOptions, BlockNoteSchema, defaultBlockS
 import { filterSuggestionItems } from "@blocknote/core/extensions";
 import { SuggestionMenuController } from "@blocknote/react";
 import { FieldProps } from "@gouvfr-lasuite/cunningham-react";
+import { forwardRef, useImperativeHandle } from "react";
+import { useFormContext } from "react-hook-form";
 import { InlineTemplateVariable, TemplateVariableSelector } from "@/features/blocknote/inline-template-variable";
 import { Toolbar } from "@/features/blocknote/toolbar";
 import { usePlaceholdersRetrieve } from "@/features/api/gen";
 import { imageBlockSpec } from "@/features/blocknote/image-block";
-import { useBase64Composer } from "@/features/blocknote/hooks/use-base64-composer";
-import { BodyHiddenInputs } from "@/features/blocknote/body-hidden-inputs";
+import { useBase64Composer, Base64ComposerHandle } from "@/features/blocknote/hooks/use-base64-composer";
 
 const SIGNATURE_BLOCKNOTE_SCHEMA = BlockNoteSchema.create({
     blockSpecs: {
@@ -37,12 +38,15 @@ type SignatureComposerProps = FieldProps & {
  * Shared composer component for signature content.
  * Used by both admin (maildomain) and mailbox signature modals.
  */
-export const SignatureComposer = ({ blockNoteOptions, defaultValue, disabled = false, ...props }: SignatureComposerProps) => {
-    const { editor, handleChange } = useBase64Composer({
+export const SignatureComposer = forwardRef<Base64ComposerHandle, SignatureComposerProps>(({ blockNoteOptions, defaultValue, disabled = false, ...props }, ref) => {
+    const form = useFormContext();
+    const { editor, handleChange, exportContent } = useBase64Composer({
         schema: SIGNATURE_BLOCKNOTE_SCHEMA,
         defaultValue,
         blockNoteOptions: { autofocus: "end", ...blockNoteOptions },
     });
+
+    useImperativeHandle(ref, () => ({ exportContent }), [exportContent]);
 
     const { data: { data: placeholders = {} } = {}, isLoading: isLoadingPlaceholders } = usePlaceholdersRetrieve();
     const canShowPlaceholdersMenu = !isLoadingPlaceholders && !!Object.keys(placeholders).length;
@@ -80,7 +84,8 @@ export const SignatureComposer = ({ blockNoteOptions, defaultValue, disabled = f
                     />
                 }
             </BlockNoteViewField>
-            <BodyHiddenInputs />
+            <input {...form.register("rawBody")} type="hidden" />
         </>
     );
-};
+});
+SignatureComposer.displayName = "SignatureComposer";

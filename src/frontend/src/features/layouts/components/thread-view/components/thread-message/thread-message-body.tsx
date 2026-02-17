@@ -306,7 +306,7 @@ const ThreadMessageBody = ({ bodyParts, attachments = [], isHidden = false, mess
     }, [sanitizedHtmlBody, cunninghamTheme, variant]);
 
     const resizeIframe = useCallback(() => {
-        if (iframeRef.current?.contentWindow) {
+        if (iframeRef.current?.contentWindow?.document.documentElement) {
             const height = iframeRef.current.contentWindow.document.documentElement.getBoundingClientRect().height;
             iframeRef.current.style.height = `${height}px`;
         }
