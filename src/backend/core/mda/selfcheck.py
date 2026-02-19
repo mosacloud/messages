@@ -5,7 +5,7 @@ import logging
 import secrets
 import time
 from datetime import timedelta
-from typing import Any, Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 from django.conf import settings
 from django.utils import timezone
@@ -13,6 +13,7 @@ from django.utils import timezone
 from core import models
 from core.mda.draft import create_draft
 from core.mda.outbound import prepare_outbound_message, send_message
+from core.mda.selfcheck_reporting import SelfCheckResult, report_selfcheck
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +206,7 @@ def _cleanup_test_data(message: models.Message):
     logger.info("Cleaned up test thread")
 
 
-def run_selfcheck() -> Dict[str, Any]:
+def run_selfcheck() -> SelfCheckResult:
     """
     Run a complete end-to-end selfcheck of the mail delivery system.
 
@@ -219,7 +220,7 @@ def run_selfcheck() -> Dict[str, Any]:
     7. Times all operations and returns metrics
 
     Returns:
-        dict: Dictionary containing success status and timing metrics
+        SelfCheckResult: success, error, send_time and reception_time
     """
 
     result = {
@@ -325,10 +326,18 @@ that the mail delivery pipeline is working correctly.</p>
         # to avoid race conditions on deleted objects.
         time.sleep(5)
 
-        if message:
-            _cleanup_test_data(message)
-        if received_message:
-            _cleanup_test_data(received_message)
-        logger.info("Cleanup completed")
+        try:
+            if message:
+                _cleanup_test_data(message)
+            if received_message:
+                _cleanup_test_data(received_message)
+            logger.info("Cleanup completed")
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.warning("Cleanup failed", exc_info=True)
+
+    try:
+        report_selfcheck(result)
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.warning("Failed to report selfcheck result", exc_info=True)
 
     return result
