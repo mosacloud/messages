@@ -15,12 +15,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-      # Backend i18n
-      - name: Create env files
-        run: make create-env-files
-      - name: Generate source translations
-        run: make front-install-frozen
-      - name: Generate source translations
+      - name: Install frontend dependencies
+        run: make install-frozen-front
+      - name: Generate frontend source translations
         run: make i18n-generate
       - name: crowdin action
         uses: crowdin/github-action@v2

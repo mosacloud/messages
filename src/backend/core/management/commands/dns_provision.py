@@ -13,6 +13,8 @@ from core.services.dns.provisioning import (
 
 
 class Command(BaseCommand):
+    """Provision DNS records for mail domains."""
+
     help = "Provision DNS records for mail domains"
 
     def add_arguments(self, parser):
@@ -49,8 +51,7 @@ class Command(BaseCommand):
         except MailDomain.DoesNotExist:
             if domain_name:
                 raise CommandError(f"Domain '{domain_name}' not found") from None
-            else:
-                raise CommandError(f"Domain with ID {domain_id} not found") from None
+            raise CommandError(f"Domain with ID {domain_id} not found") from None
 
         if pretend:
             self.stdout.write(
@@ -96,9 +97,14 @@ class Command(BaseCommand):
         else:
             self.stdout.write("Provisioning DNS records...")
 
-        results = provision_domain_dns(
-            maildomain, provider_name=provider_name, pretend=pretend
-        )
+        try:
+            results = provision_domain_dns(
+                maildomain, provider_name=provider_name, pretend=pretend
+            )
+        except Exception as e:
+            raise CommandError(
+                f"DNS provisioning failed for {maildomain.name}: {e}"
+            ) from e
 
         if results["success"]:
             if pretend:
@@ -108,10 +114,8 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(self.style.SUCCESS("✓ DNS provisioning successful"))
 
-            # Show which provider was used
             provider_used = results.get("provider", "unknown")
-            if provider_used:
-                self.stdout.write(f"Provider used: {provider_used}")
+            self.stdout.write(f"Provider used: {provider_used}")
 
             if results["changes"]:
                 if pretend:

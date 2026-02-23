@@ -12,13 +12,13 @@ End-to-end tests for the Messages application using Playwright.
 ### In headless mode (CI)
 
 ```bash
-make e2e-test
+make test-e2e
 ```
 
 ### In UI mode
 
 ```bash
-make e2e-test-ui
+make test-e2e-ui
 ```
 
 Open the Playwright UI on http://localhost:8932 to write and debug the tests interactively.
@@ -28,7 +28,7 @@ Open the Playwright UI on http://localhost:8932 to write and debug the tests int
 Start playwright in UI Mode and use the dev frontend service to avoid rebuilding
  the frontend after each change.
 ```bash
-make e2e-test-dev
+make test-e2e-dev
 ```
 
 Open the Playwright UI on http://localhost:8932 to write and debug the tests interactively.
@@ -39,9 +39,9 @@ Open the Playwright UI on http://localhost:8932 to write and debug the tests int
 
 E2E tests use [dedicated services](./compose.yaml) especially for the database and the object storage.
 
-### Nginx to serve the frontend and the backend
+### Caddy to serve the frontend and the backend
 
-Nginx is used to serve the frontend and the backend on the same origin, avoiding cross-origin cookie issues.
+Caddy is used as a reverse proxy to serve the frontend and the backend on the same origin, avoiding cross-origin cookie issues.
 
 ### Environment variables
 

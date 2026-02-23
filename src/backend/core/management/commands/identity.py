@@ -1,3 +1,5 @@
+"""Management command for Keycloak identity management."""
+
 import logging
 
 from django.core.management.base import BaseCommand, CommandError
@@ -14,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = "Identity management commands for Keycloak integration"
+    """Identity management commands for Keycloak integration."""
+
+    help = __doc__
 
     def add_arguments(self, parser):
         subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -126,7 +130,7 @@ class Command(BaseCommand):
         except ValueError as e:
             raise CommandError(str(e)) from e
 
-    def resync_all(self, options):
+    def resync_all(self, _options):
         """Resync all mailboxes with identity_sync enabled to Keycloak."""
         self.stdout.write(
             self.style.SUCCESS("Starting resync of all mailboxes to Keycloak...")

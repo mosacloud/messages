@@ -16,8 +16,6 @@ import os
 import tomllib
 from socket import gethostbyname, gethostname
 
-from django.utils.translation import gettext_lazy as _
-
 import dj_database_url
 import sentry_sdk
 from configurations import Configuration, values
@@ -459,8 +457,6 @@ class Base(Configuration):
 
     # Languages
     LANGUAGE_CODE = values.Value("en-us")
-    LANGUAGE_COOKIE_NAME = "messages_language"  # cookie & language is set from frontend
-
     DRF_NESTED_MULTIPART_PARSER = {
         # output of parser is converted to querydict
         # if is set to False, dict python is returned
@@ -471,16 +467,14 @@ class Base(Configuration):
     # fallback/default languages throughout the app.
     LANGUAGES = values.SingleNestedTupleValue(
         (
-            ("en-us", _("English")),
-            ("fr-fr", _("French")),
-            ("nl-nl", _("Dutch")),
+            ("en-us", "English"),
+            ("fr-fr", "French"),
+            ("nl-nl", "Dutch"),
         )
     )
 
-    LOCALE_PATHS = (os.path.join(BASE_DIR, "locale"),)
-
     TIME_ZONE = "UTC"
-    USE_I18N = True
+    USE_I18N = False
     USE_TZ = True
 
     # Templates
@@ -494,7 +488,6 @@ class Base(Configuration):
                     "django.contrib.messages.context_processors.messages",
                     "django.template.context_processors.csrf",
                     "django.template.context_processors.debug",
-                    "django.template.context_processors.i18n",
                     "django.template.context_processors.media",
                     "django.template.context_processors.request",
                     "django.template.context_processors.tz",
@@ -511,7 +504,6 @@ class Base(Configuration):
         "django.middleware.security.SecurityMiddleware",
         "whitenoise.middleware.WhiteNoiseMiddleware",
         "django.contrib.sessions.middleware.SessionMiddleware",
-        "django.middleware.locale.LocaleMiddleware",
         "django.middleware.clickjacking.XFrameOptionsMiddleware",
         "core.middlewares.CustomCorsMiddleware",
         "django.middleware.common.CommonMiddleware",
@@ -1004,20 +996,6 @@ class Base(Configuration):
         """
         return get_release()
 
-    # pylint: disable=invalid-name
-    @property
-    def PARLER_LANGUAGES(self):
-        """
-        Return languages for Parler computed from the LANGUAGES and LANGUAGE_CODE settings.
-        """
-        return {
-            self.SITE_ID: tuple({"code": code} for code, _name in self.LANGUAGES),
-            "default": {
-                "fallbacks": [self.LANGUAGE_CODE],
-                "hide_untranslated": False,
-            },
-        }
-
     @classmethod
     def post_setup(cls):
         """Post setup configuration.
@@ -1138,16 +1116,16 @@ class E2E(Development):
     """
     End2End environment settings
 
-    Uses nginx reverse proxy to serve both frontend and backend on the same origin,
+    Uses Caddy reverse proxy to serve both frontend and backend on the same origin,
     avoiding cross-origin cookie issues.
     """
 
     # Include the e2e app only in E2E environment
     INSTALLED_APPS = Development.INSTALLED_APPS + ["e2e"]
 
-    CSRF_TRUSTED_ORIGINS = ["http://nginx", "http://keycloak:8802"]
+    CSRF_TRUSTED_ORIGINS = ["http://proxy", "http://keycloak:8802"]
 
-    # Trust X-Forwarded-* headers from nginx proxy
+    # Trust X-Forwarded-* headers from Caddy proxy
     USE_X_FORWARDED_HOST = True
 
 

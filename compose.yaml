@@ -53,36 +53,32 @@ services:
 
   objectstorage:
     # user: ${DOCKER_USER:-1000}
-    image: minio/minio
+    image: rustfs/rustfs:1.0.0-alpha.83
     environment:
-      - MINIO_ROOT_USER=st-messages
-      - MINIO_ROOT_PASSWORD=password
+      - RUSTFS_ACCESS_KEY=st-messages
+      - RUSTFS_SECRET_KEY=password
+      - RUSTFS_CONSOLE_ENABLE=true
+      - RUSTFS_ADDRESS=0.0.0.0:9000
+      - RUSTFS_CONSOLE_ADDRESS=0.0.0.0:9001
+      - RUSTFS_CORS_ALLOWED_ORIGINS=*
+      - RUSTFS_CONSOLE_CORS_ALLOWED_ORIGINS=*
     ports:
       - "8906:9000"
       - "8907:9001"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test:
+        [
+          "CMD",
+          "sh",
+          "-c",
+          "curl -f http://127.0.0.1:9000/health && curl -f http://127.0.0.1:9001/rustfs/console/health",
+        ]
       interval: 1s
-      timeout: 20s
-      retries: 300
-    entrypoint: ""
-    command: minio server --console-address :9001 /data
+      timeout: 5s
+      retries: 60
+      start_period: 0s
     volumes:
-      - ./data/media:/data
-
-  objectstorage-createbucket:
-    image: minio/mc
-    depends_on:
-      objectstorage:
-        condition: service_healthy
-    environment:
-      - MC_HOST=http://objectstorage:9000
-    entrypoint: >
-      sh -c "
-      /usr/bin/mc alias set st-messages $${MC_HOST} st-messages password && \
-      /usr/bin/mc mb st-messages/msg-imports --ignore-existing && \
-      /usr/bin/mc ilm rule rm --all --force st-messages/msg-imports || true && \
-      /usr/bin/mc ilm rule add --expire-days 1 st-messages/msg-imports"
+      - objectstorage-data:/data
 
   backend-base:
     build:
@@ -141,14 +137,14 @@ services:
         condition: service_healthy
         # restart: true
 
-  backend-poetry:
+  backend-uv:
     profiles:
       - tools
     volumes:
       - ./src/backend:/app
     build:
       context: src/backend/
-      target: poetry
+      target: uv
     pull_policy: build
 
   worker-dev:
@@ -262,14 +258,14 @@ services:
     volumes:
       - ./src/mta-in:/app
 
-  mta-in-poetry:
+  mta-in-uv:
     profiles:
       - tools
     volumes:
       - ./src/mta-in:/app
     build:
       context: src/mta-in
-      target: poetry
+      target: uv
     pull_policy: build
 
   mta-out:
@@ -326,14 +322,14 @@ services:
       socks-proxy:
         condition: service_started
 
-  mta-out-poetry:
+  mta-out-uv:
     profiles:
       - tools
     volumes:
       - ./src/mta-out:/app
     build:
       context: src/mta-out
-      target: poetry
+      target: uv
     pull_policy: build
 
   keycloak:
@@ -389,3 +385,6 @@ services:
         condition: service_started
       redis:
         condition: service_started
+
+volumes:
+  objectstorage-data:

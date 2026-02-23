@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from django.conf import settings
-from django.utils import timezone, translation
+from django.utils import timezone
 
 from core.ai.utils import get_messages_from_thread
 from core.models import Thread
@@ -23,8 +23,7 @@ def get_most_relevant_labels(thread: Thread, labels: list) -> list[str]:
 
     current_datetime = timezone.now().isoformat()
 
-    # Determine the active or fallback language
-    active_language = translation.get_language() or settings.LANGUAGE_CODE
+    active_language = settings.LANGUAGE_CODE
 
     # Extract messages from the thread
     messages = get_messages_from_thread(thread)
@@ -35,8 +34,10 @@ def get_most_relevant_labels(thread: Thread, labels: list) -> list[str]:
     with open(prompts_path, encoding="utf-8") as f:
         prompts = json.load(f)
 
-    # Get the prompt for the active language
-    prompt_template = prompts.get(active_language)
+    # Get the prompt for the active language, fallback to en-us
+    prompt_template = prompts.get(active_language) or prompts.get("en-us")
+    if prompt_template is None:
+        raise ValueError(f"No AI prompt template for language '{active_language}'")
     prompt_query = prompt_template["autolabels_query"]
     prompt = prompt_query.format(
         messages=messages_as_text,
@@ -45,8 +46,7 @@ def get_most_relevant_labels(thread: Thread, labels: list) -> list[str]:
         language=active_language,
     )
 
-    with translation.override(active_language):
-        best_labels = AIService().call_ai_api(prompt)
+    best_labels = AIService().call_ai_api(prompt)
 
     # Get rid of surrounding text if present
     if best_labels.startswith('["') and best_labels.endswith('"]'):
