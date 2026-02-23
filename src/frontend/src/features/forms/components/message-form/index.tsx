@@ -1,5 +1,5 @@
 import { Icon, IconType, Spinner } from "@gouvfr-lasuite/ui-kit";
-import { Button, Tooltip } from "@gouvfr-lasuite/cunningham-react";
+import { Button, Tooltip, useModals } from "@gouvfr-lasuite/cunningham-react";
 import { clsx } from "clsx";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { FormProvider, useForm, useWatch } from "react-hook-form";
@@ -84,31 +84,15 @@ export const MessageForm = ({
     const router = useRouter();
     const searchParams = useSearchParams();
     const config = useConfig();
+    const modals = useModals();
     const composerRef = useRef<MessageComposerHandle>(null);
     const [draft, setDraft] = useState<Message | undefined>(draftMessage);
     const [preferredSendMode, setPreferredSendMode] = useState<PreferSendMode>(() => {
         if (mode === 'new') return PreferSendMode.SEND;
         return localStorage.getItem(PREFER_SEND_MODE_KEY) as PreferSendMode ?? PreferSendMode.SEND;
     });
-    const [pendingMutation, setPendingMutation] = useState<Map<'delete' | 'send', () => void>>(new Map());
-    const dequeueMutation = (type: 'delete' | 'send') => {
-        setPendingMutation((prev) => {
-            const next = new Map(prev);
-            next.delete(type);
-            return next;
-        });
-    }
-    const queueMutation = (type: 'delete' | 'send', callback: () => void) => {
-        setPendingMutation((prev) => {
-            const next = new Map(prev);
-            next.set(type, () => {
-                callback();
-                dequeueMutation(type);
-            });
-            return next;
-        });
-    }
-    const hasQueuedMutation = pendingMutation.size > 0;
+    const saveDraftPromiseRef = useRef<Promise<string | undefined> | null>(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
     const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
     const saveDraftRef = useRef<() => void>(() => {});
@@ -273,9 +257,9 @@ export const MessageForm = ({
 
     const messageMutation = useSendCreate({
         mutation: {
-            onMutate: () => stopAutoSave(),
             onError: () => startAutoSave(),
             onSettled: () => {
+                setIsSubmitting(false);
                 form.clearErrors();
                 toast.dismiss(DRAFT_TOAST_ID);
             },
@@ -315,33 +299,39 @@ export const MessageForm = ({
 
 
     const deleteMessageMutation = useMessagesDestroy();
-    const isSavingDraft = draftCreateMutation.isPending || draftUpdateMutation.isPending || deleteMessageMutation.isPending;
-    const isSubmittingMessage = pendingMutation.has('send') || messageMutation.isPending;
+    const isDeletingDraft = deleteMessageMutation.isPending;
+    const isSubmittingMessage = isSubmitting || messageMutation.isPending;
 
-    const handleDeleteMessage = (messageId: string) => {
-        if (window.confirm(t("Are you sure you want to delete this draft? This action cannot be undone."))) {
-            queueMutation('delete', () => {
-                deleteMessageMutation.mutate({
-                    id: messageId
-                }, {
-                    onSuccess: () => {
-                        onClose?.();
-                        setDraft(undefined);
-                        invalidateThreadMessages({ type: 'delete', metadata: { ids: [messageId] } });
-                        invalidateThreadsStats();
-                        // Unselect the thread if we are in the draft view
-                        if (searchParams.get('has_draft') === '1') {
-                            unselectThread();
-                        }
-                        addToast(
-                            <ToasterItem type="info">
-                                <span>{t("Draft deleted")}</span>
-                            </ToasterItem>
-                        );
-                    },
-                });
-            });
-        }
+    const handleDeleteMessage = async (messageId: string) => {
+        const decision = await modals.deleteConfirmationModal({
+            title: <span className="c__modal__text--centered">{t("Delete draft")}</span>,
+            children: t("Are you sure you want to delete this draft? This action cannot be undone."),
+        });
+        if (decision !== 'delete') return;
+
+        await saveDraftPromiseRef.current;
+        stopAutoSave();
+
+        deleteMessageMutation.mutate({
+            id: messageId
+        }, {
+            onSuccess: () => {
+                onClose?.();
+                setDraft(undefined);
+                invalidateThreadMessages({ type: 'delete', metadata: { ids: [messageId] } });
+                invalidateThreadsStats();
+                // Unselect the thread if we are in the draft view
+                if (searchParams.get('has_draft') === '1') {
+                    unselectThread();
+                }
+                addToast(
+                    <ToasterItem type="info">
+                        <span>{t("Draft deleted")}</span>
+                    </ToasterItem>
+                );
+            },
+            onError: startAutoSave,
+        });
     }
 
     /**
@@ -401,8 +391,10 @@ export const MessageForm = ({
      * Returns the draft id on success.
      */
     const saveDraftInner = async (force = false): Promise<string | undefined> => {
+        if (saveDraftPromiseRef.current) return saveDraftPromiseRef.current;
+
         const data = form.getValues();
-        if (!canWriteMessages || isSavingDraft) return draft?.id;
+        if (!canWriteMessages) return draft?.id;
 
         const saveDraftNeeded = force || (
             Object.keys(form.formState.dirtyFields).length > 0
@@ -436,33 +428,39 @@ export const MessageForm = ({
             signatureId: data.signatureId ?? null,
         }
 
-        let response;
-        try {
-            stopAutoSave();
-            form.reset(form.getValues(), { keepSubmitCount: true, keepDirty: false, keepValues: true, keepDefaultValues: false });
-            if (!draft) {
-                response = await draftCreateMutation.mutateAsync({
-                    data: payload,
-                });
-            } else if (form.formState.dirtyFields.from) {
-                await handleChangeSender(payload);
-                return draft?.id;
-            } else {
-                response = await draftUpdateMutation.mutateAsync({
-                    messageId: draft.id,
-                    data: payload,
-                });
-            }
+        const promise = (async () => {
+            let response;
+            try {
+                stopAutoSave();
+                form.reset(form.getValues(), { keepSubmitCount: true, keepDirty: false, keepValues: true, keepDefaultValues: false });
+                if (!draft) {
+                    response = await draftCreateMutation.mutateAsync({
+                        data: payload,
+                    });
+                } else if (form.formState.dirtyFields.from) {
+                    await handleChangeSender(payload);
+                    return draft?.id;
+                } else {
+                    response = await draftUpdateMutation.mutateAsync({
+                        messageId: draft.id,
+                        data: payload,
+                    });
+                }
 
-            const newDraft = response.data as Message;
-            setDraft(newDraft);
-            return newDraft.id;
-        } catch (error) {
-            console.warn("Error in saveDraft:", error);
-            return draft?.id;
-        } finally {
-            startAutoSave();
-        }
+                const newDraft = response.data as Message;
+                setDraft(newDraft);
+                return newDraft.id;
+            } catch (error) {
+                console.warn("Error in saveDraft:", error);
+                return draft?.id;
+            } finally {
+                saveDraftPromiseRef.current = null;
+                startAutoSave();
+            }
+        })();
+
+        saveDraftPromiseRef.current = promise;
+        return promise;
     }
 
     const saveDraft = () => saveDraftInner(false);
@@ -491,22 +489,40 @@ export const MessageForm = ({
             form.setError("to", { message: t("At least one recipient is required.") });
             return;
         }
-        if (!draft || !canSendMessages || !composerRef.current) return;
+        if (!canSendMessages || !composerRef.current) return;
 
-        // Generate HTML and text body from the editor at send time to avoid
-        // calling blocksToMarkdownLossy on every keystroke (which creates real
-        // <img> DOM elements and triggers unwanted blob download requests).
-        const { htmlBody, textBody } = await composerRef.current.exportContent();
+        setIsSubmitting(true);
 
-        messageMutation.mutate({
-            data: {
-                messageId: draft.id,
-                senderId: data.from,
-                htmlBody: MailHelper.attachDriveAttachmentsToHtmlBody(htmlBody, data.driveAttachments),
-                textBody: MailHelper.attachDriveAttachmentsToTextBody(textBody, data.driveAttachments),
-                archive,
+        try {
+            // Wait for any in-progress draft save to complete
+            await saveDraftPromiseRef.current;
+
+            // Ensure a draft exists before sending (creates one on-the-fly if needed)
+            const messageId = draft?.id ?? await ensureDraft();
+            if (!messageId) {
+                setIsSubmitting(false);
+                return;
             }
-        });
+
+            // Generate HTML and text body from the editor at send time to avoid
+            // calling blocksToMarkdownLossy on every keystroke (which creates real
+            // <img> DOM elements and triggers unwanted blob download requests).
+            const { htmlBody, textBody } = await composerRef.current.exportContent();
+
+            stopAutoSave();
+            messageMutation.mutate({
+                data: {
+                    messageId,
+                    senderId: data.from,
+                    htmlBody: MailHelper.attachDriveAttachmentsToHtmlBody(htmlBody, data.driveAttachments),
+                    textBody: MailHelper.attachDriveAttachmentsToTextBody(textBody, data.driveAttachments),
+                    archive,
+                }
+            });
+        } catch (error) {
+            console.warn("Error in handleSubmit:", error);
+            setIsSubmitting(false);
+        }
     };
 
     /**
@@ -522,19 +538,6 @@ export const MessageForm = ({
         if (draftMessage) form.setFocus("subject");
         else form.setFocus("to")
     }, []);
-
-    // Effect to trigger pending mutations (send or delete) once the draft save is completed.
-    useEffect(() => {
-        if (!isSavingDraft && hasQueuedMutation) {
-            if (pendingMutation.has('delete')) {
-                // If both send and delete are queued, we give priority to the delete mutation
-                pendingMutation.get('delete')!();
-                setPendingMutation(new Map());
-                return;
-            }
-            pendingMutation.get('send')?.();
-        }
-    }, [isSavingDraft, hasQueuedMutation]);
 
     useEffect(() => {
         startAutoSave();
@@ -574,7 +577,7 @@ export const MessageForm = ({
         <FormProvider {...form}>
             <form
                 className="message-form"
-                onSubmit={form.handleSubmit(() => queueMutation('send', () => handleSubmit({ archive: preferredSendMode === PreferSendMode.SEND_AND_ARCHIVE })))}
+                onSubmit={form.handleSubmit(() => handleSubmit({ archive: preferredSendMode === PreferSendMode.SEND_AND_ARCHIVE }))}
                 onBlur={form.handleSubmit(saveDraft)}
                 onKeyDown={handleKeyDown}
             >
@@ -713,13 +716,14 @@ export const MessageForm = ({
                 <footer className="form-footer">
                     <DropdownButton
                         variant="primary"
-                        disabled={!canSendMessages || isSubmittingMessage || showRecipientLimitWarning}
+                        disabled={!canSendMessages || isSubmittingMessage || showRecipientLimitWarning || isDeletingDraft}
+                        icon={isSubmittingMessage ? <Spinner size="sm" /> : undefined}
                         type="submit"
                         dropdownOptions={[
                             ...(mode !== 'new' ? [{
                                 label: preferredSendMode === PreferSendMode.SEND_AND_ARCHIVE ? t("Send") : t("Send and archive"),
                                 icon: <Icon name={preferredSendMode === PreferSendMode.SEND_AND_ARCHIVE ? "send" : "send_and_archive"} type={IconType.OUTLINED} />,
-                                callback:form.handleSubmit(() => queueMutation('send', () => handleSubmit({ archive: preferredSendMode !== PreferSendMode.SEND_AND_ARCHIVE }))),
+                                callback: form.handleSubmit(() => handleSubmit({ archive: preferredSendMode !== PreferSendMode.SEND_AND_ARCHIVE })),
                                 showSeparator: true,
                             }, {
                                 label: t("Use \"Send and archive\" by default"),

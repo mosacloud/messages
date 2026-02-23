@@ -1,6 +1,6 @@
 import { createReactBlockSpec, useBlockNoteEditor, useComponentsContext, useEditorSelectionChange, useEditorChange, useEditorState } from "@blocknote/react";
 import { Icon, IconSize, Spinner } from "@gouvfr-lasuite/ui-kit";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Props } from "@blocknote/core";
 import DomPurify from "dompurify";
 import { ReadMessageTemplate, useMailboxesMessageTemplatesRetrieve, useDraftPlaceholdersRetrieve, DraftPlaceholdersRetrieve200 } from "@/features/api/gen";
@@ -10,6 +10,7 @@ import { MessageComposerHelper } from "@/features/utils/composer-helper";
 import { useHtmlWithObjectUrls } from "@/features/blocknote/image-block/use-html-with-object-urls";
 
 
+const domPurify = DomPurify();
 /**
  * Converts layout tables (role="presentation") into flex divs so that
  * ProseMirror does not try to parse them as BlockNote table blocks.
@@ -79,14 +80,14 @@ export const SignatureTemplateSelector = ({ mailboxId, messageId, ensureDraft, t
     const forcedTemplate = templates.find(template => template.is_forced);
     const isForced = !!forcedTemplate;
 
-    const handleEditorContentOrSelectionChange = () => {
+    const handleEditorContentOrSelectionChange = useCallback(() => {
         const signatureBlock = editor.getBlock('signature');
         if (signatureBlock) {
             setIsSelected((signatureBlock.props as BlockSignatureConfigProps).templateId);
         } else {
             setIsSelected(null);
         }
-    }
+    }, [editor]);
 
     // Updates state on content or selection change.
     useEditorSelectionChange(handleEditorContentOrSelectionChange, editor);
@@ -238,7 +239,7 @@ export const BlockSignature = createReactBlockSpec(
                 for (const [key, value] of Object.entries(placeholders as DraftPlaceholdersRetrieve200)) {
                     html = html.replaceAll(`{${key}}`, value);
                 }
-                const sanitized = DomPurify().sanitize(html);
+                const sanitized = domPurify.sanitize(html);
                 // Replace layout tables with flex divs to prevent BlockNote from
                 // parsing them as table blocks (which causes a crash).
                 return replaceLayoutTablesWithDivs(sanitized);

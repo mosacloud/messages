@@ -380,27 +380,33 @@ export const MessageComposer = React.forwardRef<MessageComposerHandle, MessageCo
 
         // Add signature block if we have a signature to use
         if (signatureToUse) {
-            // Add signature at the end of the document
-            const signatureBlock = {
-                id: "signature",
-                type: "signature" as const,
-                props: {
-                    templateId: signatureToUse.id,
-                    mailboxId: mailboxId,
-                    messageId: draft?.id,
+            const insertSignature = async () => {
+                // Ensure a draft exists so placeholders can be resolved immediately
+                const resolvedMessageId = draft?.id ?? await ensureDraft?.();
+
+                const signatureBlock = {
+                    id: "signature",
+                    type: "signature" as const,
+                    props: {
+                        templateId: signatureToUse.id,
+                        mailboxId: mailboxId,
+                        messageId: resolvedMessageId,
+                    }
+                };
+
+                // Insert at the end
+                if (editor.document.length === 0) {
+                    editor.insertBlocks([{ type: "paragraph", content: [{ type: "text", text: "", styles: {} }] }], "", "after");
                 }
+
+                // Put signature at the end of the document or before the quote block if it exists
+                MessageComposerHelper.insertSignatureBlock(editor, signatureBlock);
+
+                // Set the signatureId in the form
+                form.setValue('signatureId', signatureToUse.id);
             };
 
-            // Insert at the end
-            if (editor.document.length === 0) {
-                editor.insertBlocks([{ type: "paragraph", content: [{ type: "text", text: "", styles: {} }] }], "", "after");
-            }
-
-            // Put signature at the end of the document or before the quote block if it exists
-            MessageComposerHelper.insertSignatureBlock(editor, signatureBlock);
-
-            // Set the signatureId in the form
-            form.setValue('signatureId', signatureToUse.id);
+            insertSignature();
         } else {
             // Set signatureId to undefined after a microtask to avoid flushSync issues
             form.setValue('signatureId', undefined);
