@@ -355,6 +355,16 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
         }
     }, [selectedThread?.messages.length]);
 
+    // Unselect the thread when it no longer has any messages (e.g. after
+    // sending the only draft in the thread).
+    useEffect(() => {
+        if (!selectedThread) return;
+        const messages = messagesQuery.data?.data;
+        if (messages && messages.length === 0) {
+            unselectThread();
+        }
+    }, [messagesQuery.data?.data]);
+
     useEffect(() => {
         if (searchParams.get('search') !== previousSearchParams?.get('search')) {
             resetSearchQueryDebounced();

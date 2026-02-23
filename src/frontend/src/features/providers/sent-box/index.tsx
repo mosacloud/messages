@@ -3,13 +3,13 @@ import { QueueMessage } from "./queued-message";
 import { useMailboxContext } from "../mailbox";
 
 type SentBoxContextType = {
-    queuedMessages: readonly [string, boolean][];
-    addQueuedMessage: (taskId: string, closeThread: boolean) => void;
+    queuedMessages: readonly string[];
+    addQueuedMessage: (taskId: string) => void;
     removeQueuedMessage: (taskId: string) => void;
 }
 
 const SentBoxContext = createContext<SentBoxContextType>({
-    queuedMessages: [] as [string, boolean][],
+    queuedMessages: [],
     addQueuedMessage: () => {},
     removeQueuedMessage: () => {},
 });
@@ -20,22 +20,21 @@ const SentBoxContext = createContext<SentBoxContextType>({
  * toast to inform the user of the sending status.
  */
 export const SentBoxProvider = ({ children }: PropsWithChildren) => {
-    const { invalidateThreadsStats, invalidateThreadMessages, unselectThread } = useMailboxContext();
-    const [queuedMessages, setQueuedMessages] = useState<[string, boolean][]>([]);
+    const { invalidateThreadsStats, invalidateThreadMessages } = useMailboxContext();
+    const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
 
-    const addQueuedMessage = (taskId: string, closeThread: boolean = false) => {
-        setQueuedMessages(prev => [...prev, [taskId, closeThread]]);
+    const addQueuedMessage = (taskId: string) => {
+        setQueuedMessages(prev => [...prev, taskId]);
         // Invalidate stats immediately so the outbox folder appears
         invalidateThreadsStats();
     }
 
     const removeQueuedMessage = (taskId: string) => {
-        setQueuedMessages(prev => prev.filter(([id]) => id !== taskId));
+        setQueuedMessages(prev => prev.filter((id) => id !== taskId));
     }
 
-    const handleSettled = (taskId: string, closeThread?: boolean) => {
+    const handleSettled = (taskId: string) => {
         removeQueuedMessage(taskId);
-        if (closeThread) unselectThread();
         invalidateThreadsStats();
         invalidateThreadMessages();
     }
@@ -49,11 +48,11 @@ export const SentBoxProvider = ({ children }: PropsWithChildren) => {
         <SentBoxContext.Provider value={context}>
             {children}
             {
-                queuedMessages.map(([taskId, closeThread]) => (
+                queuedMessages.map((taskId) => (
                     <QueueMessage
                         key={taskId}
                         taskId={taskId}
-                        onSettled={() => { handleSettled(taskId, closeThread) }}
+                        onSettled={() => { handleSettled(taskId) }}
                     />
                 ))
             }

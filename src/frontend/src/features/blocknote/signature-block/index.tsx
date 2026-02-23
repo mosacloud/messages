@@ -10,7 +10,6 @@ import { MessageComposerHelper } from "@/features/utils/composer-helper";
 import { useHtmlWithObjectUrls } from "@/features/blocknote/image-block/use-html-with-object-urls";
 
 
-const domPurify = DomPurify();
 /**
  * Converts layout tables (role="presentation") into flex divs so that
  * ProseMirror does not try to parse them as BlockNote table blocks.
@@ -179,16 +178,6 @@ export const SignatureTemplateSelector = ({ mailboxId, messageId, ensureDraft, t
                         [newBlock] as unknown as PartialMessageComposerBlockSchema[]
                     );
                 } else {
-                    // Insert signature at the end of the document
-                    if (editor.document.length === 0) {
-                        // If document is empty, first add an empty paragraph
-                        editor.insertBlocks(
-                            [{ type: "paragraph", content: [{ type: "text", text: "", styles: {} }] }] as unknown as PartialMessageComposerBlockSchema[],
-                            "",
-                            "after"
-                        );
-                    }
-
                     // Put signature at the end of the document or before the quote block if it exists
                     MessageComposerHelper.insertSignatureBlock(editor, newBlock);
                 }
@@ -239,6 +228,7 @@ export const BlockSignature = createReactBlockSpec(
                 for (const [key, value] of Object.entries(placeholders as DraftPlaceholdersRetrieve200)) {
                     html = html.replaceAll(`{${key}}`, value);
                 }
+                const domPurify = DomPurify();
                 const sanitized = domPurify.sanitize(html);
                 // Replace layout tables with flex divs to prevent BlockNote from
                 // parsing them as table blocks (which causes a crash).

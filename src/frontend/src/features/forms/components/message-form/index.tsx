@@ -263,11 +263,9 @@ export const MessageForm = ({
                 form.clearErrors();
                 toast.dismiss(DRAFT_TOAST_ID);
             },
-            onSuccess: async (response, { data: variables }) => {
+            onSuccess: async (response) => {
                 const data = (response as sendCreateResponse200).data;
-                const taskId = data.task_id;
-                const shouldCloseThread = !!variables.archive;
-                addQueuedMessage(taskId, shouldCloseThread);
+                addQueuedMessage(data.task_id);
                 onSuccess?.();
             }
         }
@@ -432,12 +430,13 @@ export const MessageForm = ({
             let response;
             try {
                 stopAutoSave();
+                const isDirtyFrom = !!form.formState.dirtyFields.from;
                 form.reset(form.getValues(), { keepSubmitCount: true, keepDirty: false, keepValues: true, keepDefaultValues: false });
                 if (!draft) {
                     response = await draftCreateMutation.mutateAsync({
                         data: payload,
                     });
-                } else if (form.formState.dirtyFields.from) {
+                } else if (isDirtyFrom) {
                     await handleChangeSender(payload);
                     return draft?.id;
                 } else {

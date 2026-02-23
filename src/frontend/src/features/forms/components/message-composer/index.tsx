@@ -380,9 +380,12 @@ export const MessageComposer = React.forwardRef<MessageComposerHandle, MessageCo
 
         // Add signature block if we have a signature to use
         if (signatureToUse) {
+            let cancelled = false;
+
             const insertSignature = async () => {
                 // Ensure a draft exists so placeholders can be resolved immediately
                 const resolvedMessageId = draft?.id ?? await ensureDraft?.();
+                if (cancelled) return;
 
                 const signatureBlock = {
                     id: "signature",
@@ -394,11 +397,6 @@ export const MessageComposer = React.forwardRef<MessageComposerHandle, MessageCo
                     }
                 };
 
-                // Insert at the end
-                if (editor.document.length === 0) {
-                    editor.insertBlocks([{ type: "paragraph", content: [{ type: "text", text: "", styles: {} }] }], "", "after");
-                }
-
                 // Put signature at the end of the document or before the quote block if it exists
                 MessageComposerHelper.insertSignatureBlock(editor, signatureBlock);
 
@@ -406,7 +404,11 @@ export const MessageComposer = React.forwardRef<MessageComposerHandle, MessageCo
                 form.setValue('signatureId', signatureToUse.id);
             };
 
-            insertSignature();
+            insertSignature().catch((error) => {
+                console.warn("Failed to insert signature:", error);
+            });
+
+            return () => { cancelled = true; };
         } else {
             // Set signatureId to undefined after a microtask to avoid flushSync issues
             form.setValue('signatureId', undefined);
