@@ -21,6 +21,11 @@ name: Build and Push Container Image
         required: false
         default: ""
         description: The Dockerfile target stage to build the image for.
+      arm64_reuse_amd64_build_arg:
+        type: string
+        required: false
+        default: ""
+        description: "Build arg name to pass first amd64 tag to arm64 build (skips arch-independent build steps)"
 
 # see https://docs.github.com/en/enterprise-cloud@latest/actions/how-tos/use-cases-and-examples/publishing-packages/publishing-docker-images#publishing-images-to-github-packages
 jobs:
@@ -58,6 +63,7 @@ jobs:
         run: |
           AMD64_TAGS=$(echo "${{ steps.meta.outputs.tags }}" | sed 's/$/-amd64/')
           ARM64_TAGS=$(echo "${{ steps.meta.outputs.tags }}" | sed 's/$/-arm64/')
+          FIRST_AMD64_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -1)-amd64
           {
             echo "amd64<<EOF"
             echo "$AMD64_TAGS"
@@ -65,6 +71,7 @@ jobs:
             echo "arm64<<EOF"
             echo "$ARM64_TAGS"
             echo "EOF"
+            echo "amd64_first=$FIRST_AMD64_TAG"
           } >> "$GITHUB_OUTPUT"
       - name: Build and push (amd64)
         uses: docker/build-push-action@v6
@@ -86,6 +93,8 @@ jobs:
           provenance: false
           tags: ${{ steps.platform-tags.outputs.arm64 }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            ${{ inputs.arm64_reuse_amd64_build_arg && format('{0}={1}', inputs.arm64_reuse_amd64_build_arg, steps.platform-tags.outputs.amd64_first) || '' }}
       - name: Create multi-arch manifests
         id: create-manifest
         run: |

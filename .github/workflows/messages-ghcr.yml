@@ -59,6 +59,7 @@ jobs:
       image_name: "frontend"
       context: "src/frontend"
       target: runtime-prod
+      arm64_reuse_amd64_build_arg: "FRONTEND_IMAGE"
 
   docker-publish-backend:
     uses: ./.github/workflows/docker-publish.yml

@@ -1,3 +1,5 @@
+ARG FRONTEND_IMAGE=frontend-build-output
+
 FROM node:22-alpine AS frontend-deps
 
 ENV npm_config_cache=/tmp/npm-cache
@@ -22,6 +24,14 @@ ENV NEXT_PUBLIC_API_ORIGIN=${API_ORIGIN}
 
 RUN npm run build
 
+# Normalize output path to /app (matches the runtime-prod layout)
+FROM scratch AS frontend-build-output
+COPY --from=frontend-build /home/frontend/out /app
+
+# When FRONTEND_IMAGE is set to an external image, BuildKit skips
+# frontend-deps, frontend-build, and frontend-build-output entirely
+FROM ${FRONTEND_IMAGE} AS frontend-source
+
 FROM alpine:3.21 AS caddy-download
 ARG TARGETARCH
 ARG CADDY_VERSION=2.9.1
@@ -30,7 +40,7 @@ RUN wget -qO- "https://github.com/caddyserver/caddy/releases/download/v${CADDY_V
 FROM gcr.io/distroless/static-debian13:nonroot AS runtime-prod
 
 COPY --from=caddy-download /caddy /usr/bin/caddy
-COPY --from=frontend-build /home/frontend/out /app
+COPY --from=frontend-source /app /app
 COPY caddy/Caddyfile /etc/caddy/Caddyfile
 
 ENV PORT=8080
