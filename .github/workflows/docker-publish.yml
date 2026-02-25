@@ -99,8 +99,10 @@ jobs:
             fi
           done
           # Get the digest of the multi-arch manifest for attestation
+          # Note: --format '{{.Manifest.Digest}}' is broken (docker/buildx#1175),
+          # so we compute it from the raw manifest JSON instead.
           if [ -n "$FIRST_TAG" ]; then
-            DIGEST=$(docker buildx imagetools inspect "$FIRST_TAG" --format '{{.Manifest.Digest}}')
+            DIGEST="sha256:$(docker buildx imagetools inspect "$FIRST_TAG" --raw | sha256sum | awk '{print $1}')"
             echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
           fi
       - name: Generate artifact attestation
