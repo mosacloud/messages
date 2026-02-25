@@ -1,7 +1,6 @@
 FROM node:22-alpine AS frontend-deps
 
 ENV npm_config_cache=/tmp/npm-cache
-RUN npm install -g npm@11.6.2 && npm cache clean -f
 
 ARG DOCKER_USER=1000
 WORKDIR /home/frontend/

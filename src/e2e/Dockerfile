@@ -10,7 +10,6 @@ ENV npm_config_cache=/tmp/npm-cache
 ENV PLAYWRIGHT_BROWSERS_PATH=/tmp/playwright-browsers
 
 ENV HOME=/tmp
-RUN npm install -g npm@11.6.2 && npm cache clean -f
 
 # Copy docker and docker-compose binaries from docker-cli image
 # Create the cli-plugins directory first
