@@ -53,21 +53,61 @@ jobs:
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-      - name: Build and push Docker image
-        id: push
+      - name: Generate platform-specific tags
+        id: platform-tags
+        run: |
+          AMD64_TAGS=$(echo "${{ steps.meta.outputs.tags }}" | sed 's/$/-amd64/')
+          ARM64_TAGS=$(echo "${{ steps.meta.outputs.tags }}" | sed 's/$/-arm64/')
+          {
+            echo "amd64<<EOF"
+            echo "$AMD64_TAGS"
+            echo "EOF"
+            echo "arm64<<EOF"
+            echo "$ARM64_TAGS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - name: Build and push (amd64)
         uses: docker/build-push-action@v6
         with:
           context: ${{ inputs.context }}
           target: ${{ inputs.target }}
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ steps.platform-tags.outputs.amd64 }}
           labels: ${{ steps.meta.outputs.labels }}
+      - name: Build and push (arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          target: ${{ inputs.target }}
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.platform-tags.outputs.arm64 }}
+          labels: ${{ steps.meta.outputs.labels }}
+      - name: Create multi-arch manifests
+        id: create-manifest
+        run: |
+          IMAGE="${{ inputs.registry }}/${{ github.repository }}-${{ inputs.image_name }}"
+          readarray -t TAGS <<< "${{ steps.meta.outputs.tags }}"
+          FIRST_TAG=""
+          for tag in "${TAGS[@]}"; do
+            [ -z "$tag" ] && continue
+            docker buildx imagetools create -t "$tag" \
+              "${tag}-amd64" "${tag}-arm64"
+            if [ -z "$FIRST_TAG" ]; then
+              FIRST_TAG="$tag"
+            fi
+          done
+          # Get the digest of the multi-arch manifest for attestation
+          if [ -n "$FIRST_TAG" ]; then
+            DIGEST=$(docker buildx imagetools inspect "$FIRST_TAG" --format '{{.Manifest.Digest}}')
+            echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          fi
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ inputs.registry }}/${{ github.repository }}-${{ inputs.image_name }}
-          subject-digest: ${{ steps.push.outputs.digest }}
+          subject-digest: ${{ steps.create-manifest.outputs.digest }}
           push-to-registry: true
       - name: Delete all untagged container images
         uses: actions/delete-package-versions@v5
@@ -82,4 +122,4 @@ jobs:
           package-name: messages-${{ inputs.image_name }}
           package-type: 'container'
           min-versions-to-keep: 30
-          ignore-versions: '^(latest|main|\\d+\\.\\d+(\\.\\d+)?)$'
+          ignore-versions: '^(latest|main|\\d+\\.\\d+(\\.\\d+)?)(-(amd64|arm64))?$'
