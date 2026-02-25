@@ -73,6 +73,7 @@ jobs:
           target: ${{ inputs.target }}
           platforms: linux/amd64
           push: true
+          provenance: false
           tags: ${{ steps.platform-tags.outputs.amd64 }}
           labels: ${{ steps.meta.outputs.labels }}
       - name: Build and push (arm64)
@@ -82,6 +83,7 @@ jobs:
           target: ${{ inputs.target }}
           platforms: linux/arm64
           push: true
+          provenance: false
           tags: ${{ steps.platform-tags.outputs.arm64 }}
           labels: ${{ steps.meta.outputs.labels }}
       - name: Create multi-arch manifests
@@ -105,6 +107,9 @@ jobs:
             DIGEST="sha256:$(docker buildx imagetools inspect "$FIRST_TAG" --raw | sha256sum | awk '{print $1}')"
             echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
           fi
+      # This pushes a signed SLSA provenance attestation to the registry,
+      # tagged as sha256-<digest>. It proves the image was built by this
+      # workflow from this repo. Verified with: gh attestation verify <image>
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v2
         with:
@@ -118,10 +123,3 @@ jobs:
           package-type: 'container'
           min-versions-to-keep: 0
           delete-only-untagged-versions: true
-      - name: Container images retention
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: messages-${{ inputs.image_name }}
-          package-type: 'container'
-          min-versions-to-keep: 30
-          ignore-versions: '^(latest|main|\\d+\\.\\d+(\\.\\d+)?)(-(amd64|arm64))?$'
