@@ -37,6 +37,31 @@ export interface Thread {
   readonly has_active: boolean;
   /** @nullable */
   readonly messaged_at: string | null;
+  /**
+   * Date of the last active (received, not spam/archived/trashed/draft) message.
+   * @nullable
+   */
+  readonly active_messaged_at: string | null;
+  /**
+   * Date of the last draft (non-trashed) message.
+   * @nullable
+   */
+  readonly draft_messaged_at: string | null;
+  /**
+   * Date of the last sent (non-trashed, non-draft) message.
+   * @nullable
+   */
+  readonly sender_messaged_at: string | null;
+  /**
+   * Date of the last archived (non-trashed) message.
+   * @nullable
+   */
+  readonly archived_messaged_at: string | null;
+  /**
+   * Date of the last trashed message.
+   * @nullable
+   */
+  readonly trashed_messaged_at: string | null;
   readonly sender_names: readonly string[];
   /** date and time at which a record was last updated */
   readonly updated_at: string;

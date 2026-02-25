@@ -136,7 +136,6 @@ def index_message(message: models.Message) -> bool:
         "is_archived": message.is_archived,
         "is_spam": message.is_spam,
         "is_starred": message.is_starred,
-        "is_unread": message.is_unread,
         "is_sender": message.is_sender,
     }
 
@@ -156,6 +155,46 @@ def index_message(message: models.Message) -> bool:
         return False
 
 
+def compute_unread_mailboxes(thread: models.Thread) -> list:
+    """Return mailbox IDs for which the thread is unread.
+
+    Delegates to ``ThreadAccess.unread_filter()`` so that the definition of
+    "unread" stays consistent with ``ThreadViewSet`` and ``MailboxSerializer``.
+    """
+    return [
+        str(mid)
+        for mid in thread.accesses.filter(
+            models.ThreadAccess.unread_filter()
+        ).values_list("mailbox_id", flat=True)
+    ]
+
+
+def update_thread_unread_mailboxes(thread: models.Thread) -> bool:
+    """Re-index the thread parent document to update unread_mailboxes.
+
+    Uses full document replacement (es.index) instead of partial update
+    (es.update) because partial updates don't work reliably with join field
+    documents in OpenSearch.
+    """
+    es = get_opensearch_client()
+    mailbox_ids = list(thread.accesses.values_list("mailbox__id", flat=True))
+    thread_doc = {
+        "relation": "thread",
+        "thread_id": str(thread.id),
+        "subject": thread.subject,
+        "mailbox_ids": [str(mid) for mid in mailbox_ids],
+        "unread_mailboxes": compute_unread_mailboxes(thread),
+    }
+    try:
+        # pylint: disable=no-value-for-parameter
+        es.index(index=MESSAGE_INDEX, id=str(thread.id), body=thread_doc)
+        return True
+    # pylint: disable=broad-exception-caught
+    except Exception as e:
+        logger.error("Error updating unread_mailboxes for thread %s: %s", thread.id, e)
+        return False
+
+
 def index_thread(thread: models.Thread) -> bool:
     """Index a thread and all its messages."""
     es = get_opensearch_client()
@@ -169,6 +208,7 @@ def index_thread(thread: models.Thread) -> bool:
         "thread_id": str(thread.id),
         "subject": thread.subject,
         "mailbox_ids": [str(mailbox_id) for mailbox_id in mailbox_ids],
+        "unread_mailboxes": compute_unread_mailboxes(thread),
     }
 
     try:

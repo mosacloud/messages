@@ -2,6 +2,8 @@
 
 import uuid
 
+from django.utils import timezone
+
 import pytest
 from rest_framework import status
 from rest_framework.reverse import reverse
@@ -58,7 +60,7 @@ def test_list_threads(mailbox_role, thread_role):
         thread=thread1,
         role=thread_role,
     )
-    factories.MessageFactory(thread=thread1, read_at=None)
+    factories.MessageFactory(thread=thread1)
     thread1.update_stats()
 
     thread2 = factories.ThreadFactory()
@@ -67,7 +69,7 @@ def test_list_threads(mailbox_role, thread_role):
         thread=thread2,
         role=thread_role,
     )
-    message2 = factories.MessageFactory(thread=thread2, read_at=None)
+    message2 = factories.MessageFactory(thread=thread2)
     thread2.update_stats()
 
     thread3 = factories.ThreadFactory()
@@ -76,7 +78,7 @@ def test_list_threads(mailbox_role, thread_role):
         thread=thread3,
         role=thread_role,
     )
-    factories.MessageFactory(thread=thread3, read_at=None)
+    factories.MessageFactory(thread=thread3)
     thread3.update_stats()
 
     def fetch_threads_and_assert_order(mailbox_id, thread_ids):
@@ -94,7 +96,7 @@ def test_list_threads(mailbox_role, thread_role):
     fetch_threads_and_assert_order(other_mailbox.id, [])
 
     # Create a new message for the second thread to pull it up in the list
-    new_message2 = factories.MessageFactory(thread=thread2, read_at=None)
+    new_message2 = factories.MessageFactory(thread=thread2)
     thread2.update_stats()
 
     fetch_threads_and_assert_order(mailbox.id, [thread2.id, thread3.id, thread1.id])
@@ -106,7 +108,7 @@ def test_list_threads(mailbox_role, thread_role):
         thread=other_thread,
         role=enums.ThreadAccessRoleChoices.EDITOR,
     )
-    factories.MessageFactory(thread=other_thread, read_at=None)
+    factories.MessageFactory(thread=other_thread)
     other_thread.update_stats()
 
     # Need sender and recipient contacts for the thread serializer
@@ -315,7 +317,6 @@ Content-Type: text/html
             sender=sender_contact1,
             subject="Test Subject 1",  # Subject is also in raw_mime, ensure consistency
             raw_mime=raw_mime_1,
-            read_at=None,
         )
         # MessageRecipient objects are primarily for DB relations if needed,
         # the serializer now parses from raw_mime. Keep them if other logic depends on them.
@@ -336,7 +337,6 @@ Content-Type: text/html
             sender=sender_contact2,
             subject="Test Subject 2",
             raw_mime=raw_mime_2,
-            read_at=None,
         )
         factories.MessageRecipientFactory(
             message=message2,
@@ -484,3 +484,183 @@ Content-Type: text/html
             reverse("threads-list"), query_params={"mailbox_id": unrelated_mailbox.id}
         )
         assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+class TestMessageIsUnread:
+    """Test the is_unread field computed from ThreadAccess.read_at."""
+
+    def _setup(self):
+        """Create a user, mailbox, thread with two messages."""
+        user = factories.UserFactory()
+        mailbox = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.EDITOR,
+        )
+        thread = factories.ThreadFactory()
+        access = factories.ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        msg1 = factories.MessageFactory(thread=thread)
+        msg2 = factories.MessageFactory(thread=thread)
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        return client, mailbox, thread, access, msg1, msg2
+
+    def _list_messages(self, client, mailbox, thread):
+        """Fetch messages list and return results keyed by message id."""
+        response = client.get(
+            reverse("messages-list"),
+            query_params={
+                "mailbox_id": str(mailbox.id),
+                "thread_id": str(thread.id),
+            },
+        )
+        assert response.status_code == status.HTTP_200_OK
+        return {str(m["id"]): m for m in response.data}
+
+    def test_messages_unread_when_read_at_is_none(self):
+        """All non-draft messages should be unread when read_at is None."""
+        client, mailbox, thread, access, msg1, msg2 = self._setup()
+
+        assert access.read_at is None
+
+        messages = self._list_messages(client, mailbox, thread)
+        assert messages[str(msg1.id)]["is_unread"] is True
+        assert messages[str(msg2.id)]["is_unread"] is True
+
+    def test_messages_read_when_read_at_after_all(self):
+        """All messages should be read when read_at is after all message dates."""
+        client, mailbox, thread, access, msg1, msg2 = self._setup()
+
+        access.read_at = timezone.now()
+        access.save(update_fields=["read_at"])
+
+        messages = self._list_messages(client, mailbox, thread)
+        assert messages[str(msg1.id)]["is_unread"] is False
+        assert messages[str(msg2.id)]["is_unread"] is False
+
+    def test_messages_partially_read(self):
+        """Only messages created after read_at should be unread."""
+        client, mailbox, thread, access, msg1, msg2 = self._setup()
+
+        # Set read_at between the two messages
+        access.read_at = msg1.created_at
+        access.save(update_fields=["read_at"])
+
+        messages = self._list_messages(client, mailbox, thread)
+        assert messages[str(msg1.id)]["is_unread"] is False
+        assert messages[str(msg2.id)]["is_unread"] is True
+
+    def test_draft_message_not_unread_after_creation(self):
+        """A draft is not unread because draft creation sets read_at on ThreadAccess."""
+        client, mailbox, thread, access, _msg1, _msg2 = self._setup()
+
+        draft = factories.MessageFactory(thread=thread, is_draft=True)
+
+        # Simulate real create_draft flow which sets read_at = message.created_at
+        access.read_at = draft.created_at
+        access.save(update_fields=["read_at"])
+
+        messages = self._list_messages(client, mailbox, thread)
+        assert messages[str(draft.id)]["is_unread"] is False
+
+    def test_is_unread_isolation_between_mailboxes(self):
+        """Two mailboxes sharing a thread should see independent is_unread states."""
+        user = factories.UserFactory()
+
+        # Create two mailboxes for the same user
+        mailbox_a = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox_a,
+            user=user,
+            role=enums.MailboxRoleChoices.EDITOR,
+        )
+        mailbox_b = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox_b,
+            user=user,
+            role=enums.MailboxRoleChoices.EDITOR,
+        )
+
+        # Create a shared thread with two messages
+        thread = factories.ThreadFactory()
+        access_a = factories.ThreadAccessFactory(
+            mailbox=mailbox_a,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        access_b = factories.ThreadAccessFactory(
+            mailbox=mailbox_b,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        msg1 = factories.MessageFactory(thread=thread)
+        msg2 = factories.MessageFactory(thread=thread)
+
+        # Mailbox A has read up to msg1, mailbox B has not read anything
+        access_a.read_at = msg1.created_at
+        access_a.save(update_fields=["read_at"])
+        assert access_b.read_at is None
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        # From mailbox A's perspective: msg1 read, msg2 unread
+        messages_a = self._list_messages(client, mailbox_a, thread)
+        assert messages_a[str(msg1.id)]["is_unread"] is False
+        assert messages_a[str(msg2.id)]["is_unread"] is True
+
+        # From mailbox B's perspective: both messages unread
+        messages_b = self._list_messages(client, mailbox_b, thread)
+        assert messages_b[str(msg1.id)]["is_unread"] is True
+        assert messages_b[str(msg2.id)]["is_unread"] is True
+
+        # Now mailbox B reads everything
+        access_b.read_at = timezone.now()
+        access_b.save(update_fields=["read_at"])
+
+        # Mailbox A should still see msg2 as unread
+        messages_a = self._list_messages(client, mailbox_a, thread)
+        assert messages_a[str(msg1.id)]["is_unread"] is False
+        assert messages_a[str(msg2.id)]["is_unread"] is True
+
+        # Mailbox B should see everything as read
+        messages_b = self._list_messages(client, mailbox_b, thread)
+        assert messages_b[str(msg1.id)]["is_unread"] is False
+        assert messages_b[str(msg2.id)]["is_unread"] is False
+
+    def test_is_unread_defaults_to_false_without_mailbox(self):
+        """is_unread should default to False when no mailbox_id is provided."""
+        user = factories.UserFactory()
+        mailbox = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.EDITOR,
+        )
+        thread = factories.ThreadFactory()
+        factories.ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        msg = factories.MessageFactory(thread=thread)
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+
+        # Request without mailbox_id → no annotation → is_unread defaults to False
+        response = client.get(
+            reverse("messages-list"),
+            query_params={"thread_id": str(thread.id)},
+        )
+        assert response.status_code == status.HTTP_200_OK
+        messages = {str(m["id"]): m for m in response.data}
+        assert messages[str(msg.id)]["is_unread"] is False

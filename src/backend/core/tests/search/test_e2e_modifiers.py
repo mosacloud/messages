@@ -1,10 +1,11 @@
 """End-to-end tests for Gmail-style search modifiers."""
-# pylint: disable=unused-argument
+# pylint: disable=unused-argument, too-many-locals
 
 import time
 
 from django.conf import settings
 from django.urls import reverse
+from django.utils import timezone
 
 import pytest
 from rest_framework.test import APIClient
@@ -252,7 +253,6 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
         subject="Important Announcement",
         sender=contact4,
         is_starred=True,
-        is_unread=False,
         raw_mime=(
             f"From: {contact4.email}\r\n"
             f"To: {contact1.email}\r\n"
@@ -275,7 +275,6 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
         thread=thread7,
         subject="New Notification",
         sender=contact3,
-        is_unread=True,
         raw_mime=(
             f"From: {contact3.email}\r\n"
             f"To: {contact1.email}\r\n"
@@ -425,6 +424,15 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
     # Update stats for all threads
     for thread in threads:
         thread.update_stats()
+
+    # Configure read/unread status via ThreadAccess.read_at:
+    # Thread 6: mark as read (read_at >= messaged_at)
+    thread6.refresh_from_db()
+    thread6_access = thread6.accesses.get(mailbox=mailbox1)
+    thread6_access.read_at = timezone.now()
+    thread6_access.save(update_fields=["read_at"])
+
+    # All other threads: read_at=None (default) = unread
 
     # Wait for indexing to complete
     wait_for_indexing()
@@ -837,66 +845,52 @@ class TestSearchModifiersE2E:
         assert str(test_threads["thread6"].id) in thread_ids
 
     def test_search_e2e_modifiers_is_read_search_modifier(
-        self, setup_search, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads, test_mailboxes
     ):
-        """Test searching with the 'is:read' modifier."""
-        # Test English version
-        response = api_client.get(f"{test_url}?search=is:read")
+        """Test 'is:read' modifier filters by ThreadAccess.read_at via has_parent query.
 
-        # Verify response
+        is:read matches threads whose mailbox is NOT in unread_mailboxes.
+        This includes thread6 (explicitly read via read_at) plus threads
+        without has_active (draft=thread3, archived=thread5, sender=thread10)
+        since they have no unread_mailboxes entry. Total = 4 threads.
+        """
+        mailbox1, _ = test_mailboxes
+        response = api_client.get(f"{test_url}?search=is:read&mailbox_id={mailbox1.id}")
         assert response.status_code == 200
-
-        # Check if the correct threads are found
-        assert len(response.data["results"]) == 8
+        assert len(response.data["results"]) == 4
         thread_ids = [t["id"] for t in response.data["results"]]
-        assert str(test_threads["thread1"].id) in thread_ids
-        assert str(test_threads["thread2"].id) in thread_ids
-        assert str(test_threads["thread3"].id) in thread_ids
-        assert str(test_threads["thread5"].id) in thread_ids
         assert str(test_threads["thread6"].id) in thread_ids
-        assert str(test_threads["thread8"].id) in thread_ids
-        assert str(test_threads["thread9"].id) in thread_ids
-        assert str(test_threads["thread10"].id) in thread_ids
 
-        # Test French version
-        response = api_client.get(f"{test_url}?search=est:lu")
-
-        # Verify the same results
+        # French version
+        response = api_client.get(f"{test_url}?search=est:lu&mailbox_id={mailbox1.id}")
         assert response.status_code == 200
-        assert len(response.data["results"]) == 8
-        thread_ids = [t["id"] for t in response.data["results"]]
-        assert str(test_threads["thread1"].id) in thread_ids
-        assert str(test_threads["thread2"].id) in thread_ids
-        assert str(test_threads["thread3"].id) in thread_ids
-        assert str(test_threads["thread5"].id) in thread_ids
-        assert str(test_threads["thread6"].id) in thread_ids
-        assert str(test_threads["thread8"].id) in thread_ids
-        assert str(test_threads["thread9"].id) in thread_ids
-        assert str(test_threads["thread10"].id) in thread_ids
+        assert len(response.data["results"]) == 4
 
     def test_search_e2e_modifiers_is_unread_search_modifier(
-        self, setup_search, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads, test_mailboxes
     ):
-        """Test searching with the 'is:unread' modifier."""
-        # Test English version
-        response = api_client.get(f"{test_url}?search=is:unread")
+        """Test 'is:unread' modifier filters by ThreadAccess.read_at via has_parent query.
 
-        # Verify response
+        Only threads with has_active=True and read_at=None are unread.
+        has_active excludes: draft (thread3), trashed (thread4), archived (thread5),
+        sender (thread10), spam (thread11, thread12).
+        thread6 is read (read_at set). That leaves thread1, thread2, thread7, thread8 = 4.
+        """
+        mailbox1, _ = test_mailboxes
+        response = api_client.get(
+            f"{test_url}?search=is:unread&mailbox_id={mailbox1.id}"
+        )
         assert response.status_code == 200
-
-        # Check if the correct threads are found
-        assert len(response.data["results"]) == 1
+        assert len(response.data["results"]) == 4
         thread_ids = [t["id"] for t in response.data["results"]]
-        assert str(test_threads["thread7"].id) in thread_ids
+        assert str(test_threads["thread6"].id) not in thread_ids
 
-        # Test French version
-        response = api_client.get(f"{test_url}?search=est:nonlu")
-
-        # Verify the same results
+        # French version
+        response = api_client.get(
+            f"{test_url}?search=est:nonlu&mailbox_id={mailbox1.id}"
+        )
         assert response.status_code == 200
-        assert len(response.data["results"]) == 1
-        thread_ids = [t["id"] for t in response.data["results"]]
-        assert str(test_threads["thread7"].id) in thread_ids
+        assert len(response.data["results"]) == 4
 
     def test_search_e2e_modifiers_multiple_modifiers_search(
         self, setup_search, api_client, test_url, test_threads

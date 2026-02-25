@@ -16,7 +16,7 @@ from django.urls import reverse
 import pytest
 
 from core import factories
-from core.models import Mailbox, MailDomain, Message, Thread
+from core.models import Mailbox, MailDomain, Message, Thread, ThreadAccess
 from core.services.importer.eml_tasks import process_eml_file_task
 from core.services.importer.mbox_tasks import process_mbox_file_task
 
@@ -483,8 +483,12 @@ This is a test message sent from the mailbox.
             "Message with From: equal to importing mailbox should have is_sender=True"
         )
 
-        # Verify is_unread is False for sent messages
-        assert message.is_unread is False, "Sent messages should not be unread"
+        # EML imports without IMAP flags have no is_unread info,
+        # so read_at should remain None (we trust the imported flags, not assume read)
+        access = ThreadAccess.objects.get(thread=message.thread, mailbox=mailbox)
+        assert access.read_at is None, (
+            "ThreadAccess.read_at should be None when no IMAP flags indicate read state"
+        )
 
         # Verify the sender contact is correct
         assert message.sender.email == mailbox_email

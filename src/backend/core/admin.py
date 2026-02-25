@@ -419,6 +419,7 @@ class ThreadAccessInline(admin.TabularInline):
 
     model = models.ThreadAccess
     autocomplete_fields = ("mailbox",)
+    readonly_fields = ("read_at",)
 
 
 @admin.register(models.Thread)
@@ -437,7 +438,6 @@ class ThreadAdmin(admin.ModelAdmin):
     )
     search_fields = ("subject", "snippet", "labels__name")
     list_filter = (
-        "has_unread",
         "has_trashed",
         "has_archived",
         "has_draft",
@@ -455,7 +455,6 @@ class ThreadAdmin(admin.ModelAdmin):
             "Statistics",
             {
                 "fields": (
-                    "has_unread",
                     "has_trashed",
                     "has_archived",
                     "has_draft",
@@ -474,14 +473,23 @@ class ThreadAdmin(admin.ModelAdmin):
         (
             "Metadata",
             {
-                "fields": ("sender_names", "created_at", "updated_at", "messaged_at"),
+                "fields": (
+                    "sender_names",
+                    "created_at",
+                    "updated_at",
+                    "messaged_at",
+                    "active_messaged_at",
+                    "trashed_messaged_at",
+                    "draft_messaged_at",
+                    "sender_messaged_at",
+                    "archived_messaged_at",
+                ),
                 "classes": ("collapse",),
             },
         ),
     )
     readonly_fields = (
         "display_labels",
-        "has_unread",
         "has_trashed",
         "has_archived",
         "has_draft",
@@ -494,6 +502,11 @@ class ThreadAdmin(admin.ModelAdmin):
         "is_spam",
         "has_active",
         "messaged_at",
+        "active_messaged_at",
+        "trashed_messaged_at",
+        "draft_messaged_at",
+        "sender_messaged_at",
+        "archived_messaged_at",
         "sender_names",
         "created_at",
         "updated_at",
@@ -573,7 +586,6 @@ class MessageAdmin(admin.ModelAdmin):
         "sender",
         "is_sender",
         "is_draft",
-        "is_unread",
         "has_attachments",
         "created_at",
         "sent_at",
@@ -583,14 +595,12 @@ class MessageAdmin(admin.ModelAdmin):
         "is_draft",
         "is_starred",
         "is_trashed",
-        "is_unread",
         "is_spam",
         "is_archived",
         "has_attachments",
         RecipientDeliveryStatusFilter,
         "created_at",
         "sent_at",
-        "read_at",
         "archived_at",
         "trashed_at",
     )

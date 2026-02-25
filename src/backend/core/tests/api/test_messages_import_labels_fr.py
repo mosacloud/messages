@@ -4,6 +4,7 @@
 
 from django.core.files.storage import storages
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db.models import F, Q
 
 import pytest
 from rest_framework import status
@@ -112,7 +113,15 @@ def test_api_import_labels_french_import_mbox_with_labels_and_flags(
     assert messages.count() > 0
 
     # Test specific message with "Boîte de réception,Non lus,Conseil municipal" labels
-    unread_message = messages.filter(is_unread=True).first()
+    # Unread = ThreadAccess.read_at is null or message.created_at > read_at
+    unread_filter = Q(
+        thread__accesses__mailbox=mailbox,
+        thread__accesses__read_at__isnull=True,
+    ) | Q(
+        thread__accesses__mailbox=mailbox,
+        created_at__gt=F("thread__accesses__read_at"),
+    )
+    unread_message = messages.filter(unread_filter).first()
     assert unread_message is not None
 
     # Check that "Conseil municipal" label was created
@@ -123,13 +132,18 @@ def test_api_import_labels_french_import_mbox_with_labels_and_flags(
     convocation_message = messages.get(
         subject="Convocation au conseil municipal du 25 juin"
     )
-    assert convocation_message.is_unread
+    assert messages.filter(unread_filter, pk=convocation_message.pk).exists()
     assert conseil_label in convocation_message.thread.labels.all()
 
-    # Test sent message with "Messages envoyés" labels is a flag and marked as unread
+    # Test sent message with "Messages envoyés" labels is a flag and marked as read
     sent_message = messages.filter(is_sender=True).first()
     assert sent_message is not None
-    assert not sent_message.is_unread  # Sent messages should not be unread
+    # Sender's ThreadAccess.read_at should be set (message is read)
+    sent_access = models.ThreadAccess.objects.get(
+        thread=sent_message.thread, mailbox=mailbox
+    )
+    assert sent_access.read_at is not None
+    assert sent_access.read_at >= sent_message.created_at
 
     # Check that "Corbeille" label is now a flag
     assert models.Message.objects.filter(is_trashed=True).exists()
@@ -138,7 +152,12 @@ def test_api_import_labels_french_import_mbox_with_labels_and_flags(
     # Test draft message with "Brouillons" label
     draft_message = messages.filter(is_draft=True).first()
     assert draft_message is not None
-    assert not draft_message.is_unread  # Drafts should not be unread
+    # Draft's ThreadAccess.read_at should be set (drafts are read)
+    draft_access = models.ThreadAccess.objects.get(
+        thread=draft_message.thread, mailbox=mailbox
+    )
+    assert draft_access.read_at is not None
+    assert draft_access.read_at >= draft_message.created_at
     assert not models.Label.objects.filter(name="Brouillons").exists()
 
     # Test starred message with "Favoris" label
@@ -197,8 +216,16 @@ def test_api_import_labels_french_read_unread_labels_set_correctly(
     messages = models.Message.objects.filter(thread__accesses__mailbox=mailbox)
 
     # Check that we have both read and unread messages
-    unread_messages = messages.filter(is_unread=True)
-    read_messages = messages.filter(is_unread=False)
+    # Unread = read_at is null or message.created_at > read_at
+    unread_filter = Q(
+        thread__accesses__mailbox=mailbox,
+        thread__accesses__read_at__isnull=True,
+    ) | Q(
+        thread__accesses__mailbox=mailbox,
+        created_at__gt=F("thread__accesses__read_at"),
+    )
+    unread_messages = messages.filter(unread_filter)
+    read_messages = messages.exclude(unread_filter)
 
     assert unread_messages.count() > 0
     assert read_messages.count() > 0
@@ -212,19 +239,21 @@ def test_api_import_labels_french_special_cases_for_sent_and_draft_messages(
     response = upload_mbox_file(authenticated_client, mailbox, mbox_file)
     assert response.status_code == status.HTTP_202_ACCEPTED
 
-    # Sent messages should not be unread
+    # Sent messages should be read (read_at >= message.created_at)
     sent_messages = models.Message.objects.filter(
         thread__accesses__mailbox=mailbox, is_sender=True
     )
     for message in sent_messages:
-        assert not message.is_unread
+        access = models.ThreadAccess.objects.get(thread=message.thread, mailbox=mailbox)
+        assert access.read_at is not None and access.read_at >= message.created_at
 
-    # Draft messages should not be unread
+    # Draft messages should be read (read_at >= message.created_at)
     draft_messages = models.Message.objects.filter(
         thread__accesses__mailbox=mailbox, is_draft=True
     )
     for message in draft_messages:
-        assert not message.is_unread
+        access = models.ThreadAccess.objects.get(thread=message.thread, mailbox=mailbox)
+        assert access.read_at is not None and access.read_at >= message.created_at
 
 
 @pytest.mark.django_db
@@ -272,14 +301,20 @@ def test_api_import_labels_french_thread_stats_are_updated_correctly(
     response = upload_mbox_file(authenticated_client, mailbox, mbox_file)
     assert response.status_code == status.HTTP_202_ACCEPTED
 
-    messages_unread = models.Message.objects.filter(
-        thread__accesses__mailbox=mailbox, is_unread=True
+    # Check that some messages are unread (read_at is null or created_at > read_at)
+    messages_all = models.Message.objects.filter(thread__accesses__mailbox=mailbox)
+    unread_filter = Q(
+        thread__accesses__mailbox=mailbox,
+        thread__accesses__read_at__isnull=True,
+    ) | Q(
+        thread__accesses__mailbox=mailbox,
+        created_at__gt=F("thread__accesses__read_at"),
     )
+    messages_unread = messages_all.filter(unread_filter)
     assert messages_unread.count() > 0
 
     # check that thread stats are updated
     for message in messages_unread:
-        assert message.thread.has_unread
         assert message.thread.has_messages
 
 

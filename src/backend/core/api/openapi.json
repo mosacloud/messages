@@ -374,7 +374,7 @@
         "/api/v1.0/draft/": {
             "post": {
                 "operationId": "draft_create",
-                "description": "\n    Create or update a draft message.\n    \n    This endpoint allows you to:\n    - Create a new draft message in a new thread\n    - Create a draft reply to an existing message in an existing thread\n    - Update an existing draft message\n    \n    For creating a new draft:\n    - Do not include messageId\n    - Include parentId if replying to an existing message\n    \n    For updating an existing draft:\n    - Include messageId of the draft to update\n    - Only the fields that are provided will be updated\n    \n    At least one of draftBody must be provided.\n    \n    To add attachments, upload them first using the /api/v1.0/blob/upload/{mailbox_id}/ endpoint\n    and include the returned blobIds in the attachmentIds field.\n    ",
+                "description": "\n    Create or update a draft message.\n\n    This endpoint allows you to:\n    - Create a new draft message in a new thread\n    - Create a draft reply to an existing message in an existing thread\n    - Update an existing draft message\n\n    For creating a new draft:\n    - Do not include messageId\n    - Include parentId if replying to an existing message\n\n    For updating an existing draft:\n    - Include messageId of the draft to update\n    - Only the fields that are provided will be updated\n\n    At least one of draftBody must be provided.\n\n    To add attachments, upload them first using the /api/v1.0/blob/upload/{mailbox_id}/ endpoint\n    and include the returned blobIds in the attachmentIds field.\n    ",
                 "tags": [
                     "messages"
                 ],
@@ -606,7 +606,7 @@
             },
             "put": {
                 "operationId": "draft_update",
-                "description": "\n    Create or update a draft message.\n    \n    This endpoint allows you to:\n    - Create a new draft message in a new thread\n    - Create a draft reply to an existing message in an existing thread\n    - Update an existing draft message\n    \n    For creating a new draft:\n    - Do not include messageId\n    - Include parentId if replying to an existing message\n    \n    For updating an existing draft:\n    - Include messageId of the draft to update\n    - Only the fields that are provided will be updated\n    \n    At least one of draftBody must be provided.\n    \n    To add attachments, upload them first using the /api/v1.0/blob/upload/{mailbox_id}/ endpoint\n    and include the returned blobIds in the attachmentIds field.\n    ",
+                "description": "\n    Create or update a draft message.\n\n    This endpoint allows you to:\n    - Create a new draft message in a new thread\n    - Create a draft reply to an existing message in an existing thread\n    - Update an existing draft message\n\n    For creating a new draft:\n    - Do not include messageId\n    - Include parentId if replying to an existing message\n\n    For updating an existing draft:\n    - Include messageId of the draft to update\n    - Only the fields that are provided will be updated\n\n    At least one of draftBody must be provided.\n\n    To add attachments, upload them first using the /api/v1.0/blob/upload/{mailbox_id}/ endpoint\n    and include the returned blobIds in the attachmentIds field.\n    ",
                 "tags": [
                     "messages"
                 ],
@@ -840,7 +840,7 @@
         "/api/v1.0/draft/{message_id}/": {
             "post": {
                 "operationId": "draft_create_2",
-                "description": "\n    Create or update a draft message.\n    \n    This endpoint allows you to:\n    - Create a new draft message in a new thread\n    - Create a draft reply to an existing message in an existing thread\n    - Update an existing draft message\n    \n    For creating a new draft:\n    - Do not include messageId\n    - Include parentId if replying to an existing message\n    \n    For updating an existing draft:\n    - Include messageId of the draft to update\n    - Only the fields that are provided will be updated\n    \n    At least one of draftBody must be provided.\n    \n    To add attachments, upload them first using the /api/v1.0/blob/upload/{mailbox_id}/ endpoint\n    and include the returned blobIds in the attachmentIds field.\n    ",
+                "description": "\n    Create or update a draft message.\n\n    This endpoint allows you to:\n    - Create a new draft message in a new thread\n    - Create a draft reply to an existing message in an existing thread\n    - Update an existing draft message\n\n    For creating a new draft:\n    - Do not include messageId\n    - Include parentId if replying to an existing message\n\n    For updating an existing draft:\n    - Include messageId of the draft to update\n    - Only the fields that are provided will be updated\n\n    At least one of draftBody must be provided.\n\n    To add attachments, upload them first using the /api/v1.0/blob/upload/{mailbox_id}/ endpoint\n    and include the returned blobIds in the attachmentIds field.\n    ",
                 "parameters": [
                     {
                         "in": "path",
@@ -1083,7 +1083,7 @@
             },
             "put": {
                 "operationId": "draft_update_2",
-                "description": "\n    Create or update a draft message.\n    \n    This endpoint allows you to:\n    - Create a new draft message in a new thread\n    - Create a draft reply to an existing message in an existing thread\n    - Update an existing draft message\n    \n    For creating a new draft:\n    - Do not include messageId\n    - Include parentId if replying to an existing message\n    \n    For updating an existing draft:\n    - Include messageId of the draft to update\n    - Only the fields that are provided will be updated\n    \n    At least one of draftBody must be provided.\n    \n    To add attachments, upload them first using the /api/v1.0/blob/upload/{mailbox_id}/ endpoint\n    and include the returned blobIds in the attachmentIds field.\n    ",
+                "description": "\n    Create or update a draft message.\n\n    This endpoint allows you to:\n    - Create a new draft message in a new thread\n    - Create a draft reply to an existing message in an existing thread\n    - Update an existing draft message\n\n    For creating a new draft:\n    - Do not include messageId\n    - Include parentId if replying to an existing message\n\n    For updating an existing draft:\n    - Include messageId of the draft to update\n    - Only the fields that are provided will be updated\n\n    At least one of draftBody must be provided.\n\n    To add attachments, upload them first using the /api/v1.0/blob/upload/{mailbox_id}/ endpoint\n    and include the returned blobIds in the attachmentIds field.\n    ",
                 "parameters": [
                     {
                         "in": "path",
@@ -5648,6 +5648,17 @@
                             "format": "uuid"
                         },
                         "description": "List of thread UUIDs where all messages should have the flag change applied."
+                    },
+                    "mailbox_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Mailbox UUID. Required when flag is 'unread'."
+                    },
+                    "read_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true,
+                        "description": "Timestamp up to which messages are considered read. When provided with flag='unread', sets ThreadAccess.read_at directly. null means nothing has been read (all messages unread)."
                     }
                 },
                 "required": [
@@ -6308,11 +6319,11 @@
                         ],
                         "readOnly": true
                     },
-                    "count_unread_messages": {
+                    "count_unread_threads": {
                         "type": "string",
                         "readOnly": true
                     },
-                    "count_messages": {
+                    "count_threads": {
                         "type": "string",
                         "readOnly": true
                     },
@@ -6388,8 +6399,8 @@
                 "required": [
                     "abilities",
                     "count_delivering",
-                    "count_messages",
-                    "count_unread_messages",
+                    "count_threads",
+                    "count_unread_threads",
                     "email",
                     "id",
                     "is_identity",
@@ -6995,12 +7006,6 @@
                         },
                         "readOnly": true
                     },
-                    "read_at": {
-                        "type": "string",
-                        "format": "date-time",
-                        "readOnly": true,
-                        "nullable": true
-                    },
                     "sent_at": {
                         "type": "string",
                         "format": "date-time",
@@ -7067,7 +7072,6 @@
                     "is_trashed",
                     "is_unread",
                     "parent_id",
-                    "read_at",
                     "sender",
                     "sender_user",
                     "sent_at",
@@ -7938,6 +7942,41 @@
                         "readOnly": true,
                         "nullable": true
                     },
+                    "active_messaged_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true,
+                        "nullable": true,
+                        "description": "Date of the last active (received, not spam/archived/trashed/draft) message."
+                    },
+                    "draft_messaged_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true,
+                        "nullable": true,
+                        "description": "Date of the last draft (non-trashed) message."
+                    },
+                    "sender_messaged_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true,
+                        "nullable": true,
+                        "description": "Date of the last sent (non-trashed, non-draft) message."
+                    },
+                    "archived_messaged_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true,
+                        "nullable": true,
+                        "description": "Date of the last archived (non-trashed) message."
+                    },
+                    "trashed_messaged_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true,
+                        "nullable": true,
+                        "description": "Date of the last trashed message."
+                    },
                     "sender_names": {
                         "type": "array",
                         "items": {
@@ -7981,6 +8020,9 @@
                 },
                 "required": [
                     "accesses",
+                    "active_messaged_at",
+                    "archived_messaged_at",
+                    "draft_messaged_at",
                     "has_active",
                     "has_archived",
                     "has_attachments",
@@ -7998,10 +8040,12 @@
                     "labels",
                     "messaged_at",
                     "messages",
+                    "sender_messaged_at",
                     "sender_names",
                     "snippet",
                     "subject",
                     "summary",
+                    "trashed_messaged_at",
                     "updated_at",
                     "user_role"
                 ]
@@ -8073,11 +8117,18 @@
                             }
                         ],
                         "readOnly": true
+                    },
+                    "read_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true,
+                        "nullable": true
                     }
                 },
                 "required": [
                     "id",
                     "mailbox",
+                    "read_at",
                     "role"
                 ]
             },

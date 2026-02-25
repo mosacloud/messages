@@ -23,8 +23,8 @@ const ThreadMessageActions = ({
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
     // Hooks and state specific to actions
-    const { unselectThread, selectedThread, messages } = useMailboxContext();
-    const { markAsUnread, markAsRead } = useRead();
+    const { unselectThread, selectedThread } = useMailboxContext();
+    const { markAsReadAt } = useRead();
     const { markAsTrashed } = useTrash();
     const { print } = usePrint();
 
@@ -35,16 +35,16 @@ const ThreadMessageActions = ({
 
     // Handlers specific to actions
     const toggleReadStateFrom = useCallback((is_unread: boolean) => {
-        const offsetIndex = messages?.findIndex((m) => m.id === message.id) ?? -1;
-        if (offsetIndex < 0) return;
+        if (!selectedThread) return;
         if (is_unread) {
-            const nextSiblingMessageIds = messages?.slice(offsetIndex).map((m) => m.id);
-            markAsUnread({ messageIds: nextSiblingMessageIds, onSuccess: unselectThread });
+            // Mark as unread from here: subtract 1ms so this message becomes unread
+            const readAt = new Date(new Date(message.created_at!).getTime() - 1).toISOString();
+            markAsReadAt({ threadIds: [selectedThread.id], readAt, onSuccess: unselectThread });
         } else {
-            const previousSiblingMessageIds = messages?.slice(0, offsetIndex + 1).map((m) => m.id);
-            markAsRead({ messageIds: previousSiblingMessageIds });
+            // Mark as read from here: read up to this message's created_at
+            markAsReadAt({ threadIds: [selectedThread.id], readAt: message.created_at! });
         }
-    }, [messages, message.id, unselectThread, markAsUnread, markAsRead]);
+    }, [message.id, message.created_at, unselectThread, selectedThread, markAsReadAt]);
 
     const handleMarkAsTrashed = useCallback(() => {
         markAsTrashed({ messageIds: [message.id] });

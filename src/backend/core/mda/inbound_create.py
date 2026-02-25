@@ -360,12 +360,10 @@ def _create_message_from_inbound(
             or None,
             parent=parent_message,
             sent_at=parsed_email.get("date") or timezone.now(),
-            read_at=None,
             is_draft=False,
             is_sender=is_sender,
             is_starred=False,
             is_trashed=False,
-            is_unread=not is_sender,
             is_spam=is_spam,
             has_attachments=len(parsed_email.get("attachments", [])) > 0,
             channel=channel,
@@ -374,6 +372,8 @@ def _create_message_from_inbound(
             # We need to set the created_at field to the date of the message
             # because the inbound message is not created at the same time as the message is received
             message.created_at = parsed_email.get("date") or timezone.now()
+            # Extract is_unread from flags (handled via ThreadAccess.read_at)
+            import_is_unread = message_flags.pop("is_unread", True)
             for flag, value in message_flags.items():
                 if hasattr(message, flag):
                     setattr(message, flag, value)
@@ -383,6 +383,23 @@ def _create_message_from_inbound(
                     *message_flags.keys(),
                 ]
             )
+            # If the imported message is read, update read_at on ThreadAccess
+            if not import_is_unread:
+                access = models.ThreadAccess.objects.filter(
+                    thread=thread, mailbox=mailbox
+                ).first()
+                if access and (
+                    access.read_at is None or message.created_at > access.read_at
+                ):
+                    access.read_at = message.created_at
+                    access.save(update_fields=["read_at"])
+        elif is_sender:
+            access = models.ThreadAccess.objects.filter(
+                thread=thread, mailbox=mailbox
+            ).first()
+            if access:
+                access.read_at = message.created_at
+                access.save(update_fields=["read_at"])
     except (DjangoDbError, ValidationError) as e:
         logger.error("Failed to create message in thread %s: %s", thread.id, e)
         return False  # Indicate failure

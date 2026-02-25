@@ -32,14 +32,12 @@ type ThreadViewComponentProps = {
 
 const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages, setShowTrashedMessages, stats }: ThreadViewComponentProps) => {
     const { t } = useTranslation();
-    const toMarkAsReadQueue = useRef<string[]>([]);
+    const latestSeenDate = useRef<string | null>(null);
     const stickyContainerRef = useRef<HTMLDivElement>(null);
-    const { markAsRead } = useRead();
+    const { markAsReadAt } = useRead();
     const { markAsNotSpam } = useSpam();
-    const debouncedMarkAsRead = useDebounceCallback(() => {
-        if (toMarkAsReadQueue.current.length === 0) return;
-        markAsRead({ messageIds: toMarkAsReadQueue.current });
-        toMarkAsReadQueue.current = [];
+    const debouncedMarkAsRead = useDebounceCallback((threadId: string, readAt: string) => {
+        markAsReadAt({ threadIds: [threadId], readAt });
     }, 150);
 
     const rootRef = useRef<HTMLDivElement>(null);
@@ -70,14 +68,17 @@ const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages,
         const stickyContainerHeight = stickyContainerRef.current?.getBoundingClientRect().height || 125;
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
-                const messageId = entry.target.getAttribute('data-message-id');
-                const message = messages.find(({ id }) => id === messageId);
-                if (!message) return;
+                if (!entry.isIntersecting) return;
 
-                if (entry.isIntersecting && message.is_unread && toMarkAsReadQueue.current.indexOf(messageId!) === -1) {
-                    toMarkAsReadQueue.current.push(messageId!);
-                    debouncedMarkAsRead();
+                const createdAt = entry.target.getAttribute('data-created-at');
+                if (!createdAt) return;
+
+
+                // Track the most recent message scrolled into view
+                if (!latestSeenDate.current || new Date(createdAt) > new Date(latestSeenDate.current)) {
+                    latestSeenDate.current = createdAt;
                 }
+                debouncedMarkAsRead(thread.id, latestSeenDate.current);
             });
 
         }, { root: rootRef.current, rootMargin: `-${stickyContainerHeight}px 0px 0px 0px` });
@@ -176,6 +177,7 @@ const ThreadViewComponent = ({ messages, mailboxId, thread, showTrashedMessages,
                             isLatest={isLatest}
                             ref={isUnread ? (el => { unreadRefs.current[message.id] = el; }) : undefined}
                             data-message-id={message.id}
+                            data-created-at={message.created_at}
                             draftMessage={message.draft_message}
                         />
                     );

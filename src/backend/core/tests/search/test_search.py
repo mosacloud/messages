@@ -3,6 +3,7 @@
 from unittest import mock
 
 from django.test import override_settings
+from django.utils import timezone
 
 import pytest
 
@@ -20,7 +21,9 @@ from core.services.search import (
     reindex_all,
     reindex_mailbox,
     search_threads,
+    update_thread_unread_mailboxes,
 )
+from core.services.search.index import compute_unread_mailboxes
 
 
 @pytest.fixture(name="mock_es_client_search")
@@ -234,3 +237,101 @@ def test_search_threads_disabled(mock_es_client_search):
 
     # Verify ES client was not called
     mock_es_client_search.search.assert_not_called()
+
+
+@pytest.mark.django_db
+class TestComputeUnreadMailboxes:
+    """Tests for compute_unread_mailboxes."""
+
+    def test_thread_without_active_messages(self):
+        """A thread with no active messages should return an empty list."""
+        thread = ThreadFactory(has_active=False)
+        mailbox = MailboxFactory()
+        ThreadAccessFactory(thread=thread, mailbox=mailbox, read_at=None)
+        assert compute_unread_mailboxes(thread) == []
+
+    def test_read_at_null_is_unread(self):
+        """A ThreadAccess with read_at=None should be unread."""
+        thread = ThreadFactory()
+        mailbox = MailboxFactory()
+        MessageFactory(thread=thread)
+        thread.update_stats()
+        thread.refresh_from_db()
+        ThreadAccessFactory(thread=thread, mailbox=mailbox, read_at=None)
+
+        result = compute_unread_mailboxes(thread)
+        assert str(mailbox.id) in result
+
+    def test_read_at_before_active_messaged_at_is_unread(self):
+        """A ThreadAccess with read_at < active_messaged_at should be unread."""
+        thread = ThreadFactory()
+        mailbox = MailboxFactory()
+        MessageFactory(thread=thread)
+        thread.update_stats()
+        thread.refresh_from_db()
+        old_time = thread.active_messaged_at - timezone.timedelta(hours=1)
+        ThreadAccessFactory(thread=thread, mailbox=mailbox, read_at=old_time)
+
+        result = compute_unread_mailboxes(thread)
+        assert str(mailbox.id) in result
+
+    def test_read_at_after_active_messaged_at_is_read(self):
+        """A ThreadAccess with read_at >= active_messaged_at should be read."""
+        thread = ThreadFactory()
+        mailbox = MailboxFactory()
+        MessageFactory(thread=thread)
+        thread.update_stats()
+        thread.refresh_from_db()
+        ThreadAccessFactory(thread=thread, mailbox=mailbox, read_at=timezone.now())
+
+        result = compute_unread_mailboxes(thread)
+        assert str(mailbox.id) not in result
+
+    def test_sender_only_thread_is_not_unread(self):
+        """A thread with only sent messages should not be unread."""
+        thread = ThreadFactory()
+        mailbox = MailboxFactory()
+        MessageFactory(thread=thread, is_sender=True)
+        thread.update_stats()
+        thread.refresh_from_db()
+        ThreadAccessFactory(thread=thread, mailbox=mailbox, read_at=None)
+
+        result = compute_unread_mailboxes(thread)
+        assert result == []
+
+    def test_multiple_mailboxes_mixed_status(self):
+        """Different mailboxes can have different read status."""
+        thread = ThreadFactory()
+        mb_read = MailboxFactory()
+        mb_unread = MailboxFactory()
+        MessageFactory(thread=thread)
+        thread.update_stats()
+        thread.refresh_from_db()
+        ThreadAccessFactory(thread=thread, mailbox=mb_read, read_at=timezone.now())
+        ThreadAccessFactory(thread=thread, mailbox=mb_unread, read_at=None)
+
+        result = compute_unread_mailboxes(thread)
+        assert str(mb_unread.id) in result
+        assert str(mb_read.id) not in result
+
+
+@pytest.mark.django_db
+def test_update_thread_unread_mailboxes(mock_es_client_index):
+    """Test that update_thread_unread_mailboxes re-indexes the thread document."""
+    thread = ThreadFactory()
+    mailbox = MailboxFactory()
+    MessageFactory(thread=thread)
+    thread.update_stats()
+    thread.refresh_from_db()
+    ThreadAccessFactory(thread=thread, mailbox=mailbox, read_at=None)
+
+    # Reset mock after setup (signals may have triggered calls)
+    mock_es_client_index.reset_mock()
+
+    success = update_thread_unread_mailboxes(thread)
+
+    assert success
+    mock_es_client_index.index.assert_called_once()
+    call_args = mock_es_client_index.index.call_args[1]
+    assert call_args["id"] == str(thread.id)
+    assert str(mailbox.id) in call_args["body"]["unread_mailboxes"]

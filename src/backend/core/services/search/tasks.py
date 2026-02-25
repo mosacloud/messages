@@ -12,6 +12,7 @@ from core.services.search import (
     delete_index,
     index_message,
     index_thread,
+    update_thread_unread_mailboxes,
 )
 
 from messages.celery_app import app as celery_app
@@ -111,6 +112,28 @@ def reindex_thread_task(self, thread_id):
     except Exception as e:
         logger.exception("Error in reindex_thread_task for thread %s: %s", thread_id, e)
         raise
+
+
+@celery_app.task(bind=True)
+def update_threads_unread_mailboxes_task(self, thread_ids):
+    """Update unread_mailboxes for multiple threads in OpenSearch."""
+    if not settings.OPENSEARCH_INDEX_THREADS:
+        logger.info("OpenSearch thread indexing is disabled.")
+        return {"success": False, "reason": "disabled"}
+
+    create_index_if_not_exists()
+
+    results = []
+    for thread_id in thread_ids:
+        try:
+            thread = models.Thread.objects.get(id=thread_id)
+            success = update_thread_unread_mailboxes(thread)
+            results.append({"thread_id": thread_id, "success": success})
+        except models.Thread.DoesNotExist:
+            logger.error("Thread %s does not exist", thread_id)
+            results.append({"thread_id": thread_id, "success": False})
+
+    return {"success": True, "results": results}
 
 
 @celery_app.task(bind=True)

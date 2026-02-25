@@ -117,18 +117,73 @@ def test_search_threads_with_multiple_modifiers(mock_es_client):
 
     # Check for starred filter
     starred_filter_found = False
-    unread_filter_found = False
     for filter_item in call_args["body"]["query"]["bool"]["filter"]:
         if "term" in filter_item:
             if "is_starred" in filter_item["term"]:
                 starred_filter_found = True
                 assert filter_item["term"]["is_starred"] is True
-            elif "is_unread" in filter_item["term"]:
-                unread_filter_found = True
-                assert filter_item["term"]["is_unread"] is True
 
     assert starred_filter_found, "Starred filter was not found in the OpenSearch query"
-    assert unread_filter_found, "Unread filter was not found in the OpenSearch query"
+
+    # Check for has_parent unread filter
+    unread_filter_found = False
+    for filter_item in call_args["body"]["query"]["bool"]["filter"]:
+        if "has_parent" in filter_item:
+            hp = filter_item["has_parent"]
+            if hp.get("parent_type") == "thread" and "terms" in hp.get("query", {}):
+                if "unread_mailboxes" in hp["query"]["terms"]:
+                    unread_filter_found = True
+
+    assert unread_filter_found, (
+        "has_parent unread filter was not found in the OpenSearch query"
+    )
+
+
+def test_search_threads_is_read_filter(mock_es_client):
+    """Test that is:read generates a has_parent must_not filter."""
+    search_threads("is:read", mailbox_ids=["mbx-1"])
+
+    call_args = mock_es_client.search.call_args[1]
+    has_parent_found = False
+    for filter_item in call_args["body"]["query"]["bool"]["filter"]:
+        if "has_parent" in filter_item:
+            hp = filter_item["has_parent"]
+            query = hp.get("query", {})
+            if "bool" in query and "must_not" in query["bool"]:
+                must_not = query["bool"]["must_not"]
+                if "terms" in must_not and "unread_mailboxes" in must_not["terms"]:
+                    has_parent_found = True
+                    assert must_not["terms"]["unread_mailboxes"] == ["mbx-1"]
+
+    assert has_parent_found, "has_parent must_not filter for is:read was not found"
+
+
+def test_search_threads_is_unread_filter(mock_es_client):
+    """Test that is:unread generates a has_parent terms filter."""
+    search_threads("is:unread", mailbox_ids=["mbx-1"])
+
+    call_args = mock_es_client.search.call_args[1]
+    has_parent_found = False
+    for filter_item in call_args["body"]["query"]["bool"]["filter"]:
+        if "has_parent" in filter_item:
+            hp = filter_item["has_parent"]
+            query = hp.get("query", {})
+            if "terms" in query and "unread_mailboxes" in query["terms"]:
+                has_parent_found = True
+                assert query["terms"]["unread_mailboxes"] == ["mbx-1"]
+
+    assert has_parent_found, "has_parent terms filter for is:unread was not found"
+
+
+def test_search_threads_is_unread_without_mailbox_ids(mock_es_client):
+    """Test that is:unread without mailbox_ids does not add a filter."""
+    search_threads("is:unread")
+
+    call_args = mock_es_client.search.call_args[1]
+    for filter_item in call_args["body"]["query"]["bool"]["filter"]:
+        assert "has_parent" not in filter_item, (
+            "has_parent filter should not be present without mailbox_ids"
+        )
 
 
 def test_search_threads_with_exact_phrase(mock_es_client):

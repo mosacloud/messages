@@ -11,6 +11,7 @@ from typing import Any, Dict
 
 from django.conf import settings
 from django.core.files.storage import storages
+from django.db.models import OuterRef, Subquery
 
 from celery.utils.log import get_task_logger
 from sentry_sdk import capture_exception
@@ -18,7 +19,7 @@ from sentry_sdk import capture_exception
 from core.api.utils import generate_presigned_url
 from core.mda.inbound import deliver_inbound_message
 from core.mda.rfc5322.parser import parse_email_message
-from core.models import Label, Mailbox, Message
+from core.models import Label, Mailbox, Message, ThreadAccess
 
 from messages.celery_app import app as celery_app
 
@@ -456,8 +457,17 @@ def export_mailbox_task(self, mailbox_id: str, user_id: str) -> Dict[str, Any]: 
         )
 
         # Query all messages in this mailbox with their threads and labels
+        # Annotate with read_at to compute per-message unread status
         messages_qs = (
             Message.objects.filter(thread__accesses__mailbox_id=mailbox_id)
+            .annotate(
+                _read_at=Subquery(
+                    ThreadAccess.objects.filter(
+                        thread_id=OuterRef("thread_id"),
+                        mailbox_id=mailbox_id,
+                    ).values("read_at")[:1]
+                )
+            )
             .select_related("blob", "thread")
             .prefetch_related("thread__labels")
             .order_by("created_at")
@@ -523,11 +533,15 @@ def export_mailbox_task(self, mailbox_id: str, user_id: str) -> Dict[str, Any]: 
                         if label.id in mailbox_label_ids
                     ]
 
+                    # Compute unread from ThreadAccess.read_at
+                    read_at = getattr(msg, "_read_at", None)
+                    is_unread = read_at is None or msg.created_at > read_at
+
                     # Create MBOX entry with metadata and write to stream
                     mbox_entry = _create_mbox_entry(
                         raw_content,
                         msg.created_at or datetime.now(timezone.utc),
-                        is_unread=msg.is_unread,
+                        is_unread=is_unread,
                         is_starred=msg.is_starred,
                         is_draft=msg.is_draft,
                         is_sender=msg.is_sender,

@@ -42,8 +42,6 @@ export interface Message {
   readonly cc: readonly MessageRecipient[];
   readonly bcc: readonly MessageRecipient[];
   /** @nullable */
-  readonly read_at: string | null;
-  /** @nullable */
   readonly sent_at: string | null;
   readonly is_sender: boolean;
   readonly is_draft: boolean;

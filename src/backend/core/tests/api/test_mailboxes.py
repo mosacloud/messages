@@ -63,31 +63,44 @@ class TestMailboxViewSet:
         )
 
         # create a thread with one unread message for user_mailbox1 (with delivering)
-        thread1 = factories.ThreadFactory(has_delivery_pending=True)
+        thread1 = factories.ThreadFactory(
+            has_delivery_pending=True,
+            messaged_at=timezone.now(),
+            has_active=True,
+            active_messaged_at=timezone.now(),
+        )
         factories.ThreadAccessFactory(
             mailbox=user_mailbox1,
             thread=thread1,
             role=enums.ThreadAccessRoleChoices.EDITOR,
         )
-        factories.MessageFactory(thread=thread1, read_at=None)
+        factories.MessageFactory(thread=thread1)
 
         # create a thread with one read message for user_mailbox2 (with delivering)
-        thread2 = factories.ThreadFactory(has_delivery_pending=True)
+        thread2 = factories.ThreadFactory(
+            has_delivery_pending=True, messaged_at=timezone.now()
+        )
         factories.ThreadAccessFactory(
             mailbox=user_mailbox2,
             thread=thread2,
             role=enums.ThreadAccessRoleChoices.EDITOR,
+            read_at=timezone.now(),
         )
-        factories.MessageFactory(thread=thread2, read_at=timezone.now())
+        factories.MessageFactory(thread=thread2)
 
         # create a thread with one unread message for user_mailbox2 (no delivering)
-        thread3 = factories.ThreadFactory(has_delivery_pending=False)
+        thread3 = factories.ThreadFactory(
+            has_delivery_pending=False,
+            messaged_at=timezone.now(),
+            has_active=True,
+            active_messaged_at=timezone.now(),
+        )
         factories.ThreadAccessFactory(
             mailbox=user_mailbox2,
             thread=thread3,
             role=enums.ThreadAccessRoleChoices.EDITOR,
         )
-        factories.MessageFactory(thread=thread3, read_at=None)
+        factories.MessageFactory(thread=thread3)
 
         # Authenticate user
         client = APIClient()
@@ -103,16 +116,16 @@ class TestMailboxViewSet:
         assert response.data[0]["email"] == str(user_mailbox2)
         assert response.data[0]["role"] == "editor"
         assert response.data[0]["is_identity"] is True
-        assert response.data[0]["count_unread_messages"] == 1
-        assert response.data[0]["count_messages"] == 2
+        assert response.data[0]["count_unread_threads"] == 1
+        assert response.data[0]["count_threads"] == 2
         assert response.data[0]["count_delivering"] == 1
 
         assert response.data[1]["id"] == str(user_mailbox1.id)
         assert response.data[1]["email"] == str(user_mailbox1)
         assert response.data[1]["role"] == "viewer"
         assert response.data[1]["is_identity"] is True
-        assert response.data[1]["count_unread_messages"] == 1
-        assert response.data[1]["count_messages"] == 1
+        assert response.data[1]["count_unread_threads"] == 1
+        assert response.data[1]["count_threads"] == 1
         assert response.data[1]["count_delivering"] == 1
 
     def test_list_is_identity_false(self):
@@ -299,13 +312,18 @@ class TestMailboxViewSet:
         )
 
         # Create a thread with one unread message for the mailbox (with delivering)
-        thread = factories.ThreadFactory(has_delivery_pending=True)
+        thread = factories.ThreadFactory(
+            has_delivery_pending=True,
+            messaged_at=timezone.now(),
+            has_active=True,
+            active_messaged_at=timezone.now(),
+        )
         factories.ThreadAccessFactory(
             mailbox=mailbox,
             thread=thread,
             role=enums.ThreadAccessRoleChoices.EDITOR,
         )
-        factories.MessageFactory(thread=thread, read_at=None)
+        factories.MessageFactory(thread=thread)
 
         # Authenticate user
         client = APIClient()
@@ -321,8 +339,8 @@ class TestMailboxViewSet:
         assert response.data["id"] == str(mailbox.id)
         assert response.data["email"] == str(mailbox)
         assert response.data["role"] == "editor"
-        assert response.data["count_unread_messages"] == 1
-        assert response.data["count_messages"] == 1
+        assert response.data["count_unread_threads"] == 1
+        assert response.data["count_threads"] == 1
         assert response.data["count_delivering"] == 1
 
     def test_retrieve_mailbox_unauthorized(self):

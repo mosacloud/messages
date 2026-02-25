@@ -188,16 +188,30 @@ def search_threads(  # pylint: disable=too-many-branches
                 {"term": {"is_starred": True}}
             )
 
-        if "is_read" in parsed_query:
-            if parsed_query["is_read"]:
-                # Read messages have is_unread=False
+        if parsed_query.get("is_read") is not None and mailbox_ids:
+            if parsed_query["is_read"] is False:  # is:unread
                 search_body["query"]["bool"]["filter"].append(
-                    {"term": {"is_unread": False}}
+                    {
+                        "has_parent": {
+                            "parent_type": "thread",
+                            "query": {"terms": {"unread_mailboxes": mailbox_ids}},
+                        }
+                    }
                 )
-            else:
-                # Unread messages have is_unread=True
+            else:  # is:read
                 search_body["query"]["bool"]["filter"].append(
-                    {"term": {"is_unread": True}}
+                    {
+                        "has_parent": {
+                            "parent_type": "thread",
+                            "query": {
+                                "bool": {
+                                    "must_not": {
+                                        "terms": {"unread_mailboxes": mailbox_ids}
+                                    }
+                                }
+                            },
+                        }
+                    }
                 )
 
         # Add mailbox filter if provided

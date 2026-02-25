@@ -18,7 +18,8 @@ from django.contrib.auth.base_user import AbstractBaseUser
 from django.core import validators
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
-from django.db.models import Case, Q, When
+from django.db.models import Case, F, Q, Value, When
+from django.db.models.fields import BooleanField
 from django.utils import timezone
 from django.utils.html import escape
 from django.utils.text import slugify
@@ -755,7 +756,6 @@ class Thread(BaseModel):
 
     subject = models.CharField("subject", max_length=255, null=True, blank=True)
     snippet = models.TextField("snippet", blank=True)
-    has_unread = models.BooleanField("has unread", default=False)
     has_trashed = models.BooleanField("has trashed", default=False)
     is_trashed = models.BooleanField(
         "is trashed",
@@ -783,7 +783,44 @@ class Thread(BaseModel):
         default=False,
         help_text="True if thread has messages with permanent delivery failure.",
     )
-    messaged_at = models.DateTimeField("messaged at", null=True, blank=True)
+    messaged_at = models.DateTimeField(
+        "messaged at", null=True, blank=True, db_index=True
+    )
+    active_messaged_at = models.DateTimeField(
+        "active messaged at",
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Date of the last active (received, not spam/archived/trashed/draft) message.",
+    )
+    trashed_messaged_at = models.DateTimeField(
+        "trashed messaged at",
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Date of the last trashed message.",
+    )
+    draft_messaged_at = models.DateTimeField(
+        "draft messaged at",
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Date of the last draft (non-trashed) message.",
+    )
+    sender_messaged_at = models.DateTimeField(
+        "sender messaged at",
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Date of the last sent (non-trashed, non-draft) message.",
+    )
+    archived_messaged_at = models.DateTimeField(
+        "archived messaged at",
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Date of the last archived (non-trashed) message.",
+    )
     sender_names = models.JSONField("sender names", null=True, blank=True)
     summary = models.TextField("summary", null=True, blank=True, default=None)
 
@@ -801,7 +838,6 @@ class Thread(BaseModel):
         message_data = list(
             self.messages.select_related("sender")
             .values(
-                "is_unread",
                 "is_trashed",
                 "is_draft",
                 "is_starred",
@@ -817,7 +853,6 @@ class Thread(BaseModel):
 
         if not message_data:
             # No messages in thread
-            self.has_unread = False
             self.has_trashed = False
             self.is_trashed = False
             self.has_archived = False
@@ -829,14 +864,16 @@ class Thread(BaseModel):
             self.is_spam = False
             self.has_active = False
             self.messaged_at = None
+            self.active_messaged_at = None
+            self.trashed_messaged_at = None
+            self.draft_messaged_at = None
+            self.sender_messaged_at = None
+            self.archived_messaged_at = None
             self.sender_names = None
             self.has_delivery_pending = False
             self.has_delivery_failed = False
         else:
             # Compute stats in Python
-            self.has_unread = any(
-                msg["is_unread"] and not msg["is_trashed"] for msg in message_data
-            )
             self.has_trashed = any(msg["is_trashed"] for msg in message_data)
             self.is_trashed = all(msg["is_trashed"] for msg in message_data)
             self.has_archived = any(msg["is_archived"] for msg in message_data)
@@ -910,6 +947,52 @@ class Thread(BaseModel):
             else:
                 self.messaged_at = max(msg["created_at"] for msg in message_data)
 
+            # Compute per-view messaged_at timestamps
+            active_msgs = [
+                msg
+                for msg in message_data
+                if not msg["is_sender"]
+                and not msg["is_spam"]
+                and not msg["is_archived"]
+                and not msg["is_trashed"]
+                and not msg["is_draft"]
+            ]
+            self.active_messaged_at = (
+                max(msg["created_at"] for msg in active_msgs) if active_msgs else None
+            )
+
+            trashed_msgs = [msg for msg in message_data if msg["is_trashed"]]
+            self.trashed_messaged_at = (
+                max(msg["created_at"] for msg in trashed_msgs) if trashed_msgs else None
+            )
+
+            draft_msgs = [
+                msg for msg in message_data if msg["is_draft"] and not msg["is_trashed"]
+            ]
+            self.draft_messaged_at = (
+                max(msg["created_at"] for msg in draft_msgs) if draft_msgs else None
+            )
+
+            sender_msgs = [
+                msg
+                for msg in message_data
+                if msg["is_sender"] and not msg["is_trashed"] and not msg["is_draft"]
+            ]
+            self.sender_messaged_at = (
+                max(msg["created_at"] for msg in sender_msgs) if sender_msgs else None
+            )
+
+            archived_msgs = [
+                msg
+                for msg in message_data
+                if msg["is_archived"] and not msg["is_trashed"]
+            ]
+            self.archived_messaged_at = (
+                max(msg["created_at"] for msg in archived_msgs)
+                if archived_msgs
+                else None
+            )
+
             # Set sender names (first and last sender names)
             sender_names = None
             if len(active_messages) > 0:
@@ -934,7 +1017,6 @@ class Thread(BaseModel):
 
         self.save(
             update_fields=[
-                "has_unread",
                 "has_trashed",
                 "is_trashed",
                 "has_archived",
@@ -948,6 +1030,11 @@ class Thread(BaseModel):
                 "has_delivery_pending",
                 "has_delivery_failed",
                 "messaged_at",
+                "active_messaged_at",
+                "trashed_messaged_at",
+                "draft_messaged_at",
+                "sender_messaged_at",
+                "archived_messaged_at",
                 "sender_names",
             ]
         )
@@ -1170,6 +1257,7 @@ class ThreadAccess(BaseModel):
         choices=ThreadAccessRoleChoices.choices,
         default=ThreadAccessRoleChoices.VIEWER,
     )
+    read_at = models.DateTimeField("read at", null=True, blank=True)
 
     class Meta:
         db_table = "messages_threadaccess"
@@ -1179,6 +1267,40 @@ class ThreadAccess(BaseModel):
 
     def __str__(self):
         return f"{self.thread} - {self.mailbox} - {self.role}"
+
+    @staticmethod
+    def thread_unread_filter(mailbox_id):
+        """Return a `Case` expression to annotate `_has_unread` on a Thread queryset.
+
+        Intended for `ThreadViewSet.get_queryset()`. Uses `active_messaged_at`
+        so that threads are only marked unread when they contain received messages.
+        """
+        return Case(
+            When(
+                accesses__mailbox_id=mailbox_id,
+                accesses__read_at__isnull=True,
+                has_active=True,
+                then=Value(True),
+            ),
+            When(
+                accesses__mailbox_id=mailbox_id,
+                active_messaged_at__gt=F("accesses__read_at"),
+                then=Value(True),
+            ),
+            default=Value(False),
+            output_field=BooleanField(),
+        )
+
+    @staticmethod
+    def unread_filter():
+        """Return a `Q` for filtering a `ThreadAccess` queryset to unread entries.
+
+        Used by `MailboxSerializer._get_cached_counts()` and
+        `compute_unread_mailboxes()` in the search index.
+        """
+        return Q(read_at__isnull=True, thread__has_active=True) | Q(
+            read_at__lt=F("thread__active_messaged_at")
+        )
 
 
 class Contact(BaseModel):
@@ -1243,6 +1365,37 @@ class MessageRecipient(BaseModel):
         return f"{self.message} - {self.contact} - {self.get_type_display()}"
 
 
+class MessageQuerySet(models.QuerySet):
+    """Custom QuerySet for Message with read-state annotation."""
+
+    def with_read_state(self, mailbox_id):
+        """Annotate each message with ``_is_unread`` relative to a mailbox.
+
+        The annotation compares the message ``created_at`` to the
+        ``ThreadAccess.read_at`` for the given mailbox:
+        - ``read_at IS NULL``          → True  (never read)
+        - ``created_at > read_at``     → True  (new message since last read)
+        - otherwise                    → False
+        """
+        access_qs = ThreadAccess.objects.filter(
+            thread_id=models.OuterRef("thread_id"),
+            mailbox_id=mailbox_id,
+        )
+        return self.annotate(
+            _access_read_at=models.Subquery(access_qs.values("read_at")[:1]),
+        ).annotate(
+            _is_unread=Case(
+                When(_access_read_at__isnull=True, then=Value(True)),
+                When(created_at__gt=F("_access_read_at"), then=Value(True)),
+                default=Value(False),
+                output_field=BooleanField(),
+            ),
+        )
+
+
+MessageManager = models.Manager.from_queryset(MessageQuerySet)
+
+
 class Message(BaseModel):
     """Message model to store received and sent messages."""
 
@@ -1267,14 +1420,12 @@ class Message(BaseModel):
     is_sender = models.BooleanField("is sender", default=False)
     is_starred = models.BooleanField("is starred", default=False)
     is_trashed = models.BooleanField("is trashed", default=False)
-    is_unread = models.BooleanField("is unread", default=False)
     is_spam = models.BooleanField("is spam", default=False)
     is_archived = models.BooleanField("is archived", default=False)
     has_attachments = models.BooleanField("has attachments", default=False)
 
     trashed_at = models.DateTimeField("trashed at", null=True, blank=True)
     sent_at = models.DateTimeField("sent at", null=True, blank=True)
-    read_at = models.DateTimeField("read at", null=True, blank=True)
     archived_at = models.DateTimeField("archived at", null=True, blank=True)
 
     mime_id = models.CharField("mime id", max_length=998, null=True, blank=True)
@@ -1311,6 +1462,8 @@ class Message(BaseModel):
         blank=True,
         related_name="messages",
     )
+
+    objects = MessageManager()
 
     # Internal cache for parsed data
     _parsed_email_cache: Optional[Dict[str, Any]] = None

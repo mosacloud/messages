@@ -18,8 +18,8 @@ export interface Mailbox {
   /** Whether this mailbox identifies a person (i.e. is not an alias or a group) */
   readonly is_identity: boolean;
   readonly role: MailboxRoleChoices;
-  readonly count_unread_messages: string;
-  readonly count_messages: string;
+  readonly count_unread_threads: string;
+  readonly count_threads: string;
   readonly count_delivering: string;
   /** Instance permissions and capabilities */
   readonly abilities: MailboxAbilities;

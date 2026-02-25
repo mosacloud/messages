@@ -7,7 +7,7 @@ import uuid
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, Exists, OuterRef, Q
+from django.db.models import Count, Q
 
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -233,8 +233,8 @@ class MailboxSerializer(AbilitiesModelSerializer):
 
     email = serializers.SerializerMethodField(read_only=True)
     role = serializers.SerializerMethodField(read_only=True)
-    count_unread_messages = serializers.SerializerMethodField(read_only=True)
-    count_messages = serializers.SerializerMethodField(read_only=True)
+    count_unread_threads = serializers.SerializerMethodField(read_only=True)
+    count_threads = serializers.SerializerMethodField(read_only=True)
     count_delivering = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -244,8 +244,8 @@ class MailboxSerializer(AbilitiesModelSerializer):
             "email",
             "is_identity",
             "role",
-            "count_unread_messages",
-            "count_messages",
+            "count_unread_threads",
+            "count_threads",
             "count_delivering",
         ]
         read_only_fields = fields
@@ -282,11 +282,11 @@ class MailboxSerializer(AbilitiesModelSerializer):
         cache_key = f"_counts_{instance.pk}"
         if not hasattr(self, cache_key):
             counts = instance.thread_accesses.aggregate(
-                count_unread=Count(
-                    "thread__messages",
-                    filter=Q(thread__messages__read_at__isnull=True),
+                count_unread_threads=Count(
+                    "id",
+                    filter=models.ThreadAccess.unread_filter(),
                 ),
-                count_messages=Count("thread__messages"),
+                count_threads=Count("thread"),
                 count_delivering=Count(
                     "thread",
                     filter=Q(thread__has_delivery_pending=True),
@@ -296,13 +296,13 @@ class MailboxSerializer(AbilitiesModelSerializer):
             setattr(self, cache_key, counts)
         return getattr(self, cache_key)
 
-    def get_count_unread_messages(self, instance):
-        """Return the number of unread messages in the mailbox."""
-        return self._get_cached_counts(instance)["count_unread"]
+    def get_count_unread_threads(self, instance):
+        """Return the number of threads with unread messages in the mailbox."""
+        return self._get_cached_counts(instance)["count_unread_threads"]
 
-    def get_count_messages(self, instance):
-        """Return the number of messages in the mailbox."""
-        return self._get_cached_counts(instance)["count_messages"]
+    def get_count_threads(self, instance):
+        """Return the number of threads in the mailbox."""
+        return self._get_cached_counts(instance)["count_threads"]
 
     def get_count_delivering(self, instance):
         """Return the number of threads with messages being delivered."""
@@ -577,7 +577,7 @@ class ThreadAccessDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.ThreadAccess
-        fields = ["id", "mailbox", "role"]
+        fields = ["id", "mailbox", "role", "read_at"]
         read_only_fields = fields
 
 
@@ -587,9 +587,19 @@ class ThreadSerializer(serializers.ModelSerializer):
     messages = serializers.SerializerMethodField(read_only=True)
     sender_names = serializers.ListField(child=serializers.CharField(), read_only=True)
     user_role = serializers.SerializerMethodField(read_only=True)
+    has_unread = serializers.SerializerMethodField(read_only=True)
     accesses = serializers.SerializerMethodField()
     labels = serializers.SerializerMethodField()
     summary = serializers.CharField(read_only=True)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_has_unread(self, instance):
+        """Return whether the thread has unread messages for the current mailbox.
+
+        Requires the _has_unread annotation (set by ThreadViewSet when mailbox_id is provided).
+        Returns False when the annotation is absent (no mailbox context).
+        """
+        return getattr(instance, "_has_unread", False)
 
     @extend_schema_field(ThreadAccessDetailSerializer(many=True))
     def get_accesses(self, instance):
@@ -662,6 +672,11 @@ class ThreadSerializer(serializers.ModelSerializer):
             "is_spam",
             "has_active",
             "messaged_at",
+            "active_messaged_at",
+            "draft_messaged_at",
+            "sender_messaged_at",
+            "archived_messaged_at",
+            "trashed_messaged_at",
             "sender_names",
             "updated_at",
             "user_role",
@@ -752,6 +767,7 @@ class MessageSerializer(serializers.ModelSerializer):
         source="thread.id", allow_null=True, read_only=True
     )
 
+    is_unread = serializers.SerializerMethodField(read_only=True)
     signature = serializers.SerializerMethodField()
     stmsg_headers = serializers.SerializerMethodField(read_only=True)
 
@@ -763,6 +779,15 @@ class MessageSerializer(serializers.ModelSerializer):
         return ReadMessageTemplateSerializer(
             instance.signature, body_fields=["html"]
         ).data
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_is_unread(self, instance):
+        """Return the ``_is_unread`` annotation set by ``MessageQuerySet.with_read_state()``.
+
+        Falls back to ``False`` when the queryset was not annotated (e.g.
+        internal usage without a mailbox context).
+        """
+        return getattr(instance, "_is_unread", False)
 
     def get_stmsg_headers(self, instance) -> dict:
         """Return the STMSG headers of the message."""
@@ -882,7 +907,6 @@ class MessageSerializer(serializers.ModelSerializer):
             "to",
             "cc",
             "bcc",
-            "read_at",
             "sent_at",
             "is_sender",
             "is_draft",

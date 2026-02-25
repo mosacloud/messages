@@ -18,7 +18,7 @@ type ThreadActionBarProps = {
 export const ThreadActionBar = ({ canUndelete, canUnarchive }: ThreadActionBarProps) => {
     const { t } = useTranslation();
     const { selectedThread, unselectThread } = useMailboxContext();
-    const { markAsUnread } = useRead();
+    const { markAsReadAt } = useRead();
     const { markAsTrashed, markAsUntrashed } = useTrash();
     const { markAsArchived, markAsUnarchived } = useArchive();
     const { markAsSpam, markAsNotSpam } = useSpam();
@@ -119,7 +119,7 @@ export const ThreadActionBar = ({ canUndelete, canUnarchive }: ThreadActionBarPr
                     {
                         label: t('Mark as unread'),
                         icon: <Icon name="mark_email_unread" type={IconType.OUTLINED} />,
-                        callback: () => markAsUnread({ threadIds: [selectedThread!.id], onSuccess: unselectThread })
+                        callback: () => markAsReadAt({ threadIds: [selectedThread!.id], readAt: null, onSuccess: unselectThread })
                     }
                 ]}
             >

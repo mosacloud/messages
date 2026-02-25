@@ -64,20 +64,21 @@ def test_list_threads_success(api_client):
     other_mailbox = MailboxFactory()  # User doesn't have access
 
     # Create threads
-    thread1 = ThreadFactory()
+    thread1 = ThreadFactory(messaged_at=timezone.now())
     ThreadAccessFactory(
         mailbox=mailbox1,
         thread=thread1,
         role=enums.ThreadAccessRoleChoices.EDITOR,
+        # read_at is None → unread
     )
-    MessageFactory(thread=thread1, is_unread=True)
-    thread2 = ThreadFactory()
-    ThreadAccessFactory(
+    MessageFactory(thread=thread1)
+    thread2 = ThreadFactory(messaged_at=timezone.now())
+    access2 = ThreadAccessFactory(
         mailbox=mailbox2,
         thread=thread2,
         role=enums.ThreadAccessRoleChoices.EDITOR,
     )
-    MessageFactory(thread=thread2, is_unread=False, read_at=timezone.now())
+    MessageFactory(thread=thread2)
     thread3 = ThreadFactory()
     ThreadAccessFactory(
         mailbox=other_mailbox,
@@ -89,28 +90,27 @@ def test_list_threads_success(api_client):
     thread1.update_stats()
     thread2.update_stats()
 
+    # Set read_at after update_stats so it's >= messaged_at
+    access2.read_at = timezone.now()
+    access2.save(update_fields=["read_at"])
+
     response = api_client.get(API_URL)
     assert response.status_code == status.HTTP_200_OK
     assert response.data["count"] == 2  # Only accessible threads
     assert len(response.data["results"]) == 2
 
-    # Check data for one thread (content depends on serializer)
-    thread_data = next(
-        (t for t in response.data["results"] if t["id"] == str(thread1.id)), None
-    )
-    assert thread_data is not None
-    assert thread_data["has_unread"] is True
-
-    # Test filtering by mailbox
+    # Check has_unread with mailbox_id (per-mailbox annotation)
     response = api_client.get(API_URL, {"mailbox_id": str(mailbox1.id)})
     assert response.status_code == status.HTTP_200_OK
     assert response.data["count"] == 1
     assert response.data["results"][0]["id"] == str(thread1.id)
+    assert response.data["results"][0]["has_unread"] is True
 
     response = api_client.get(API_URL, {"mailbox_id": str(mailbox2.id)})
     assert response.status_code == status.HTTP_200_OK
     assert response.data["count"] == 1
     assert response.data["results"][0]["id"] == str(thread2.id)
+    assert response.data["results"][0]["has_unread"] is False
 
 
 def test_list_threads_unauthorized(api_client):
@@ -355,7 +355,6 @@ class TestThreadStatsAPI:
 
         # Create some threads with varying boolean flags
         thread1 = ThreadFactory(
-            has_unread=True,
             has_messages=True,
             has_trashed=False,
             has_draft=True,
@@ -369,7 +368,6 @@ class TestThreadStatsAPI:
         )
 
         thread2 = ThreadFactory(
-            has_unread=True,
             has_messages=True,
             has_trashed=True,
             has_draft=False,
@@ -384,7 +382,7 @@ class TestThreadStatsAPI:
 
         # Thread in another mailbox (should be excluded)
         other_mailbox = MailboxFactory()
-        other_thread = ThreadFactory(has_unread=True)
+        other_thread = ThreadFactory()
         ThreadAccessFactory(
             mailbox=other_mailbox,
             thread=other_thread,
@@ -416,13 +414,13 @@ class TestThreadStatsAPI:
         mailbox2 = MailboxFactory()
         MailboxAccessFactory(user=user, mailbox=mailbox2)
 
-        thread1 = ThreadFactory(has_unread=True, has_messages=True)
+        thread1 = ThreadFactory(has_messages=True)
         ThreadAccessFactory(
             mailbox=mailbox,
             thread=thread1,
             role=enums.ThreadAccessRoleChoices.EDITOR,
         )
-        thread2 = ThreadFactory(has_unread=True, has_messages=True)
+        thread2 = ThreadFactory(has_messages=True)
         ThreadAccessFactory(
             mailbox=mailbox2,
             thread=thread2,
@@ -443,14 +441,14 @@ class TestThreadStatsAPI:
         mailbox = MailboxFactory(users_read=[user])
 
         # Starred thread
-        thread1 = ThreadFactory(has_starred=True, has_unread=True, has_messages=True)
+        thread1 = ThreadFactory(has_starred=True, has_messages=True)
         ThreadAccessFactory(
             mailbox=mailbox,
             thread=thread1,
             role=enums.ThreadAccessRoleChoices.EDITOR,
         )
         # Not starred thread
-        thread2 = ThreadFactory(has_starred=False, has_unread=True, has_messages=True)
+        thread2 = ThreadFactory(has_starred=False, has_messages=True)
         ThreadAccessFactory(
             mailbox=mailbox,
             thread=thread2,
@@ -473,14 +471,14 @@ class TestThreadStatsAPI:
         mailbox = MailboxFactory(users_read=[user])
 
         # Not trashed thread
-        thread1 = ThreadFactory(has_trashed=False, has_unread=True, has_messages=True)
+        thread1 = ThreadFactory(has_trashed=False, has_messages=True)
         ThreadAccessFactory(
             mailbox=mailbox,
             thread=thread1,
             role=enums.ThreadAccessRoleChoices.EDITOR,
         )
         # Trashed thread
-        thread2 = ThreadFactory(has_trashed=True, has_unread=True, has_messages=True)
+        thread2 = ThreadFactory(has_trashed=True, has_messages=True)
         ThreadAccessFactory(
             mailbox=mailbox,
             thread=thread2,
@@ -508,7 +506,7 @@ class TestThreadStatsAPI:
         api_client.force_authenticate(user=user)
         mailbox = MailboxFactory(users_read=[user])
 
-        thread = ThreadFactory(has_unread=True, has_messages=True, has_draft=True)
+        thread = ThreadFactory(has_messages=True, has_draft=True)
         ThreadAccessFactory(
             mailbox=mailbox,
             thread=thread,
@@ -537,7 +535,11 @@ class TestThreadStatsAPI:
         label1_mbx2 = LabelFactory(name="Work", mailbox=mailbox2)
 
         # Create threads in each mailbox with the respective labels
-        thread1_mbx1 = ThreadFactory(has_unread=True, has_messages=True)
+        thread1_mbx1 = ThreadFactory(
+            has_messages=True,
+            has_active=True,
+            active_messaged_at=timezone.now(),
+        )
         ThreadAccessFactory(
             mailbox=mailbox1,
             thread=thread1_mbx1,
@@ -545,7 +547,11 @@ class TestThreadStatsAPI:
         )
         thread1_mbx1.labels.add(label1_mbx1)
 
-        thread1_mbx2 = ThreadFactory(has_unread=True, has_messages=True)
+        thread1_mbx2 = ThreadFactory(
+            has_messages=True,
+            has_active=True,
+            active_messaged_at=timezone.now(),
+        )
         ThreadAccessFactory(
             mailbox=mailbox2,
             thread=thread1_mbx2,
@@ -553,7 +559,8 @@ class TestThreadStatsAPI:
         )
         thread1_mbx2.labels.add(label1_mbx2)
 
-        # Test stats with label_slug filter - should return threads from both mailboxes
+        # Test stats with label_slug filter without mailbox_id
+        # all_unread is 0 because unread state requires a mailbox context
         response = api_client.get(
             url,
             {
@@ -565,7 +572,7 @@ class TestThreadStatsAPI:
         assert response.status_code == 200
         # Should count threads from both mailboxes since user has access to both
         assert response.data["all"] == 2
-        assert response.data["all_unread"] == 2
+        assert response.data["all_unread"] == 0
 
         # Test stats with label_slug and mailbox_id filter - should return only threads from that mailbox
         response = api_client.get(
@@ -605,7 +612,7 @@ class TestThreadStatsAPI:
         child1_mbx2 = LabelFactory(name="Work/Projects", mailbox=mailbox2)
 
         # Create threads with both parent and child labels
-        thread1_mbx1 = ThreadFactory(has_unread=True, has_messages=True)
+        thread1_mbx1 = ThreadFactory(has_messages=True)
         ThreadAccessFactory(
             mailbox=mailbox1,
             thread=thread1_mbx1,
@@ -614,7 +621,7 @@ class TestThreadStatsAPI:
         thread1_mbx1.labels.add(label1_mbx1)  # Add parent label
         thread1_mbx1.labels.add(child1_mbx1)  # Add child label
 
-        thread1_mbx2 = ThreadFactory(has_unread=True, has_messages=True)
+        thread1_mbx2 = ThreadFactory(has_messages=True)
         ThreadAccessFactory(
             mailbox=mailbox2,
             thread=thread1_mbx2,
@@ -623,7 +630,7 @@ class TestThreadStatsAPI:
         thread1_mbx2.labels.add(label1_mbx2)  # Add parent label
         thread1_mbx2.labels.add(child1_mbx2)  # Add child label
 
-        # Test stats with child label_slug filter
+        # Test stats with child label_slug filter (no mailbox_id → unread = 0)
         response = api_client.get(
             url,
             {
@@ -635,9 +642,9 @@ class TestThreadStatsAPI:
         assert response.status_code == 200
         # Should count threads from both mailboxes
         assert response.data["all"] == 2
-        assert response.data["all_unread"] == 2
+        assert response.data["all_unread"] == 0
 
-        # Test stats with parent label_slug filter
+        # Test stats with parent label_slug filter (no mailbox_id → unread = 0)
         response = api_client.get(
             url,
             {
@@ -649,7 +656,7 @@ class TestThreadStatsAPI:
         assert response.status_code == 200
         # Should count threads from both mailboxes (parent labels)
         assert response.data["all"] == 2
-        assert response.data["all_unread"] == 2
+        assert response.data["all_unread"] == 0
 
     def test_stats_with_label_slug_no_access(self, api_client, url):
         """Test that stats with label_slug filter respects user access permissions."""
@@ -668,7 +675,7 @@ class TestThreadStatsAPI:
         label1_mbx2 = LabelFactory(name="Work", mailbox=mailbox2)
 
         # Create threads with these labels
-        thread1_mbx1 = ThreadFactory(has_unread=True, has_messages=True)
+        thread1_mbx1 = ThreadFactory(has_messages=True)
         ThreadAccessFactory(
             mailbox=mailbox1,
             thread=thread1_mbx1,
@@ -676,7 +683,7 @@ class TestThreadStatsAPI:
         )
         thread1_mbx1.labels.add(label1_mbx1)
 
-        thread1_mbx2 = ThreadFactory(has_unread=True, has_messages=True)
+        thread1_mbx2 = ThreadFactory(has_messages=True)
         ThreadAccessFactory(
             mailbox=mailbox2,
             thread=thread1_mbx2,
@@ -685,6 +692,7 @@ class TestThreadStatsAPI:
         thread1_mbx2.labels.add(label1_mbx2)
 
         # Test stats with label_slug filter - should only return accessible threads
+        # No mailbox_id → unread = 0
         response = api_client.get(
             url,
             {
@@ -696,7 +704,7 @@ class TestThreadStatsAPI:
         assert response.status_code == 200
         # Should count only threads from mailbox1 (user has access)
         assert response.data["all"] == 1
-        assert response.data["all_unread"] == 1
+        assert response.data["all_unread"] == 0
 
     def test_stats_no_matching_threads(self, api_client, url):
         """Test retrieving stats when no threads match the filters."""
@@ -730,9 +738,15 @@ class TestThreadStatsAPI:
         mailbox = MailboxFactory(users_read=[user])
 
         # Create threads with different unread states
-        thread1 = ThreadFactory(has_unread=True, has_messages=True)
-        thread2 = ThreadFactory(has_unread=False, has_messages=True)
-        thread3 = ThreadFactory(has_unread=True, has_starred=True)
+        thread1 = ThreadFactory(
+            has_messages=True, has_active=True, active_messaged_at=timezone.now()
+        )
+        thread2 = ThreadFactory(
+            has_messages=True, has_active=True, active_messaged_at=timezone.now()
+        )
+        thread3 = ThreadFactory(
+            has_starred=True, has_active=True, active_messaged_at=timezone.now()
+        )
 
         for thread in [thread1, thread2, thread3]:
             ThreadAccessFactory(
@@ -741,7 +755,15 @@ class TestThreadStatsAPI:
                 role=enums.ThreadAccessRoleChoices.EDITOR,
             )
 
-        response = api_client.get(url, {"stats_fields": "all,all_unread"})
+        # Mark thread2 as read
+        access2 = thread2.accesses.get(mailbox=mailbox)
+        access2.read_at = timezone.now()
+        access2.save(update_fields=["read_at"])
+
+        response = api_client.get(
+            url,
+            {"stats_fields": "all,all_unread", "mailbox_id": str(mailbox.id)},
+        )
 
         assert response.status_code == 200
         assert response.data == {
@@ -756,22 +778,24 @@ class TestThreadStatsAPI:
         mailbox = MailboxFactory(users_read=[user])
 
         # Create threads with different combinations of flags and unread status
+        # thread1: unread (has_active + active_messaged_at, no read_at)
         thread1 = ThreadFactory(
-            has_unread=True,
             has_starred=True,
             has_sender=True,
             is_spam=False,
             has_active=True,
+            active_messaged_at=timezone.now(),
         )
+        # thread2: read (has_active + active_messaged_at, read_at set)
         thread2 = ThreadFactory(
-            has_unread=False,
             has_starred=True,
             has_sender=True,
             is_spam=False,
             has_active=True,
+            active_messaged_at=timezone.now(),
         )
+        # thread3: unread (no has_active, so not unread despite no read_at)
         thread3 = ThreadFactory(
-            has_unread=True,
             has_starred=False,
             has_sender=False,
             is_spam=True,
@@ -785,9 +809,15 @@ class TestThreadStatsAPI:
                 role=enums.ThreadAccessRoleChoices.EDITOR,
             )
 
+        # Mark thread2 as read
+        access2 = thread2.accesses.get(mailbox=mailbox)
+        access2.read_at = timezone.now()
+        access2.save(update_fields=["read_at"])
+
         response = api_client.get(
             url,
             {
+                "mailbox_id": str(mailbox.id),
                 "stats_fields": (
                     "has_starred,"
                     "has_starred_unread,"
@@ -797,7 +827,7 @@ class TestThreadStatsAPI:
                     "is_spam_unread,"
                     "has_active,"
                     "has_active_unread"
-                )
+                ),
             },
         )
 
@@ -808,7 +838,7 @@ class TestThreadStatsAPI:
             "has_sender": 2,  # thread1 and thread2 have has_sender=True
             "has_sender_unread": 1,  # Only thread1 is sender AND unread
             "is_spam": 1,  # Only thread3 is spam
-            "is_spam_unread": 1,  # thread3 is spam AND unread
+            "is_spam_unread": 0,  # thread3 has no active messages so not unread
             "has_active": 2,  # thread1 and thread2 have has_active=True
             "has_active_unread": 1,  # Only thread1 is active AND unread
         }
@@ -820,9 +850,27 @@ class TestThreadStatsAPI:
         mailbox = MailboxFactory(users_read=[user])
 
         # Create threads with different combinations
-        thread1 = ThreadFactory(has_unread=True, has_starred=True, has_sender=True)
-        thread2 = ThreadFactory(has_unread=False, has_starred=True, has_sender=True)
-        thread3 = ThreadFactory(has_unread=True, has_starred=False, has_sender=True)
+        # thread1: unread
+        thread1 = ThreadFactory(
+            has_starred=True,
+            has_sender=True,
+            has_active=True,
+            active_messaged_at=timezone.now(),
+        )
+        # thread2: read
+        thread2 = ThreadFactory(
+            has_starred=True,
+            has_sender=True,
+            has_active=True,
+            active_messaged_at=timezone.now(),
+        )
+        # thread3: unread
+        thread3 = ThreadFactory(
+            has_starred=False,
+            has_sender=True,
+            has_active=True,
+            active_messaged_at=timezone.now(),
+        )
 
         for thread in [thread1, thread2, thread3]:
             ThreadAccessFactory(
@@ -831,10 +879,19 @@ class TestThreadStatsAPI:
                 role=enums.ThreadAccessRoleChoices.EDITOR,
             )
 
+        # Mark thread2 as read
+        access2 = thread2.accesses.get(mailbox=mailbox)
+        access2.read_at = timezone.now()
+        access2.save(update_fields=["read_at"])
+
         # Filter for only starred threads and get unread counts
         response = api_client.get(
             url,
-            {"has_starred": "1", "stats_fields": "all,all_unread,has_sender_unread"},
+            {
+                "mailbox_id": str(mailbox.id),
+                "has_starred": "1",
+                "stats_fields": "all,all_unread,has_sender_unread",
+            },
         )
 
         assert response.status_code == 200

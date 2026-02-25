@@ -7,6 +7,8 @@ import { useTranslation } from "react-i18next";
 type MarkAsOptions = {
     threadIds?: Thread["id"][],
     messageIds?: Message['id'][],
+    mailboxId?: string,
+    readAt?: string | null,
     onSuccess?: (data: ChangeFlagRequestRequest) => void,
 }
 
@@ -48,13 +50,15 @@ const useFlag = (flag: FlagEnum, options?: FlagOptions) => {
 
     const markAs =
         (status: boolean) =>
-        ({ threadIds = [], messageIds = [], onSuccess }: MarkAsOptions) =>
+        ({ threadIds = [], messageIds = [], mailboxId, readAt, onSuccess }: MarkAsOptions) =>
             mutate({
                 data: {
                     flag,
                     value: status,
                     thread_ids: threadIds,
                     message_ids: messageIds,
+                    mailbox_id: mailboxId,
+                    ...(readAt !== undefined && { read_at: readAt }),
                 },
             }, {
                 onSuccess: (_, { data }) => onSuccess?.(data)

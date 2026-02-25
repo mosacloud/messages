@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next"
 import Link from "next/link"
 import { useParams, useSearchParams } from "next/navigation"
-import { useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import clsx from "clsx"
 import { DateHelper } from "@/features/utils/date-helper"
@@ -14,6 +14,7 @@ import { Checkbox } from "@gouvfr-lasuite/cunningham-react"
 import { Icon, IconSize, IconType } from "@gouvfr-lasuite/ui-kit"
 import { LabelBadge } from "@/features/ui/components/label-badge"
 import { useLayoutContext } from "../../../main"
+import ViewHelper from "@/features/utils/view-helper"
 
 type ThreadItemProps = {
     thread: Thread
@@ -30,6 +31,36 @@ export const ThreadItem = ({ thread, isSelected, onToggleSelection, selectedThre
     const [isDragging, setIsDragging] = useState(false)
     const { setIsDragging: setGlobalDragging } = useLayoutContext();
     const dragPreviewContainer = useRef(document.getElementById(PORTALS.DRAG_PREVIEW));
+    const threadDate = useMemo(() => {
+        if (ViewHelper.isInboxView() && thread.active_messaged_at) {
+            return thread.active_messaged_at;
+        }
+        if (ViewHelper.isArchivedView() && thread.archived_messaged_at) {
+            return thread.archived_messaged_at;
+        }
+        if (ViewHelper.isDraftsView() && thread.draft_messaged_at) {
+            return thread.draft_messaged_at
+        }
+        if ((ViewHelper.isOutboxView() || ViewHelper.isSentView()) && thread.sender_messaged_at) {
+            return thread.sender_messaged_at;
+        }
+        if (ViewHelper.isTrashedView() && thread.trashed_messaged_at) {
+            return thread.trashed_messaged_at;
+        }
+        return thread.messaged_at;
+    }, [thread])
+
+    const hasUnread = useMemo(() => {
+        const access = thread.accesses.find((a) => a.mailbox.id === params?.mailboxId)
+        let compareDate = thread.active_messaged_at;
+        if (!access) return false
+        if (!access.read_at) return true
+        if (ViewHelper.isTrashedView() && thread.trashed_messaged_at) {
+            compareDate = thread.trashed_messaged_at
+        }
+        if (!compareDate) return false;
+        return new Date(compareDate) > new Date(access.read_at)
+    }, [thread, threadDate, params?.mailboxId])
 
     const hasSelection = isSelectionMode || selectedThreadIds.size > 0;
     const showCheckbox = hasSelection;
@@ -96,7 +127,7 @@ export const ThreadItem = ({ thread, isSelected, onToggleSelection, selectedThre
                     },
                 )}
                 data-thread-id={thread.id}
-                data-unread={thread.has_unread}
+                data-unread={hasUnread}
                 draggable
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
@@ -136,9 +167,9 @@ export const ThreadItem = ({ thread, isSelected, onToggleSelection, selectedThre
                                 </div>
                             </Tooltip> */}
 
-                            {thread.messaged_at && (
+                            {(threadDate || thread.messaged_at) && (
                                 <span className="thread-item__date">
-                                    {DateHelper.formatDate(thread.messaged_at, i18n.resolvedLanguage)}
+                                    {DateHelper.formatDate((threadDate || thread.messaged_at)!, i18n.resolvedLanguage)}
                                 </span>
                             )}
                         </div>

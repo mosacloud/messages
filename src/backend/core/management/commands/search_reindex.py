@@ -5,7 +5,7 @@ import uuid
 from django.core.management.base import BaseCommand, CommandError
 
 from core import models
-from core.services.search import create_index_if_not_exists
+from core.services.search import create_index_if_not_exists, delete_index
 from core.services.search.tasks import (
     _reindex_all_base,
     reindex_all,
@@ -56,6 +56,10 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         """Execute the command."""
+        if options["recreate_index"]:
+            self.stdout.write("Deleting and recreating OpenSearch index...")
+            delete_index()
+
         # Ensure index exists
         self.stdout.write("Ensuring OpenSearch index exists...")
         create_index_if_not_exists()

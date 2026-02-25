@@ -1,6 +1,7 @@
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo } from "react";
 import { Mailbox, MailboxRoleChoices, Message, messagesListResponse200, PaginatedThreadList, Thread, useLabelsList, useMailboxesList, useMessagesList, useThreadsListInfinite } from "../api/gen";
-import { FetchStatus, QueryStatus, RefetchOptions, useQueryClient } from "@tanstack/react-query";
+import { FetchStatus, InfiniteData, QueryStatus, RefetchOptions, useQueryClient } from "@tanstack/react-query";
+import type { threadsListResponse } from "../api/gen/threads/threads";
 import { useRouter } from "next/router";
 import usePrevious from "@/hooks/use-previous";
 import { useSearchParams } from "next/navigation";
@@ -22,6 +23,20 @@ type MessageQueryInvalidationSource = {
     type: 'delete' | 'update';
     metadata: { ids?: Message['id'][], threadIds?: Thread['id'][] };
     payload?: Partial<Message>;
+    /** When updating read state, optimistically patch ThreadAccess.read_at in the threads cache. */
+    threadAccessReadAt?: { mailboxId: string; readAt: string | null };
+    /**
+     * When set, only messages created at or before this timestamp
+     * will receive the payload update (used for read pointer).
+     * Messages after this date keep their current state.
+     */
+    readAt?: string | null;
+    /**
+     * Skip the threads query invalidation (refetch).
+     * Useful when optimistic updates are sufficient (e.g. read flag)
+     * to avoid scroll position reset in the thread list.
+     */
+    skipThreadsInvalidation?: boolean;
 }
 
 type MailboxContextType = {
@@ -122,7 +137,7 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
             ?? mailboxQuery.data.data[mailboxQuery.data.data.length - 1]
     }, [router.query.mailboxId, mailboxQuery.data])
 
-    const previousUnreadMessagesCount = usePrevious(selectedMailbox?.count_unread_messages);
+    const previousUnreadThreadsCount = usePrevious(selectedMailbox?.count_unread_threads);
     const previousDeliveringCount = usePrevious(selectedMailbox?.count_delivering);
     const threadQueryKey = useMemo(() => {
         const queryKey = ['threads', selectedMailbox?.id];
@@ -177,7 +192,8 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
         },
         request: {
             params: {
-                thread_id: selectedThread?.id ?? ''
+                thread_id: selectedThread?.id ?? '',
+                mailbox_id: selectedMailbox?.id ?? '',
             }
         }
     });
@@ -200,13 +216,20 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
                 });
             } else if (source.type === 'update') {
                 newResults = newResults.map((message: Message) => {
-                    if (
+                    const isTargeted =
                         (source.metadata.threadIds ?? []).includes(threadId)
-                        || (source.metadata.ids ?? []).includes(message.id)
-                    ) {
-                        return { ...message, ...source.payload };
+                        || (source.metadata.ids ?? []).includes(message.id);
+
+                    if (!isTargeted) return message;
+
+                    // When a readAt pointer is provided, only update messages
+                    // created at or before that timestamp. When readAt is null
+                    // (mark all unread), update every message.
+                    if (source.readAt !== undefined && source.readAt !== null) {
+                        if (message.created_at > source.readAt) return message;
                     }
-                    return message;
+
+                    return { ...message, ...source.payload };
                 });
             }
 
@@ -214,11 +237,60 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
         });
     }
     /**
+     * Optimistically update ThreadAccess.read_at in the infinite threads cache
+     * so ThreadItem sees the new read state immediately without waiting for re-fetch.
+     */
+    const _updateThreadAccessReadAt = (
+        threadIds: Thread['id'][],
+        mailboxId: string,
+        readAt: string | null,
+    ) => {
+        queryClient.setQueriesData<InfiniteData<threadsListResponse>>(
+            { queryKey: ['threads', mailboxId] },
+            (oldData) => {
+                if (!oldData) return oldData;
+                return {
+                    ...oldData,
+                    pages: oldData.pages.map((page) => ({
+                        ...page,
+                        data: {
+                            ...page.data,
+                            results: page.data.results.map((thread) => {
+                                if (!threadIds.includes(thread.id)) return thread;
+                                return {
+                                    ...thread,
+                                    accesses: thread.accesses.map((access) =>
+                                        access.mailbox.id === mailboxId
+                                            ? { ...access, read_at: readAt }
+                                            : access
+                                    ),
+                                };
+                            }),
+                        },
+                    })),
+                };
+            },
+        );
+    };
+
+    /**
      * Invalidate the threads and messages queries to refresh the data
      * If a source is provided, it could be used to update query cache from the source data
      */
     const invalidateThreadMessages = async (source?: MessageQueryInvalidationSource) => {
-        await queryClient.invalidateQueries({ queryKey: ['threads', selectedMailbox?.id] });
+        // Optimistically patch caches before invalidating so the UI
+        // renders the correct state immediately while re-fetches are in flight.
+        if (source?.threadAccessReadAt) {
+            const affectedThreadIds = source.metadata.threadIds ?? [];
+            if (affectedThreadIds.length > 0) {
+                _updateThreadAccessReadAt(
+                    affectedThreadIds,
+                    source.threadAccessReadAt.mailboxId,
+                    source.threadAccessReadAt.readAt,
+                );
+            }
+        }
+
         if (source && ((source.metadata.threadIds ?? []).length ?? 0) > 0) {
             source.metadata.threadIds!.forEach(threadId => {
                 if (queryClient.getQueryState(['messages', threadId])) {
@@ -226,11 +298,15 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
                 }
             });
         }
+
+        if (source && selectedThread && ((source.metadata.ids ?? []).length ?? 0) > 0) {
+            _updateThreadMessagesQueryData(selectedThread.id, source);
+        }
+
+        // Re-fetch from server to get the authoritative state.
+        await queryClient.invalidateQueries({ queryKey: ['threads', selectedMailbox?.id] });
         if (selectedThread) {
             await queryClient.invalidateQueries({ queryKey: ['messages', selectedThread.id] });
-            if (source && ((source.metadata.ids ?? []).length ?? 0) > 0) {
-                _updateThreadMessagesQueryData(selectedThread.id, source);
-            }
         }
     }
     const resetSearchQueryDebounced = useDebounceCallback(() => {
@@ -334,8 +410,8 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
         if (!selectedMailbox) return;
 
         const hasUnreadCountChanged =
-            previousUnreadMessagesCount !== undefined &&
-            previousUnreadMessagesCount !== selectedMailbox.count_unread_messages;
+            previousUnreadThreadsCount !== undefined &&
+            previousUnreadThreadsCount !== selectedMailbox.count_unread_threads;
 
         const hasDeliveringCountChanged =
             previousDeliveringCount !== undefined &&
@@ -345,7 +421,7 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
             invalidateThreadsStats();
             queryClient.invalidateQueries({ queryKey: ['threads', selectedMailbox?.id] });
         }
-    }, [selectedMailbox?.count_unread_messages, selectedMailbox?.count_delivering]);
+    }, [selectedMailbox?.count_unread_threads, selectedMailbox?.count_delivering]);
 
     // Invalidate the thread messages query to refresh the thread messages when there is a new message
     useEffect(() => {

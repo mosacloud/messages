@@ -1,8 +1,10 @@
-"""Test marking messages as read/unread."""
+"""Test changing flags on messages or threads."""
 
 # pylint: disable=redefined-outer-name
 
 import json
+from datetime import timedelta
+from unittest.mock import patch
 
 from django.urls import reverse
 from django.utils import timezone
@@ -24,211 +26,415 @@ pytestmark = pytest.mark.django_db
 API_URL = reverse("change-flag")
 
 
-def test_api_flag_mark_messages_unread_success(api_client):
-    """Test marking messages as unread successfully."""
+# --- Tests for Unread Flag using read_at (operates on ThreadAccess.read_at) ---
+
+
+def test_api_flag_unread_resolves_thread_ids_from_message_ids(api_client):
+    """Sending unread flag with message_ids (no thread_ids) resolves threads from messages."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
     mailbox = MailboxFactory(users_read=[user])
-    thread = ThreadFactory()
-    ThreadAccessFactory(
+    thread = ThreadFactory(messaged_at=timezone.now())
+    access = ThreadAccessFactory(
         mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
     )
-    # Start with messages marked as read (read_at is set, is_unread=False)
-    msg1 = MessageFactory(
-        thread=thread, is_unread=False, read_at=timezone.now(), is_trashed=False
-    )
-    msg2 = MessageFactory(
-        thread=thread, is_unread=False, read_at=timezone.now(), is_trashed=False
-    )
-    msg3 = MessageFactory(
-        thread=thread, is_unread=True, read_at=None, is_trashed=False
-    )  # Already unread
+    msg1 = MessageFactory(thread=thread)
+    msg2 = MessageFactory(thread=thread)
 
-    # Check initial thread state
-    thread.update_stats()
-    thread.refresh_from_db()
-    assert thread.has_unread is True
+    assert access.read_at is None
 
-    message_ids = [str(msg1.id), str(msg2.id)]
-    data = {"flag": "unread", "value": True, "message_ids": message_ids}
+    read_at_value = timezone.now().isoformat()
+    data = {
+        "flag": "unread",
+        "value": False,
+        "message_ids": [str(msg1.id), str(msg2.id)],
+        "mailbox_id": str(mailbox.id),
+        "read_at": read_at_value,
+    }
     response = api_client.post(API_URL, data=data, format="json")
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data["updated_threads"] == 1
 
-    # Verify messages are marked as unread (is_unread=True, read_at=None)
-    msg1.refresh_from_db()
-    msg2.refresh_from_db()
-    msg3.refresh_from_db()
-    assert msg1.is_unread is True
-    assert msg1.read_at is None
-    assert msg2.is_unread is True
-    assert msg2.read_at is None
-    assert msg3.is_unread is True  # Remained unread
-
-    # Verify thread unread flag updated
-    thread.refresh_from_db()
-    assert thread.has_unread is True
+    access.refresh_from_db()
+    assert access.read_at is not None
+    assert access.read_at.isoformat() == read_at_value
 
 
-def test_api_flag_mark_messages_read_success(api_client):
-    """Test marking messages as read successfully."""
+def test_api_flag_unread_resolves_thread_ids_from_message_ids_multiple_threads(
+    api_client,
+):
+    """Sending unread flag with message_ids spanning multiple threads updates all."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
     mailbox = MailboxFactory(users_read=[user])
-    thread = ThreadFactory()
-    ThreadAccessFactory(
-        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
-    )
-    # Start with messages marked as unread (is_unread=True, read_at=None)
-    msg1 = MessageFactory(thread=thread, is_unread=True, read_at=None, is_trashed=False)
-    msg2 = MessageFactory(thread=thread, is_unread=True, read_at=None, is_trashed=False)
-    msg3 = MessageFactory(
-        thread=thread, is_unread=False, read_at=timezone.now(), is_trashed=False
-    )  # Already read
 
-    # Check initial thread state
-    thread.update_stats()
-    thread.refresh_from_db()
-    assert thread.has_unread is True
-
-    message_ids = [str(msg1.id), str(msg2.id)]
-    data = {"flag": "unread", "value": False, "message_ids": message_ids}
-    response = api_client.post(API_URL, data=data, format="json")
-
-    assert response.status_code == status.HTTP_200_OK
-    assert response.data["updated_threads"] == 1
-
-    # Verify messages are marked as read (is_unread=False, read_at is set)
-    msg1.refresh_from_db()
-    msg2.refresh_from_db()
-    msg3.refresh_from_db()
-    assert msg1.is_unread is False
-    assert msg1.read_at is not None
-    assert msg2.is_unread is False
-    assert msg2.read_at is not None
-    assert msg3.is_unread is False  # Remained read
-
-    # Verify thread unread flag updated
-    thread.refresh_from_db()
-    assert thread.has_unread is False
-
-
-def test_api_flag_mark_thread_messages_unread_success(api_client):
-    """Test marking all messages in a thread as unread."""
-    user = UserFactory()
-    api_client.force_authenticate(user=user)
-    mailbox = MailboxFactory(users_read=[user])
-    thread = ThreadFactory()
-    ThreadAccessFactory(
-        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
-    )
-    # Messages start as read
-    msg1 = MessageFactory(thread=thread, is_unread=False, read_at=timezone.now())
-    msg2 = MessageFactory(thread=thread, is_unread=False, read_at=timezone.now())
-
-    thread.refresh_from_db()
-    thread.update_stats()
-    assert thread.has_unread is False
-
-    data = {"flag": "unread", "value": True, "thread_ids": [str(thread.id)]}
-    response = api_client.post(API_URL, data=data, format="json")
-
-    assert response.status_code == status.HTTP_200_OK
-    assert response.data["updated_threads"] == 1
-
-    msg1.refresh_from_db()
-    msg2.refresh_from_db()
-    assert msg1.is_unread is True
-    assert msg1.read_at is None
-    assert msg2.is_unread is True
-    assert msg2.read_at is None
-
-    thread.refresh_from_db()
-    assert thread.has_unread is True
-
-
-def test_api_flag_mark_thread_messages_read_success(api_client):
-    """Test marking all messages in a thread as read."""
-    user = UserFactory()
-    api_client.force_authenticate(user=user)
-    mailbox = MailboxFactory(users_read=[user])
-    thread = ThreadFactory()
-    ThreadAccessFactory(
-        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
-    )
-    # Messages start as unread
-    msg1 = MessageFactory(thread=thread, is_unread=True, read_at=None)
-    msg2 = MessageFactory(thread=thread, is_unread=True, read_at=None)
-
-    thread.refresh_from_db()
-    thread.update_stats()
-    assert thread.has_unread is True
-
-    data = {"flag": "unread", "value": False, "thread_ids": [str(thread.id)]}
-    response = api_client.post(API_URL, data=data, format="json")
-
-    assert response.status_code == status.HTTP_200_OK
-    assert response.data["updated_threads"] == 1
-
-    msg1.refresh_from_db()
-    msg2.refresh_from_db()
-    assert msg1.is_unread is False
-    assert msg1.read_at is not None
-    assert msg2.is_unread is False
-    assert msg2.read_at is not None
-
-    thread.refresh_from_db()
-    assert thread.has_unread is False
-
-
-def test_api_flag_mark_multiple_threads_read_success(api_client):
-    """Test marking all messages in multiple threads as read."""
-    user = UserFactory()
-    api_client.force_authenticate(user=user)
-    mailbox = MailboxFactory(users_read=[user])
-    # Threads start with unread messages
-    thread1 = ThreadFactory()
-    ThreadAccessFactory(
+    thread1 = ThreadFactory(messaged_at=timezone.now())
+    access1 = ThreadAccessFactory(
         mailbox=mailbox, thread=thread1, role=enums.ThreadAccessRoleChoices.EDITOR
     )
-    MessageFactory(thread=thread1, is_unread=True)
-    thread2 = ThreadFactory()
-    ThreadAccessFactory(
+    msg1 = MessageFactory(thread=thread1)
+
+    thread2 = ThreadFactory(messaged_at=timezone.now())
+    access2 = ThreadAccessFactory(
         mailbox=mailbox, thread=thread2, role=enums.ThreadAccessRoleChoices.EDITOR
     )
-    MessageFactory(thread=thread2, is_unread=True)
-    thread3 = ThreadFactory()  # No messages initially
-    ThreadAccessFactory(
-        mailbox=mailbox, thread=thread3, role=enums.ThreadAccessRoleChoices.EDITOR
-    )
-    MessageFactory(
-        thread=thread3, is_unread=False, read_at=timezone.now()
-    )  # Already read
+    msg2 = MessageFactory(thread=thread2)
 
-    thread1.refresh_from_db()
-    thread1.update_stats()
-    thread2.refresh_from_db()
-    thread2.update_stats()
-    thread3.refresh_from_db()
-    thread3.update_stats()
-    assert thread1.has_unread is True
-    assert thread2.has_unread is True
-    assert thread3.has_unread is False
-
-    thread_ids = [str(thread1.id), str(thread2.id)]
-    data = {"flag": "unread", "value": False, "thread_ids": thread_ids}
+    read_at_value = timezone.now().isoformat()
+    data = {
+        "flag": "unread",
+        "value": False,
+        "message_ids": [str(msg1.id), str(msg2.id)],
+        "mailbox_id": str(mailbox.id),
+        "read_at": read_at_value,
+    }
     response = api_client.post(API_URL, data=data, format="json")
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data["updated_threads"] == 2
 
-    thread1.refresh_from_db()
-    thread2.refresh_from_db()
-    thread3.refresh_from_db()  # Should remain unchanged
-    assert thread1.has_unread is False
-    assert thread2.has_unread is False
-    assert thread3.has_unread is False
+    access1.refresh_from_db()
+    access2.refresh_from_db()
+    assert access1.read_at.isoformat() == read_at_value
+    assert access2.read_at.isoformat() == read_at_value
+
+
+def test_api_flag_unread_resolves_thread_ids_from_message_ids_ignores_inaccessible(
+    api_client,
+):
+    """Messages in inaccessible threads are ignored when resolving thread_ids."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+
+    # Accessible thread
+    thread1 = ThreadFactory(messaged_at=timezone.now())
+    access1 = ThreadAccessFactory(
+        mailbox=mailbox, thread=thread1, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    msg1 = MessageFactory(thread=thread1)
+
+    # Inaccessible thread (different mailbox, user has no access)
+    other_mailbox = MailboxFactory()
+    thread2 = ThreadFactory(messaged_at=timezone.now())
+    ThreadAccessFactory(
+        mailbox=other_mailbox, thread=thread2, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    msg2 = MessageFactory(thread=thread2)
+
+    read_at_value = timezone.now().isoformat()
+    data = {
+        "flag": "unread",
+        "value": False,
+        "message_ids": [str(msg1.id), str(msg2.id)],
+        "mailbox_id": str(mailbox.id),
+        "read_at": read_at_value,
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["updated_threads"] == 1
+
+    access1.refresh_from_db()
+    assert access1.read_at is not None
+
+
+def test_api_flag_unread_with_thread_ids_ignores_message_ids_resolution(api_client):
+    """When thread_ids are provided, message_ids should not trigger thread resolution."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+
+    thread1 = ThreadFactory(messaged_at=timezone.now())
+    access1 = ThreadAccessFactory(
+        mailbox=mailbox, thread=thread1, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+
+    thread2 = ThreadFactory(messaged_at=timezone.now())
+    access2 = ThreadAccessFactory(
+        mailbox=mailbox, thread=thread2, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    msg_in_thread2 = MessageFactory(thread=thread2)
+
+    read_at_value = timezone.now().isoformat()
+    data = {
+        "flag": "unread",
+        "value": False,
+        "thread_ids": [str(thread1.id)],
+        "message_ids": [str(msg_in_thread2.id)],
+        "mailbox_id": str(mailbox.id),
+        "read_at": read_at_value,
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    # Only thread1 (from thread_ids) should be updated, not thread2 (from message_ids)
+    assert response.data["updated_threads"] == 1
+
+    access1.refresh_from_db()
+    access2.refresh_from_db()
+    assert access1.read_at is not None
+    assert access2.read_at is None
+
+
+def test_api_flag_read_at_sets_timestamp(api_client):
+    """Sending read_at=timestamp sets ThreadAccess.read_at to that exact value."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    thread = ThreadFactory(messaged_at=timezone.now())
+    access = ThreadAccessFactory(
+        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    MessageFactory(thread=thread)
+    MessageFactory(thread=thread)
+
+    assert access.read_at is None
+
+    read_at_value = (timezone.now() - timedelta(minutes=5)).isoformat()
+    data = {
+        "flag": "unread",
+        "value": False,
+        "thread_ids": [str(thread.id)],
+        "mailbox_id": str(mailbox.id),
+        "read_at": read_at_value,
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["updated_threads"] == 1
+
+    access.refresh_from_db()
+    assert access.read_at is not None
+    assert access.read_at.isoformat() == read_at_value
+
+
+def test_api_flag_read_at_null_marks_all_unread(api_client):
+    """Sending read_at=null resets ThreadAccess.read_at to None (all unread)."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    thread = ThreadFactory(messaged_at=timezone.now())
+    access = ThreadAccessFactory(
+        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    MessageFactory(thread=thread)
+
+    # Start with everything read
+    access.read_at = timezone.now()
+    access.save(update_fields=["read_at"])
+
+    data = {
+        "flag": "unread",
+        "value": True,
+        "thread_ids": [str(thread.id)],
+        "mailbox_id": str(mailbox.id),
+        "read_at": None,
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["updated_threads"] == 1
+
+    access.refresh_from_db()
+    assert access.read_at is None
+
+
+def test_api_flag_unread_requires_read_at(api_client):
+    """Test that unread flag requires read_at parameter."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    thread = ThreadFactory(messaged_at=timezone.now())
+    ThreadAccessFactory(
+        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    MessageFactory(thread=thread)
+
+    data = {
+        "flag": "unread",
+        "value": True,
+        "thread_ids": [str(thread.id)],
+        "mailbox_id": str(mailbox.id),
+        # Missing read_at
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "read_at" in response.data["detail"]
+
+
+def test_api_flag_read_at_rejects_invalid_datetime(api_client):
+    """Sending an invalid read_at value should return a 400 error."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    thread = ThreadFactory(messaged_at=timezone.now())
+    ThreadAccessFactory(
+        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    MessageFactory(thread=thread)
+
+    data = {
+        "flag": "unread",
+        "value": False,
+        "thread_ids": [str(thread.id)],
+        "mailbox_id": str(mailbox.id),
+        "read_at": "not-a-date",
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "read_at" in response.data["detail"]
+
+
+def test_api_flag_unread_per_mailbox_isolation(api_client):
+    """Marking as read in one mailbox does not affect another mailbox's read state."""
+    user1 = UserFactory()
+    user2 = UserFactory()
+    mailbox1 = MailboxFactory(users_read=[user1])
+    mailbox2 = MailboxFactory(users_read=[user2])
+    thread = ThreadFactory(messaged_at=timezone.now())
+    access1 = ThreadAccessFactory(
+        mailbox=mailbox1, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    access2 = ThreadAccessFactory(
+        mailbox=mailbox2, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    MessageFactory(thread=thread)
+
+    # User1 marks thread as read
+    api_client.force_authenticate(user=user1)
+    data = {
+        "flag": "unread",
+        "value": False,
+        "thread_ids": [str(thread.id)],
+        "mailbox_id": str(mailbox1.id),
+        "read_at": timezone.now().isoformat(),
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+    assert response.status_code == status.HTTP_200_OK
+
+    # User1's access should be read, user2's should remain unread
+    access1.refresh_from_db()
+    access2.refresh_from_db()
+    assert access1.read_at is not None
+    assert access2.read_at is None
+
+
+def test_api_flag_read_at_syncs_opensearch(api_client, settings):
+    """Sending read_at should explicitly sync OpenSearch."""
+    settings.OPENSEARCH_INDEX_THREADS = True
+
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    thread = ThreadFactory(messaged_at=timezone.now())
+    ThreadAccessFactory(
+        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    MessageFactory(thread=thread)
+
+    data = {
+        "flag": "unread",
+        "value": False,
+        "thread_ids": [str(thread.id)],
+        "mailbox_id": str(mailbox.id),
+        "read_at": timezone.now().isoformat(),
+    }
+
+    with patch(
+        "core.api.viewsets.flag.update_threads_unread_mailboxes_task"
+    ) as mock_task:
+        response = api_client.post(API_URL, data=data, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    mock_task.delay.assert_called_once_with([str(thread.id)])
+
+
+def test_api_flag_read_at_multiple_threads(api_client):
+    """Sending read_at with multiple thread_ids updates all accesses."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    thread1 = ThreadFactory(messaged_at=timezone.now())
+    access1 = ThreadAccessFactory(
+        mailbox=mailbox, thread=thread1, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    MessageFactory(thread=thread1)
+    thread2 = ThreadFactory(messaged_at=timezone.now())
+    access2 = ThreadAccessFactory(
+        mailbox=mailbox, thread=thread2, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    MessageFactory(thread=thread2)
+
+    read_at_value = timezone.now().isoformat()
+    data = {
+        "flag": "unread",
+        "value": False,
+        "thread_ids": [str(thread1.id), str(thread2.id)],
+        "mailbox_id": str(mailbox.id),
+        "read_at": read_at_value,
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["updated_threads"] == 2
+
+    access1.refresh_from_db()
+    access2.refresh_from_db()
+    assert access1.read_at.isoformat() == read_at_value
+    assert access2.read_at.isoformat() == read_at_value
+
+
+def test_api_flag_read_at_viewer_can_update(api_client):
+    """A user with VIEWER ThreadAccess role can update read_at."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    thread = ThreadFactory(messaged_at=timezone.now())
+    access = ThreadAccessFactory(
+        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.VIEWER
+    )
+    MessageFactory(thread=thread)
+
+    assert access.read_at is None
+
+    read_at_value = timezone.now().isoformat()
+    data = {
+        "flag": "unread",
+        "value": False,
+        "thread_ids": [str(thread.id)],
+        "mailbox_id": str(mailbox.id),
+        "read_at": read_at_value,
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["updated_threads"] == 1
+
+    access.refresh_from_db()
+    assert access.read_at is not None
+    assert access.read_at.isoformat() == read_at_value
+
+
+def test_api_flag_unread_requires_mailbox_id(api_client):
+    """Test that unread flag requires mailbox_id parameter."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    thread = ThreadFactory()
+    ThreadAccessFactory(
+        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+
+    data = {
+        "flag": "unread",
+        "value": False,
+        "thread_ids": [str(thread.id)],
+        # Missing mailbox_id
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
 def test_api_flag_mark_messages_unauthorized(api_client):
@@ -238,7 +444,7 @@ def test_api_flag_mark_messages_unauthorized(api_client):
 
 
 def test_api_flag_mark_messages_no_permission(api_client):
-    """Test marking messages in a mailbox the user doesn't have access to."""
+    """Test marking threads in a mailbox the user doesn't have access to."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
     other_mailbox = MailboxFactory()  # User does not have access
@@ -246,18 +452,19 @@ def test_api_flag_mark_messages_no_permission(api_client):
     ThreadAccessFactory(
         mailbox=other_mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
     )
-    msg = MessageFactory(thread=thread, is_unread=True)
 
-    data = {"flag": "unread", "value": False, "message_ids": [str(msg.id)]}
+    data = {
+        "flag": "unread",
+        "value": False,
+        "thread_ids": [str(thread.id)],
+        "mailbox_id": str(other_mailbox.id),
+        "read_at": timezone.now().isoformat(),
+    }
     response = api_client.post(API_URL, data=data, format="json")
 
     # User without edit access: returns 200 but no threads updated
     assert response.status_code == status.HTTP_200_OK
     assert response.data["updated_threads"] == 0
-
-    # Verify message state hasn't changed
-    msg.refresh_from_db()
-    assert msg.is_unread is True
 
 
 @pytest.mark.parametrize(
@@ -384,7 +591,7 @@ def test_api_flag_mark_messages_trashed_success(api_client):
     """Test marking messages as trashed successfully."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = MailboxFactory(users_read=[user])  # Ensure correct permission if needed
+    mailbox = MailboxFactory(users_read=[user])
     thread = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
@@ -453,7 +660,7 @@ def test_api_flag_mark_messages_archived_success(api_client):
     """Test marking messages as archived successfully."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = MailboxFactory(users_read=[user])  # Ensure correct permission if needed
+    mailbox = MailboxFactory(users_read=[user])
     thread = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
@@ -579,3 +786,109 @@ def test_api_flag_mark_messages_not_spam_success(api_client):
 
     thread.refresh_from_db()
     assert thread.is_spam is False
+
+
+# --- Tests for Draft Children Cascade ---
+
+
+@pytest.mark.parametrize(
+    "flag,field,date_field",
+    [
+        ("trashed", "is_trashed", "trashed_at"),
+        ("archived", "is_archived", "archived_at"),
+        ("spam", "is_spam", None),
+    ],
+)
+def test_api_flag_cascade_to_draft_children(api_client, flag, field, date_field):
+    """Flagging a message by message_id cascades to its draft children."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    thread = ThreadFactory()
+    ThreadAccessFactory(
+        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    parent_msg = MessageFactory(thread=thread)
+    draft_child = MessageFactory(thread=thread, parent=parent_msg, is_draft=True)
+
+    data = {
+        "flag": flag,
+        "value": True,
+        "message_ids": [str(parent_msg.id)],
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+    assert response.status_code == status.HTTP_200_OK
+
+    parent_msg.refresh_from_db()
+    draft_child.refresh_from_db()
+    assert getattr(parent_msg, field) is True
+    assert getattr(draft_child, field) is True
+    if date_field:
+        assert getattr(draft_child, date_field) is not None
+
+
+@pytest.mark.parametrize(
+    "flag,field,date_field",
+    [
+        ("trashed", "is_trashed", "trashed_at"),
+        ("archived", "is_archived", "archived_at"),
+        ("spam", "is_spam", None),
+    ],
+)
+def test_api_flag_cascade_unflag_to_draft_children(api_client, flag, field, date_field):
+    """Unflagging a message by message_id cascades to its draft children."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    thread = ThreadFactory()
+    ThreadAccessFactory(
+        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    kwargs = {field: True}
+    if date_field:
+        kwargs[date_field] = timezone.now()
+    parent_msg = MessageFactory(thread=thread, **kwargs)
+    draft_child = MessageFactory(
+        thread=thread, parent=parent_msg, is_draft=True, **kwargs
+    )
+
+    data = {
+        "flag": flag,
+        "value": False,
+        "message_ids": [str(parent_msg.id)],
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+    assert response.status_code == status.HTTP_200_OK
+
+    parent_msg.refresh_from_db()
+    draft_child.refresh_from_db()
+    assert getattr(parent_msg, field) is False
+    assert getattr(draft_child, field) is False
+    if date_field:
+        assert getattr(draft_child, date_field) is None
+
+
+def test_api_flag_cascade_does_not_affect_non_draft_children(api_client):
+    """Trashing a message does NOT cascade to non-draft children."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    thread = ThreadFactory()
+    ThreadAccessFactory(
+        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    parent_msg = MessageFactory(thread=thread)
+    non_draft_child = MessageFactory(thread=thread, parent=parent_msg, is_draft=False)
+
+    data = {
+        "flag": "trashed",
+        "value": True,
+        "message_ids": [str(parent_msg.id)],
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+    assert response.status_code == status.HTTP_200_OK
+
+    parent_msg.refresh_from_db()
+    non_draft_child.refresh_from_db()
+    assert parent_msg.is_trashed is True
+    assert non_draft_child.is_trashed is False

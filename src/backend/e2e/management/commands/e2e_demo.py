@@ -366,7 +366,6 @@ class Command(BaseCommand):
             subject=subject,
             is_sender=True,
             is_draft=False,
-            is_unread=False,
             sent_at=timezone.now(),
         )
 

@@ -58,6 +58,11 @@ class ThreadViewSet(
                     "You do not have access to this mailbox."
                 ) from e
 
+        if mailbox_id:
+            queryset = queryset.annotate(
+                _has_unread=models.ThreadAccess.thread_unread_filter(mailbox_id),
+            )
+
         if label_slug:
             # Filter threads by label slug, ensuring user has access to the label's mailbox
             # Get labels accessible to the user, joining with mailbox access
@@ -75,6 +80,7 @@ class ThreadViewSet(
         # Apply boolean filters
         # These filters operate on the Thread model's boolean fields
         filter_mapping = {
+            "has_unread": "_has_unread" if mailbox_id else None,
             "has_trashed": "has_trashed",
             "has_archived": "has_archived",
             "has_draft": "has_draft",
@@ -103,14 +109,31 @@ class ThreadViewSet(
             else:
                 value = query_params.get(param)
 
-            if value is not None:
+            if value is not None and filter_field is not None:
                 if value == "1":
                     queryset = queryset.filter(**{filter_field: True})
                 else:
                     queryset = queryset.filter(**{filter_field: False})
 
-        queryset = queryset.order_by("-messaged_at", "-created_at")
+        order_field = self._get_order_field(query_params)
+        queryset = queryset.order_by(f"-{order_field}", "-created_at")
         return queryset
+
+    @staticmethod
+    def _get_order_field(query_params):
+        """Return the appropriate ordering field based on the active view filter."""
+        view_field_map = {
+            "has_trashed": "trashed_messaged_at",
+            "has_draft": "draft_messaged_at",
+            "has_sender": "sender_messaged_at",
+            "has_archived": "archived_messaged_at",
+            "has_active": "active_messaged_at",
+            "has_starred": "active_messaged_at",
+        }
+        for param, field in view_field_map.items():
+            if query_params.get(param) == "1":
+                return field
+        return "messaged_at"
 
     def destroy(self, request, *args, **kwargs):
         """Delete a thread, requiring EDITOR role on the thread."""
@@ -290,27 +313,28 @@ class ThreadViewSet(
                     status=drf.status.HTTP_400_BAD_REQUEST,
                 )
 
+        # Build unread condition from per-mailbox annotation
+        mailbox_id = request.query_params.get("mailbox_id")
+        if mailbox_id:
+            unread_condition = Q(_has_unread=True)
+        else:
+            unread_condition = Q(pk__isnull=True)  # No unread without mailbox context
+
         aggregations = {}
         for field in requested_fields:
-            # Use a unique key for the aggregation to avoid naming conflicts
             agg_key = f"count_{field}"
 
             if field == "all":
-                # Count all threads matching the filter
                 aggregations[agg_key] = Count("pk")
             elif field == "all_unread":
-                # Count all unread threads matching the filter
-                aggregations[agg_key] = Count("pk", filter=Q(has_unread=True))
+                aggregations[agg_key] = Count("pk", filter=unread_condition)
             elif field.endswith("_unread"):
-                # Count threads that match the condition AND are unread
-                base_field = field[:-7]  # Remove "_unread" suffix
+                base_field = field[:-7]
                 base_condition = Q(**{base_field: True})
-                unread_condition = Q(has_unread=True)
                 aggregations[agg_key] = Count(
                     "pk", filter=base_condition & unread_condition
                 )
             else:
-                # Count threads where the boolean field is True
                 aggregations[agg_key] = Count("pk", filter=Q(**{field: True}))
 
         if not aggregations:

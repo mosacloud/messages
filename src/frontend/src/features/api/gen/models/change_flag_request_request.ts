@@ -14,4 +14,11 @@ export interface ChangeFlagRequestRequest {
   message_ids?: string[];
   /** List of thread UUIDs where all messages should have the flag change applied. */
   thread_ids?: string[];
+  /** Mailbox UUID. Required when flag is 'unread'. */
+  mailbox_id?: string;
+  /**
+   * Timestamp up to which messages are considered read. When provided with flag='unread', sets ThreadAccess.read_at directly. null means nothing has been read (all messages unread).
+   * @nullable
+   */
+  read_at?: string | null;
 }

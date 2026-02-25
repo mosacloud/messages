@@ -13,7 +13,11 @@ from core.services.identity.keycloak import (
     sync_maildomain_to_keycloak_group,
 )
 from core.services.search import MESSAGE_INDEX, get_opensearch_client
-from core.services.search.tasks import index_message_task, reindex_thread_task
+from core.services.search.tasks import (
+    index_message_task,
+    reindex_thread_task,
+    update_threads_unread_mailboxes_task,
+)
 from core.utils import ThreadStatsUpdateDeferrer
 
 logger = logging.getLogger(__name__)
@@ -235,3 +239,41 @@ def delete_orphan_draft_attachments(sender, instance, **kwargs):
     if instance.blob and instance.blob.pk:
         if instance.blob.messages.count() == 1:
             instance.blob.delete()
+
+
+@receiver(post_save, sender=models.ThreadAccess)
+def update_unread_mailboxes_on_access_save(sender, instance, created, **kwargs):
+    """Update unread_mailboxes in OpenSearch when ThreadAccess.read_at changes."""
+    if not getattr(settings, "OPENSEARCH_INDEX_THREADS", False):
+        return
+
+    update_fields = kwargs.get("update_fields")
+    if update_fields is not None and "read_at" not in update_fields:
+        return
+
+    try:
+        update_threads_unread_mailboxes_task.delay([str(instance.thread_id)])
+    # pylint: disable=broad-exception-caught
+    except Exception as e:
+        logger.exception(
+            "Error scheduling unread_mailboxes update for thread %s: %s",
+            instance.thread_id,
+            e,
+        )
+
+
+@receiver(post_delete, sender=models.ThreadAccess)
+def update_unread_mailboxes_on_access_delete(sender, instance, **kwargs):
+    """Update unread_mailboxes in OpenSearch when a ThreadAccess is deleted."""
+    if not getattr(settings, "OPENSEARCH_INDEX_THREADS", False):
+        return
+
+    try:
+        update_threads_unread_mailboxes_task.delay([str(instance.thread_id)])
+    # pylint: disable=broad-exception-caught
+    except Exception as e:
+        logger.exception(
+            "Error scheduling unread_mailboxes update for thread %s: %s",
+            instance.thread_id,
+            e,
+        )

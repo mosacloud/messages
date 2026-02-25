@@ -9,6 +9,7 @@ from core.services.search.index import (
     reindex_all,
     reindex_mailbox,
     reindex_thread,
+    update_thread_unread_mailboxes,
 )
 from core.services.search.mapping import MESSAGE_INDEX, MESSAGE_MAPPING
 from core.services.search.parse import parse_search_query
@@ -28,6 +29,7 @@ __all__ = [
     "reindex_all",
     "reindex_mailbox",
     "reindex_thread",
+    "update_thread_unread_mailboxes",
     # Parsing
     "parse_search_query",
     # Searching

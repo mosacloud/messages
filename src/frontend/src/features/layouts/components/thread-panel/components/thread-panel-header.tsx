@@ -25,7 +25,7 @@ type ThreadPanelTitleProps = {
 
 const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, isSelectionMode, onSelectAll, onClearSelection, onEnableSelectionMode, onDisableSelectionMode }: ThreadPanelTitleProps) => {
     const { t } = useTranslation();
-    const { markAsRead, markAsUnread } = useRead();
+    const { markAsReadAt } = useRead();
     const { markAsArchived, markAsUnarchived } = useArchive();
     const { markAsTrashed, markAsUntrashed } = useTrash();
     const { markAsSpam, markAsNotSpam } = useSpam();
@@ -110,8 +110,9 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                     <Tooltip content={markAllTooltip}>
                         <Button
                             onClick={() => {
-                                markAsRead({
+                                markAsReadAt({
                                     threadIds: threadIdsToMark,
+                                    readAt: new Date().toISOString(),
                                     onSuccess: () => {
                                         unselectThread();
                                         onClearSelection();
@@ -212,8 +213,9 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                                 label: markAllUnreadLabel,
                                 icon: <span className="material-icons">mark_email_unread</span>,
                                 callback: () => {
-                                    markAsUnread({
+                                    markAsReadAt({
                                         threadIds: threadIdsToMark,
+                                        readAt: null,
                                         onSuccess: () => {
                                             unselectThread();
                                             onClearSelection();

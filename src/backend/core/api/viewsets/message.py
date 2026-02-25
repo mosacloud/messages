@@ -88,6 +88,14 @@ class MessageViewSet(
             )
         )
 
+        mailbox_id = self.request.GET.get("mailbox_id")
+        if mailbox_id:
+            try:
+                uuid.UUID(mailbox_id)
+            except ValueError as exc:
+                raise drf.exceptions.ValidationError("Invalid UUID format") from exc
+            queryset = queryset.with_read_state(mailbox_id)
+
         if self.action == "list":
             thread_id = self.request.GET.get("thread_id")
             if thread_id:

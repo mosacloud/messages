@@ -1,28 +1,56 @@
 import { useMailboxContext } from "../providers/mailbox";
 import useFlag from "./use-flag";
 
+type MarkAsReadAtOptions = {
+    threadIds: string[];
+    readAt: string | null;
+    onSuccess?: () => void;
+}
+
 /**
- * Hook to mark messages or threads as read or unread
+ * Hook to mark threads as read up to a given timestamp.
+ *
+ * - readAt = ISO timestamp → messages created before that are read
+ * - readAt = null → all messages are unread
+ *
+ * The flag API value is derived: readAt === null means unread (value=true).
  */
 const useRead = () => {
-    const { invalidateThreadMessages, invalidateThreadsStats } = useMailboxContext();
+    const { selectedMailbox, invalidateThreadMessages, invalidateThreadsStats } = useMailboxContext();
 
     const { mark, unmark, status } = useFlag('unread', {
         showToast: false,
-        onSuccess: (data) => {
-            invalidateThreadMessages({
-                type: 'update',
-                metadata: { ids: data.message_ids ?? [], threadIds: data.thread_ids ?? [] },
-                payload: { is_unread: data.value, read_at: data.value ? new Date().toISOString() : null }
-            });
-            invalidateThreadsStats();
-        }
     });
 
+    const mailboxId = selectedMailbox?.id;
+
+    const markAsReadAt = ({ threadIds, readAt, onSuccess }: MarkAsReadAtOptions) => {
+        const isUnread = readAt === null;
+        const flagFn = isUnread ? mark : unmark;
+
+        flagFn({
+            threadIds,
+            mailboxId,
+            readAt,
+            onSuccess: (data) => {
+                invalidateThreadMessages({
+                    type: 'update',
+                    metadata: { ids: [], threadIds: data.thread_ids ?? [] },
+                    payload: { is_unread: isUnread },
+                    threadAccessReadAt: mailboxId
+                        ? { mailboxId, readAt: data.read_at ?? null }
+                        : undefined,
+                    readAt: data.read_at ?? null,
+                });
+                invalidateThreadsStats();
+                onSuccess?.();
+            },
+        });
+    };
+
     return {
-        markAsRead: unmark,
-        markAsUnread: mark,
-        status
+        markAsReadAt,
+        status,
     };
 }
 

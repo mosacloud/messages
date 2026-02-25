@@ -19,6 +19,10 @@ class ViewHelper {
         return matchSearchParams;
     }
 
+    static isInboxView() {
+        return new ViewHelper().#isView('inbox');
+    }
+
     static isTrashedView() {
         return new ViewHelper().#isView('trash');
     }

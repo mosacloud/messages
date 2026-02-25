@@ -5,7 +5,6 @@ import uuid
 from typing import Optional
 
 from django.conf import settings
-from django.utils import timezone
 
 import rest_framework as drf
 
@@ -382,13 +381,18 @@ def create_draft(
         sender=sender_contact,
         parent=reply_to_message,
         subject=subject,
-        read_at=timezone.now(),
         is_draft=True,
         is_sender=True,
         draft_blob=draft_blob,
         signature=signature,
     )
     message.save()
+
+    # Mark the thread as read for the draft creator (use message.created_at
+    # to stay consistent with inbound_create sender flow)
+    models.ThreadAccess.objects.filter(thread=thread, mailbox=mailbox).update(
+        read_at=message.created_at
+    )
 
     # Update draft details with recipients and attachments
     update_data = {

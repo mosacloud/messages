@@ -114,7 +114,6 @@ class TestApiDraftAndSendMessage:
         draft_message = models.Message.objects.get(id=draft_message_id)
         assert draft_message.is_draft is True
         assert draft_message.is_sender is True
-        assert draft_message.is_unread is False
         assert draft_message.is_trashed is False
         assert draft_message.is_starred is False
         assert draft_message.has_attachments is False
@@ -132,7 +131,6 @@ class TestApiDraftAndSendMessage:
 
         assert draft_message.thread.has_messages is True
         assert draft_message.thread.has_sender is False
-        assert draft_message.thread.has_unread is False
         assert draft_message.thread.has_trashed is False
         assert draft_message.thread.has_starred is False
         assert draft_message.thread.has_attachments is False
@@ -191,7 +189,6 @@ class TestApiDraftAndSendMessage:
 
         assert sent_message.is_draft is False
         assert sent_message.is_sender is True
-        assert sent_message.is_unread is False
         assert sent_message.is_trashed is False
         assert sent_message.is_starred is False
         assert sent_message.sent_at is not None
@@ -199,12 +196,41 @@ class TestApiDraftAndSendMessage:
         # Assert the thread is updated
         assert sent_message.thread.has_messages is True
         assert sent_message.thread.has_sender is True
-        assert sent_message.thread.has_unread is False
         assert sent_message.thread.has_trashed is False
         assert sent_message.thread.has_starred is False
         assert sent_message.thread.has_draft is False
         assert sent_message.thread.sender_names == [sent_message.sender.name]
         assert sent_message.thread.messaged_at is not None
+
+    def test_create_draft_sets_thread_access_read_at(self, mailbox, authenticated_user):
+        """Creating a draft should mark the thread as read for the creator."""
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=authenticated_user,
+            role=enums.MailboxRoleChoices.SENDER,
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=authenticated_user)
+
+        draft_response = client.post(
+            reverse("draft-message"),
+            {
+                "senderId": mailbox.id,
+                "subject": "Draft read_at test",
+                "draftBody": json.dumps({"content": "test"}),
+                "to": ["recipient@external.com"],
+            },
+            format="json",
+        )
+
+        assert draft_response.status_code == status.HTTP_201_CREATED
+
+        draft_message = models.Message.objects.get(id=draft_response.data["id"])
+        access = models.ThreadAccess.objects.get(
+            thread=draft_message.thread, mailbox=mailbox
+        )
+        assert access.read_at is not None
 
     @patch("core.mda.outbound.send_outbound_message")
     def test_draft_and_send_message_success_delegated_access(
@@ -282,7 +308,6 @@ class TestApiDraftAndSendMessage:
         draft_message = models.Message.objects.get(id=draft_message_id)
         assert draft_message.is_draft is True
         assert draft_message.is_sender is True
-        assert draft_message.is_unread is False
         assert draft_message.is_trashed is False
         assert draft_message.is_starred is False
         assert draft_message.has_attachments is False
@@ -290,7 +315,6 @@ class TestApiDraftAndSendMessage:
 
         assert draft_message.thread.has_messages is True
         assert draft_message.thread.has_sender is False
-        assert draft_message.thread.has_unread is False
         assert draft_message.thread.has_trashed is False
         assert draft_message.thread.has_starred is False
         assert draft_message.thread.has_attachments is False
@@ -327,7 +351,6 @@ class TestApiDraftAndSendMessage:
 
         assert sent_message.is_draft is False
         assert sent_message.is_sender is True
-        assert sent_message.is_unread is False
         assert sent_message.is_trashed is False
         assert sent_message.is_starred is False
         assert sent_message.sent_at is not None
@@ -335,7 +358,6 @@ class TestApiDraftAndSendMessage:
         # Assert the thread is updated
         assert sent_message.thread.has_messages is True
         assert sent_message.thread.has_sender is True
-        assert sent_message.thread.has_unread is False
         assert sent_message.thread.has_trashed is False
         assert sent_message.thread.has_starred is False
         assert sent_message.thread.has_draft is False
@@ -1090,7 +1112,7 @@ class TestApiDraftAndSendReply:
             mailbox=mailbox,
             role=enums.ThreadAccessRoleChoices.EDITOR,
         )
-        message = factories.MessageFactory(thread=thread_access.thread, read_at=None)
+        message = factories.MessageFactory(thread=thread_access.thread)
         factories.MessageRecipientFactory(
             message=message,
             type=enums.MessageRecipientTypeChoices.TO,
@@ -1183,7 +1205,7 @@ class TestApiDraftAndSendReply:
             mailbox=mailbox,
             role=thread_role,
         )
-        message = factories.MessageFactory(thread=thread_access.thread, read_at=None)
+        message = factories.MessageFactory(thread=thread_access.thread)
         factories.MessageRecipientFactory(
             message=message,
             type=enums.MessageRecipientTypeChoices.TO,
@@ -1229,7 +1251,7 @@ class TestApiDraftAndSendReply:
             mailbox=mailbox,
             role=enums.ThreadAccessRoleChoices.VIEWER,
         )
-        message = factories.MessageFactory(thread=thread_access.thread, read_at=None)
+        message = factories.MessageFactory(thread=thread_access.thread)
         factories.MessageRecipientFactory(
             message=message,
             type=enums.MessageRecipientTypeChoices.TO,
@@ -1549,7 +1571,6 @@ class TestApiDraftAndSendReply:
         message1_received = thread2.messages.first()
         assert message1_received.subject == subject
         assert message1_received.is_sender is False
-        assert message1_received.is_unread is True
         assert message1_received.sender.email == addr1
         # Should use the same MIME ID
         assert message1_received.mime_id == message1.mime_id
@@ -1605,7 +1626,6 @@ class TestApiDraftAndSendReply:
         assert message2_received.subject == reply_subject
         assert message2_received.sender.email == addr2
         assert message2_received.is_sender is False
-        assert message2_received.is_unread is True
         assert message2_received.parent == message1
 
         # Should use the same MIME ID
@@ -1659,7 +1679,6 @@ class TestApiDraftAndSendReply:
         assert message3_received.subject == rereply_subject
         assert message3_received.sender.email == addr1
         assert message3_received.is_sender is False
-        assert message3_received.is_unread is True
         assert message3_received.mime_id == message3.mime_id
         assert message3_received.parent == message2
 
@@ -1696,7 +1715,7 @@ class TestApiDraftAndSendReply:
             thread=thread_access.thread,
             role=enums.ThreadAccessRoleChoices.EDITOR,
         )
-        message = factories.MessageFactory(thread=thread_access.thread, read_at=None)
+        message = factories.MessageFactory(thread=thread_access.thread)
         factories.MessageRecipientFactory(
             message=message,
             type=enums.MessageRecipientTypeChoices.TO,

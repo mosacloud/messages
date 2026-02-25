@@ -194,34 +194,17 @@ class TestSearchE2E:
         create_test_thread,
         wait_for_indexing,
     ):
-        """Test searching with additional filters."""
-        # Create a thread with unread status
-        thread, message = create_test_thread(
+        """Test searching with is:unread filter.
+
+        The thread's ThreadAccess has read_at=None by default (unread),
+        so the has_parent filter on unread_mailboxes should match it.
+        """
+        thread, _ = create_test_thread(
             subject="Important Notification", content="Please review the document"
         )
-        # Search for the thread with unread filter
         response = api_client.get(f"{test_url}?search=Notification is:unread")
 
-        # Verify response
         assert response.status_code == 200
-
-        # Check if the thread is found
-        assert len(response.data["results"]) == 0
-
-        # Update the message to be unread
-        message.is_unread = True
-        message.save()
-
-        # Wait for indexing to complete
-        wait_for_indexing()
-
-        # Search for the thread with unread filter
-        response = api_client.get(f"{test_url}?search=Notification is:unread")
-
-        # Verify response
-        assert response.status_code == 200
-
-        # Check if the thread is found
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(thread.id) in thread_ids
 

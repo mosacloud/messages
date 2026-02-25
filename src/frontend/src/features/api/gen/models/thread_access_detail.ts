@@ -16,4 +16,6 @@ export interface ThreadAccessDetail {
   readonly id: string;
   mailbox: MailboxLight;
   readonly role: ThreadAccessRoleChoices;
+  /** @nullable */
+  readonly read_at: string | null;
 }

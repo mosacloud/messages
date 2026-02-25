@@ -52,6 +52,7 @@ const ThreadMessageFooter = ({
                 className="thread-message__intersection-trigger"
                 ref={intersectionRef}
                 data-message-id={message.id}
+                data-created-at={message.created_at}
             />
             {hasCalendarInvites && (
                 <div className="thread-message__calendar-invites">

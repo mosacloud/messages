@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 from django.core.files.storage import storages
 from django.urls import reverse
+from django.utils import timezone
 
 import pytest
 
@@ -417,9 +418,12 @@ def test_export_includes_status_headers(mailbox_fixture, admin_user, cleanup_exp
     """Test that exported messages include Status/X-Status headers for flags."""
     # Create a read, starred message
     msg = create_test_message(mailbox_fixture, "Starred Message", "Important content")
-    msg.is_unread = False  # Read
     msg.is_starred = True  # Starred
     msg.save()
+    # Mark as read via ThreadAccess.read_at
+    access = ThreadAccess.objects.get(thread=msg.thread, mailbox=mailbox_fixture)
+    access.read_at = timezone.now()
+    access.save(update_fields=["read_at"])
 
     mock_task = MagicMock()
 
@@ -472,15 +476,17 @@ Body content here
         mailbox=mailbox_fixture,
     )
     thread = Thread.objects.create(subject="Message with Received headers")
-    ThreadAccess.objects.create(thread=thread, mailbox=mailbox_fixture)
+    access = ThreadAccess.objects.create(thread=thread, mailbox=mailbox_fixture)
     msg = Message.objects.create(
         thread=thread,
         blob=blob,
         subject="Message with Received headers",
         sender=factories.ContactFactory(email="sender@example.com"),
         is_sender=False,
-        is_unread=False,
     )
+    # Mark as read via ThreadAccess.read_at
+    access.read_at = timezone.now()
+    access.save(update_fields=["read_at"])
     label = Label.objects.create(
         name="test-order", slug="test-order", mailbox=mailbox_fixture
     )
@@ -606,10 +612,8 @@ def test_export_labels_with_spaces_are_quoted(
 @pytest.mark.django_db
 def test_export_unread_message_status(mailbox_fixture, admin_user, cleanup_exports):
     """Test that unread messages have correct Status header (O without R)."""
-    # Create an unread message
-    msg = create_test_message(mailbox_fixture, "Unread Message", "Unread content")
-    msg.is_unread = True
-    msg.save()
+    # Create an unread message (no read_at on ThreadAccess → unread)
+    create_test_message(mailbox_fixture, "Unread Message", "Unread content")
 
     mock_task = MagicMock()
 

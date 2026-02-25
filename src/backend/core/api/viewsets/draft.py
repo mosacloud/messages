@@ -103,22 +103,22 @@ logger = logging.getLogger(__name__)
     },
     description="""
     Create or update a draft message.
-    
+
     This endpoint allows you to:
     - Create a new draft message in a new thread
     - Create a draft reply to an existing message in an existing thread
     - Update an existing draft message
-    
+
     For creating a new draft:
     - Do not include messageId
     - Include parentId if replying to an existing message
-    
+
     For updating an existing draft:
     - Include messageId of the draft to update
     - Only the fields that are provided will be updated
-    
+
     At least one of draftBody must be provided.
-    
+
     To add attachments, upload them first using the /api/v1.0/blob/upload/{mailbox_id}/ endpoint
     and include the returned blobIds in the attachmentIds field.
     """,
@@ -225,10 +225,13 @@ class DraftMessageView(APIView):
             user=request.user,
         )
 
-        # Refresh to get latest data
-        message.refresh_from_db()
+        # Re-query with read-state annotation for accurate is_unread
+        message = models.Message.objects.with_read_state(sender_mailbox.id).get(
+            id=message.id
+        )
         return Response(
-            serializers.MessageSerializer(message).data, status=status.HTTP_201_CREATED
+            serializers.MessageSerializer(message, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
         )
 
     @transaction.atomic
@@ -276,8 +279,10 @@ class DraftMessageView(APIView):
         # Update thread stats
         updated_message.thread.update_stats()
 
-        # Refresh to get latest data
-        updated_message.refresh_from_db()
+        # Re-query with read-state annotation for accurate is_unread
+        updated_message = models.Message.objects.with_read_state(sender_mailbox.id).get(
+            id=updated_message.id
+        )
         serializer = serializers.MessageSerializer(
             updated_message, context={"request": request}
         )

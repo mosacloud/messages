@@ -274,9 +274,9 @@ class TestDeliverInboundMessage:
         assert models.Contact.objects.count() == 2
 
         thread = models.Thread.objects.first()
-        assert thread.accesses.first().mailbox == target_mailbox
+        access = thread.accesses.first()
+        assert access.mailbox == target_mailbox
         assert thread.subject == sample_parsed_email["subject"]
-        assert thread.has_unread is True
         assert thread.snippet == "Test body content."
 
         message = models.Message.objects.first()
@@ -287,7 +287,9 @@ class TestDeliverInboundMessage:
         assert message.sender.mailbox == target_mailbox
         assert message.blob.get_content() == raw_email_data
         assert message.mime_id == sample_parsed_email["message_id"]
-        assert message.read_at is None
+
+        # Inbound message from another sender: thread should be unread
+        assert access.read_at is None
 
         assert message.recipients.count() == 1
         msg_recipient = message.recipients.first()
@@ -335,9 +337,10 @@ class TestDeliverInboundMessage:
         assert models.Message.objects.count() == 1
         message = models.Message.objects.first()
         assert message.thread == existing_thread
-        # Ensure thread is marked unread again
-        existing_thread.refresh_from_db()
-        assert existing_thread.has_unread is True
+
+        # Reply from another sender: thread should remain unread
+        access = existing_thread.accesses.get(mailbox=target_mailbox)
+        assert access.read_at is None
 
     @override_settings(MESSAGES_ACCEPT_ALL_EMAILS=True)
     def test_mailbox_creation_enabled(self, sample_parsed_email, raw_email_data):
@@ -515,6 +518,10 @@ class TestDeliverInboundMessage:
         message1 = thread2.messages.first()
         assert message1.mime_id == parsed_email_1["message_id"]
 
+        # mailbox2 received a message from someone else: thread should be unread
+        access2 = thread2.accesses.get(mailbox=mailbox2)
+        assert access2.read_at is None
+
         # 2. user2 -> user1 (Reply)
         parsed_email_2 = {
             "subject": f"Re: {subject}",
@@ -539,6 +546,10 @@ class TestDeliverInboundMessage:
         message2 = thread1.messages.first()
         assert message2.mime_id == parsed_email_2["message_id"]
         assert thread1.subject == f"Re: {subject}"
+
+        # mailbox1 received a reply: thread should be unread
+        access1 = thread1.accesses.get(mailbox=mailbox1)
+        assert access1.read_at is None
 
         # 3. user1 -> user2 (Reply to Reply)
         parsed_email_3 = {

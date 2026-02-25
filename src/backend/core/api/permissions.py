@@ -123,15 +123,15 @@ class IsAllowedToAccess(IsAuthenticated):
 
         # --- The following logic only applies if is_list_action is True --- #
         # Check access based on query params for LIST action
-        if mailbox_id:
-            # Check if the user has access to this specific mailbox to list threads
-            return models.Mailbox.objects.filter(
-                id=mailbox_id, accesses__user=request.user
-            ).exists()
         if thread_id:
             # Check if the user has access to this specific thread to list messages
             return models.ThreadAccess.objects.filter(
                 thread_id=thread_id, mailbox__accesses__user=request.user
+            ).exists()
+        if mailbox_id:
+            # Check if the user has access to this specific mailbox to list threads
+            return models.Mailbox.objects.filter(
+                id=mailbox_id, accesses__user=request.user
             ).exists()
 
         return False  # Should not be reached if logic above is correct
