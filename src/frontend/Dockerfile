@@ -1,11 +1,8 @@
 FROM node:22-alpine AS frontend-deps
 
-ENV npm_config_cache=/tmp/npm-cache
-
 ARG DOCKER_USER=1000
 WORKDIR /home/frontend/
 
-RUN chown -R ${DOCKER_USER} /tmp/npm-cache
 RUN chown -R ${DOCKER_USER} /home/frontend
 
 # Install deps and run all npm commands as the user running the container

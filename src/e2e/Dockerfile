@@ -6,7 +6,6 @@ FROM docker:27-cli AS docker-cli
 # Main image
 FROM node:22-slim
 
-ENV npm_config_cache=/tmp/npm-cache
 ENV PLAYWRIGHT_BROWSERS_PATH=/tmp/playwright-browsers
 
 ENV HOME=/tmp
@@ -31,7 +30,7 @@ RUN npm install
 COPY . ./
 
 # Fix ownership for the user (use numeric UID to avoid lookup issues)
-RUN chown -R $DOCKER_USER /tmp/npm-cache /app
+RUN chown -R $DOCKER_USER /app
 
 # Run test with unprivileged user
 USER $DOCKER_USER
