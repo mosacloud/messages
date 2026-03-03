@@ -66,6 +66,36 @@ class TestRetrieveMessage:
         # we should get a 404 because the message is not accessible by the other user
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
+    def test_retrieve_message_sender_user_null(
+        self, message, message_url, mailbox_access
+    ):
+        """A message without a sender_user should return null for the field."""
+        assert message.sender_user is None
+
+        client = APIClient()
+        client.force_authenticate(user=mailbox_access.user)
+        response = client.get(message_url)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["sender_user"] is None
+
+    def test_retrieve_message_sender_user(self, message, message_url, mailbox_access):
+        """A message with a sender_user should return the user's id, full_name and email."""
+        sender_user = factories.UserFactory(
+            full_name="Alice Martin", email="alice@example.com"
+        )
+        message.sender_user = sender_user
+        message.save()
+
+        client = APIClient()
+        client.force_authenticate(user=mailbox_access.user)
+        response = client.get(message_url)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["sender_user"] == {
+            "id": str(sender_user.id),
+            "full_name": sender_user.full_name,
+            "email": sender_user.email,
+        }
+
     def test_retrieve_message_eml(self, message_url_eml, message, mailbox_access):
         """Test retrieving a message EML."""
         client = APIClient()

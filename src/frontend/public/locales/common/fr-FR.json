@@ -458,6 +458,7 @@
   "Send Feedback": "Envoyer le message",
   "Sending message...": "Envoi du message en cours...",
   "Sent": "Envoyés",
+  "Sent by {{name}}": "Envoyé par {{name}}",
   "Settings": "Paramètres",
   "Share access": "Partager l'accès",
   "Share the credentials of this mailbox with its user. You must transfer them securely, preferably physically.": "Transmettez les identifiants de cette boîte mail à son utilisateur de façon sécurisée, de préférence physiquement.",

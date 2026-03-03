@@ -8,6 +8,7 @@
 import type { MessageBodyItem } from "./message_body_item";
 import type { Attachment } from "./attachment";
 import type { Contact } from "./contact";
+import type { MessageSenderUserProperty } from "./message_sender_user_property";
 import type { MessageRecipient } from "./message_recipient";
 import type { MessageSignature } from "./message_signature";
 import type { MessageStmsgHeaders } from "./message_stmsg_headers";
@@ -35,6 +36,8 @@ export interface Message {
   readonly draftBody: string | null;
   readonly attachments: readonly Attachment[];
   readonly sender: Contact;
+  /** @nullable */
+  readonly sender_user: MessageSenderUserProperty;
   readonly to: readonly MessageRecipient[];
   readonly cc: readonly MessageRecipient[];
   readonly bcc: readonly MessageRecipient[];

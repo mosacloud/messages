@@ -420,6 +420,7 @@
   "Send Feedback": "Send Feedback",
   "Sending message...": "Sending message...",
   "Sent": "Sent",
+  "Sent by {{name}}": "Sent by {{name}}",
   "Settings": "Settings",
   "Share access": "Share access",
   "Share the credentials of this mailbox with its user. You must transfer them securely, preferably physically.": "Share the credentials of this mailbox with its user. You must transfer them securely, preferably physically.",

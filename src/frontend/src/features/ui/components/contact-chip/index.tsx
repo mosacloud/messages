@@ -26,10 +26,11 @@ type ContactChipProps = {
     status?: ContactChipDeliveryStatus | ContactChipSenderStatus;
     displayEmail?: boolean;
     isUser?: boolean;
+    senderUserName?: string | null;
     deliveryActions?: ContactChipDeliveryAction[];
 } & React.HTMLAttributes<HTMLDivElement>;
 
-export const ContactChip = ({ contact, status, displayEmail = false, isUser = false, deliveryActions, className, ...props }: ContactChipProps) => {
+export const ContactChip = ({ contact, status, displayEmail = false, isUser = false, senderUserName, deliveryActions, className, ...props }: ContactChipProps) => {
     const { t } = useTranslation();
     const popoverTriggerRef = useRef<HTMLButtonElement | null>(null);
     const [isPopoverOpen, setIsPopoverOpen] = useState(false);
@@ -65,6 +66,7 @@ export const ContactChip = ({ contact, status, displayEmail = false, isUser = fa
             </button>
             <ContactPopover
                 contact={contact}
+                senderUserName={senderUserName}
                 isOpen={isPopoverOpen}
                 triggerRef={popoverTriggerRef}
                 onOpenChange={setIsPopoverOpen}

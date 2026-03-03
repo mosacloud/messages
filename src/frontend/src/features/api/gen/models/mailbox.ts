@@ -15,6 +15,8 @@ export interface Mailbox {
   /** primary key for the record as UUID */
   readonly id: string;
   readonly email: string;
+  /** Whether this mailbox identifies a person (i.e. is not an alias or a group) */
+  readonly is_identity: boolean;
   readonly role: MailboxRoleChoices;
   readonly count_unread_messages: string;
   readonly count_messages: string;

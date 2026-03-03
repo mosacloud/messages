@@ -8,8 +8,10 @@ import { Badge } from "@/features/ui/components/badge";
 import { ContactChip, ContactChipDeliveryStatus, ContactChipDeliveryAction } from "@/features/ui/components/contact-chip";
 import { DateHelper } from "@/features/utils/date-helper";
 import useTrash from "@/features/message/use-trash";
+import { useMailboxContext } from "@/features/providers/mailbox";
 import { ThreadMessageHeaderProps } from "./types";
 import ThreadMessageActions from "./thread-message-actions";
+import { useAuth } from "@/features/auth";
 
 const ThreadMessageHeader = ({
     message,
@@ -24,10 +26,21 @@ const ThreadMessageHeader = ({
     onUpdateRecipientStatus,
 }: ThreadMessageHeaderProps) => {
     const { t, i18n } = useTranslation();
+    const { user } = useAuth();
     const { markAsUntrashed } = useTrash();
+    const { selectedMailbox } = useMailboxContext();
 
     // Derived state specific to header
     const isSuspiciousSender = Boolean(message.stmsg_headers?.['sender-auth'] === 'none');
+
+    const senderUserName = useMemo(() => {
+        if (message.is_sender && message.sender_user && selectedMailbox && selectedMailbox.email !== message.sender_user.email) {
+            if (user?.id === message.sender_user.id) return t('You')
+            return message.sender_user.full_name ?? message.sender_user.email;
+        }
+
+        return undefined;
+    }, [message.is_sender, message.sender_user, selectedMailbox?.is_identity, user?.id, t])
 
     // Handler for untrash banner action
     const handleMarkAsUntrashed = useCallback(() => {
@@ -140,6 +153,7 @@ const ThreadMessageHeader = ({
                                     className="thread-message__sender-chip"
                                     contact={message.sender}
                                     isUser={message.is_sender}
+                                    senderUserName={senderUserName}
                                     status={isSuspiciousSender ? 'unverified' : undefined}
                                     displayEmail
                                 />

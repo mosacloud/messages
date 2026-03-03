@@ -6295,6 +6295,11 @@
                         "type": "string",
                         "readOnly": true
                     },
+                    "is_identity": {
+                        "type": "boolean",
+                        "readOnly": true,
+                        "description": "Whether this mailbox identifies a person (i.e. is not an alias or a group)"
+                    },
                     "role": {
                         "allOf": [
                             {
@@ -6387,6 +6392,7 @@
                     "count_unread_messages",
                     "email",
                     "id",
+                    "is_identity",
                     "role"
                 ]
             },
@@ -6959,6 +6965,15 @@
                         ],
                         "readOnly": true
                     },
+                    "sender_user": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/MessageSenderUser"
+                            }
+                        ],
+                        "readOnly": true,
+                        "nullable": true
+                    },
                     "to": {
                         "type": "array",
                         "items": {
@@ -7054,6 +7069,7 @@
                     "parent_id",
                     "read_at",
                     "sender",
+                    "sender_user",
                     "sent_at",
                     "signature",
                     "stmsg_headers",
@@ -7146,6 +7162,35 @@
                     "delivery_status",
                     "id",
                     "retry_at"
+                ]
+            },
+            "MessageSenderUser": {
+                "type": "object",
+                "description": "Lightweight serializer for the user who sent a message.",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true,
+                        "description": "primary key for the record as UUID"
+                    },
+                    "full_name": {
+                        "type": "string",
+                        "readOnly": true,
+                        "nullable": true
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "readOnly": true,
+                        "nullable": true,
+                        "title": "Identity email address"
+                    }
+                },
+                "required": [
+                    "email",
+                    "full_name",
+                    "id"
                 ]
             },
             "MessageTemplate": {

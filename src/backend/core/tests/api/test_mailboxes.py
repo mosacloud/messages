@@ -102,6 +102,7 @@ class TestMailboxViewSet:
         assert response.data[0]["id"] == str(user_mailbox2.id)
         assert response.data[0]["email"] == str(user_mailbox2)
         assert response.data[0]["role"] == "editor"
+        assert response.data[0]["is_identity"] is True
         assert response.data[0]["count_unread_messages"] == 1
         assert response.data[0]["count_messages"] == 2
         assert response.data[0]["count_delivering"] == 1
@@ -109,9 +110,26 @@ class TestMailboxViewSet:
         assert response.data[1]["id"] == str(user_mailbox1.id)
         assert response.data[1]["email"] == str(user_mailbox1)
         assert response.data[1]["role"] == "viewer"
+        assert response.data[1]["is_identity"] is True
         assert response.data[1]["count_unread_messages"] == 1
         assert response.data[1]["count_messages"] == 1
         assert response.data[1]["count_delivering"] == 1
+
+    def test_list_is_identity_false(self):
+        """A mailbox that is not an identity should return is_identity=False."""
+        user = factories.UserFactory()
+        mailbox = factories.MailboxFactory(is_identity=False)
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=models.MailboxRoleChoices.VIEWER,
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=user)
+        response = client.get(reverse("mailboxes-list"))
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data[0]["is_identity"] is False
 
     def test_list_unauthorized(self):
         """Anonymous user cannot access the list of mailboxes."""

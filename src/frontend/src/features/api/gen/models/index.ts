@@ -90,6 +90,8 @@ export * from "./message_body_item";
 export * from "./message_delivery_status_choices";
 export * from "./message_recipient";
 export * from "./message_recipient_delivery_status";
+export * from "./message_sender_user";
+export * from "./message_sender_user_property";
 export * from "./message_signature";
 export * from "./message_stmsg_headers";
 export * from "./message_template";

@@ -172,6 +172,21 @@
     }
 }
 
+// Sender user section (shown for shared mailbox messages)
+.contact-popover__sender-user {
+    display: flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--2xs);
+    font-size: var(--c--globals--font--sizes--xs);
+    color: var(--c--contextuals--content--semantic--neutral--secondary);
+    border-top: 1px solid var(--c--contextuals--border--surface--primary);
+    padding-top: var(--c--globals--spacings--xs);
+}
+
+.contact-popover__sender-user-icon {
+    flex-shrink: 0;
+}
+
 // Delivery status section (only shown for failed/delivering)
 .contact-popover__delivery {
     border-top: 1px solid var(--c--contextuals--border--surface--primary);

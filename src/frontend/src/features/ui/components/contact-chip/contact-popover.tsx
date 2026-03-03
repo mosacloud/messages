@@ -10,6 +10,7 @@ import type { ContactChipDeliveryStatus, ContactChipDeliveryAction } from "./ind
 
 type ContactPopoverProps = PopoverProps & {
     contact: Contact;
+    senderUserName?: string | null;
     deliveryStatus?: ContactChipDeliveryStatus;
     deliveryActions?: ContactChipDeliveryAction[];
 };
@@ -33,7 +34,7 @@ const getStatusConfig = (
     }
 };
 
-export const ContactPopover = ({ contact, deliveryStatus, deliveryActions, ...popoverProps }: ContactPopoverProps) => {
+export const ContactPopover = ({ contact, senderUserName, deliveryStatus, deliveryActions, ...popoverProps }: ContactPopoverProps) => {
     const { t } = useTranslation();
     const [copied, setCopied] = useState(false);
     const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -76,6 +77,12 @@ export const ContactPopover = ({ contact, deliveryStatus, deliveryActions, ...po
                         </button>
                     </div>
                 </div>
+                {senderUserName && (
+                    <div className="contact-popover__sender-user">
+                        <Icon name="person" type={IconType.FILLED} size={IconSize.SMALL} className="contact-popover__sender-user-icon" />
+                        <span>{t('Sent by {{name}}', { name: senderUserName })}</span>
+                    </div>
+                )}
                 {showDeliverySection && statusConfig && (
                     <div className="contact-popover__delivery">
                         <div className="contact-popover__delivery-row">

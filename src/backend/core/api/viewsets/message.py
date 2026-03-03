@@ -78,6 +78,7 @@ class MessageViewSet(
         queryset = (
             super()
             .get_queryset()
+            .select_related("sender_user")
             .filter(
                 Exists(
                     models.ThreadAccess.objects.filter(

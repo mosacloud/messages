@@ -1251,6 +1251,13 @@ class Message(BaseModel):
     )
     subject = models.CharField("subject", max_length=255, null=True, blank=True)
     sender = models.ForeignKey("Contact", on_delete=models.CASCADE)
+    sender_user = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sent_messages",
+    )
     parent = models.ForeignKey(
         "Message", on_delete=models.SET_NULL, null=True, blank=True
     )

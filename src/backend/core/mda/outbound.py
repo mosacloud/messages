@@ -333,6 +333,7 @@ def prepare_outbound_message(
 
     message.blob = blob
     message.is_draft = False
+    message.sender_user = user
     message.draft_blob = None
     message.has_attachments = len(attachments) > 0
     message.created_at = timezone.now()
@@ -343,6 +344,7 @@ def prepare_outbound_message(
             "blob",
             "mime_id",
             "is_draft",
+            "sender_user",
             "draft_blob",
             "has_attachments",
             "created_at",

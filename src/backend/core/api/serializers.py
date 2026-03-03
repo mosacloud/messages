@@ -242,11 +242,13 @@ class MailboxSerializer(AbilitiesModelSerializer):
         fields = [
             "id",
             "email",
+            "is_identity",
             "role",
             "count_unread_messages",
             "count_messages",
             "count_delivering",
         ]
+        read_only_fields = fields
 
     def get_email(self, instance):
         """Return the email of the mailbox."""
@@ -711,6 +713,15 @@ class MessageBodyItemSerializer(serializers.Serializer):
         raise RuntimeError(f"{self.__class__.__name__} does not support update method")
 
 
+class MessageSenderUserSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for the user who sent a message."""
+
+    class Meta:
+        model = models.User
+        fields = ["id", "full_name", "email"]
+        read_only_fields = fields
+
+
 class MessageSerializer(serializers.ModelSerializer):
     """
     Serialize messages, getting parsed details from the Message model.
@@ -729,6 +740,7 @@ class MessageSerializer(serializers.ModelSerializer):
     bcc = serializers.SerializerMethodField(read_only=True)
 
     sender = ContactSerializer(read_only=True)  # Sender contact info
+    sender_user = MessageSenderUserSerializer(read_only=True, allow_null=True)
 
     # UUID of the parent message
     parent_id = serializers.UUIDField(
@@ -866,6 +878,7 @@ class MessageSerializer(serializers.ModelSerializer):
             "draftBody",
             "attachments",
             "sender",
+            "sender_user",
             "to",
             "cc",
             "bcc",

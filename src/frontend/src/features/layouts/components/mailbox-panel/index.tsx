@@ -18,9 +18,16 @@ export const MailboxPanel = () => {
 
     const getMailboxOptions = () => {
         if (!mailboxes) return [];
-        return mailboxes.map((mailbox) => ({
+        const sortedMailboxes = [...mailboxes].sort((a, b) => {
+            const identityDiff = Number(b.is_identity) - Number(a.is_identity)
+            if (identityDiff !== 0) return identityDiff;
+            return a.email.localeCompare(b.email)
+        })
+        return sortedMailboxes.map((mailbox, index) => ({
             label: mailbox.email,
             value: mailbox.id,
+            icon: mailbox.is_identity ? <Icon name="person" /> : <Icon name="group" />,
+            showSeparator: mailbox.is_identity && (sortedMailboxes[index + 1] && !sortedMailboxes[index + 1].is_identity)
         }));
     }
 

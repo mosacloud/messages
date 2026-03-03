@@ -833,6 +833,29 @@ class TestPrepareOutboundMessageSignature:
 
 
 @pytest.mark.django_db
+class TestPrepareOutboundMessageSenderUser:
+    """Test that prepare_outbound_message stores the sender_user on the message."""
+
+    def test_prepare_outbound_message_sets_sender_user(
+        self, user, mailbox_sender, mailbox_access
+    ):
+        """prepare_outbound_message should assign the user as sender_user."""
+        message = factories.MessageFactory(
+            thread=factories.ThreadFactory(),
+            sender=factories.ContactFactory(mailbox=mailbox_sender),
+            is_draft=True,
+            subject="Test sender_user",
+        )
+        assert message.sender_user is None
+
+        outbound.prepare_outbound_message(
+            mailbox_sender, message, "Hello", "<p>Hello</p>", user
+        )
+        message.refresh_from_db()
+        assert message.sender_user == user
+
+
+@pytest.mark.django_db
 class TestSendMessageDKIMVerification:
     """Test DKIM verification in send_message."""
 
