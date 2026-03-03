@@ -321,6 +321,7 @@ def test_api_flag_unread_per_mailbox_isolation(api_client):
     assert access2.read_at is None
 
 
+@pytest.mark.django_db(transaction=True)
 def test_api_flag_read_at_syncs_opensearch(api_client, settings):
     """Sending read_at should explicitly sync OpenSearch."""
     settings.OPENSEARCH_INDEX_THREADS = True
@@ -534,6 +535,7 @@ def test_api_flag_starred_requires_mailbox_id(api_client):
     assert "mailbox_id" in response.data["detail"]
 
 
+@pytest.mark.django_db(transaction=True)
 @patch("core.api.viewsets.flag.update_threads_mailbox_flags_task")
 def test_api_flag_mark_thread_starred_success(mock_task, api_client):
     """Test starring a thread sets starred_at on the ThreadAccess."""
@@ -564,6 +566,7 @@ def test_api_flag_mark_thread_starred_success(mock_task, api_client):
     mock_task.delay.assert_called_once()
 
 
+@pytest.mark.django_db(transaction=True)
 @patch("core.api.viewsets.flag.update_threads_mailbox_flags_task")
 def test_api_flag_mark_thread_unstarred_success(mock_task, api_client):
     """Test unstarring a thread clears starred_at on the ThreadAccess."""
@@ -622,6 +625,32 @@ def test_api_flag_starred_scoped_to_mailbox(api_client):
     access_b.refresh_from_db()
     assert access_a.starred_at is not None
     assert access_b.starred_at is None
+
+
+def test_api_flag_starred_no_permission_on_mailbox(api_client):
+    """Test that starring via a mailbox the user doesn't have access to does nothing."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    other_mailbox = MailboxFactory()  # User does not have access
+    thread = ThreadFactory()
+    access = ThreadAccessFactory(
+        mailbox=other_mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    )
+    MessageFactory(thread=thread)
+
+    data = {
+        "flag": "starred",
+        "value": True,
+        "thread_ids": [str(thread.id)],
+        "mailbox_id": str(other_mailbox.id),
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["updated_threads"] == 0
+
+    access.refresh_from_db()
+    assert access.starred_at is None
 
 
 def test_api_flag_viewer_can_star_thread(api_client):
