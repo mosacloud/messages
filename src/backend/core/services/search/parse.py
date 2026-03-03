@@ -21,7 +21,7 @@ def parse_search_query(query: str) -> Dict[str, Any]:
     - in:spam (dans:spam) - in spam
     - in:sent (dans:envoyes or dans:envoyés) - sent items
     - in:drafts (dans:brouillons) - drafts
-    - is:starred (est:suivi) - starred
+    - is:starred (is:starred, est:suivi) - starred
     - is:read (est:lu) - read
     - is:unread (est:nonlu) - unread
 
@@ -52,7 +52,7 @@ def parse_search_query(query: str) -> Dict[str, Any]:
         "in_archives": ["in:archives", "dans:archives", "dans:archivés", "in:archief"],
         "in_spam": ["in:spam", "dans:spam"],
         "in_drafts": ["in:drafts", "dans:brouillons", "in:concepten"],
-        "is_starred": ["is:starred", "est:suivi", "is:gemarkeerd"],
+        "is_starred": ["is:starred", "est:suivi", "is:gevolgd"],
         "is_read_true": ["is:read", "est:lu", "is:gelezen"],
         "is_read_false": ["is:unread", "est:nonlu", "is:ongelezen"],
     }

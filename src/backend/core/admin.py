@@ -419,7 +419,7 @@ class ThreadAccessInline(admin.TabularInline):
 
     model = models.ThreadAccess
     autocomplete_fields = ("mailbox",)
-    readonly_fields = ("read_at",)
+    readonly_fields = ("read_at", "starred_at")
 
 
 @admin.register(models.Thread)
@@ -441,7 +441,6 @@ class ThreadAdmin(admin.ModelAdmin):
         "has_trashed",
         "has_archived",
         "has_draft",
-        "has_starred",
         "has_sender",
         "has_attachments",
         "has_delivery_pending",
@@ -458,7 +457,6 @@ class ThreadAdmin(admin.ModelAdmin):
                     "has_trashed",
                     "has_archived",
                     "has_draft",
-                    "has_starred",
                     "has_sender",
                     "has_messages",
                     "has_attachments",
@@ -493,7 +491,6 @@ class ThreadAdmin(admin.ModelAdmin):
         "has_trashed",
         "has_archived",
         "has_draft",
-        "has_starred",
         "has_attachments",
         "has_sender",
         "has_messages",
@@ -593,7 +590,6 @@ class MessageAdmin(admin.ModelAdmin):
     list_filter = (
         "is_sender",
         "is_draft",
-        "is_starred",
         "is_trashed",
         "is_spam",
         "is_archived",

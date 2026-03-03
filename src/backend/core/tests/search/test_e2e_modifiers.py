@@ -246,13 +246,15 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
     thread6 = ThreadFactory(subject="Important Announcement")
     threads.append(thread6)
     ThreadAccessFactory(
-        mailbox=mailbox1, thread=thread6, role=enums.ThreadAccessRoleChoices.EDITOR
+        mailbox=mailbox1,
+        thread=thread6,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+        starred_at=timezone.now(),
     )
     message6 = MessageFactory(
         thread=thread6,
         subject="Important Announcement",
         sender=contact4,
-        is_starred=True,
         raw_mime=(
             f"From: {contact4.email}\r\n"
             f"To: {contact1.email}\r\n"
@@ -444,7 +446,7 @@ def fixture_test_threads(test_mailboxes, wait_for_indexing):
     len(settings.OPENSEARCH_HOSTS) == 0,
     reason="OpenSearch is not configured",
 )
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 class TestSearchModifiersE2E:
     """End-to-end tests for Gmail-style search modifiers."""
 
@@ -821,11 +823,18 @@ class TestSearchModifiersE2E:
         assert str(test_threads["thread3"].id) in thread_ids
 
     def test_search_e2e_modifiers_is_starred_search_modifier(
-        self, setup_search, api_client, test_url, test_threads
+        self, setup_search, api_client, test_url, test_threads, test_mailboxes
     ):
-        """Test searching with the 'is:starred' modifier."""
+        """Test searching with the 'is:starred' modifier.
+
+        is:starred requires mailbox_id since starred is per-mailbox via
+        ThreadAccess.starred_at. Only thread6 has starred_at set for mailbox1.
+        """
+        mailbox1, _ = test_mailboxes
         # Test English version
-        response = api_client.get(f"{test_url}?search=is:starred")
+        response = api_client.get(
+            f"{test_url}?search=is:starred&mailbox_id={mailbox1.id}"
+        )
 
         # Verify response
         assert response.status_code == 200
@@ -836,7 +845,9 @@ class TestSearchModifiersE2E:
         assert str(test_threads["thread6"].id) in thread_ids
 
         # Test French version
-        response = api_client.get(f"{test_url}?search=est:suivi")
+        response = api_client.get(
+            f"{test_url}?search=est:suivi&mailbox_id={mailbox1.id}"
+        )
 
         # Verify the same results
         assert response.status_code == 200

@@ -34,6 +34,7 @@ MESSAGE_MAPPING = {
             "thread_id": {"type": "keyword"},
             "mailbox_ids": {"type": "keyword"},
             "unread_mailboxes": {"type": "keyword"},
+            "starred_mailboxes": {"type": "keyword"},
             # Message fields
             "message_id": {"type": "keyword"},
             "mime_id": {"type": "keyword"},
@@ -113,7 +114,6 @@ MESSAGE_MAPPING = {
             "is_trashed": {"type": "boolean"},
             "is_archived": {"type": "boolean"},
             "is_spam": {"type": "boolean"},
-            "is_starred": {"type": "boolean"},
             "is_sender": {"type": "boolean"},
         },
     },

@@ -577,7 +577,7 @@ class ThreadAccessDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.ThreadAccess
-        fields = ["id", "mailbox", "role", "read_at"]
+        fields = ["id", "mailbox", "role", "read_at", "starred_at"]
         read_only_fields = fields
 
 
@@ -588,6 +588,7 @@ class ThreadSerializer(serializers.ModelSerializer):
     sender_names = serializers.ListField(child=serializers.CharField(), read_only=True)
     user_role = serializers.SerializerMethodField(read_only=True)
     has_unread = serializers.SerializerMethodField(read_only=True)
+    has_starred = serializers.SerializerMethodField(read_only=True)
     accesses = serializers.SerializerMethodField()
     labels = serializers.SerializerMethodField()
     summary = serializers.CharField(read_only=True)
@@ -600,6 +601,15 @@ class ThreadSerializer(serializers.ModelSerializer):
         Returns False when the annotation is absent (no mailbox context).
         """
         return getattr(instance, "_has_unread", False)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_has_starred(self, instance):
+        """Return whether the thread is starred for the current mailbox.
+
+        Requires the _has_starred annotation (set by ThreadViewSet when mailbox_id is provided).
+        Returns False when the annotation is absent (no mailbox context).
+        """
+        return getattr(instance, "_has_starred", False)
 
     @extend_schema_field(ThreadAccessDetailSerializer(many=True))
     def get_accesses(self, instance):
@@ -898,7 +908,6 @@ class MessageSerializer(serializers.ModelSerializer):
             "is_sender",
             "is_draft",
             "is_unread",
-            "is_starred",
             "is_trashed",
             "is_archived",
             "has_attachments",

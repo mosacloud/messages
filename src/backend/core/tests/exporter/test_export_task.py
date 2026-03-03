@@ -418,12 +418,11 @@ def test_export_includes_status_headers(mailbox_fixture, admin_user, cleanup_exp
     """Test that exported messages include Status/X-Status headers for flags."""
     # Create a read, starred message
     msg = create_test_message(mailbox_fixture, "Starred Message", "Important content")
-    msg.is_starred = True  # Starred
-    msg.save()
-    # Mark as read via ThreadAccess.read_at
+    # Mark as read and starred via ThreadAccess
     access = ThreadAccess.objects.get(thread=msg.thread, mailbox=mailbox_fixture)
     access.read_at = timezone.now()
-    access.save(update_fields=["read_at"])
+    access.starred_at = timezone.now()
+    access.save(update_fields=["read_at", "starred_at"])
 
     mock_task = MagicMock()
 
@@ -452,6 +451,82 @@ def test_export_includes_status_headers(mailbox_fixture, admin_user, cleanup_exp
         assert b"Status: RO" in mbox_content
         # Starred message should have X-Status: F
         assert b"X-Status: F" in mbox_content
+
+
+@pytest.mark.django_db
+def test_export_starred_flag_is_mailbox_scoped(
+    mailbox_fixture, domain, admin_user, cleanup_exports
+):
+    """Test that the starred flag in export is scoped per mailbox.
+
+    When a thread is starred in one mailbox but not another, only the
+    export for the starred mailbox should contain X-Status: F.
+    """
+    # Create a message tied to mailbox_fixture
+    msg = create_test_message(mailbox_fixture, "Shared Thread", "Shared content")
+
+    # Mark as read and starred for mailbox_fixture
+    access = ThreadAccess.objects.get(thread=msg.thread, mailbox=mailbox_fixture)
+    access.read_at = timezone.now()
+    access.starred_at = timezone.now()
+    access.save(update_fields=["read_at", "starred_at"])
+
+    # Create another mailbox sharing the same thread, without starred_at
+    other_mailbox = Mailbox.objects.create(local_part="other", domain=domain)
+    ThreadAccess.objects.create(
+        thread=msg.thread, mailbox=other_mailbox, read_at=timezone.now()
+    )
+
+    mock_task = MagicMock()
+
+    # Export mailbox_fixture — should contain X-Status: F
+    with (
+        patch.object(export_mailbox_task, "update_state", mock_task.update_state),
+        patch(
+            "core.services.exporter.tasks.deliver_inbound_message", return_value=True
+        ),
+    ):
+        result_starred = export_mailbox_task(
+            str(mailbox_fixture.id), str(admin_user.id)
+        )
+
+    assert result_starred["status"] == "SUCCESS"
+    cleanup_exports.append(result_starred["result"]["s3_key"])
+
+    # Export other_mailbox — should NOT contain X-Status: F
+    with (
+        patch.object(export_mailbox_task, "update_state", mock_task.update_state),
+        patch(
+            "core.services.exporter.tasks.deliver_inbound_message", return_value=True
+        ),
+    ):
+        result_not_starred = export_mailbox_task(
+            str(other_mailbox.id), str(admin_user.id)
+        )
+
+    assert result_not_starred["status"] == "SUCCESS"
+    cleanup_exports.append(result_not_starred["result"]["s3_key"])
+
+    storage = storages["message-imports"]
+    s3_client = storage.connection.meta.client
+
+    # Verify starred mailbox export includes X-Status: F
+    response = s3_client.get_object(
+        Bucket=storage.bucket_name, Key=result_starred["result"]["s3_key"]
+    )
+    with gzip.open(BytesIO(response["Body"].read()), "rb") as f:
+        starred_content = f.read()
+        assert b"Status: RO" in starred_content
+        assert b"X-Status: F" in starred_content
+
+    # Verify other mailbox export does NOT include X-Status: F
+    response = s3_client.get_object(
+        Bucket=storage.bucket_name, Key=result_not_starred["result"]["s3_key"]
+    )
+    with gzip.open(BytesIO(response["Body"].read()), "rb") as f:
+        other_content = f.read()
+        assert b"Status: RO" in other_content
+        assert b"X-Status: F" not in other_content
 
 
 @pytest.mark.django_db

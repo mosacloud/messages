@@ -135,7 +135,6 @@ def index_message(message: models.Message) -> bool:
         "is_trashed": message.is_trashed,
         "is_archived": message.is_archived,
         "is_spam": message.is_spam,
-        "is_starred": message.is_starred,
         "is_sender": message.is_sender,
     }
 
@@ -169,9 +168,24 @@ def compute_unread_mailboxes(thread: models.Thread) -> list:
     ]
 
 
-def update_thread_unread_mailboxes(thread: models.Thread) -> bool:
-    """Re-index the thread parent document to update unread_mailboxes.
+def compute_starred_mailboxes(thread: models.Thread) -> list:
+    """Return mailbox IDs for which the thread is starred.
 
+    Delegates to ``ThreadAccess.starred_filter()`` so that the definition of
+    "starred" stays consistent with ``ThreadViewSet``.
+    """
+    return [
+        str(mid)
+        for mid in thread.accesses.filter(
+            models.ThreadAccess.starred_filter()
+        ).values_list("mailbox_id", flat=True)
+    ]
+
+
+def update_thread_mailbox_flags(thread: models.Thread) -> bool:
+    """Re-index the thread parent document to update mailbox-scoped flags.
+
+    Updates both ``unread_mailboxes`` and ``starred_mailboxes``.
     Uses full document replacement (es.index) instead of partial update
     (es.update) because partial updates don't work reliably with join field
     documents in OpenSearch.
@@ -184,6 +198,7 @@ def update_thread_unread_mailboxes(thread: models.Thread) -> bool:
         "subject": thread.subject,
         "mailbox_ids": [str(mid) for mid in mailbox_ids],
         "unread_mailboxes": compute_unread_mailboxes(thread),
+        "starred_mailboxes": compute_starred_mailboxes(thread),
     }
     try:
         # pylint: disable=no-value-for-parameter
@@ -191,7 +206,7 @@ def update_thread_unread_mailboxes(thread: models.Thread) -> bool:
         return True
     # pylint: disable=broad-exception-caught
     except Exception as e:
-        logger.error("Error updating unread_mailboxes for thread %s: %s", thread.id, e)
+        logger.error("Error updating mailbox flags for thread %s: %s", thread.id, e)
         return False
 
 
@@ -209,6 +224,7 @@ def index_thread(thread: models.Thread) -> bool:
         "subject": thread.subject,
         "mailbox_ids": [str(mailbox_id) for mailbox_id in mailbox_ids],
         "unread_mailboxes": compute_unread_mailboxes(thread),
+        "starred_mailboxes": compute_starred_mailboxes(thread),
     }
 
     try:

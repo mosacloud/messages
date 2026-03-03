@@ -12,7 +12,7 @@ from core.services.search import (
     delete_index,
     index_message,
     index_thread,
-    update_thread_unread_mailboxes,
+    update_thread_mailbox_flags,
 )
 
 from messages.celery_app import app as celery_app
@@ -115,8 +115,8 @@ def reindex_thread_task(self, thread_id):
 
 
 @celery_app.task(bind=True)
-def update_threads_unread_mailboxes_task(self, thread_ids):
-    """Update unread_mailboxes for multiple threads in OpenSearch."""
+def update_threads_mailbox_flags_task(self, thread_ids):
+    """Update mailbox-scoped flags (unread_mailboxes, starred_mailboxes) in OpenSearch."""
     if not settings.OPENSEARCH_INDEX_THREADS:
         logger.info("OpenSearch thread indexing is disabled.")
         return {"success": False, "reason": "disabled"}
@@ -127,7 +127,7 @@ def update_threads_unread_mailboxes_task(self, thread_ids):
     for thread_id in thread_ids:
         try:
             thread = models.Thread.objects.get(id=thread_id)
-            success = update_thread_unread_mailboxes(thread)
+            success = update_thread_mailbox_flags(thread)
             results.append({"thread_id": thread_id, "success": success})
         except models.Thread.DoesNotExist:
             logger.error("Thread %s does not exist", thread_id)

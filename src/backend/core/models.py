@@ -18,7 +18,7 @@ from django.contrib.auth.base_user import AbstractBaseUser
 from django.core import validators
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
-from django.db.models import Case, F, Q, Value, When
+from django.db.models import Case, Exists, F, Q, Value, When
 from django.db.models.fields import BooleanField
 from django.utils import timezone
 from django.utils.html import escape
@@ -764,7 +764,6 @@ class Thread(BaseModel):
     )
     has_archived = models.BooleanField("has archived", default=False)
     has_draft = models.BooleanField("has draft", default=False)
-    has_starred = models.BooleanField("has starred", default=False)
     has_sender = models.BooleanField("has sender", default=False)
     has_messages = models.BooleanField("has messages", default=True)
     has_attachments = models.BooleanField("has attachments", default=False)
@@ -840,7 +839,6 @@ class Thread(BaseModel):
             .values(
                 "is_trashed",
                 "is_draft",
-                "is_starred",
                 "is_sender",
                 "is_spam",
                 "is_archived",
@@ -857,7 +855,6 @@ class Thread(BaseModel):
             self.is_trashed = False
             self.has_archived = False
             self.has_draft = False
-            self.has_starred = False
             self.has_sender = False
             self.has_messages = False
             self.has_attachments = False
@@ -879,9 +876,6 @@ class Thread(BaseModel):
             self.has_archived = any(msg["is_archived"] for msg in message_data)
             self.has_draft = any(
                 msg["is_draft"] and not msg["is_trashed"] for msg in message_data
-            )
-            self.has_starred = any(
-                msg["is_starred"] and not msg["is_trashed"] for msg in message_data
             )
             self.has_sender = any(
                 msg["is_sender"] and not msg["is_trashed"] and not msg["is_draft"]
@@ -1021,7 +1015,6 @@ class Thread(BaseModel):
                 "is_trashed",
                 "has_archived",
                 "has_draft",
-                "has_starred",
                 "has_sender",
                 "has_messages",
                 "has_attachments",
@@ -1258,6 +1251,7 @@ class ThreadAccess(BaseModel):
         default=ThreadAccessRoleChoices.VIEWER,
     )
     read_at = models.DateTimeField("read at", null=True, blank=True)
+    starred_at = models.DateTimeField("starred at", null=True, blank=True)
 
     class Meta:
         db_table = "messages_threadaccess"
@@ -1269,26 +1263,39 @@ class ThreadAccess(BaseModel):
         return f"{self.thread} - {self.mailbox} - {self.role}"
 
     @staticmethod
-    def thread_unread_filter(mailbox_id):
-        """Return a `Case` expression to annotate `_has_unread` on a Thread queryset.
+    def thread_unread_filter(user, mailbox_id=None):
+        """Return an expression to annotate `_has_unread` on a Thread queryset.
 
         Intended for `ThreadViewSet.get_queryset()`. Uses `active_messaged_at`
         so that threads are only marked unread when they contain received messages.
+
+        When `mailbox_id` is provided, scopes to that single mailbox (Case expression).
+        Otherwise, checks across all the user's mailboxes (Exists subquery).
         """
-        return Case(
-            When(
-                accesses__mailbox_id=mailbox_id,
-                accesses__read_at__isnull=True,
-                has_active=True,
-                then=Value(True),
-            ),
-            When(
-                accesses__mailbox_id=mailbox_id,
-                active_messaged_at__gt=F("accesses__read_at"),
-                then=Value(True),
-            ),
-            default=Value(False),
-            output_field=BooleanField(),
+        if mailbox_id:
+            return Case(
+                When(
+                    accesses__mailbox_id=mailbox_id,
+                    accesses__read_at__isnull=True,
+                    has_active=True,
+                    then=Value(True),
+                ),
+                When(
+                    accesses__mailbox_id=mailbox_id,
+                    active_messaged_at__gt=F("accesses__read_at"),
+                    then=Value(True),
+                ),
+                default=Value(False),
+                output_field=BooleanField(),
+            )
+        return Exists(
+            ThreadAccess.objects.filter(
+                thread=models.OuterRef("pk"),
+                mailbox__accesses__user=user,
+            ).filter(
+                Q(read_at__isnull=True, thread__has_active=True)
+                | Q(read_at__lt=F("thread__active_messaged_at"))
+            )
         )
 
     @staticmethod
@@ -1301,6 +1308,42 @@ class ThreadAccess(BaseModel):
         return Q(read_at__isnull=True, thread__has_active=True) | Q(
             read_at__lt=F("thread__active_messaged_at")
         )
+
+    @staticmethod
+    def thread_starred_filter(user, mailbox_id=None):
+        """Return an expression to annotate `_has_starred` on a Thread queryset.
+
+        Intended for `ThreadViewSet.get_queryset()`. A thread is starred when
+        the corresponding ThreadAccess has a non-null `starred_at`.
+
+        When `mailbox_id` is provided, scopes to that single mailbox (Case expression).
+        Otherwise, checks across all the user's mailboxes (Exists subquery).
+        """
+        if mailbox_id:
+            return Case(
+                When(
+                    accesses__mailbox_id=mailbox_id,
+                    accesses__starred_at__isnull=False,
+                    then=Value(True),
+                ),
+                default=Value(False),
+                output_field=BooleanField(),
+            )
+        return Exists(
+            ThreadAccess.objects.filter(
+                thread=models.OuterRef("pk"),
+                mailbox__accesses__user=user,
+                starred_at__isnull=False,
+            )
+        )
+
+    @staticmethod
+    def starred_filter():
+        """Return a `Q` for filtering a `ThreadAccess` queryset to starred entries.
+
+        Used by `compute_starred_mailboxes()` in the search index.
+        """
+        return Q(starred_at__isnull=False)
 
 
 class Contact(BaseModel):
@@ -1418,7 +1461,6 @@ class Message(BaseModel):
     # Flags
     is_draft = models.BooleanField("is draft", default=False)
     is_sender = models.BooleanField("is sender", default=False)
-    is_starred = models.BooleanField("is starred", default=False)
     is_trashed = models.BooleanField("is trashed", default=False)
     is_spam = models.BooleanField("is spam", default=False)
     is_archived = models.BooleanField("is archived", default=False)

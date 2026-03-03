@@ -64,10 +64,10 @@ class ThreadViewSet(
                     "You do not have access to this mailbox."
                 ) from e
 
-        if mailbox_id:
-            queryset = queryset.annotate(
-                _has_unread=models.ThreadAccess.thread_unread_filter(mailbox_id),
-            )
+        queryset = queryset.annotate(
+            _has_unread=models.ThreadAccess.thread_unread_filter(user, mailbox_id),
+            _has_starred=models.ThreadAccess.thread_starred_filter(user, mailbox_id),
+        )
 
         if label_slug:
             # Filter threads by label slug, ensuring user has access to the label's mailbox
@@ -86,11 +86,11 @@ class ThreadViewSet(
         # Apply boolean filters
         # These filters operate on the Thread model's boolean fields
         filter_mapping = {
-            "has_unread": "_has_unread" if mailbox_id else None,
+            "has_unread": "_has_unread",
             "has_trashed": "has_trashed",
             "has_archived": "has_archived",
             "has_draft": "has_draft",
-            "has_starred": "has_starred",
+            "has_starred": "_has_starred",
             "has_sender": "has_sender",
             "has_active": "has_active",
             "has_messages": "has_messages",
@@ -319,12 +319,9 @@ class ThreadViewSet(
                     status=drf.status.HTTP_400_BAD_REQUEST,
                 )
 
-        # Build unread condition from per-mailbox annotation
-        mailbox_id = request.query_params.get("mailbox_id")
-        if mailbox_id:
-            unread_condition = Q(_has_unread=True)
-        else:
-            unread_condition = Q(pk__isnull=True)  # No unread without mailbox context
+        # Build unread/starred conditions from annotations (always available)
+        unread_condition = Q(_has_unread=True)
+        starred_condition = Q(_has_starred=True)
 
         aggregations = {}
         for field in requested_fields:
@@ -334,6 +331,12 @@ class ThreadViewSet(
                 aggregations[agg_key] = Count("pk")
             elif field == "all_unread":
                 aggregations[agg_key] = Count("pk", filter=unread_condition)
+            elif field == "has_starred":
+                aggregations[agg_key] = Count("pk", filter=starred_condition)
+            elif field == "has_starred_unread":
+                aggregations[agg_key] = Count(
+                    "pk", filter=starred_condition & unread_condition
+                )
             elif field.endswith("_unread"):
                 base_field = field[:-7]
                 base_condition = Q(**{base_field: True})
@@ -496,8 +499,18 @@ class ThreadViewSet(
                 # Get the thread IDs from the search results
                 thread_ids = [thread["id"] for thread in results["threads"]]
 
-                # Retrieve the actual thread objects from the database
+                # Build a queryset with annotations but without the default
+                # exclusion filters (trashed, spam) that get_queryset() applies,
+                # since OpenSearch already handles those filters.
                 threads = models.Thread.objects.filter(id__in=thread_ids)
+                threads = threads.annotate(
+                    _has_unread=models.ThreadAccess.thread_unread_filter(
+                        request.user, mailbox_id
+                    ),
+                    _has_starred=models.ThreadAccess.thread_starred_filter(
+                        request.user, mailbox_id
+                    ),
+                )
 
                 # Order the threads in the same order as the search results
                 thread_dict = {str(thread.id): thread for thread in threads}

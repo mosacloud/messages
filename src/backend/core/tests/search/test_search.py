@@ -21,7 +21,7 @@ from core.services.search import (
     reindex_all,
     reindex_mailbox,
     search_threads,
-    update_thread_unread_mailboxes,
+    update_thread_mailbox_flags,
 )
 from core.services.search.index import compute_unread_mailboxes
 
@@ -316,8 +316,8 @@ class TestComputeUnreadMailboxes:
 
 
 @pytest.mark.django_db
-def test_update_thread_unread_mailboxes(mock_es_client_index):
-    """Test that update_thread_unread_mailboxes re-indexes the thread document."""
+def test_update_thread_mailbox_flags(mock_es_client_index):
+    """Test that update_thread_mailbox_flags re-indexes the thread document."""
     thread = ThreadFactory()
     mailbox = MailboxFactory()
     MessageFactory(thread=thread)
@@ -328,10 +328,11 @@ def test_update_thread_unread_mailboxes(mock_es_client_index):
     # Reset mock after setup (signals may have triggered calls)
     mock_es_client_index.reset_mock()
 
-    success = update_thread_unread_mailboxes(thread)
+    success = update_thread_mailbox_flags(thread)
 
     assert success
     mock_es_client_index.index.assert_called_once()
     call_args = mock_es_client_index.index.call_args[1]
     assert call_args["id"] == str(thread.id)
     assert str(mailbox.id) in call_args["body"]["unread_mailboxes"]
+    assert "starred_mailboxes" in call_args["body"]

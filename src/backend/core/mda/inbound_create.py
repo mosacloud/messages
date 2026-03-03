@@ -362,7 +362,6 @@ def _create_message_from_inbound(
             sent_at=parsed_email.get("date") or timezone.now(),
             is_draft=False,
             is_sender=is_sender,
-            is_starred=False,
             is_trashed=False,
             is_spam=is_spam,
             has_attachments=len(parsed_email.get("attachments", [])) > 0,
@@ -372,8 +371,10 @@ def _create_message_from_inbound(
             # We need to set the created_at field to the date of the message
             # because the inbound message is not created at the same time as the message is received
             message.created_at = parsed_email.get("date") or timezone.now()
-            # Extract is_unread from flags (handled via ThreadAccess.read_at)
+            # Extract flags handled via ThreadAccess (not Message fields)
             import_is_unread = message_flags.pop("is_unread", True)
+            import_is_starred = message_flags.pop("_starred", False)
+
             for flag, value in message_flags.items():
                 if hasattr(message, flag):
                     setattr(message, flag, value)
@@ -383,16 +384,22 @@ def _create_message_from_inbound(
                     *message_flags.keys(),
                 ]
             )
-            # If the imported message is read, update read_at on ThreadAccess
-            if not import_is_unread:
-                access = models.ThreadAccess.objects.filter(
-                    thread=thread, mailbox=mailbox
-                ).first()
-                if access and (
+            # Update ThreadAccess for read/starred state
+            access = models.ThreadAccess.objects.filter(
+                thread=thread, mailbox=mailbox
+            ).first()
+            if access:
+                update_fields = []
+                if not import_is_unread and (
                     access.read_at is None or message.created_at > access.read_at
                 ):
                     access.read_at = message.created_at
-                    access.save(update_fields=["read_at"])
+                    update_fields.append("read_at")
+                if import_is_starred and access.starred_at is None:
+                    access.starred_at = message.created_at
+                    update_fields.append("starred_at")
+                if update_fields:
+                    access.save(update_fields=update_fields)
         elif is_sender:
             access = models.ThreadAccess.objects.filter(
                 thread=thread, mailbox=mailbox

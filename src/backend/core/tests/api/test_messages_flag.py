@@ -342,9 +342,7 @@ def test_api_flag_read_at_syncs_opensearch(api_client, settings):
         "read_at": timezone.now().isoformat(),
     }
 
-    with patch(
-        "core.api.viewsets.flag.update_threads_unread_mailboxes_task"
-    ) as mock_task:
+    with patch("core.api.viewsets.flag.update_threads_mailbox_flags_task") as mock_task:
         response = api_client.post(API_URL, data=data, format="json")
 
     assert response.status_code == status.HTTP_200_OK
@@ -517,71 +515,137 @@ def test_api_flag_mark_messages_invalid_requests(api_client, data):
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
-# --- Tests for Starred Flag ---
+# --- Tests for Starred Flag (operates on ThreadAccess.starred_at) ---
 
 
-def test_api_flag_mark_messages_starred_success(api_client):
-    """Test marking messages as starred successfully."""
+def test_api_flag_starred_requires_mailbox_id(api_client):
+    """Test that starring requires a mailbox_id."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+
+    data = {
+        "flag": "starred",
+        "value": True,
+        "thread_ids": ["00000000-0000-0000-0000-000000000001"],
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "mailbox_id" in response.data["detail"]
+
+
+@patch("core.api.viewsets.flag.update_threads_mailbox_flags_task")
+def test_api_flag_mark_thread_starred_success(mock_task, api_client):
+    """Test starring a thread sets starred_at on the ThreadAccess."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
     mailbox = MailboxFactory(users_read=[user])
     thread = ThreadFactory()
-    ThreadAccessFactory(
-        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    access = ThreadAccessFactory(
+        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.VIEWER
     )
-    msg1 = MessageFactory(thread=thread, is_starred=False)
-    msg2 = MessageFactory(thread=thread, is_starred=True)  # Already starred
+    MessageFactory(thread=thread)
 
-    thread.refresh_from_db()
-    thread.update_stats()
-    assert thread.has_starred is True
+    assert access.starred_at is None
 
-    message_ids = [str(msg1.id)]
-    data = {"flag": "starred", "value": True, "message_ids": message_ids}
+    data = {
+        "flag": "starred",
+        "value": True,
+        "thread_ids": [str(thread.id)],
+        "mailbox_id": str(mailbox.id),
+    }
     response = api_client.post(API_URL, data=data, format="json")
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data["updated_threads"] == 1
 
-    msg1.refresh_from_db()
-    msg2.refresh_from_db()
-    assert msg1.is_starred is True
-    assert msg2.is_starred is True
-
-    thread.refresh_from_db()
-    assert thread.has_starred is True
+    access.refresh_from_db()
+    assert access.starred_at is not None
+    mock_task.delay.assert_called_once()
 
 
-def test_api_flag_mark_messages_unstarred_success(api_client):
-    """Test marking messages as unstarred successfully."""
+@patch("core.api.viewsets.flag.update_threads_mailbox_flags_task")
+def test_api_flag_mark_thread_unstarred_success(mock_task, api_client):
+    """Test unstarring a thread clears starred_at on the ThreadAccess."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
     mailbox = MailboxFactory(users_read=[user])
     thread = ThreadFactory()
-    ThreadAccessFactory(
-        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+    access = ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread,
+        role=enums.ThreadAccessRoleChoices.VIEWER,
+        starred_at=timezone.now(),
     )
-    msg1 = MessageFactory(thread=thread, is_starred=True)
-    msg2 = MessageFactory(thread=thread, is_starred=False)  # Already unstarred
+    MessageFactory(thread=thread)
 
-    thread.refresh_from_db()
-    thread.update_stats()
-    assert thread.has_starred is True
+    assert access.starred_at is not None
 
-    message_ids = [str(msg1.id)]
-    data = {"flag": "starred", "value": False, "message_ids": message_ids}
+    data = {
+        "flag": "starred",
+        "value": False,
+        "thread_ids": [str(thread.id)],
+        "mailbox_id": str(mailbox.id),
+    }
     response = api_client.post(API_URL, data=data, format="json")
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data["updated_threads"] == 1
 
-    msg1.refresh_from_db()
-    msg2.refresh_from_db()
-    assert msg1.is_starred is False
-    assert msg2.is_starred is False
+    access.refresh_from_db()
+    assert access.starred_at is None
+    mock_task.delay.assert_called_once()
 
-    thread.refresh_from_db()
-    assert thread.has_starred is False
+
+def test_api_flag_starred_scoped_to_mailbox(api_client):
+    """Test that starring via mailbox A does not affect mailbox B."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox_a = MailboxFactory(users_read=[user])
+    mailbox_b = MailboxFactory(users_read=[user])
+    thread = ThreadFactory()
+    access_a = ThreadAccessFactory(mailbox=mailbox_a, thread=thread)
+    access_b = ThreadAccessFactory(mailbox=mailbox_b, thread=thread)
+    MessageFactory(thread=thread)
+
+    data = {
+        "flag": "starred",
+        "value": True,
+        "thread_ids": [str(thread.id)],
+        "mailbox_id": str(mailbox_a.id),
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+
+    access_a.refresh_from_db()
+    access_b.refresh_from_db()
+    assert access_a.starred_at is not None
+    assert access_b.starred_at is None
+
+
+def test_api_flag_viewer_can_star_thread(api_client):
+    """Test that a VIEWER can star a thread (personal action)."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    thread = ThreadFactory()
+    access = ThreadAccessFactory(
+        mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.VIEWER
+    )
+    MessageFactory(thread=thread)
+
+    data = {
+        "flag": "starred",
+        "value": True,
+        "thread_ids": [str(thread.id)],
+        "mailbox_id": str(mailbox.id),
+    }
+    response = api_client.post(API_URL, data=data, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    access.refresh_from_db()
+    assert access.starred_at is not None
 
 
 # --- Tests for Trashed Flag ---

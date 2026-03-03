@@ -4,6 +4,7 @@
 import logging
 
 from django.conf import settings
+from django.db import transaction
 from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import receiver
 
@@ -16,7 +17,7 @@ from core.services.search import MESSAGE_INDEX, get_opensearch_client
 from core.services.search.tasks import (
     index_message_task,
     reindex_thread_task,
-    update_threads_unread_mailboxes_task,
+    update_threads_mailbox_flags_task,
 )
 from core.utils import ThreadStatsUpdateDeferrer
 
@@ -242,17 +243,22 @@ def delete_orphan_draft_attachments(sender, instance, **kwargs):
 
 
 @receiver(post_save, sender=models.ThreadAccess)
-def update_unread_mailboxes_on_access_save(sender, instance, created, **kwargs):
-    """Update unread_mailboxes in OpenSearch when ThreadAccess.read_at changes."""
+def update_mailbox_flags_on_access_save(sender, instance, created, **kwargs):
+    """Update mailbox flags in OpenSearch when ThreadAccess read/starred state changes."""
     if not getattr(settings, "OPENSEARCH_INDEX_THREADS", False):
         return
 
     update_fields = kwargs.get("update_fields")
-    if update_fields is not None and "read_at" not in update_fields:
+    if update_fields is not None and not (
+        {"read_at", "starred_at"} & set(update_fields)
+    ):
         return
 
+    thread_id = str(instance.thread_id)
     try:
-        update_threads_unread_mailboxes_task.delay([str(instance.thread_id)])
+        transaction.on_commit(
+            lambda tid=thread_id: update_threads_mailbox_flags_task.delay([tid])
+        )
     # pylint: disable=broad-exception-caught
     except Exception as e:
         logger.exception(
@@ -268,8 +274,11 @@ def update_unread_mailboxes_on_access_delete(sender, instance, **kwargs):
     if not getattr(settings, "OPENSEARCH_INDEX_THREADS", False):
         return
 
+    thread_id = str(instance.thread_id)
     try:
-        update_threads_unread_mailboxes_task.delay([str(instance.thread_id)])
+        transaction.on_commit(
+            lambda tid=thread_id: update_threads_mailbox_flags_task.delay([tid])
+        )
     # pylint: disable=broad-exception-caught
     except Exception as e:
         logger.exception(
