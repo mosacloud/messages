@@ -789,6 +789,10 @@ class Base(Configuration):
         None, environ_name="METRICS_API_KEY", environ_prefix=None
     )
 
+    PROVISIONING_API_KEY = values.Value(
+        None, environ_name="PROVISIONING_API_KEY", environ_prefix=None
+    )
+
     METRICS_STORAGE_USED_OVERHEAD_BY_MESSAGE = values.PositiveIntegerValue(
         1024,
         environ_name="METRICS_STORAGE_USED_OVERHEAD_BY_MESSAGE",
@@ -799,6 +803,19 @@ class Base(Configuration):
     AI_API_KEY = values.Value(None, environ_name="AI_API_KEY", environ_prefix=None)
     AI_BASE_URL = values.Value(None, environ_name="AI_BASE_URL", environ_prefix=None)
     AI_MODEL = values.Value(None, environ_name="AI_MODEL", environ_prefix=None)
+
+    # Entitlements
+    ENTITLEMENTS_BACKEND = values.Value(
+        "core.entitlements.backends.local.LocalEntitlementsBackend",
+        environ_name="ENTITLEMENTS_BACKEND",
+        environ_prefix=None,
+    )
+    ENTITLEMENTS_BACKEND_PARAMETERS = JSONValue(
+        {}, environ_name="ENTITLEMENTS_BACKEND_PARAMETERS", environ_prefix=None
+    )
+    ENTITLEMENTS_CACHE_TIMEOUT = values.PositiveIntegerValue(
+        300, environ_name="ENTITLEMENTS_CACHE_TIMEOUT", environ_prefix=None
+    )
 
     # Feature flags
     FEATURE_AI_SUMMARY = values.BooleanValue(
@@ -815,6 +832,14 @@ class Base(Configuration):
     )
     FEATURE_MAILBOX_ADMIN_CHANNELS = values.ListValue(
         default=[], environ_name="FEATURE_MAILBOX_ADMIN_CHANNELS", environ_prefix=None
+    )
+    FEATURE_MAILDOMAIN_CREATE = values.BooleanValue(
+        default=True, environ_name="FEATURE_MAILDOMAIN_CREATE", environ_prefix=None
+    )
+    FEATURE_MAILDOMAIN_MANAGE_ACCESSES = values.BooleanValue(
+        default=True,
+        environ_name="FEATURE_MAILDOMAIN_MANAGE_ACCESSES",
+        environ_prefix=None,
     )
 
     # Logging
