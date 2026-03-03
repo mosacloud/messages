@@ -32,6 +32,12 @@ class ThreadViewSet(
     lookup_field = "pk"
     lookup_url_kwarg = "pk"
 
+    def get_serializer_context(self):
+        """Add mailbox_id to serializer context for scoped serialization."""
+        context = super().get_serializer_context()
+        context["mailbox_id"] = self.request.GET.get("mailbox_id")
+        return context
+
     def get_queryset(self, exclude_spam: bool = True, exclude_trashed: bool = True):
         """Restrict results to threads accessible by the current user."""
         user = self.request.user

@@ -617,38 +617,25 @@ class ThreadSerializer(serializers.ModelSerializer):
         IntegerChoicesField(choices_class=models.ThreadAccessRoleChoices)
     )
     def get_user_role(self, instance):
-        """Get current user's role for this thread."""
-        request = self.context.get("request")
-        mailbox_id = request.query_params.get("mailbox_id")
-        if mailbox_id:
-            try:
-                mailbox = models.Mailbox.objects.get(id=mailbox_id)
-            except models.Mailbox.DoesNotExist:
-                return None
-            if request and hasattr(request, "user") and request.user.is_authenticated:
-                try:
-                    role_value = instance.accesses.get(mailbox=mailbox).role
-                    role_enum = models.ThreadAccessRoleChoices(role_value)
-                    return role_enum.label
-                except models.ThreadAccess.DoesNotExist:
-                    return None
-        return None
+        """Get current user's role for this thread, scoped to the context mailbox."""
+        mailbox_id = self.context.get("mailbox_id")
+        if not mailbox_id:
+            return None
+
+        try:
+            role_value = instance.accesses.get(mailbox_id=mailbox_id).role
+            return models.ThreadAccessRoleChoices(role_value).label
+        except models.ThreadAccess.DoesNotExist:
+            return None
 
     @extend_schema_field(ThreadLabelSerializer(many=True))
     def get_labels(self, instance):
-        """Get labels for the thread, filtered by user's mailbox access."""
-        request = self.context.get("request")
-        if not request or not hasattr(request, "user"):
+        """Get labels for the thread, scoped to the context mailbox."""
+        mailbox_id = self.context.get("mailbox_id")
+        if not mailbox_id:
             return []
 
-        labels = instance.labels.filter(
-            Exists(
-                models.MailboxAccess.objects.filter(
-                    mailbox=OuterRef("mailbox"),
-                    user=request.user,
-                )
-            )
-        ).distinct()
+        labels = instance.labels.filter(mailbox_id=mailbox_id)
         return ThreadLabelSerializer(labels, many=True).data
 
     class Meta:
