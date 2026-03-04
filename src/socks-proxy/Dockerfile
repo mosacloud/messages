@@ -1,7 +1,7 @@
 FROM debian:trixie-slim AS base
 
 ARG DANTE_VER=1.4.4
-ARG DANTE_URL=https://www.inet.no/dante/files/dante-$DANTE_VER.tar.gz
+ARG DANTE_URL=https://fossies.org/linux/misc/dante-$DANTE_VER.tar.gz
 ARG DANTE_SHA256=1973c7732f1f9f0a4c0ccf2c1ce462c7c25060b25643ea90f9b98f53a813faec
 
 RUN <<EOR
