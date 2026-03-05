@@ -127,6 +127,17 @@ def update_files(version: str) -> None:
         package_json.write_text(content)
         sys.stdout.write(f"  → {package_json}\n")
 
+    # Update uv.lock files to match
+    sys.stdout.write("Updating uv.lock files...\n")
+    for pyproject_toml in src_path.rglob("pyproject.toml"):
+        lock_file = pyproject_toml.parent / "uv.lock"
+        if lock_file.exists():
+            run_command(
+                f"cd {pyproject_toml.parent} && uv lock",
+                shell=True
+            )
+            sys.stdout.write(f"  → {lock_file}\n")
+
     # Update package-lock.json files to match
     sys.stdout.write("Updating package-lock.json files...\n")
     for package_json in src_path.rglob("package.json"):
