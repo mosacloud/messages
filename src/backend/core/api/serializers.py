@@ -1808,6 +1808,8 @@ class ProvisioningMailDomainSerializer(serializers.Serializer):
 
     domains = DomainsField()
     custom_attributes = serializers.JSONField(required=False, default=dict)
+    oidc_autojoin = serializers.BooleanField(required=False, default=True)
+    identity_sync = serializers.BooleanField(required=False, default=False)
 
     def create(self, validated_data):
         """This serializer is only used to validate the data, not to create or update."""

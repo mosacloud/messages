@@ -216,3 +216,94 @@ def test_provisioning_missing_domains_returns_400(client, url, auth_header):
         **auth_header,
     )
     assert response.status_code == 400
+
+
+# -- oidc_autojoin and identity_sync tests --
+
+
+@pytest.mark.django_db
+def test_provisioning_default_oidc_autojoin_true(client, url, auth_header):
+    """oidc_autojoin defaults to True when not provided."""
+    response = client.post(
+        url,
+        data={"domains": ["autojoin.fr"]},
+        content_type="application/json",
+        **auth_header,
+    )
+    assert response.status_code == 200
+    domain = MailDomain.objects.get(name="autojoin.fr")
+    assert domain.oidc_autojoin is True
+
+
+@pytest.mark.django_db
+def test_provisioning_default_identity_sync_false(client, url, auth_header):
+    """identity_sync defaults to False when not provided."""
+    response = client.post(
+        url,
+        data={"domains": ["sync.fr"]},
+        content_type="application/json",
+        **auth_header,
+    )
+    assert response.status_code == 200
+    domain = MailDomain.objects.get(name="sync.fr")
+    assert domain.identity_sync is False
+
+
+@pytest.mark.django_db
+def test_provisioning_explicit_oidc_autojoin_false(client, url, auth_header):
+    """oidc_autojoin can be explicitly set to False."""
+    response = client.post(
+        url,
+        data={"domains": ["nojoin.fr"], "oidc_autojoin": False},
+        content_type="application/json",
+        **auth_header,
+    )
+    assert response.status_code == 200
+    domain = MailDomain.objects.get(name="nojoin.fr")
+    assert domain.oidc_autojoin is False
+
+
+@pytest.mark.django_db
+def test_provisioning_explicit_identity_sync_true(client, url, auth_header):
+    """identity_sync can be explicitly set to True."""
+    response = client.post(
+        url,
+        data={"domains": ["synced.fr"], "identity_sync": True},
+        content_type="application/json",
+        **auth_header,
+    )
+    assert response.status_code == 200
+    domain = MailDomain.objects.get(name="synced.fr")
+    assert domain.identity_sync is True
+
+
+@pytest.mark.django_db
+def test_provisioning_updates_oidc_autojoin_on_existing(client, url, auth_header):
+    """oidc_autojoin is updated on existing domains when it differs."""
+    MailDomainFactory(name="existing.fr", oidc_autojoin=True)
+
+    response = client.post(
+        url,
+        data={"domains": ["existing.fr"], "oidc_autojoin": False},
+        content_type="application/json",
+        **auth_header,
+    )
+    assert response.status_code == 200
+    domain = MailDomain.objects.get(name="existing.fr")
+    assert domain.oidc_autojoin is False
+
+
+@pytest.mark.django_db
+def test_provisioning_updates_identity_sync_on_existing(client, url, auth_header):
+    """identity_sync is updated on existing domains when it differs."""
+    MailDomainFactory(name="existing.fr", identity_sync=False)
+
+    response = client.post(
+        url,
+        data={"domains": ["existing.fr"], "identity_sync": True},
+        content_type="application/json",
+        **auth_header,
+    )
+    assert response.status_code == 200
+    domain = MailDomain.objects.get(name="existing.fr")
+    assert domain.identity_sync is True
