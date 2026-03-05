@@ -8,6 +8,31 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-05
+
+### Added
+
+- Store thread read state per thread access #575
+
+  _⚠️ This migration requires a search reindex to be run after the upgrade._
+
+- Store and display the user who sent a message #574
+- Display selected threads count in right panel #576
+- Add skip navigation link for keyboard users #573
+- Add DeployCenter backend for syncing maildomain admins #572
+- Add management command to print all users of the instance
+
+### Changed
+
+- Bump keycloak to 26.5.4 #571
+- Add migrations-check Makefile command
+
+### Fixed
+
+- Preserve scroll position across renders #578
+- Convert newlines to `<br>` in styled text #577
+- Scope labels and user_role to the requested mailbox
+
 ## [0.3.0] - 2026-02-24
 
 ### Added
@@ -110,7 +135,8 @@ and this project adheres to
 - Exclude `is_trashed` and `is_spam` threads from search results by default
 - `to` search modifier now looks for messages where recipient fields (to, cc, bcc) contain the given email address.
 
-[unreleased]: https://github.com/suitenumerique/messages/compare/v0.3.0...main
+[unreleased]: https://github.com/suitenumerique/messages/compare/v0.4.0...main
+[0.4.0]: https://github.com/suitenumerique/messages/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/suitenumerique/messages/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/suitenumerique/messages/releases/v0.2.0
 [0.1.1]: https://github.com/suitenumerique/messages/releases/v0.1.1
