@@ -372,10 +372,17 @@ stop-e2e: ## Stop and remove e2e services
 
 # -- Backend
 
+
 migrations:  ## run django makemigrations for the messages project.
 	@echo "$(BOLD)Running makemigrations$(RESET)"
 	@$(MANAGE_DB) makemigrations
 .PHONY: migrations
+
+
+migrations-check:  ## check that all model changes have corresponding migrations.
+	@echo "$(BOLD)Checking migrations$(RESET)"
+	@$(COMPOSE_RUN_APP_TOOLS) python manage.py makemigrations --check --dry-run
+.PHONY: migrations-check
 
 migrate:  ## run django migrations for the messages project.
 	@echo "$(BOLD)Running migrations$(RESET)"
