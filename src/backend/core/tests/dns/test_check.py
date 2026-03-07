@@ -1,6 +1,7 @@
 """
 Tests for DNS checking functionality.
 """
+# pylint: disable=too-many-lines
 
 import json
 from unittest.mock import MagicMock, patch
@@ -11,7 +12,12 @@ import pytest
 from dns.resolver import NXDOMAIN, YXDOMAIN, NoAnswer, NoNameservers, Timeout
 
 from core.models import MailDomain
-from core.services.dns.check import check_dns_records, check_single_record
+from core.services.dns.check import (
+    check_dns_records,
+    check_single_record,
+    parse_dkim_tags,
+    parse_spf_terms,
+)
 
 
 @pytest.mark.django_db
@@ -770,6 +776,288 @@ class TestDNSChecking:  # pylint: disable=too-many-public-methods
             "type": "txt",
             "value": "v=DKIM1; k=rsa; p=MIGf...",
         }
+
+
+class TestParseDkimTags:
+    """Test DKIM tag parsing."""
+
+    def test_basic_dkim_record(self):
+        """Test parsing a standard DKIM record."""
+        result = parse_dkim_tags("v=DKIM1; k=rsa; p=MIGfMA0")
+        assert result == {"v": "DKIM1", "k": "rsa", "p": "MIGfMA0"}
+
+    def test_reordered_tags(self):
+        """Test parsing DKIM with reordered tags."""
+        result = parse_dkim_tags("v=DKIM1; p=MIGfMA0; k=rsa")
+        assert result == {"v": "DKIM1", "p": "MIGfMA0", "k": "rsa"}
+
+    def test_with_t_s_flag(self):
+        """Test parsing DKIM with t=s (strict) flag."""
+        result = parse_dkim_tags("v=DKIM1; k=rsa; p=MIGfMA0; t=s")
+        assert result == {"v": "DKIM1", "k": "rsa", "p": "MIGfMA0", "t": "s"}
+
+    def test_with_t_y_flag(self):
+        """Test parsing DKIM with t=y (testing) flag."""
+        result = parse_dkim_tags("v=DKIM1; k=rsa; p=MIGfMA0; t=y")
+        assert result == {"v": "DKIM1", "k": "rsa", "p": "MIGfMA0", "t": "y"}
+
+    def test_with_t_y_s_flags(self):
+        """Test parsing DKIM with t=y:s (testing+strict) flags."""
+        result = parse_dkim_tags("v=DKIM1; k=rsa; p=MIGfMA0; t=y:s")
+        assert result == {"v": "DKIM1", "k": "rsa", "p": "MIGfMA0", "t": "y:s"}
+
+    def test_v_not_first_returns_none(self):
+        """Test that v= not being first tag returns None."""
+        assert parse_dkim_tags("k=rsa; v=DKIM1; p=MIGfMA0") is None
+
+    def test_wrong_version_returns_none(self):
+        """Test that wrong DKIM version returns None."""
+        assert parse_dkim_tags("v=DKIM2; k=rsa; p=MIGfMA0") is None
+
+    def test_empty_string_returns_none(self):
+        """Test that empty string returns None."""
+        assert parse_dkim_tags("") is None
+
+
+class TestParseSpfTerms:
+    """Test SPF term parsing."""
+
+    def test_basic_spf(self):
+        """Test parsing a basic SPF record."""
+        all_mech, terms = parse_spf_terms("v=spf1 include:_spf.example.com -all")
+        assert all_mech == "-all"
+        assert terms == {"include:_spf.example.com"}
+
+    def test_multiple_includes(self):
+        """Test parsing SPF with multiple includes."""
+        all_mech, terms = parse_spf_terms(
+            "v=spf1 include:_spf.example.com include:other.com -all"
+        )
+        assert all_mech == "-all"
+        assert terms == {"include:_spf.example.com", "include:other.com"}
+
+    def test_tilde_all(self):
+        """Test parsing SPF with ~all mechanism."""
+        all_mech, _terms = parse_spf_terms("v=spf1 include:_spf.example.com ~all")
+        assert all_mech == "~all"
+
+    def test_not_spf_returns_none(self):
+        """Test that non-SPF record returns None."""
+        assert parse_spf_terms("not-an-spf-record") is None
+
+    def test_no_all_mechanism(self):
+        """Test parsing SPF without an all mechanism."""
+        all_mech, terms = parse_spf_terms("v=spf1 include:_spf.example.com")
+        assert all_mech is None
+        assert terms == {"include:_spf.example.com"}
+
+
+@pytest.mark.django_db
+class TestDKIMSemanticComparison:
+    """Test DKIM semantic comparison in check_single_record."""
+
+    def test_dkim_with_extra_t_s_flag_is_correct(self, maildomain_factory):
+        """DKIM record with t=s appended should still be valid."""
+        maildomain = maildomain_factory(name="example.com")
+        expected_record = {
+            "type": "TXT",
+            "target": "selector._domainkey",
+            "value": "v=DKIM1; k=rsa; p=MIGfMA0",
+        }
+
+        with patch("core.services.dns.check.dns.resolver.resolve") as mock_resolve:
+            mock_answer = MagicMock()
+            mock_answer.to_text.return_value = '"v=DKIM1; k=rsa; p=MIGfMA0; t=s"'
+            mock_resolve.return_value = [mock_answer]
+
+            result = check_single_record(maildomain, expected_record)
+            assert result["status"] == "correct"
+
+    def test_dkim_with_t_y_flag_is_insecure(self, maildomain_factory):
+        """DKIM record with t=y (testing mode) should be marked insecure."""
+        maildomain = maildomain_factory(name="example.com")
+        expected_record = {
+            "type": "TXT",
+            "target": "selector._domainkey",
+            "value": "v=DKIM1; k=rsa; p=MIGfMA0",
+        }
+
+        with patch("core.services.dns.check.dns.resolver.resolve") as mock_resolve:
+            mock_answer = MagicMock()
+            mock_answer.to_text.return_value = '"v=DKIM1; k=rsa; p=MIGfMA0; t=y"'
+            mock_resolve.return_value = [mock_answer]
+
+            result = check_single_record(maildomain, expected_record)
+            assert result["status"] == "insecure"
+
+    def test_dkim_with_t_y_s_flags_is_insecure(self, maildomain_factory):
+        """DKIM record with t=y:s (testing + strict) should be marked insecure."""
+        maildomain = maildomain_factory(name="example.com")
+        expected_record = {
+            "type": "TXT",
+            "target": "selector._domainkey",
+            "value": "v=DKIM1; k=rsa; p=MIGfMA0",
+        }
+
+        with patch("core.services.dns.check.dns.resolver.resolve") as mock_resolve:
+            mock_answer = MagicMock()
+            mock_answer.to_text.return_value = '"v=DKIM1; k=rsa; p=MIGfMA0; t=y:s"'
+            mock_resolve.return_value = [mock_answer]
+
+            result = check_single_record(maildomain, expected_record)
+            assert result["status"] == "insecure"
+
+    def test_dkim_reordered_tags_is_correct(self, maildomain_factory):
+        """DKIM record with reordered tags (v= still first) should be valid."""
+        maildomain = maildomain_factory(name="example.com")
+        expected_record = {
+            "type": "TXT",
+            "target": "selector._domainkey",
+            "value": "v=DKIM1; k=rsa; p=MIGfMA0",
+        }
+
+        with patch("core.services.dns.check.dns.resolver.resolve") as mock_resolve:
+            mock_answer = MagicMock()
+            mock_answer.to_text.return_value = '"v=DKIM1; p=MIGfMA0; k=rsa"'
+            mock_resolve.return_value = [mock_answer]
+
+            result = check_single_record(maildomain, expected_record)
+            assert result["status"] == "correct"
+
+    def test_dkim_wrong_key_is_incorrect(self, maildomain_factory):
+        """DKIM record with wrong public key should be incorrect."""
+        maildomain = maildomain_factory(name="example.com")
+        expected_record = {
+            "type": "TXT",
+            "target": "selector._domainkey",
+            "value": "v=DKIM1; k=rsa; p=MIGfMA0",
+        }
+
+        with patch("core.services.dns.check.dns.resolver.resolve") as mock_resolve:
+            mock_answer = MagicMock()
+            mock_answer.to_text.return_value = '"v=DKIM1; k=rsa; p=WRONG_KEY"'
+            mock_resolve.return_value = [mock_answer]
+
+            result = check_single_record(maildomain, expected_record)
+            assert result["status"] == "incorrect"
+
+    def test_dkim_multiline_txt_record_with_t_s(self, maildomain_factory):
+        """Multiline DKIM TXT record (split across quoted strings) with t=s."""
+        maildomain = maildomain_factory(name="example.com")
+        long_key = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC"
+        expected_record = {
+            "type": "TXT",
+            "target": "selector._domainkey",
+            "value": f"v=DKIM1; k=rsa; p={long_key}",
+        }
+
+        with patch("core.services.dns.check.dns.resolver.resolve") as mock_resolve:
+            # Simulate DNS returning a split TXT record with extra t=s tag
+            mock_answer = MagicMock()
+            mock_answer.to_text.return_value = (
+                '"v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBA" "QUAA4GNADCBiQKBgQC; t=s"'
+            )
+            mock_resolve.return_value = [mock_answer]
+
+            result = check_single_record(maildomain, expected_record)
+            assert result["status"] == "correct"
+
+    def test_dkim_multiline_txt_record_reordered_with_t_y(self, maildomain_factory):
+        """Multiline DKIM TXT record with reordered tags and t=y is insecure."""
+        maildomain = maildomain_factory(name="example.com")
+        long_key = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC"
+        expected_record = {
+            "type": "TXT",
+            "target": "selector._domainkey",
+            "value": f"v=DKIM1; k=rsa; p={long_key}",
+        }
+
+        with patch("core.services.dns.check.dns.resolver.resolve") as mock_resolve:
+            mock_answer = MagicMock()
+            mock_answer.to_text.return_value = (
+                '"v=DKIM1; t=y; p=MIGfMA0GCSqGSIb3DQEBA" "QUAA4GNADCBiQKBgQC; k=rsa"'
+            )
+            mock_resolve.return_value = [mock_answer]
+
+            result = check_single_record(maildomain, expected_record)
+            assert result["status"] == "insecure"
+
+
+@pytest.mark.django_db
+class TestSPFSemanticComparison:
+    """Test SPF semantic comparison in check_single_record."""
+
+    def test_spf_reordered_terms_is_correct(self, maildomain_factory):
+        """SPF record with reordered mechanisms should be valid."""
+        maildomain = maildomain_factory(name="example.com")
+        expected_record = {
+            "type": "TXT",
+            "target": "",
+            "value": "v=spf1 include:_spf.example.com include:other.com -all",
+        }
+
+        with patch("core.services.dns.check.dns.resolver.resolve") as mock_resolve:
+            mock_answer = MagicMock()
+            mock_answer.to_text.return_value = (
+                '"v=spf1 include:other.com include:_spf.example.com -all"'
+            )
+            mock_resolve.return_value = [mock_answer]
+
+            result = check_single_record(maildomain, expected_record)
+            assert result["status"] == "correct"
+
+    def test_spf_reordered_with_tilde_all_accepted(self, maildomain_factory):
+        """SPF with reordered terms and ~all accepted when -all expected."""
+        maildomain = maildomain_factory(name="example.com")
+        expected_record = {
+            "type": "TXT",
+            "target": "",
+            "value": "v=spf1 include:_spf.example.com -all",
+        }
+
+        with patch("core.services.dns.check.dns.resolver.resolve") as mock_resolve:
+            mock_answer = MagicMock()
+            mock_answer.to_text.return_value = '"v=spf1 include:_spf.example.com ~all"'
+            mock_resolve.return_value = [mock_answer]
+
+            result = check_single_record(maildomain, expected_record)
+            assert result["status"] == "correct"
+
+    def test_spf_with_extra_includes_is_correct(self, maildomain_factory):
+        """SPF with extra includes (superset) should be valid."""
+        maildomain = maildomain_factory(name="example.com")
+        expected_record = {
+            "type": "TXT",
+            "target": "",
+            "value": "v=spf1 include:_spf.example.com -all",
+        }
+
+        with patch("core.services.dns.check.dns.resolver.resolve") as mock_resolve:
+            mock_answer = MagicMock()
+            mock_answer.to_text.return_value = (
+                '"v=spf1 include:_spf.example.com include:extra.com -all"'
+            )
+            mock_resolve.return_value = [mock_answer]
+
+            result = check_single_record(maildomain, expected_record)
+            assert result["status"] == "correct"
+
+    def test_spf_missing_expected_include_is_incorrect(self, maildomain_factory):
+        """SPF missing an expected include should be incorrect."""
+        maildomain = maildomain_factory(name="example.com")
+        expected_record = {
+            "type": "TXT",
+            "target": "",
+            "value": "v=spf1 include:_spf.example.com -all",
+        }
+
+        with patch("core.services.dns.check.dns.resolver.resolve") as mock_resolve:
+            mock_answer = MagicMock()
+            mock_answer.to_text.return_value = '"v=spf1 include:other.com -all"'
+            mock_resolve.return_value = [mock_answer]
+
+            result = check_single_record(maildomain, expected_record)
+            assert result["status"] == "incorrect"
 
 
 @pytest.fixture(name="maildomain_factory")
