@@ -348,7 +348,7 @@ class MailboxUsageMetricsApiView(APIView):
             for mailbox in queryset:
                 email = f"{mailbox.local_part}@{mailbox.domain.name}"
                 result = {
-                    "account": {"type": "mailbox", "id": email, "email": email},
+                    "account": {"type": "mailbox", "email": email},
                     "metrics": {"storage_used": mailbox.storage_used},
                 }
                 if custom_attr_key:
