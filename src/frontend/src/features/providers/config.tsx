@@ -31,6 +31,7 @@ const DEFAULT_CONFIG: AppConfig = {
     FEATURE_MAILDOMAIN_MANAGE_ACCESSES: true,
     DRIVE: DEFAULT_DRIVE_CONFIG,
     MESSAGES_MANUAL_RETRY_MAX_AGE: 0,
+    FRONTEND_SILENT_LOGIN_ENABLED: false,
 }
 
 const ConfigContext = createContext<AppConfig>(DEFAULT_CONFIG)
@@ -59,7 +60,7 @@ export const ConfigProvider = ({ children }: PropsWithChildren) => {
               height: "100vh",
             }}
           >
-            <Spinner />
+            <Spinner size="xl"/>
           </div>
         );
       }

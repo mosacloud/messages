@@ -257,6 +257,11 @@
                                             "type": "integer",
                                             "description": "Maximum age in seconds for a message to be eligible for manual retry of failed deliveries",
                                             "readOnly": true
+                                        },
+                                        "FRONTEND_SILENT_LOGIN_ENABLED": {
+                                            "type": "boolean",
+                                            "description": "Whether silent OIDC login is enabled",
+                                            "readOnly": true
                                         }
                                     },
                                     "required": [
@@ -277,7 +282,8 @@
                                         "IMAGE_PROXY_ENABLED",
                                         "FEATURE_MAILDOMAIN_CREATE",
                                         "FEATURE_MAILDOMAIN_MANAGE_ACCESSES",
-                                        "MESSAGES_MANUAL_RETRY_MAX_AGE"
+                                        "MESSAGES_MANUAL_RETRY_MAX_AGE",
+                                        "FRONTEND_SILENT_LOGIN_ENABLED"
                                     ]
                                 }
                             }
@@ -5661,6 +5667,9 @@
                             }
                         },
                         "description": ""
+                    },
+                    "401": {
+                        "description": "Authentication credentials were not provided or are invalid."
                     }
                 }
             }

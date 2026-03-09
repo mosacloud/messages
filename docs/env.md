@@ -320,6 +320,13 @@ it can lead to memory exhaustion, increase at your own risk.
 | `IMAGE_PROXY_MAX_SIZE` | `5242880` (5MB) | Maximum size in bytes for external images | Optional |
 | `IMAGE_PROXY_CACHE_TTL` | `2592000` (30 days) | Cache TTL in seconds for external images | Optional |
 
+### Frontend
+
+| Variable | Default | Description | Required |
+|----------|---------|-------------|----------|
+| `FRONTEND_THEME` | `white-label` | Theme for the frontend | Optional |
+| `FRONTEND_SILENT_LOGIN_ENABLED` | `False` | Whether silent login is enabled | Optional |
+
 ### Third-party Services
 
 #### Drive

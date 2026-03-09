@@ -127,6 +127,11 @@ class ConfigView(drf.views.APIView):
                             ),
                             "readOnly": True,
                         },
+                        "FRONTEND_SILENT_LOGIN_ENABLED": {
+                            "type": "boolean",
+                            "description": "Whether silent OIDC login is enabled",
+                            "readOnly": True,
+                        },
                     },
                     "required": [
                         "ENVIRONMENT",
@@ -147,6 +152,7 @@ class ConfigView(drf.views.APIView):
                         "FEATURE_MAILDOMAIN_CREATE",
                         "FEATURE_MAILDOMAIN_MANAGE_ACCESSES",
                         "MESSAGES_MANUAL_RETRY_MAX_AGE",
+                        "FRONTEND_SILENT_LOGIN_ENABLED",
                     ],
                 },
             )
@@ -174,6 +180,7 @@ class ConfigView(drf.views.APIView):
             "MAX_OUTGOING_BODY_SIZE",
             "MAX_INCOMING_EMAIL_SIZE",
             "MAX_RECIPIENTS_PER_MESSAGE",
+            "FRONTEND_SILENT_LOGIN_ENABLED",
         ]
         dict_settings = {}
         for setting in array_settings:

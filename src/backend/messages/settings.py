@@ -614,6 +614,9 @@ class Base(Configuration):
     FRONTEND_THEME = values.Value(
         None, environ_name="FRONTEND_THEME", environ_prefix=None
     )
+    FRONTEND_SILENT_LOGIN_ENABLED = values.BooleanValue(
+        default=False, environ_name="FRONTEND_SILENT_LOGIN_ENABLED", environ_prefix=None
+    )
 
     # Celery
     CELERY_BROKER_URL = values.Value(
@@ -698,6 +701,8 @@ class Base(Configuration):
     OIDC_RP_SCOPES = values.Value(
         "openid email", environ_name="OIDC_RP_SCOPES", environ_prefix=None
     )
+    OIDC_AUTHENTICATE_CLASS = "lasuite.oidc_login.views.OIDCAuthenticationRequestView"
+    OIDC_CALLBACK_CLASS = "lasuite.oidc_login.views.OIDCAuthenticationCallbackView"
     LOGIN_REDIRECT_URL = values.Value(
         None, environ_name="LOGIN_REDIRECT_URL", environ_prefix=None
     )

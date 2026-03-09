@@ -15,7 +15,7 @@ export interface fetchAPIOptions {
 
 export const fetchAPI= async <T>(
   pathname: string,
-  { params, logoutOn401, ...requestInit }: RequestInit & fetchAPIOptions & { params?: Record<string, string> } = {},
+  { params, logoutOn401 = true, ...requestInit }: RequestInit & fetchAPIOptions & { params?: Record<string, string> } = {},
 ): Promise<T> => {
   const requestUrl = getRequestUrl(pathname, params);
   const isMultipartFormData = requestInit.body instanceof FormData;
@@ -26,7 +26,7 @@ export const fetchAPI= async <T>(
     headers: getHeaders(requestInit.headers, isMultipartFormData),
   });
 
-  if ((logoutOn401 ?? true) && response.status === 401) {
+  if (response.status === 401 && logoutOn401) {
     sessionStorage.setItem(SESSION_EXPIRED_KEY, 'true');
     logout();
   }
