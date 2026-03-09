@@ -9,3 +9,4 @@ from core.services.importer.imap_tasks import *  # noqa: F403
 from core.services.importer.mbox_tasks import *  # noqa: F403
 from core.services.importer.pst_tasks import *  # noqa: F403
 from core.services.search.tasks import *  # noqa: F403
+from core.services.calendar.tasks import *  # noqa: F403

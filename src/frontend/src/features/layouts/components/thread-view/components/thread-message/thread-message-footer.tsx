@@ -18,7 +18,7 @@ const ThreadMessageFooter = ({
     intersectionRef,
 }: ThreadMessageFooterProps) => {
     const { t } = useTranslation();
-    const { selectedThread } = useMailboxContext();
+    const { selectedThread, selectedMailbox } = useMailboxContext();
 
     // Separate calendar attachments from regular attachments
     // Deduplicate calendar invites by SHA256 hash (Google Calendar sends the same ICS as both inline and attachment)
@@ -61,6 +61,7 @@ const ThreadMessageFooter = ({
                             key={attachment.blobId}
                             attachment={attachment}
                             canDownload={!selectedThread?.is_spam}
+                            mailboxId={selectedMailbox?.id}
                         />
                     ))}
                 </div>
