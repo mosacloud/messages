@@ -1,4 +1,3 @@
-import { useRouter } from "next/router";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -6,6 +5,7 @@ import { Button, Tooltip } from "@gouvfr-lasuite/cunningham-react";
 import { ContextMenu, Icon, IconType } from "@gouvfr-lasuite/ui-kit";
 import { THREAD_SELECTED_FILTERS_KEY } from "@/features/config/constants";
 import { useMailboxContext } from "@/features/providers/mailbox";
+import { useSafeRouterPush } from "@/hooks/use-safe-router-push";
 import { useThreadPanelFilters } from "../hooks/use-thread-panel-filters";
 
 export const THREAD_PANEL_FILTER_PARAMS = [
@@ -35,8 +35,8 @@ const getStoredSelectedFilters = (): FilterType[] => {
 
 export const ThreadPanelFilter = () => {
   const { t } = useTranslation();
-  const router = useRouter();
   const searchParams = useSearchParams();
+  const safePush = useSafeRouterPush();
   const [selectedFilters, setSelectedFilters] =
     useState<FilterType[]>(getStoredSelectedFilters);
 
@@ -52,25 +52,17 @@ export const ThreadPanelFilter = () => {
     [t],
   );
 
-  const pushParams = (params: URLSearchParams) => {
-    router.push(
-      `${router.pathname.replace("[mailboxId]", router.query.mailboxId as string)}?${params.toString()}`,
-      undefined,
-      { shallow: true },
-    );
-  };
-
   const applyFilters = (filters: FilterType[]) => {
     const params = new URLSearchParams(searchParams.toString());
     THREAD_PANEL_FILTER_PARAMS.forEach((param) => params.delete(param));
     filters.forEach((filter) => params.set(filter, "1"));
-    pushParams(params);
+    safePush(params);
   };
 
   const clearFilters = () => {
     const params = new URLSearchParams(searchParams.toString());
     THREAD_PANEL_FILTER_PARAMS.forEach((param) => params.delete(param));
-    pushParams(params);
+    safePush(params);
   };
 
   const handleToggleClick = () => {

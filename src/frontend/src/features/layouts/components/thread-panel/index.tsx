@@ -5,18 +5,18 @@ import { Spinner } from "@gouvfr-lasuite/ui-kit";
 import { useTranslation } from "react-i18next";
 import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { useEffect, useRef, useCallback } from "react";
-import { useRouter } from "next/router";
 import { useSearchParams } from "next/navigation";
 import ThreadPanelHeader from "./components/thread-panel-header";
 import { useThreadSelection } from "@/features/providers/thread-selection";
 import { useScrollRestore } from "@/features/providers/scroll-restore";
 import { THREAD_PANEL_FILTER_PARAMS } from "./components/thread-panel-filter";
+import { useSafeRouterPush } from "@/hooks/use-safe-router-push";
 import { useThreadPanelFilters } from "./hooks/use-thread-panel-filters";
 
 export const ThreadPanel = () => {
     const { threads, queryStates, unselectThread, loadNextThreads, selectedThread, selectedMailbox } = useMailboxContext();
-    const router = useRouter();
     const searchParams = useSearchParams();
+    const safePush = useSafeRouterPush();
     const isSearch = searchParams.has('search');
     const { hasActiveFilters } = useThreadPanelFilters();
     const { t } = useTranslation();
@@ -75,7 +75,7 @@ export const ThreadPanel = () => {
     const clearFilters = () => {
         const params = new URLSearchParams(searchParams.toString());
         THREAD_PANEL_FILTER_PARAMS.forEach((param) => params.delete(param));
-        router.push(`${router.pathname.replace("[mailboxId]", router.query.mailboxId as string)}?${params.toString()}`, undefined, { shallow: true });
+        safePush(params);
     };
 
     const isEmpty = !threads?.results.length;
