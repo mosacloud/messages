@@ -15,19 +15,27 @@ type MarkAsStarredOptions = {
 const useStarred = () => {
     const { t } = useTranslation();
     const { selectedMailbox, invalidateThreadMessages, invalidateThreadsStats } = useMailboxContext();
+    const mailboxId = selectedMailbox?.id;
 
     const { mark, unmark, status } = useFlag('starred', {
         toastMessages: {
             thread: (count: number) => t('{{count}} threads are now starred.', { count, defaultValue_one: 'The thread is now starred.' }),
             message: (count: number) => t('{{count}} messages are now starred.', { count, defaultValue_one: 'The message is now starred.' }),
         },
-        onSuccess: () => {
-            invalidateThreadMessages();
+        onSuccess: (data) => {
+            const starredAt = data.value ? (data.starred_at ?? new Date().toISOString()) : null;
+            invalidateThreadMessages({
+                type: 'update',
+                metadata: { ids: [], threadIds: data.thread_ids ?? [] },
+                payload: {},
+                threadAccessStarredAt: mailboxId
+                    ? { mailboxId, starredAt }
+                    : undefined,
+                skipThreadsRefetch: true,
+            });
             invalidateThreadsStats();
-        }
+        },
     });
-
-    const mailboxId = selectedMailbox?.id;
 
     const markAsStarred = ({ threadIds, starredAt, onSuccess }: MarkAsStarredOptions) => {
         mark({

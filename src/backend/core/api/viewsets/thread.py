@@ -452,6 +452,12 @@ class ThreadViewSet(
                     "Filter threads that have delivery pending messages: sending, retry or failed (1=true, 0=false)."
                 ),
             ),
+            OpenApiParameter(
+                name="has_unread",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter threads with unread messages (1=true, 0=false). Requires mailbox_id.",
+            ),
         ],
     )
     def list(self, request, *args, **kwargs):
@@ -465,6 +471,10 @@ class ThreadViewSet(
             ).first()
             if mailbox_access:
                 mailbox_access.mark_accessed()
+            else:
+                raise drf.exceptions.PermissionDenied(
+                    "You do not have access to this mailbox."
+                )
 
         # If search is provided and OpenSearch is available, use it
         if search_query and len(settings.OPENSEARCH_HOSTS[0]) > 0:
@@ -499,10 +509,20 @@ class ThreadViewSet(
                 # Get the thread IDs from the search results
                 thread_ids = [thread["id"] for thread in results["threads"]]
 
-                # Build a queryset with annotations but without the default
-                # exclusion filters (trashed, spam) that get_queryset() applies,
-                # since OpenSearch already handles those filters.
-                threads = models.Thread.objects.filter(id__in=thread_ids)
+                # Filter by access control: only return threads the user
+                # can access via ThreadAccess. We don't use get_queryset()
+                # because it applies extra filters (trashed, spam, labels,
+                # booleans) that OpenSearch already handles.
+                threads = models.Thread.objects.filter(
+                    id__in=thread_ids,
+                ).filter(
+                    Exists(
+                        models.ThreadAccess.objects.filter(
+                            mailbox__accesses__user=request.user,
+                            thread=OuterRef("pk"),
+                        )
+                    ),
+                )
                 threads = threads.annotate(
                     _has_unread=models.ThreadAccess.thread_unread_filter(
                         request.user, mailbox_id

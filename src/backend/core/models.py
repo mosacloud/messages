@@ -1282,6 +1282,7 @@ class ThreadAccess(BaseModel):
                 ),
                 When(
                     accesses__mailbox_id=mailbox_id,
+                    accesses__read_at__isnull=False,
                     active_messaged_at__gt=F("accesses__read_at"),
                     then=Value(True),
                 ),

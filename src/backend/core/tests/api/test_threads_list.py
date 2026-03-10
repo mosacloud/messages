@@ -2,6 +2,7 @@
 """Tests for the Thread API list endpoint."""
 
 from datetime import timedelta
+from unittest import mock
 
 from django.urls import reverse
 from django.utils import timezone
@@ -1381,3 +1382,84 @@ class TestThreadListAPI:
         assert (
             MailboxAccess.objects.get(user=user2, mailbox=mailbox).accessed_at is None
         )
+
+    def test_list_threads_without_mailbox_id_should_not_return_inaccessible_threads(
+        self, api_client, url
+    ):
+        """A user searching without mailbox_id should not see threads they
+        have no access to. This tests the OpenSearch hydration path which
+        must enforce ThreadAccess-based access control."""
+        user = UserFactory()
+        other_user = UserFactory()
+        api_client.force_authenticate(user=user)
+
+        # Create a mailbox and thread only accessible by the other user
+        other_mailbox = MailboxFactory(users_read=[other_user])
+        other_thread = ThreadFactory()
+        ThreadAccessFactory(
+            mailbox=other_mailbox,
+            thread=other_thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        MessageFactory(thread=other_thread)
+
+        # Create a mailbox and thread accessible by our user
+        user_mailbox = MailboxFactory(users_read=[user])
+        user_thread = ThreadFactory()
+        ThreadAccessFactory(
+            mailbox=user_mailbox,
+            thread=user_thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        MessageFactory(thread=user_thread)
+
+        # Mock OpenSearch to return both threads (as if it had no access control)
+        with mock.patch("core.api.viewsets.thread.search_threads") as mock_search:
+            mock_search.return_value = {
+                "threads": [
+                    {"id": str(other_thread.id)},
+                    {"id": str(user_thread.id)},
+                ],
+                "total": 2,
+            }
+
+            response = api_client.get(url, {"search": "test query"})
+
+        assert response.status_code == status.HTTP_200_OK
+        result_ids = [r["id"] for r in response.data["results"]]
+        # The user should only see their own thread, not the other user's
+        assert str(user_thread.id) in result_ids
+        assert str(other_thread.id) not in result_ids
+
+    def test_list_threads_with_other_user_mailbox_id_should_be_forbidden(
+        self, api_client, url
+    ):
+        """A user searching with another user's mailbox_id should get a 403,
+        matching the behavior of get_queryset() for the non-search path."""
+        user = UserFactory()
+        other_user = UserFactory()
+        api_client.force_authenticate(user=user)
+
+        # Create a mailbox only accessible by the other user
+        other_mailbox = MailboxFactory(users_read=[other_user])
+        other_thread = ThreadFactory()
+        ThreadAccessFactory(
+            mailbox=other_mailbox,
+            thread=other_thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        MessageFactory(thread=other_thread)
+
+        # Mock OpenSearch to return the thread
+        with mock.patch("core.api.viewsets.thread.search_threads") as mock_search:
+            mock_search.return_value = {
+                "threads": [{"id": str(other_thread.id)}],
+                "total": 1,
+            }
+
+            response = api_client.get(
+                url,
+                {"search": "test query", "mailbox_id": str(other_mailbox.id)},
+            )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN

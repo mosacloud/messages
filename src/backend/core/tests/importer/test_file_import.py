@@ -483,11 +483,11 @@ This is a test message sent from the mailbox.
             "Message with From: equal to importing mailbox should have is_sender=True"
         )
 
-        # EML imports without IMAP flags have no is_unread info,
-        # so read_at should remain None (we trust the imported flags, not assume read)
+        # Sent messages are always considered read by the sender,
+        # regardless of IMAP flags
         access = ThreadAccess.objects.get(thread=message.thread, mailbox=mailbox)
-        assert access.read_at is None, (
-            "ThreadAccess.read_at should be None when no IMAP flags indicate read state"
+        assert access.read_at is not None, (
+            "ThreadAccess.read_at should be set for sent messages (sender always read)"
         )
 
         # Verify the sender contact is correct

@@ -390,7 +390,8 @@ def _create_message_from_inbound(
             ).first()
             if access:
                 update_fields = []
-                if not import_is_unread and (
+                # Sent messages are always considered read by the sender
+                if (is_sender or not import_is_unread) and (
                     access.read_at is None or message.created_at > access.read_at
                 ):
                     access.read_at = message.created_at
