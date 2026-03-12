@@ -31,8 +31,24 @@ def correctly_configured_header(settings):
     return {"HTTP_AUTHORIZATION": f"Bearer {settings.METRICS_API_KEY}"}
 
 
+CUSTOM_ATTRIBUTES_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "org_id": {"type": "string"},
+        "tenant": {"type": "string"},
+        "region": {"type": "string"},
+        "code": {"type": "string"},
+    },
+}
+
+
+@pytest.mark.django_db
 class TestMailboxUsageMetrics:
     """Tests for the mailbox usage metrics endpoint."""
+
+    @pytest.fixture(autouse=True)
+    def _set_custom_attributes_schema(self, settings):
+        settings.SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN = CUSTOM_ATTRIBUTES_SCHEMA
 
     @pytest.mark.django_db
     def test_requires_auth(self, api_client, url, correctly_configured_header):
@@ -450,7 +466,7 @@ class TestMailboxUsageMetrics:
     def test_filter_by_custom_attribute(
         self, api_client, url, correctly_configured_header, settings
     ):
-        """Filter by group_by_maildomain_custom_attribute + account_id
+        """Filter by account_id_key + account_id_value
         matches domains whose custom_attributes contain the given value."""
         overhead = settings.METRICS_STORAGE_USED_OVERHEAD_BY_MESSAGE
 
@@ -469,8 +485,8 @@ class TestMailboxUsageMetrics:
         response = api_client.get(
             url,
             {
-                "filter_by_maildomain_custom_attribute": "org_id",
-                "custom_attribute_value": "111",
+                "account_id_key": "org_id",
+                "account_id_value": "111",
             },
             **correctly_configured_header,
         )
@@ -505,8 +521,8 @@ class TestMailboxUsageMetrics:
         response = api_client.get(
             url,
             {
-                "filter_by_maildomain_custom_attribute": "org_id",
-                "custom_attribute_value": "111",
+                "account_id_key": "org_id",
+                "account_id_value": "111",
             },
             **correctly_configured_header,
         )
@@ -526,8 +542,8 @@ class TestMailboxUsageMetrics:
         response = api_client.get(
             url,
             {
-                "filter_by_maildomain_custom_attribute": "org_id",
-                "custom_attribute_value": "999",
+                "account_id_key": "org_id",
+                "account_id_value": "999",
             },
             **correctly_configured_header,
         )
@@ -535,6 +551,59 @@ class TestMailboxUsageMetrics:
 
         assert data["count"] == 0
         assert data["results"] == []
+
+    @pytest.mark.django_db
+    @pytest.mark.parametrize(
+        "key",
+        ["org_id__gte", "contains", "account", "metrics", "unknown"],
+    )
+    def test_invalid_account_id_key(
+        self, api_client, url, correctly_configured_header, key
+    ):
+        """account_id_key not declared in SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN
+        is rejected."""
+        response = api_client.get(
+            url,
+            {"account_id_key": key, "account_id_value": "111"},
+            **correctly_configured_header,
+        )
+        assert response.status_code == 400
+
+    @pytest.mark.django_db
+    def test_account_id_key_only_includes_attribute(
+        self, api_client, url, correctly_configured_header, settings
+    ):
+        """Providing account_id_key without account_id_value returns the full
+        list with the custom attribute included in each result."""
+        overhead = settings.METRICS_STORAGE_USED_OVERHEAD_BY_MESSAGE
+
+        domain_a = MailDomainFactory(name="a.com", custom_attributes={"org_id": "111"})
+        domain_b = MailDomainFactory(name="b.com", custom_attributes={"org_id": "222"})
+
+        mailbox_a = MailboxFactory(local_part="alice", domain=domain_a)
+        mailbox_b = MailboxFactory(local_part="bob", domain=domain_b)
+
+        for mailbox in [mailbox_a, mailbox_b]:
+            thread = ThreadFactory()
+            ThreadAccessFactory(mailbox=mailbox, thread=thread)
+            contact = ContactFactory(mailbox=mailbox)
+            MessageFactory(thread=thread, sender=contact)
+
+        response = api_client.get(
+            url,
+            {"account_id_key": "org_id"},
+            **correctly_configured_header,
+        )
+        data = response.json()
+
+        assert data["count"] == 2
+        results_by_email = {r["account"]["email"]: r for r in data["results"]}
+        assert results_by_email["alice@a.com"]["org_id"] == "111"
+        assert (
+            results_by_email["alice@a.com"]["metrics"]["storage_used"] == 1 * overhead
+        )
+        assert results_by_email["bob@b.com"]["org_id"] == "222"
+        assert results_by_email["bob@b.com"]["metrics"]["storage_used"] == 1 * overhead
 
     @pytest.mark.django_db
     def test_organization_aggregates_storage(
@@ -561,8 +630,8 @@ class TestMailboxUsageMetrics:
             url,
             {
                 "account_type": "organization",
-                "custom_attribute_value": "111",
-                "filter_by_maildomain_custom_attribute": "org_id",
+                "account_id_value": "111",
+                "account_id_key": "org_id",
             },
             **correctly_configured_header,
         )
@@ -571,29 +640,29 @@ class TestMailboxUsageMetrics:
         assert data["count"] == 1
         result = data["results"][0]
         assert result["org_id"] == "111"
-        assert result["account"] == {"type": "organization", "id": "111"}
+        assert result["account"] == {"type": "organization"}
         assert result["metrics"]["storage_used"] == 2 * overhead
 
     @pytest.mark.django_db
     def test_organization_requires_custom_attribute_filter(
         self, api_client, url, correctly_configured_header
     ):
-        """account_type=organization without filter_by_maildomain_custom_attribute
-        and custom_attribute_value returns 400."""
-        # Missing filter_by_maildomain_custom_attribute
+        """account_type=organization without account_id_key
+        and account_id_value returns 400."""
+        # Missing account_id_key
         response = api_client.get(
             url,
-            {"account_type": "organization", "custom_attribute_value": "111"},
+            {"account_type": "organization", "account_id_value": "111"},
             **correctly_configured_header,
         )
         assert response.status_code == 400
 
-        # Missing custom_attribute_value
+        # Missing account_id_value
         response = api_client.get(
             url,
             {
                 "account_type": "organization",
-                "filter_by_maildomain_custom_attribute": "org_id",
+                "account_id_key": "org_id",
             },
             **correctly_configured_header,
         )
@@ -618,8 +687,8 @@ class TestMailboxUsageMetrics:
             url,
             {
                 "account_type": "organization",
-                "custom_attribute_value": "999",
-                "filter_by_maildomain_custom_attribute": "org_id",
+                "account_id_value": "999",
+                "account_id_key": "org_id",
             },
             **correctly_configured_header,
         )
@@ -654,8 +723,8 @@ class TestMailboxUsageMetrics:
             url,
             {
                 "account_type": "maildomain",
-                "custom_attribute_value": "t1",
-                "filter_by_maildomain_custom_attribute": "tenant",
+                "account_id_value": "t1",
+                "account_id_key": "tenant",
             },
             **correctly_configured_header,
         )
@@ -676,7 +745,7 @@ class TestMailboxUsageMetrics:
     def test_maildomain_excludes_other_custom_attribute(
         self, api_client, url, correctly_configured_header, settings
     ):
-        """account_type=maildomain with filter_by_maildomain_custom_attribute
+        """account_type=maildomain with account_id_key
         only returns domains matching the given attribute value."""
         overhead = settings.METRICS_STORAGE_USED_OVERHEAD_BY_MESSAGE
 
@@ -694,8 +763,8 @@ class TestMailboxUsageMetrics:
             url,
             {
                 "account_type": "maildomain",
-                "custom_attribute_value": "west",
-                "filter_by_maildomain_custom_attribute": "region",
+                "account_id_value": "west",
+                "account_id_key": "region",
             },
             **correctly_configured_header,
         )
@@ -765,8 +834,8 @@ class TestMailboxUsageMetrics:
             url,
             {
                 "account_type": "organization",
-                "filter_by_maildomain_custom_attribute": "code",
-                "custom_attribute_value": "X1",
+                "account_id_key": "code",
+                "account_id_value": "X1",
             },
             **correctly_configured_header,
         )
@@ -814,8 +883,8 @@ class TestMailboxUsageMetrics:
             url,
             {
                 "account_type": "maildomain",
-                "filter_by_maildomain_custom_attribute": "code",
-                "custom_attribute_value": "X1",
+                "account_id_key": "code",
+                "account_id_value": "X1",
             },
             **correctly_configured_header,
         )
@@ -861,8 +930,8 @@ class TestMailboxUsageMetrics:
             url,
             {
                 "account_type": "organization",
-                "filter_by_maildomain_custom_attribute": "code",
-                "custom_attribute_value": "X1",
+                "account_id_key": "code",
+                "account_id_value": "X1",
             },
             **correctly_configured_header,
         )
@@ -902,8 +971,8 @@ class TestMailboxUsageMetrics:
             url,
             {
                 "account_type": "maildomain",
-                "filter_by_maildomain_custom_attribute": "code",
-                "custom_attribute_value": "X1",
+                "account_id_key": "code",
+                "account_id_value": "X1",
             },
             **correctly_configured_header,
         )
