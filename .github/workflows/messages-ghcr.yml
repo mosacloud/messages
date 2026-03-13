@@ -25,26 +25,6 @@ jobs:
           echo "frontend_version=${FRONTEND_VERSION}-mosa.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
           echo "backend_version=${BACKEND_VERSION}-mosa.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
-  docker-publish-mta-in:
-    needs: get-version
-    uses: ./.github/workflows/docker-publish.yml
-    secrets: inherit
-    with:
-      image_name: "mta-in"
-      context: "src/mta-in"
-      target: runtime-prod
-      version: ${{ needs.get-version.outputs.backend_version }}
-
-  docker-publish-mta-out:
-    needs: get-version
-    uses: ./.github/workflows/docker-publish.yml
-    secrets: inherit
-    with:
-      image_name: "mta-out"
-      context: "src/mta-out"
-      target: runtime-prod
-      version: ${{ needs.get-version.outputs.backend_version }}
-
   docker-publish-socks-proxy:
     needs: get-version
     uses: ./.github/workflows/docker-publish.yml
@@ -73,13 +53,4 @@ jobs:
       image_name: "backend"
       context: "src/backend"
       target: runtime-prod
-      version: ${{ needs.get-version.outputs.backend_version }}
-
-  docker-publish-keycloak:
-    needs: get-version
-    uses: ./.github/workflows/docker-publish.yml
-    secrets: inherit
-    with:
-      image_name: "keycloak"
-      context: "src/keycloak"
       version: ${{ needs.get-version.outputs.backend_version }}
