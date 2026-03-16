@@ -27,7 +27,7 @@ export const ThreadAccessesWidget = ({ accesses }: ThreadAccessesWidgetProps) =>
     const { t } = useTranslation();
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
-    const { selectedMailbox, selectedThread, invalidateThreadMessages } = useMailboxContext();
+    const { selectedMailbox, selectedThread, invalidateThreadMessages, invalidateThreadsStats, unselectThread } = useMailboxContext();
     const { mutate: removeThreadAccess } = useThreadsAccessesDestroy({ mutation: { onSuccess: () => invalidateThreadMessages() } });
     const { mutate: createThreadAccess } = useThreadsAccessesCreate({ mutation: { onSuccess: () => invalidateThreadMessages() } });
     const { mutate: updateThreadAccess } = useThreadsAccessesUpdate({ mutation: { onSuccess: () => invalidateThreadMessages() } });
@@ -86,6 +86,7 @@ export const ThreadAccessesWidget = ({ accesses }: ThreadAccessesWidgetProps) =>
             });
             return;
         };
+        const isSelfRemoval = access.mailbox.id === selectedMailbox?.id;
         removeThreadAccess({
             id: access.id,
             threadId: selectedThread!.id
@@ -94,6 +95,15 @@ export const ThreadAccessesWidget = ({ accesses }: ThreadAccessesWidgetProps) =>
                 addToast(<ToasterItem>
                     <p>{t('Thread access removed')}</p>
                 </ToasterItem>);
+                if (isSelfRemoval) {
+                    setIsShareModalOpen(false);
+                    invalidateThreadMessages({
+                        type: 'delete',
+                        metadata: { threadIds: [selectedThread!.id] },
+                    });
+                    invalidateThreadsStats();
+                    unselectThread();
+                }
             }
         });
     }
