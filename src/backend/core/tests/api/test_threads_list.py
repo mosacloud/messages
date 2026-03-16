@@ -596,6 +596,7 @@ class TestThreadStatsAPI:
             has_messages=True,
             has_active=True,
             active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
         ThreadAccessFactory(
             mailbox=mailbox1,
@@ -608,6 +609,7 @@ class TestThreadStatsAPI:
             has_messages=True,
             has_active=True,
             active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
         ThreadAccessFactory(
             mailbox=mailbox2,
@@ -796,12 +798,22 @@ class TestThreadStatsAPI:
 
         # Create threads with different unread states
         thread1 = ThreadFactory(
-            has_messages=True, has_active=True, active_messaged_at=timezone.now()
+            has_messages=True,
+            has_active=True,
+            active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
         thread2 = ThreadFactory(
-            has_messages=True, has_active=True, active_messaged_at=timezone.now()
+            has_messages=True,
+            has_active=True,
+            active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
-        thread3 = ThreadFactory(has_active=True, active_messaged_at=timezone.now())
+        thread3 = ThreadFactory(
+            has_active=True,
+            active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
+        )
 
         for thread in [thread1, thread2, thread3]:
             ThreadAccessFactory(
@@ -833,21 +845,23 @@ class TestThreadStatsAPI:
         mailbox = MailboxFactory(users_read=[user])
 
         # Create threads with different combinations of flags and unread status
-        # thread1: unread (has_active + active_messaged_at, no read_at), starred
+        # thread1: unread (messaged_at set, no read_at), starred
         thread1 = ThreadFactory(
             has_sender=True,
             is_spam=False,
             has_active=True,
             active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
-        # thread2: read (has_active + active_messaged_at, read_at set), starred
+        # thread2: read (messaged_at set, read_at set), starred
         thread2 = ThreadFactory(
             has_sender=True,
             is_spam=False,
             has_active=True,
             active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
-        # thread3: unread (no has_active, so not unread despite no read_at), not starred
+        # thread3: not unread (no messaged_at despite no read_at), not starred
         thread3 = ThreadFactory(
             has_sender=False,
             is_spam=True,
@@ -901,7 +915,7 @@ class TestThreadStatsAPI:
             "has_sender": 2,  # thread1 and thread2 have has_sender=True
             "has_sender_unread": 1,  # Only thread1 is sender AND unread
             "is_spam": 1,  # Only thread3 is spam
-            "is_spam_unread": 0,  # thread3 has no active messages so not unread
+            "is_spam_unread": 0,  # thread3 has no messaged_at so not unread
             "has_active": 2,  # thread1 and thread2 have has_active=True
             "has_active_unread": 1,  # Only thread1 is active AND unread
         }
@@ -918,18 +932,21 @@ class TestThreadStatsAPI:
             has_sender=True,
             has_active=True,
             active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
         # thread2: read, starred
         thread2 = ThreadFactory(
             has_sender=True,
             has_active=True,
             active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
         # thread3: unread, not starred
         thread3 = ThreadFactory(
             has_sender=True,
             has_active=True,
             active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
 
         ThreadAccessFactory(

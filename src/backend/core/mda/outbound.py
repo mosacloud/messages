@@ -372,7 +372,15 @@ def prepare_outbound_message(
             "created_at",
         ]
     )
+    # Mark the thread as read for the sender — they've obviously seen
+    # their own message, so read_at must be >= messaged_at.
+    models.ThreadAccess.objects.filter(
+        thread=message.thread,
+        mailbox=mailbox_sender,
+    ).update(read_at=message.created_at)
+
     message.thread.update_stats()
+
 
     # Clean up the draft blob and the attachment blobs
     if draft_blob:

@@ -268,6 +268,11 @@ def send_autoreply_for_message(
     send_message_task.delay(str(message.id))
 
     # 8. Update thread stats
+    models.ThreadAccess.objects.filter(
+        thread=thread,
+        mailbox=mailbox,
+    ).update(read_at=message.created_at)
+
     thread.update_stats()
 
     logger.info(

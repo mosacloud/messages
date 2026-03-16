@@ -894,10 +894,8 @@ class TestSendAutoreplyForMessage:
         assert "Alice Dupont" in mime_str
         assert "Bob Martin" in mime_str
 
-    @patch("core.mda.outbound_tasks.send_message_task", new_callable=MagicMock)
-    @patch("core.mda.outbound.sign_message_dkim", return_value=None)
     def test_has_attachments_persisted_with_inline_signature_images(
-        self, mock_dkim, mock_send_task, mailbox, autoreply_template, inbound_message
+        self, mailbox, autoreply_template, inbound_message
     ):
         """has_attachments is saved when signature contains inline base64 images."""
         small_b64 = base64.b64encode(b"\x89PNG" + b"\x00" * 4).decode()
@@ -919,3 +917,22 @@ class TestSendAutoreplyForMessage:
         # Reload from DB to verify persisted value
         autoreply_msg.refresh_from_db()
         assert autoreply_msg.has_attachments is True
+
+
+    def test_updates_sender_read_at(
+        self, mailbox, autoreply_template, inbound_message
+    ):
+        """Autoreply should update read_at so the thread does not appear unread."""
+        access = models.ThreadAccess.objects.get(
+            mailbox=mailbox, thread=inbound_message.thread
+        )
+        assert access.read_at is None
+
+        send_autoreply_for_message(autoreply_template, mailbox, inbound_message)
+
+        access.refresh_from_db()
+        autoreply_msg = models.Message.objects.filter(
+            parent=inbound_message, is_sender=True
+        ).last()
+        assert access.read_at is not None
+        assert access.read_at >= autoreply_msg.created_at

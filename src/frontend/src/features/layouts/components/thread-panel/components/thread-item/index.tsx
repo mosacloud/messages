@@ -52,15 +52,11 @@ export const ThreadItem = ({ thread, isSelected, onToggleSelection, selectedThre
 
     const hasUnread = useMemo(() => {
         const access = thread.accesses.find((a) => a.mailbox.id === params?.mailboxId)
-        let compareDate = thread.active_messaged_at;
-        if (!access) return false
+        const compareDate = thread.messaged_at;
+        if (!access || !compareDate) return false
         if (!access.read_at) return true
-        if (ViewHelper.isTrashedView() && thread.trashed_messaged_at) {
-            compareDate = thread.trashed_messaged_at
-        }
-        if (!compareDate) return false;
         return new Date(compareDate) > new Date(access.read_at)
-    }, [thread, threadDate, params?.mailboxId])
+    }, [thread, params?.mailboxId])
 
     const hasSelection = isSelectionMode || selectedThreadIds.size > 0;
     const showCheckbox = hasSelection;

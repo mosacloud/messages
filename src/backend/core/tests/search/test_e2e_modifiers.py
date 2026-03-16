@@ -861,38 +861,39 @@ class TestSearchModifiersE2E:
         """Test 'is:read' modifier filters by ThreadAccess.read_at via has_parent query.
 
         is:read matches threads whose mailbox is NOT in unread_mailboxes.
-        This includes thread6 (explicitly read via read_at) plus threads
-        without has_active (draft=thread3, archived=thread5, sender=thread10)
-        since they have no unread_mailboxes entry. Total = 4 threads.
+        This includes thread6 (explicitly read via read_at) and thread3
+        (draft-only, messaged_at is None so not unread). Total = 2 threads.
         """
         mailbox1, _ = test_mailboxes
         response = api_client.get(f"{test_url}?search=is:read&mailbox_id={mailbox1.id}")
         assert response.status_code == 200
-        assert len(response.data["results"]) == 4
+        assert len(response.data["results"]) == 2
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread6"].id) in thread_ids
+        assert str(test_threads["thread3"].id) in thread_ids
 
         # French version
         response = api_client.get(f"{test_url}?search=est:lu&mailbox_id={mailbox1.id}")
         assert response.status_code == 200
-        assert len(response.data["results"]) == 4
+        assert len(response.data["results"]) == 2
 
     def test_search_e2e_modifiers_is_unread_search_modifier(
         self, setup_search, api_client, test_url, test_threads, test_mailboxes
     ):
         """Test 'is:unread' modifier filters by ThreadAccess.read_at via has_parent query.
 
-        Only threads with has_active=True and read_at=None are unread.
-        has_active excludes: draft (thread3), trashed (thread4), archived (thread5),
-        sender (thread10), spam (thread11, thread12).
-        thread6 is read (read_at set). That leaves thread1, thread2, thread7, thread8 = 4.
+        Unread = messaged_at is set and read_at is None (or read_at < messaged_at).
+        Excluded: draft (thread3, messaged_at=None), trashed (thread4/12, messaged_at=None),
+        spam (thread11, excluded from search results).
+        thread6 is read (read_at set).
+        That leaves thread1, thread2, thread5, thread7, thread8, thread10 = 6.
         """
         mailbox1, _ = test_mailboxes
         response = api_client.get(
             f"{test_url}?search=is:unread&mailbox_id={mailbox1.id}"
         )
         assert response.status_code == 200
-        assert len(response.data["results"]) == 4
+        assert len(response.data["results"]) == 6
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(test_threads["thread6"].id) not in thread_ids
 
@@ -901,7 +902,7 @@ class TestSearchModifiersE2E:
             f"{test_url}?search=est:nonlu&mailbox_id={mailbox1.id}"
         )
         assert response.status_code == 200
-        assert len(response.data["results"]) == 4
+        assert len(response.data["results"]) == 6
 
     def test_search_e2e_modifiers_multiple_modifiers_search(
         self, setup_search, api_client, test_url, test_threads

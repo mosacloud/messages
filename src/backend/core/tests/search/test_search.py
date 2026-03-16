@@ -287,8 +287,13 @@ class TestComputeUnreadMailboxes:
         result = compute_unread_mailboxes(thread)
         assert str(mailbox.id) not in result
 
-    def test_sender_only_thread_is_not_unread(self):
-        """A thread with only sent messages should not be unread."""
+    def test_sender_only_thread_is_unread_when_not_read(self):
+        """A thread with only sent messages is unread when read_at is not set.
+
+        In practice, inbound_create.py sets read_at when sending a message,
+        so sender-only threads are read. But the unread filter itself is
+        agnostic to message type: it only compares read_at vs messaged_at.
+        """
         thread = ThreadFactory()
         mailbox = MailboxFactory()
         MessageFactory(thread=thread, is_sender=True)
@@ -297,7 +302,7 @@ class TestComputeUnreadMailboxes:
         ThreadAccessFactory(thread=thread, mailbox=mailbox, read_at=None)
 
         result = compute_unread_mailboxes(thread)
-        assert result == []
+        assert str(mailbox.id) in result
 
     def test_multiple_mailboxes_mixed_status(self):
         """Different mailboxes can have different read status."""

@@ -933,16 +933,17 @@ class Thread(BaseModel):
                 for s in recipient_statuses
             )
 
-            # Set messaged_at to the creation time of the most recent non-trashed message
-            non_trashed_messages = [
-                msg for msg in message_data if not msg["is_trashed"]
+            # Set messaged_at to the creation time of the most recent
+            # non-draft and non-trashed message.
+            visible_messages = [
+                msg
+                for msg in message_data
+                if not msg["is_draft"] and not msg["is_trashed"]
             ]
-            if non_trashed_messages:
-                self.messaged_at = max(
-                    msg["created_at"] for msg in non_trashed_messages
-                )
+            if visible_messages:
+                self.messaged_at = max(msg["created_at"] for msg in visible_messages)
             else:
-                self.messaged_at = max(msg["created_at"] for msg in message_data)
+                self.messaged_at = None
 
             # Compute per-view messaged_at timestamps
             active_msgs = [
@@ -1269,8 +1270,9 @@ class ThreadAccess(BaseModel):
     def thread_unread_filter(user, mailbox_id=None):
         """Return an expression to annotate `_has_unread` on a Thread queryset.
 
-        Intended for `ThreadViewSet.get_queryset()`. Uses `active_messaged_at`
-        so that threads are only marked unread when they contain received messages.
+        Intended for `ThreadViewSet.get_queryset()`. Uses `messaged_at`
+        (last non-trashed, non-draft message) so the unread filter works
+        across all views (inbox, sent, archive, trash).
 
         When `mailbox_id` is provided, scopes to that single mailbox (Case expression).
         Otherwise, checks across all the user's mailboxes (Exists subquery).
@@ -1280,13 +1282,13 @@ class ThreadAccess(BaseModel):
                 When(
                     accesses__mailbox_id=mailbox_id,
                     accesses__read_at__isnull=True,
-                    has_active=True,
+                    messaged_at__isnull=False,
                     then=Value(True),
                 ),
                 When(
                     accesses__mailbox_id=mailbox_id,
                     accesses__read_at__isnull=False,
-                    active_messaged_at__gt=F("accesses__read_at"),
+                    messaged_at__gt=F("accesses__read_at"),
                     then=Value(True),
                 ),
                 default=Value(False),
@@ -1297,8 +1299,8 @@ class ThreadAccess(BaseModel):
                 thread=models.OuterRef("pk"),
                 mailbox__accesses__user=user,
             ).filter(
-                Q(read_at__isnull=True, thread__has_active=True)
-                | Q(read_at__lt=F("thread__active_messaged_at"))
+                Q(read_at__isnull=True, thread__messaged_at__isnull=False)
+                | Q(read_at__lt=F("thread__messaged_at"))
             )
         )
 
@@ -1309,8 +1311,8 @@ class ThreadAccess(BaseModel):
         Used by `MailboxSerializer._get_cached_counts()` and
         `compute_unread_mailboxes()` in the search index.
         """
-        return Q(read_at__isnull=True, thread__has_active=True) | Q(
-            read_at__lt=F("thread__active_messaged_at")
+        return Q(read_at__isnull=True, thread__messaged_at__isnull=False) | Q(
+            read_at__lt=F("thread__messaged_at")
         )
 
     @staticmethod
