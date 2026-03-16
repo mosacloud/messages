@@ -349,6 +349,9 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
                                 if (!threadIds.includes(thread.id)) return thread;
                                 return {
                                     ...thread,
+                                    has_unread: thread.messaged_at
+                                        ? (readAt === null || new Date(thread.messaged_at) > new Date(readAt))
+                                        : false,
                                     accesses: thread.accesses.map((access) =>
                                         access.mailbox.id === mailboxId
                                             ? { ...access, read_at: readAt }

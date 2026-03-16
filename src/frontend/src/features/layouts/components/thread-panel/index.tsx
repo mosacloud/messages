@@ -35,6 +35,8 @@ export const ThreadPanel = () => {
         enableSelectionMode,
         isAllSelected,
         isSomeSelected,
+        selectionReadStatus,
+        selectionStarredStatus,
     } = useThreadSelection();
 
     const handleObserver = useCallback((entries: IntersectionObserverEntry[]) => {
@@ -87,6 +89,8 @@ export const ThreadPanel = () => {
                 isAllSelected={isAllSelected}
                 isSomeSelected={isSomeSelected}
                 isSelectionMode={isSelectionMode}
+                selectionReadStatus={selectionReadStatus}
+                selectionStarredStatus={selectionStarredStatus}
                 onSelectAll={selectAllThreads}
                 onClearSelection={clearSelection}
                 onEnableSelectionMode={enableSelectionMode}

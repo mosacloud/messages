@@ -14,19 +14,22 @@ import useTrash from "@/features/message/use-trash";
 import useStarred from "@/features/message/use-starred";
 import { ThreadPanelFilter, THREAD_PANEL_FILTER_PARAMS } from "./thread-panel-filter";
 import { useThreadPanelFilters } from "../hooks/use-thread-panel-filters";
+import { SelectionReadStatus, SelectionStarredStatus } from "@/features/providers/thread-selection";
 
 type ThreadPanelTitleProps = {
     selectedThreadIds: Set<string>;
     isAllSelected: boolean;
     isSomeSelected: boolean;
     isSelectionMode: boolean;
+    selectionReadStatus: SelectionReadStatus;
+    selectionStarredStatus: SelectionStarredStatus;
     onSelectAll: () => void;
     onClearSelection: () => void;
     onEnableSelectionMode: () => void;
     onDisableSelectionMode: () => void;
 }
 
-const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, isSelectionMode, onSelectAll, onClearSelection, onEnableSelectionMode, onDisableSelectionMode }: ThreadPanelTitleProps) => {
+const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, isSelectionMode, selectionReadStatus, selectionStarredStatus, onSelectAll, onClearSelection, onEnableSelectionMode, onDisableSelectionMode }: ThreadPanelTitleProps) => {
     const { t } = useTranslation();
     const { markAsReadAt } = useRead();
     const { markAsArchived, markAsUnarchived } = useArchive();
@@ -73,34 +76,24 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
         return threads?.results.map((thread) => thread.id) || [];
     }, [selectedThreadIds, threads?.results]);
 
-    const markAllTooltip = selectedThreadIds.size > 0
-        ? t('Mark {{count}} threads as read', { count: selectedThreadIds.size, defaultValue_one: 'Mark {{count}} thread as read' })
-        : t('Mark all as read');
+    const markAllTooltip = isSomeSelected ? t('Mark as read') : t('Mark all as read');
+    const markAllUnreadLabel = isSomeSelected ? t('Mark as unread') : t('Mark all as unread');
+    const mainReadTooltip = selectionReadStatus === SelectionReadStatus.READ ? markAllUnreadLabel : markAllTooltip;
 
-    const markAllUnreadLabel = selectedThreadIds.size > 0
-        ? t('Mark {{count}} threads as unread', { count: selectedThreadIds.size, defaultValue_one: 'Mark {{count}} thread as unread' })
-        : t('Mark all as unread');
-
-    const spamLabel = isSpamView ?
-        t('Remove spam report from {{count}} threads', { count: selectedThreadIds.size, defaultValue_one: 'Remove spam report from {{count}} thread' }) :
-        t('Report {{count}} threads as spam', { count: selectedThreadIds.size, defaultValue_one: 'Report {{count}} thread as spam' });
+    const spamLabel = isSpamView ? t('Remove spam report') : t('Report as spam');
     const spamIconName = isSpamView ? 'report_off' : 'report';
     const spamMutation = isSpamView ? markAsNotSpam : markAsSpam;
 
-    const archiveLabel = isArchivedView ?
-        t('Unarchive {{count}} threads', { count: selectedThreadIds.size, defaultValue_one: 'Unarchive {{count}} thread' }) :
-        t('Archive {{count}} threads', { count: selectedThreadIds.size, defaultValue_one: 'Archive {{count}} thread' });
+    const archiveLabel = isArchivedView ? t('Unarchive') : t('Archive');
     const archiveIconName = isArchivedView ? 'unarchive' : 'archive';
     const archiveMutation = isArchivedView ? markAsUnarchived : markAsArchived;
 
-    const trashLabel = isTrashedView ?
-        t('Undelete {{count}} threads', { count: selectedThreadIds.size, defaultValue_one: 'Undelete {{count}} thread' }) :
-        t('Delete {{count}} threads', { count: selectedThreadIds.size, defaultValue_one: 'Delete {{count}} thread' });
+    const trashLabel = isTrashedView ? t('Undelete') : t('Delete');
     const trashIconName = isTrashedView ? 'restore_from_trash' : 'delete';
     const trashMutation = isTrashedView ? markAsUntrashed : markAsTrashed;
 
-    const starLabel = t('Star {{count}} threads', { count: selectedThreadIds.size, defaultValue_one: 'Star {{count}} thread' });
-    const unstarLabel = t('Unstar {{count}} threads', { count: selectedThreadIds.size, defaultValue_one: 'Unstar {{count}} thread' });
+    const starLabel = t('Star');
+    const unstarLabel = t('Unstar');
     const countLabel = useMemo(() => {
         if (isSearch) {
             if (activeFilters.has_unread && activeFilters.has_starred) {
@@ -148,44 +141,26 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                     {countLabel}
                 </p>
                 <div className="thread-panel__bar">
-                    <Tooltip content={markAllTooltip}>
+                    <Tooltip content={mainReadTooltip}>
                         <Button
                             onClick={() => {
                                 markAsReadAt({
                                     threadIds: threadIdsToMark,
-                                    readAt: new Date().toISOString(),
+                                    readAt: selectionReadStatus === SelectionReadStatus.READ ? null : new Date().toISOString(),
                                     onSuccess: () => {
                                         unselectThread();
                                         onClearSelection();
                                     }
                                 });
                             }}
-                            icon={<Icon name="mark_email_read" type={IconType.OUTLINED} />}
+                            icon={<Icon name={selectionReadStatus === SelectionReadStatus.READ ? 'mark_email_unread' : 'mark_email_read'} type={IconType.OUTLINED} />}
                             variant="tertiary"
                             size="nano"
-                            aria-label={markAllTooltip}
+                            aria-label={mainReadTooltip}
                         />
                     </Tooltip>
                     {isSelectionMode && (
                         <>
-                            <Tooltip content={starLabel} className={selectedThreadIds.size === 0 ? 'hidden' : ''}>
-                                <Button
-                                    onClick={() => {
-                                        markAsStarred({
-                                            threadIds: threadIdsToMark,
-                                            onSuccess: () => {
-                                                unselectThread();
-                                                onClearSelection();
-                                            }
-                                        });
-                                    }}
-                                    disabled={selectedThreadIds.size === 0}
-                                    icon={<Icon name="star_border" type={IconType.OUTLINED} />}
-                                    variant="tertiary"
-                                    size="nano"
-                                    aria-label={starLabel}
-                                />
-                            </Tooltip>
                             <VerticalSeparator withPadding={false} />
                             {!isSpamView && !isTrashedView && !isDraftsView && (
                                 <Tooltip content={archiveLabel} className={selectedThreadIds.size === 0 ? 'hidden' : ''}>
@@ -268,7 +243,21 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                                 },
                                 showSeparator: true,
                             },
-                            {
+                            ...([SelectionReadStatus.MIXED, SelectionReadStatus.UNREAD].includes(selectionReadStatus) ? [{
+                                label: markAllTooltip,
+                                icon: <span className="material-icons">mark_email_read</span>,
+                                callback: () => {
+                                    markAsReadAt({
+                                        threadIds: threadIdsToMark,
+                                        readAt: new Date().toISOString(),
+                                        onSuccess: () => {
+                                            unselectThread();
+                                            onClearSelection();
+                                        }
+                                    });
+                                },
+                            }] : []),
+                            ...([SelectionReadStatus.MIXED, SelectionReadStatus.READ, SelectionReadStatus.NONE].includes(selectionReadStatus) ? [{
                                 label: markAllUnreadLabel,
                                 icon: <span className="material-icons">mark_email_unread</span>,
                                 callback: () => {
@@ -279,10 +268,23 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                                             unselectThread();
                                             onClearSelection();
                                         }
-                                    })
+                                    });
                                 },
-                            },
-                            ...(isSelectionMode && selectedThreadIds.size > 0 ? [{
+                            }] : []),
+                            ...(isSelectionMode && selectedThreadIds.size > 0 && ([SelectionStarredStatus.MIXED, SelectionStarredStatus.UNSTARRED, SelectionStarredStatus.NONE].includes(selectionStarredStatus)) ? [{
+                                label: starLabel,
+                                icon: <Icon name="star_border" type={IconType.OUTLINED} />,
+                                callback: () => {
+                                    markAsStarred({
+                                        threadIds: threadIdsToMark,
+                                        onSuccess: () => {
+                                            unselectThread();
+                                            onClearSelection();
+                                        }
+                                    });
+                                },
+                            }] : []),
+                            ...(isSelectionMode && selectedThreadIds.size > 0 && ([SelectionStarredStatus.MIXED, SelectionStarredStatus.STARRED].includes(selectionStarredStatus)) ? [{
                                 label: unstarLabel,
                                 icon: <Icon name="star" type={IconType.FILLED} />,
                                 callback: () => {
