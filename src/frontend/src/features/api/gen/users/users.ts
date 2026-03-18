@@ -21,6 +21,7 @@ import type {
 import type { UserWithAbilities } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -56,7 +57,7 @@ export const getUsersMeRetrieveQueryKey = () => {
 
 export const getUsersMeRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof usersMeRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(options?: {
   query?: Partial<
     UseQueryOptions<Awaited<ReturnType<typeof usersMeRetrieve>>, TError, TData>
@@ -81,11 +82,11 @@ export const getUsersMeRetrieveQueryOptions = <
 export type UsersMeRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof usersMeRetrieve>>
 >;
-export type UsersMeRetrieveQueryError = unknown;
+export type UsersMeRetrieveQueryError = ErrorType<unknown>;
 
 export function useUsersMeRetrieve<
   TData = Awaited<ReturnType<typeof usersMeRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options: {
     query: Partial<
@@ -111,7 +112,7 @@ export function useUsersMeRetrieve<
 };
 export function useUsersMeRetrieve<
   TData = Awaited<ReturnType<typeof usersMeRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<
@@ -137,7 +138,7 @@ export function useUsersMeRetrieve<
 };
 export function useUsersMeRetrieve<
   TData = Awaited<ReturnType<typeof usersMeRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<
@@ -156,7 +157,7 @@ export function useUsersMeRetrieve<
 
 export function useUsersMeRetrieve<
   TData = Awaited<ReturnType<typeof usersMeRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<

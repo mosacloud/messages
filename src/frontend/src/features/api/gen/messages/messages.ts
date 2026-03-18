@@ -48,6 +48,7 @@ import type {
 } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -134,7 +135,7 @@ export const draftCreate = async (
 };
 
 export const getDraftCreateMutationOptions = <
-  TError = DraftCreate400 | DraftCreate403 | DraftCreate404,
+  TError = ErrorType<DraftCreate400 | DraftCreate403 | DraftCreate404>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -175,13 +176,12 @@ export type DraftCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof draftCreate>>
 >;
 export type DraftCreateMutationBody = DraftMessageRequestRequest;
-export type DraftCreateMutationError =
-  | DraftCreate400
-  | DraftCreate403
-  | DraftCreate404;
+export type DraftCreateMutationError = ErrorType<
+  DraftCreate400 | DraftCreate403 | DraftCreate404
+>;
 
 export const useDraftCreate = <
-  TError = DraftCreate400 | DraftCreate403 | DraftCreate404,
+  TError = ErrorType<DraftCreate400 | DraftCreate403 | DraftCreate404>,
   TContext = unknown,
 >(
   options?: {
@@ -287,7 +287,7 @@ export const draftUpdate = async (
 };
 
 export const getDraftUpdateMutationOptions = <
-  TError = DraftUpdate400 | DraftUpdate403 | DraftUpdate404,
+  TError = ErrorType<DraftUpdate400 | DraftUpdate403 | DraftUpdate404>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -328,13 +328,12 @@ export type DraftUpdateMutationResult = NonNullable<
   Awaited<ReturnType<typeof draftUpdate>>
 >;
 export type DraftUpdateMutationBody = DraftMessageRequestRequest;
-export type DraftUpdateMutationError =
-  | DraftUpdate400
-  | DraftUpdate403
-  | DraftUpdate404;
+export type DraftUpdateMutationError = ErrorType<
+  DraftUpdate400 | DraftUpdate403 | DraftUpdate404
+>;
 
 export const useDraftUpdate = <
-  TError = DraftUpdate400 | DraftUpdate403 | DraftUpdate404,
+  TError = ErrorType<DraftUpdate400 | DraftUpdate403 | DraftUpdate404>,
   TContext = unknown,
 >(
   options?: {
@@ -441,7 +440,7 @@ export const draftCreate2 = async (
 };
 
 export const getDraftCreate2MutationOptions = <
-  TError = DraftCreate2400 | DraftCreate2403 | DraftCreate2404,
+  TError = ErrorType<DraftCreate2400 | DraftCreate2403 | DraftCreate2404>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -482,13 +481,12 @@ export type DraftCreate2MutationResult = NonNullable<
   Awaited<ReturnType<typeof draftCreate2>>
 >;
 export type DraftCreate2MutationBody = DraftMessageRequestRequest;
-export type DraftCreate2MutationError =
-  | DraftCreate2400
-  | DraftCreate2403
-  | DraftCreate2404;
+export type DraftCreate2MutationError = ErrorType<
+  DraftCreate2400 | DraftCreate2403 | DraftCreate2404
+>;
 
 export const useDraftCreate2 = <
-  TError = DraftCreate2400 | DraftCreate2403 | DraftCreate2404,
+  TError = ErrorType<DraftCreate2400 | DraftCreate2403 | DraftCreate2404>,
   TContext = unknown,
 >(
   options?: {
@@ -595,7 +593,7 @@ export const draftUpdate2 = async (
 };
 
 export const getDraftUpdate2MutationOptions = <
-  TError = DraftUpdate2400 | DraftUpdate2403 | DraftUpdate2404,
+  TError = ErrorType<DraftUpdate2400 | DraftUpdate2403 | DraftUpdate2404>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -636,13 +634,12 @@ export type DraftUpdate2MutationResult = NonNullable<
   Awaited<ReturnType<typeof draftUpdate2>>
 >;
 export type DraftUpdate2MutationBody = DraftMessageRequestRequest;
-export type DraftUpdate2MutationError =
-  | DraftUpdate2400
-  | DraftUpdate2403
-  | DraftUpdate2404;
+export type DraftUpdate2MutationError = ErrorType<
+  DraftUpdate2400 | DraftUpdate2403 | DraftUpdate2404
+>;
 
 export const useDraftUpdate2 = <
-  TError = DraftUpdate2400 | DraftUpdate2403 | DraftUpdate2404,
+  TError = ErrorType<DraftUpdate2400 | DraftUpdate2403 | DraftUpdate2404>,
   TContext = unknown,
 >(
   options?: {
@@ -715,7 +712,7 @@ export const getDraftPlaceholdersRetrieveQueryKey = (messageId?: string) => {
 
 export const getDraftPlaceholdersRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof draftPlaceholdersRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   messageId: string,
   options?: {
@@ -754,11 +751,11 @@ export const getDraftPlaceholdersRetrieveQueryOptions = <
 export type DraftPlaceholdersRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof draftPlaceholdersRetrieve>>
 >;
-export type DraftPlaceholdersRetrieveQueryError = unknown;
+export type DraftPlaceholdersRetrieveQueryError = ErrorType<unknown>;
 
 export function useDraftPlaceholdersRetrieve<
   TData = Awaited<ReturnType<typeof draftPlaceholdersRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   messageId: string,
   options: {
@@ -785,7 +782,7 @@ export function useDraftPlaceholdersRetrieve<
 };
 export function useDraftPlaceholdersRetrieve<
   TData = Awaited<ReturnType<typeof draftPlaceholdersRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   messageId: string,
   options?: {
@@ -812,7 +809,7 @@ export function useDraftPlaceholdersRetrieve<
 };
 export function useDraftPlaceholdersRetrieve<
   TData = Awaited<ReturnType<typeof draftPlaceholdersRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   messageId: string,
   options?: {
@@ -835,7 +832,7 @@ export function useDraftPlaceholdersRetrieve<
 
 export function useDraftPlaceholdersRetrieve<
   TData = Awaited<ReturnType<typeof draftPlaceholdersRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   messageId: string,
   options?: {
@@ -899,7 +896,7 @@ export const getMessagesListQueryKey = () => {
 
 export const getMessagesListQueryOptions = <
   TData = Awaited<ReturnType<typeof messagesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(options?: {
   query?: Partial<
     UseQueryOptions<Awaited<ReturnType<typeof messagesList>>, TError, TData>
@@ -924,11 +921,11 @@ export const getMessagesListQueryOptions = <
 export type MessagesListQueryResult = NonNullable<
   Awaited<ReturnType<typeof messagesList>>
 >;
-export type MessagesListQueryError = unknown;
+export type MessagesListQueryError = ErrorType<unknown>;
 
 export function useMessagesList<
   TData = Awaited<ReturnType<typeof messagesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options: {
     query: Partial<
@@ -950,7 +947,7 @@ export function useMessagesList<
 };
 export function useMessagesList<
   TData = Awaited<ReturnType<typeof messagesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<
@@ -972,7 +969,7 @@ export function useMessagesList<
 };
 export function useMessagesList<
   TData = Awaited<ReturnType<typeof messagesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<
@@ -987,7 +984,7 @@ export function useMessagesList<
 
 export function useMessagesList<
   TData = Awaited<ReturnType<typeof messagesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<
@@ -1044,7 +1041,7 @@ export const getMessagesRetrieveQueryKey = (id?: string) => {
 
 export const getMessagesRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof messagesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -1081,11 +1078,11 @@ export const getMessagesRetrieveQueryOptions = <
 export type MessagesRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof messagesRetrieve>>
 >;
-export type MessagesRetrieveQueryError = unknown;
+export type MessagesRetrieveQueryError = ErrorType<unknown>;
 
 export function useMessagesRetrieve<
   TData = Awaited<ReturnType<typeof messagesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options: {
@@ -1112,7 +1109,7 @@ export function useMessagesRetrieve<
 };
 export function useMessagesRetrieve<
   TData = Awaited<ReturnType<typeof messagesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -1139,7 +1136,7 @@ export function useMessagesRetrieve<
 };
 export function useMessagesRetrieve<
   TData = Awaited<ReturnType<typeof messagesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -1159,7 +1156,7 @@ export function useMessagesRetrieve<
 
 export function useMessagesRetrieve<
   TData = Awaited<ReturnType<typeof messagesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -1216,7 +1213,7 @@ export const messagesDestroy = async (
 };
 
 export const getMessagesDestroyMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1257,9 +1254,12 @@ export type MessagesDestroyMutationResult = NonNullable<
   Awaited<ReturnType<typeof messagesDestroy>>
 >;
 
-export type MessagesDestroyMutationError = unknown;
+export type MessagesDestroyMutationError = ErrorType<unknown>;
 
-export const useMessagesDestroy = <TError = unknown, TContext = unknown>(
+export const useMessagesDestroy = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof messagesDestroy>>,
@@ -1325,7 +1325,7 @@ export const messagesDeliveryStatusesPartialUpdate = async (
 };
 
 export const getMessagesDeliveryStatusesPartialUpdateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1383,10 +1383,11 @@ export type MessagesDeliveryStatusesPartialUpdateMutationResult = NonNullable<
 export type MessagesDeliveryStatusesPartialUpdateMutationBody =
   | MessagesDeliveryStatusesPartialUpdateBodyOne
   | MessageDeliveryStatusChoices;
-export type MessagesDeliveryStatusesPartialUpdateMutationError = unknown;
+export type MessagesDeliveryStatusesPartialUpdateMutationError =
+  ErrorType<unknown>;
 
 export const useMessagesDeliveryStatusesPartialUpdate = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -1454,7 +1455,7 @@ export const getMessagesEmlRetrieveQueryKey = (id?: string) => {
 
 export const getMessagesEmlRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof messagesEmlRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -1491,11 +1492,11 @@ export const getMessagesEmlRetrieveQueryOptions = <
 export type MessagesEmlRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof messagesEmlRetrieve>>
 >;
-export type MessagesEmlRetrieveQueryError = unknown;
+export type MessagesEmlRetrieveQueryError = ErrorType<unknown>;
 
 export function useMessagesEmlRetrieve<
   TData = Awaited<ReturnType<typeof messagesEmlRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options: {
@@ -1522,7 +1523,7 @@ export function useMessagesEmlRetrieve<
 };
 export function useMessagesEmlRetrieve<
   TData = Awaited<ReturnType<typeof messagesEmlRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -1549,7 +1550,7 @@ export function useMessagesEmlRetrieve<
 };
 export function useMessagesEmlRetrieve<
   TData = Awaited<ReturnType<typeof messagesEmlRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -1569,7 +1570,7 @@ export function useMessagesEmlRetrieve<
 
 export function useMessagesEmlRetrieve<
   TData = Awaited<ReturnType<typeof messagesEmlRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -1659,7 +1660,7 @@ export const sendCreate = async (
 };
 
 export const getSendCreateMutationOptions = <
-  TError = SendCreate400 | SendCreate403 | SendCreate503,
+  TError = ErrorType<SendCreate400 | SendCreate403 | SendCreate503>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1700,13 +1701,12 @@ export type SendCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof sendCreate>>
 >;
 export type SendCreateMutationBody = SendMessageRequest;
-export type SendCreateMutationError =
-  | SendCreate400
-  | SendCreate403
-  | SendCreate503;
+export type SendCreateMutationError = ErrorType<
+  SendCreate400 | SendCreate403 | SendCreate503
+>;
 
 export const useSendCreate = <
-  TError = SendCreate400 | SendCreate403 | SendCreate503,
+  TError = ErrorType<SendCreate400 | SendCreate403 | SendCreate503>,
   TContext = unknown,
 >(
   options?: {

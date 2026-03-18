@@ -36,6 +36,7 @@ import type {
 } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -71,7 +72,7 @@ export const getMailboxesListQueryKey = () => {
 
 export const getMailboxesListQueryOptions = <
   TData = Awaited<ReturnType<typeof mailboxesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(options?: {
   query?: Partial<
     UseQueryOptions<Awaited<ReturnType<typeof mailboxesList>>, TError, TData>
@@ -96,11 +97,11 @@ export const getMailboxesListQueryOptions = <
 export type MailboxesListQueryResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesList>>
 >;
-export type MailboxesListQueryError = unknown;
+export type MailboxesListQueryError = ErrorType<unknown>;
 
 export function useMailboxesList<
   TData = Awaited<ReturnType<typeof mailboxesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options: {
     query: Partial<
@@ -122,7 +123,7 @@ export function useMailboxesList<
 };
 export function useMailboxesList<
   TData = Awaited<ReturnType<typeof mailboxesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<
@@ -144,7 +145,7 @@ export function useMailboxesList<
 };
 export function useMailboxesList<
   TData = Awaited<ReturnType<typeof mailboxesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<
@@ -159,7 +160,7 @@ export function useMailboxesList<
 
 export function useMailboxesList<
   TData = Awaited<ReturnType<typeof mailboxesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<
@@ -278,7 +279,7 @@ export const getMailboxesImageProxyListQueryKey = (
 
 export const getMailboxesImageProxyListQueryOptions = <
   TData = Awaited<ReturnType<typeof mailboxesImageProxyList>>,
-  TError = void,
+  TError = ErrorType<void>,
 >(
   mailboxId: string,
   params: MailboxesImageProxyListParams,
@@ -319,11 +320,11 @@ export const getMailboxesImageProxyListQueryOptions = <
 export type MailboxesImageProxyListQueryResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesImageProxyList>>
 >;
-export type MailboxesImageProxyListQueryError = void;
+export type MailboxesImageProxyListQueryError = ErrorType<void>;
 
 export function useMailboxesImageProxyList<
   TData = Awaited<ReturnType<typeof mailboxesImageProxyList>>,
-  TError = void,
+  TError = ErrorType<void>,
 >(
   mailboxId: string,
   params: MailboxesImageProxyListParams,
@@ -351,7 +352,7 @@ export function useMailboxesImageProxyList<
 };
 export function useMailboxesImageProxyList<
   TData = Awaited<ReturnType<typeof mailboxesImageProxyList>>,
-  TError = void,
+  TError = ErrorType<void>,
 >(
   mailboxId: string,
   params: MailboxesImageProxyListParams,
@@ -379,7 +380,7 @@ export function useMailboxesImageProxyList<
 };
 export function useMailboxesImageProxyList<
   TData = Awaited<ReturnType<typeof mailboxesImageProxyList>>,
-  TError = void,
+  TError = ErrorType<void>,
 >(
   mailboxId: string,
   params: MailboxesImageProxyListParams,
@@ -400,7 +401,7 @@ export function useMailboxesImageProxyList<
 
 export function useMailboxesImageProxyList<
   TData = Awaited<ReturnType<typeof mailboxesImageProxyList>>,
-  TError = void,
+  TError = ErrorType<void>,
 >(
   mailboxId: string,
   params: MailboxesImageProxyListParams,
@@ -503,7 +504,7 @@ export const getMailboxesMessageTemplatesListQueryKey = (
 
 export const getMailboxesMessageTemplatesListQueryOptions = <
   TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   params?: MailboxesMessageTemplatesListParams,
@@ -547,11 +548,11 @@ export const getMailboxesMessageTemplatesListQueryOptions = <
 export type MailboxesMessageTemplatesListQueryResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>
 >;
-export type MailboxesMessageTemplatesListQueryError = unknown;
+export type MailboxesMessageTemplatesListQueryError = ErrorType<unknown>;
 
 export function useMailboxesMessageTemplatesList<
   TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   params: undefined | MailboxesMessageTemplatesListParams,
@@ -579,7 +580,7 @@ export function useMailboxesMessageTemplatesList<
 };
 export function useMailboxesMessageTemplatesList<
   TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   params?: MailboxesMessageTemplatesListParams,
@@ -607,7 +608,7 @@ export function useMailboxesMessageTemplatesList<
 };
 export function useMailboxesMessageTemplatesList<
   TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   params?: MailboxesMessageTemplatesListParams,
@@ -628,7 +629,7 @@ export function useMailboxesMessageTemplatesList<
 
 export function useMailboxesMessageTemplatesList<
   TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   params?: MailboxesMessageTemplatesListParams,
@@ -698,7 +699,7 @@ export const mailboxesMessageTemplatesCreate = async (
 };
 
 export const getMailboxesMessageTemplatesCreateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -740,10 +741,10 @@ export type MailboxesMessageTemplatesCreateMutationResult = NonNullable<
 >;
 export type MailboxesMessageTemplatesCreateMutationBody =
   MessageTemplateRequest;
-export type MailboxesMessageTemplatesCreateMutationError = unknown;
+export type MailboxesMessageTemplatesCreateMutationError = ErrorType<unknown>;
 
 export const useMailboxesMessageTemplatesCreate = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -830,7 +831,7 @@ export const getMailboxesMessageTemplatesRetrieveQueryKey = (
 
 export const getMailboxesMessageTemplatesRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   id: string,
@@ -875,11 +876,11 @@ export const getMailboxesMessageTemplatesRetrieveQueryOptions = <
 export type MailboxesMessageTemplatesRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesMessageTemplatesRetrieve>>
 >;
-export type MailboxesMessageTemplatesRetrieveQueryError = unknown;
+export type MailboxesMessageTemplatesRetrieveQueryError = ErrorType<unknown>;
 
 export function useMailboxesMessageTemplatesRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   id: string,
@@ -908,7 +909,7 @@ export function useMailboxesMessageTemplatesRetrieve<
 };
 export function useMailboxesMessageTemplatesRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   id: string,
@@ -937,7 +938,7 @@ export function useMailboxesMessageTemplatesRetrieve<
 };
 export function useMailboxesMessageTemplatesRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   id: string,
@@ -959,7 +960,7 @@ export function useMailboxesMessageTemplatesRetrieve<
 
 export function useMailboxesMessageTemplatesRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   id: string,
@@ -1035,7 +1036,7 @@ export const mailboxesMessageTemplatesUpdate = async (
 };
 
 export const getMailboxesMessageTemplatesUpdateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1077,10 +1078,10 @@ export type MailboxesMessageTemplatesUpdateMutationResult = NonNullable<
 >;
 export type MailboxesMessageTemplatesUpdateMutationBody =
   MessageTemplateRequest;
-export type MailboxesMessageTemplatesUpdateMutationError = unknown;
+export type MailboxesMessageTemplatesUpdateMutationError = ErrorType<unknown>;
 
 export const useMailboxesMessageTemplatesUpdate = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -1144,7 +1145,7 @@ export const mailboxesMessageTemplatesPartialUpdate = async (
 };
 
 export const getMailboxesMessageTemplatesPartialUpdateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1191,10 +1192,11 @@ export type MailboxesMessageTemplatesPartialUpdateMutationResult = NonNullable<
 >;
 export type MailboxesMessageTemplatesPartialUpdateMutationBody =
   PatchedMessageTemplateRequest;
-export type MailboxesMessageTemplatesPartialUpdateMutationError = unknown;
+export type MailboxesMessageTemplatesPartialUpdateMutationError =
+  ErrorType<unknown>;
 
 export const useMailboxesMessageTemplatesPartialUpdate = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -1255,7 +1257,7 @@ export const mailboxesMessageTemplatesDestroy = async (
 };
 
 export const getMailboxesMessageTemplatesDestroyMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1296,10 +1298,10 @@ export type MailboxesMessageTemplatesDestroyMutationResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesMessageTemplatesDestroy>>
 >;
 
-export type MailboxesMessageTemplatesDestroyMutationError = unknown;
+export type MailboxesMessageTemplatesDestroyMutationError = ErrorType<unknown>;
 
 export const useMailboxesMessageTemplatesDestroy = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -1383,7 +1385,7 @@ export const getMailboxesMessageTemplatesAvailableListQueryKey = (
 
 export const getMailboxesMessageTemplatesAvailableListQueryOptions = <
   TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesAvailableList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   params?: MailboxesMessageTemplatesAvailableListParams,
@@ -1427,11 +1429,12 @@ export const getMailboxesMessageTemplatesAvailableListQueryOptions = <
 export type MailboxesMessageTemplatesAvailableListQueryResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesMessageTemplatesAvailableList>>
 >;
-export type MailboxesMessageTemplatesAvailableListQueryError = unknown;
+export type MailboxesMessageTemplatesAvailableListQueryError =
+  ErrorType<unknown>;
 
 export function useMailboxesMessageTemplatesAvailableList<
   TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesAvailableList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   params: undefined | MailboxesMessageTemplatesAvailableListParams,
@@ -1459,7 +1462,7 @@ export function useMailboxesMessageTemplatesAvailableList<
 };
 export function useMailboxesMessageTemplatesAvailableList<
   TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesAvailableList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   params?: MailboxesMessageTemplatesAvailableListParams,
@@ -1487,7 +1490,7 @@ export function useMailboxesMessageTemplatesAvailableList<
 };
 export function useMailboxesMessageTemplatesAvailableList<
   TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesAvailableList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   params?: MailboxesMessageTemplatesAvailableListParams,
@@ -1508,7 +1511,7 @@ export function useMailboxesMessageTemplatesAvailableList<
 
 export function useMailboxesMessageTemplatesAvailableList<
   TData = Awaited<ReturnType<typeof mailboxesMessageTemplatesAvailableList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   params?: MailboxesMessageTemplatesAvailableListParams,
@@ -1575,7 +1578,7 @@ export const getMailboxesRetrieveQueryKey = (id?: string) => {
 
 export const getMailboxesRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof mailboxesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -1612,11 +1615,11 @@ export const getMailboxesRetrieveQueryOptions = <
 export type MailboxesRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesRetrieve>>
 >;
-export type MailboxesRetrieveQueryError = unknown;
+export type MailboxesRetrieveQueryError = ErrorType<unknown>;
 
 export function useMailboxesRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options: {
@@ -1643,7 +1646,7 @@ export function useMailboxesRetrieve<
 };
 export function useMailboxesRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -1670,7 +1673,7 @@ export function useMailboxesRetrieve<
 };
 export function useMailboxesRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -1690,7 +1693,7 @@ export function useMailboxesRetrieve<
 
 export function useMailboxesRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -1781,7 +1784,7 @@ export const getMailboxesSearchListQueryKey = (
 
 export const getMailboxesSearchListQueryOptions = <
   TData = Awaited<ReturnType<typeof mailboxesSearchList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   params?: MailboxesSearchListParams,
@@ -1821,11 +1824,11 @@ export const getMailboxesSearchListQueryOptions = <
 export type MailboxesSearchListQueryResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesSearchList>>
 >;
-export type MailboxesSearchListQueryError = unknown;
+export type MailboxesSearchListQueryError = ErrorType<unknown>;
 
 export function useMailboxesSearchList<
   TData = Awaited<ReturnType<typeof mailboxesSearchList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   params: undefined | MailboxesSearchListParams,
@@ -1853,7 +1856,7 @@ export function useMailboxesSearchList<
 };
 export function useMailboxesSearchList<
   TData = Awaited<ReturnType<typeof mailboxesSearchList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   params?: MailboxesSearchListParams,
@@ -1881,7 +1884,7 @@ export function useMailboxesSearchList<
 };
 export function useMailboxesSearchList<
   TData = Awaited<ReturnType<typeof mailboxesSearchList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   params?: MailboxesSearchListParams,
@@ -1902,7 +1905,7 @@ export function useMailboxesSearchList<
 
 export function useMailboxesSearchList<
   TData = Awaited<ReturnType<typeof mailboxesSearchList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   params?: MailboxesSearchListParams,

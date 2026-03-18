@@ -39,6 +39,7 @@ import type {
 } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -98,7 +99,7 @@ export const getThreadsListInfiniteQueryOptions = <
     Awaited<ReturnType<typeof threadsList>>,
     ThreadsListParams["page"]
   >,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ThreadsListParams,
   options?: {
@@ -141,14 +142,14 @@ export const getThreadsListInfiniteQueryOptions = <
 export type ThreadsListInfiniteQueryResult = NonNullable<
   Awaited<ReturnType<typeof threadsList>>
 >;
-export type ThreadsListInfiniteQueryError = unknown;
+export type ThreadsListInfiniteQueryError = ErrorType<unknown>;
 
 export function useThreadsListInfinite<
   TData = InfiniteData<
     Awaited<ReturnType<typeof threadsList>>,
     ThreadsListParams["page"]
   >,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params: undefined | ThreadsListParams,
   options: {
@@ -181,7 +182,7 @@ export function useThreadsListInfinite<
     Awaited<ReturnType<typeof threadsList>>,
     ThreadsListParams["page"]
   >,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ThreadsListParams,
   options?: {
@@ -214,7 +215,7 @@ export function useThreadsListInfinite<
     Awaited<ReturnType<typeof threadsList>>,
     ThreadsListParams["page"]
   >,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ThreadsListParams,
   options?: {
@@ -239,7 +240,7 @@ export function useThreadsListInfinite<
     Awaited<ReturnType<typeof threadsList>>,
     ThreadsListParams["page"]
   >,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ThreadsListParams,
   options?: {
@@ -274,7 +275,7 @@ export function useThreadsListInfinite<
 
 export const getThreadsListQueryOptions = <
   TData = Awaited<ReturnType<typeof threadsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ThreadsListParams,
   options?: {
@@ -302,11 +303,11 @@ export const getThreadsListQueryOptions = <
 export type ThreadsListQueryResult = NonNullable<
   Awaited<ReturnType<typeof threadsList>>
 >;
-export type ThreadsListQueryError = unknown;
+export type ThreadsListQueryError = ErrorType<unknown>;
 
 export function useThreadsList<
   TData = Awaited<ReturnType<typeof threadsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params: undefined | ThreadsListParams,
   options: {
@@ -329,7 +330,7 @@ export function useThreadsList<
 };
 export function useThreadsList<
   TData = Awaited<ReturnType<typeof threadsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ThreadsListParams,
   options?: {
@@ -352,7 +353,7 @@ export function useThreadsList<
 };
 export function useThreadsList<
   TData = Awaited<ReturnType<typeof threadsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ThreadsListParams,
   options?: {
@@ -368,7 +369,7 @@ export function useThreadsList<
 
 export function useThreadsList<
   TData = Awaited<ReturnType<typeof threadsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ThreadsListParams,
   options?: {
@@ -426,7 +427,7 @@ export const getThreadsRetrieveQueryKey = (id?: string) => {
 
 export const getThreadsRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof threadsRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -463,11 +464,11 @@ export const getThreadsRetrieveQueryOptions = <
 export type ThreadsRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof threadsRetrieve>>
 >;
-export type ThreadsRetrieveQueryError = unknown;
+export type ThreadsRetrieveQueryError = ErrorType<unknown>;
 
 export function useThreadsRetrieve<
   TData = Awaited<ReturnType<typeof threadsRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options: {
@@ -494,7 +495,7 @@ export function useThreadsRetrieve<
 };
 export function useThreadsRetrieve<
   TData = Awaited<ReturnType<typeof threadsRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -521,7 +522,7 @@ export function useThreadsRetrieve<
 };
 export function useThreadsRetrieve<
   TData = Awaited<ReturnType<typeof threadsRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -541,7 +542,7 @@ export function useThreadsRetrieve<
 
 export function useThreadsRetrieve<
   TData = Awaited<ReturnType<typeof threadsRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -598,7 +599,7 @@ export const threadsDestroy = async (
 };
 
 export const getThreadsDestroyMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -639,9 +640,12 @@ export type ThreadsDestroyMutationResult = NonNullable<
   Awaited<ReturnType<typeof threadsDestroy>>
 >;
 
-export type ThreadsDestroyMutationError = unknown;
+export type ThreadsDestroyMutationError = ErrorType<unknown>;
 
-export const useThreadsDestroy = <TError = unknown, TContext = unknown>(
+export const useThreadsDestroy = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof threadsDestroy>>,
@@ -706,7 +710,7 @@ export const threadsRefreshSummaryCreate = async (
 };
 
 export const getThreadsRefreshSummaryCreateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -747,10 +751,10 @@ export type ThreadsRefreshSummaryCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof threadsRefreshSummaryCreate>>
 >;
 
-export type ThreadsRefreshSummaryCreateMutationError = unknown;
+export type ThreadsRefreshSummaryCreateMutationError = ErrorType<unknown>;
 
 export const useThreadsRefreshSummaryCreate = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -825,7 +829,7 @@ export const threadsSplitCreate = async (
 };
 
 export const getThreadsSplitCreateMutationOptions = <
-  TError = ThreadsSplitCreate400 | unknown,
+  TError = ErrorType<ThreadsSplitCreate400 | unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -866,10 +870,12 @@ export type ThreadsSplitCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof threadsSplitCreate>>
 >;
 export type ThreadsSplitCreateMutationBody = ThreadSplitRequestRequest;
-export type ThreadsSplitCreateMutationError = ThreadsSplitCreate400 | unknown;
+export type ThreadsSplitCreateMutationError = ErrorType<
+  ThreadsSplitCreate400 | unknown
+>;
 
 export const useThreadsSplitCreate = <
-  TError = ThreadsSplitCreate400 | unknown,
+  TError = ErrorType<ThreadsSplitCreate400 | unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -941,7 +947,7 @@ export const getThreadsSummaryRetrieveQueryKey = (id?: string) => {
 
 export const getThreadsSummaryRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -979,11 +985,11 @@ export const getThreadsSummaryRetrieveQueryOptions = <
 export type ThreadsSummaryRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof threadsSummaryRetrieve>>
 >;
-export type ThreadsSummaryRetrieveQueryError = unknown;
+export type ThreadsSummaryRetrieveQueryError = ErrorType<unknown>;
 
 export function useThreadsSummaryRetrieve<
   TData = Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options: {
@@ -1010,7 +1016,7 @@ export function useThreadsSummaryRetrieve<
 };
 export function useThreadsSummaryRetrieve<
   TData = Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -1037,7 +1043,7 @@ export function useThreadsSummaryRetrieve<
 };
 export function useThreadsSummaryRetrieve<
   TData = Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -1057,7 +1063,7 @@ export function useThreadsSummaryRetrieve<
 
 export function useThreadsSummaryRetrieve<
   TData = Awaited<ReturnType<typeof threadsSummaryRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -1151,7 +1157,7 @@ export const getThreadsStatsRetrieveQueryKey = (
 
 export const getThreadsStatsRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof threadsStatsRetrieve>>,
-  TError = ThreadsStatsRetrieve400,
+  TError = ErrorType<ThreadsStatsRetrieve400>,
 >(
   params: ThreadsStatsRetrieveParams,
   options?: {
@@ -1185,11 +1191,11 @@ export const getThreadsStatsRetrieveQueryOptions = <
 export type ThreadsStatsRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof threadsStatsRetrieve>>
 >;
-export type ThreadsStatsRetrieveQueryError = ThreadsStatsRetrieve400;
+export type ThreadsStatsRetrieveQueryError = ErrorType<ThreadsStatsRetrieve400>;
 
 export function useThreadsStatsRetrieve<
   TData = Awaited<ReturnType<typeof threadsStatsRetrieve>>,
-  TError = ThreadsStatsRetrieve400,
+  TError = ErrorType<ThreadsStatsRetrieve400>,
 >(
   params: ThreadsStatsRetrieveParams,
   options: {
@@ -1216,7 +1222,7 @@ export function useThreadsStatsRetrieve<
 };
 export function useThreadsStatsRetrieve<
   TData = Awaited<ReturnType<typeof threadsStatsRetrieve>>,
-  TError = ThreadsStatsRetrieve400,
+  TError = ErrorType<ThreadsStatsRetrieve400>,
 >(
   params: ThreadsStatsRetrieveParams,
   options?: {
@@ -1243,7 +1249,7 @@ export function useThreadsStatsRetrieve<
 };
 export function useThreadsStatsRetrieve<
   TData = Awaited<ReturnType<typeof threadsStatsRetrieve>>,
-  TError = ThreadsStatsRetrieve400,
+  TError = ErrorType<ThreadsStatsRetrieve400>,
 >(
   params: ThreadsStatsRetrieveParams,
   options?: {
@@ -1263,7 +1269,7 @@ export function useThreadsStatsRetrieve<
 
 export function useThreadsStatsRetrieve<
   TData = Awaited<ReturnType<typeof threadsStatsRetrieve>>,
-  TError = ThreadsStatsRetrieve400,
+  TError = ErrorType<ThreadsStatsRetrieve400>,
 >(
   params: ThreadsStatsRetrieveParams,
   options?: {

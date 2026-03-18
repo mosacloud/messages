@@ -21,6 +21,7 @@ import type {
 } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -73,7 +74,7 @@ export const flagCreate = async (
 };
 
 export const getFlagCreateMutationOptions = <
-  TError = FlagCreate400 | FlagCreate403,
+  TError = ErrorType<FlagCreate400 | FlagCreate403>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -114,10 +115,10 @@ export type FlagCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof flagCreate>>
 >;
 export type FlagCreateMutationBody = ChangeFlagRequestRequest;
-export type FlagCreateMutationError = FlagCreate400 | FlagCreate403;
+export type FlagCreateMutationError = ErrorType<FlagCreate400 | FlagCreate403>;
 
 export const useFlagCreate = <
-  TError = FlagCreate400 | FlagCreate403,
+  TError = ErrorType<FlagCreate400 | FlagCreate403>,
   TContext = unknown,
 >(
   options?: {

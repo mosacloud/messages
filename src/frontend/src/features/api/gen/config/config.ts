@@ -21,6 +21,7 @@ import type {
 import type { ConfigRetrieve200 } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -56,7 +57,7 @@ export const getConfigRetrieveQueryKey = () => {
 
 export const getConfigRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof configRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(options?: {
   query?: Partial<
     UseQueryOptions<Awaited<ReturnType<typeof configRetrieve>>, TError, TData>
@@ -81,11 +82,11 @@ export const getConfigRetrieveQueryOptions = <
 export type ConfigRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof configRetrieve>>
 >;
-export type ConfigRetrieveQueryError = unknown;
+export type ConfigRetrieveQueryError = ErrorType<unknown>;
 
 export function useConfigRetrieve<
   TData = Awaited<ReturnType<typeof configRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options: {
     query: Partial<
@@ -107,7 +108,7 @@ export function useConfigRetrieve<
 };
 export function useConfigRetrieve<
   TData = Awaited<ReturnType<typeof configRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<
@@ -129,7 +130,7 @@ export function useConfigRetrieve<
 };
 export function useConfigRetrieve<
   TData = Awaited<ReturnType<typeof configRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<
@@ -144,7 +145,7 @@ export function useConfigRetrieve<
 
 export function useConfigRetrieve<
   TData = Awaited<ReturnType<typeof configRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<

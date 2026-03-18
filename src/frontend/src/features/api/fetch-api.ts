@@ -5,6 +5,10 @@ import { SESSION_EXPIRED_KEY } from "../config/constants";
 import { APIError } from "./api-error";
 import { getHeaders, getRequestUrl, isJson } from "./utils";
 
+// https://github.com/orval-labs/orval/issues/258
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export type ErrorType<_E> = APIError;
+
 export interface fetchAPIOptions {
   logoutOn401?: boolean;
 }

@@ -29,6 +29,7 @@ import type {
 } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -86,7 +87,7 @@ export const getThirdPartyDriveRetrieveQueryKey = (
 
 export const getThirdPartyDriveRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof thirdPartyDriveRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ThirdPartyDriveRetrieveParams,
   options?: {
@@ -120,11 +121,11 @@ export const getThirdPartyDriveRetrieveQueryOptions = <
 export type ThirdPartyDriveRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof thirdPartyDriveRetrieve>>
 >;
-export type ThirdPartyDriveRetrieveQueryError = unknown;
+export type ThirdPartyDriveRetrieveQueryError = ErrorType<unknown>;
 
 export function useThirdPartyDriveRetrieve<
   TData = Awaited<ReturnType<typeof thirdPartyDriveRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params: undefined | ThirdPartyDriveRetrieveParams,
   options: {
@@ -151,7 +152,7 @@ export function useThirdPartyDriveRetrieve<
 };
 export function useThirdPartyDriveRetrieve<
   TData = Awaited<ReturnType<typeof thirdPartyDriveRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ThirdPartyDriveRetrieveParams,
   options?: {
@@ -178,7 +179,7 @@ export function useThirdPartyDriveRetrieve<
 };
 export function useThirdPartyDriveRetrieve<
   TData = Awaited<ReturnType<typeof thirdPartyDriveRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ThirdPartyDriveRetrieveParams,
   options?: {
@@ -198,7 +199,7 @@ export function useThirdPartyDriveRetrieve<
 
 export function useThirdPartyDriveRetrieve<
   TData = Awaited<ReturnType<typeof thirdPartyDriveRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ThirdPartyDriveRetrieveParams,
   options?: {
@@ -269,7 +270,7 @@ export const thirdPartyDriveCreate = async (
 };
 
 export const getThirdPartyDriveCreateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -310,9 +311,12 @@ export type ThirdPartyDriveCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof thirdPartyDriveCreate>>
 >;
 export type ThirdPartyDriveCreateMutationBody = DriveUploadAttachmentRequest;
-export type ThirdPartyDriveCreateMutationError = unknown;
+export type ThirdPartyDriveCreateMutationError = ErrorType<unknown>;
 
-export const useThirdPartyDriveCreate = <TError = unknown, TContext = unknown>(
+export const useThirdPartyDriveCreate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof thirdPartyDriveCreate>>,
