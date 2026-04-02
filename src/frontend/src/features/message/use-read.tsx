@@ -41,6 +41,7 @@ const useRead = () => {
                         ? { mailboxId, readAt: data.read_at ?? null }
                         : undefined,
                     readAt: data.read_at ?? null,
+                    skipThreadsRefetch: true,
                 });
                 invalidateThreadsStats();
                 onSuccess?.();

@@ -23,6 +23,10 @@ class ViewHelper {
         return new ViewHelper().#isView('inbox');
     }
 
+    static isAllMessagesView() {
+        return new ViewHelper().#isView('all_messages');
+    }
+
     static isTrashedView() {
         return new ViewHelper().#isView('trash');
     }

@@ -856,6 +856,38 @@ class TestPrepareOutboundMessageSenderUser:
 
 
 @pytest.mark.django_db
+class TestPrepareOutboundMessageReadAt:
+    """Test that prepare_outbound_message marks the thread as read for the sender."""
+
+    def test_prepare_outbound_message_updates_sender_read_at(self, mailbox_sender):
+        """Sending a message should update the sender's ThreadAccess.read_at
+        so the thread does not appear unread in their own mailbox."""
+        thread = factories.ThreadFactory()
+        access = factories.ThreadAccessFactory(
+            mailbox=mailbox_sender,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        sender_contact = factories.ContactFactory(mailbox=mailbox_sender)
+        message = factories.MessageFactory(
+            thread=thread,
+            sender=sender_contact,
+            is_draft=True,
+            subject="Test read_at",
+        )
+        assert access.read_at is None
+
+        outbound.prepare_outbound_message(
+            mailbox_sender, message, "Hello", "<p>Hello</p>"
+        )
+
+        access.refresh_from_db()
+        message.refresh_from_db()
+        assert access.read_at is not None
+        assert access.read_at >= message.created_at
+
+
+@pytest.mark.django_db
 class TestSendMessageDKIMVerification:
     """Test DKIM verification in send_message."""
 

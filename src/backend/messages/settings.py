@@ -133,6 +133,14 @@ class Base(Configuration):
         environ_prefix=None,
     )
 
+    # Autoreply rate limit: max autoreplies per sender per mailbox per time period
+    # Format: "count/period" where period is minute, hour, or day. None to disable.
+    THROTTLE_AUTOREPLY_PER_SENDER = ThrottleRateValue(
+        "1/day",
+        environ_name="THROTTLE_AUTOREPLY_PER_SENDER",
+        environ_prefix=None,
+    )
+
     # Image Proxy
     IMAGE_PROXY_ENABLED = values.BooleanValue(
         False, environ_name="IMAGE_PROXY_ENABLED", environ_prefix=None
@@ -606,6 +614,9 @@ class Base(Configuration):
     FRONTEND_THEME = values.Value(
         None, environ_name="FRONTEND_THEME", environ_prefix=None
     )
+    FRONTEND_SILENT_LOGIN_ENABLED = values.BooleanValue(
+        default=False, environ_name="FRONTEND_SILENT_LOGIN_ENABLED", environ_prefix=None
+    )
 
     # Celery
     CELERY_BROKER_URL = values.Value(
@@ -690,6 +701,8 @@ class Base(Configuration):
     OIDC_RP_SCOPES = values.Value(
         "openid email", environ_name="OIDC_RP_SCOPES", environ_prefix=None
     )
+    OIDC_AUTHENTICATE_CLASS = "lasuite.oidc_login.views.OIDCAuthenticationRequestView"
+    OIDC_CALLBACK_CLASS = "lasuite.oidc_login.views.OIDCAuthenticationCallbackView"
     LOGIN_REDIRECT_URL = values.Value(
         None, environ_name="LOGIN_REDIRECT_URL", environ_prefix=None
     )

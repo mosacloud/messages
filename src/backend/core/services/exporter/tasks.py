@@ -466,7 +466,13 @@ def export_mailbox_task(self, mailbox_id: str, user_id: str) -> Dict[str, Any]: 
                         thread_id=OuterRef("thread_id"),
                         mailbox_id=mailbox_id,
                     ).values("read_at")[:1]
-                )
+                ),
+                _starred_at=Subquery(
+                    ThreadAccess.objects.filter(
+                        thread_id=OuterRef("thread_id"),
+                        mailbox_id=mailbox_id,
+                    ).values("starred_at")[:1]
+                ),
             )
             .select_related("blob", "thread")
             .prefetch_related("thread__labels")
@@ -537,12 +543,16 @@ def export_mailbox_task(self, mailbox_id: str, user_id: str) -> Dict[str, Any]: 
                     read_at = getattr(msg, "_read_at", None)
                     is_unread = read_at is None or msg.created_at > read_at
 
+                    # Compute starred from ThreadAccess.starred_at
+                    starred_at = getattr(msg, "_starred_at", None)
+                    is_starred = starred_at is not None
+
                     # Create MBOX entry with metadata and write to stream
                     mbox_entry = _create_mbox_entry(
                         raw_content,
                         msg.created_at or datetime.now(timezone.utc),
                         is_unread=is_unread,
-                        is_starred=msg.is_starred,
+                        is_starred=is_starred,
                         is_draft=msg.is_draft,
                         is_sender=msg.is_sender,
                         labels=thread_labels,

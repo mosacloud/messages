@@ -261,32 +261,107 @@ class MailboxUsageMetricsApiView(APIView):
             .values("total")[:1]
         )
 
-        queryset = (
-            Mailbox.objects.select_related("domain")
-            .annotate(
-                messages_count=Coalesce(messages_count_subquery, Value(0)),
-                mime_blobs_size=Coalesce(mime_blobs_subquery, Value(0)),
-                draft_blobs_size=Coalesce(draft_blobs_subquery, Value(0)),
-                attachment_blobs_size=Coalesce(attachment_blobs_subquery, Value(0)),
-                template_blobs_size=Coalesce(template_blobs_subquery, Value(0)),
+        queryset = Mailbox.objects.select_related("domain")
+
+        # Apply filters
+        domain = request.query_params.get("domain")
+        account_email = request.query_params.get("account_email")
+        account_type = request.query_params.get("account_type")
+        account_id_key = request.query_params.get("account_id_key")
+        account_id_value = request.query_params.get("account_id_value")
+
+        allowed_keys = settings.SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN.get(
+            "properties", {}
+        ).keys()
+        if account_id_key and account_id_key not in allowed_keys:
+            return Response(
+                {"error": "Invalid account_id_key."},
+                status=400,
             )
-            .order_by("domain__name", "local_part")
+
+        if domain:
+            queryset = queryset.filter(domain__name=domain)
+        if account_email:
+            parts = account_email.rsplit("@", 1)
+            if len(parts) == 2:
+                queryset = queryset.filter(local_part=parts[0], domain__name=parts[1])
+        if account_id_key and account_id_value:
+            queryset = queryset.filter(
+                **{f"domain__custom_attributes__{account_id_key}": account_id_value}
+            )
+
+        if account_type == "organization" and (
+            not account_id_key or not account_id_value
+        ):
+            return Response(
+                {
+                    "error": "account_id_key and "
+                    "account_id_value are required "
+                    "for account_type=organization."
+                },
+                status=400,
+            )
+
+        storage_expr = (
+            Coalesce(messages_count_subquery, Value(0)) * overhead
+            + Coalesce(mime_blobs_subquery, Value(0))
+            + Coalesce(draft_blobs_subquery, Value(0))
+            + Coalesce(attachment_blobs_subquery, Value(0))
+            + Coalesce(template_blobs_subquery, Value(0))
         )
 
-        results = []
-        for mailbox in queryset:
-            storage_used = (
-                mailbox.messages_count * overhead
-                + mailbox.mime_blobs_size
-                + mailbox.draft_blobs_size
-                + mailbox.attachment_blobs_size
-                + mailbox.template_blobs_size
-            )
-            results.append(
+        # Build results based on account_type
+        if account_type == "organization":
+            total = queryset.annotate(storage_used=storage_expr).aggregate(
+                total=Coalesce(Sum("storage_used"), Value(0))
+            )["total"]
+            if not total and not queryset.exists():
+                return Response({"count": 0, "results": []})
+            results = [
                 {
-                    "email": f"{mailbox.local_part}@{mailbox.domain.name}",
-                    "storage_used": storage_used,
+                    account_id_key: account_id_value,
+                    "account": {"type": "organization"},
+                    "metrics": {"storage_used": total},
                 }
+            ]
+
+        elif account_type == "maildomain":
+            domain_rows = (
+                queryset.annotate(storage_used=storage_expr)
+                .values("domain__name", "domain__custom_attributes")
+                .annotate(domain_storage=Sum("storage_used"))
+                .order_by("domain__name")
             )
+            results = []
+            for row in domain_rows:
+                result = {
+                    "account": {
+                        "type": "maildomain",
+                        "id": row["domain__name"],
+                    },
+                    "metrics": {"storage_used": row["domain_storage"]},
+                }
+                if account_id_key:
+                    result[account_id_key] = (
+                        row["domain__custom_attributes"] or {}
+                    ).get(account_id_key, "")
+                results.append(result)
+
+        else:
+            queryset = queryset.annotate(storage_used=storage_expr).order_by(
+                "domain__name", "local_part"
+            )
+            results = []
+            for mailbox in queryset:
+                email = f"{mailbox.local_part}@{mailbox.domain.name}"
+                result = {
+                    "account": {"type": "mailbox", "email": email},
+                    "metrics": {"storage_used": mailbox.storage_used},
+                }
+                if account_id_key:
+                    result[account_id_key] = mailbox.domain.custom_attributes.get(
+                        account_id_key, ""
+                    )
+                results.append(result)
 
         return Response({"count": len(results), "results": results})

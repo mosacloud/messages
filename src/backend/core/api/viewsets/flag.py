@@ -14,7 +14,7 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.views import APIView
 
 from core import enums, models
-from core.services.search.tasks import update_threads_unread_mailboxes_task
+from core.services.search.tasks import update_threads_mailbox_flags_task
 
 from .. import permissions
 
@@ -51,7 +51,7 @@ class ChangeFlagView(APIView):
                 ),
                 "mailbox_id": drf_serializers.UUIDField(
                     required=False,
-                    help_text="Mailbox UUID. Required when flag is 'unread'.",
+                    help_text="Mailbox UUID. Required when flag is 'unread' or 'starred'.",
                 ),
                 "read_at": drf_serializers.DateTimeField(
                     required=False,
@@ -60,6 +60,15 @@ class ChangeFlagView(APIView):
                         "Timestamp up to which messages are considered read. "
                         "When provided with flag='unread', sets ThreadAccess.read_at directly. "
                         "null means nothing has been read (all messages unread)."
+                    ),
+                ),
+                "starred_at": drf_serializers.DateTimeField(
+                    required=False,
+                    allow_null=True,
+                    help_text=(
+                        "Timestamp when the thread was starred. "
+                        "When provided with flag='starred' and value=true, sets ThreadAccess.starred_at. "
+                        "null or value=false removes the starred flag."
                     ),
                 ),
             },
@@ -164,18 +173,17 @@ class ChangeFlagView(APIView):
                 status=drf.status.HTTP_400_BAD_REQUEST,
             )
 
-        if flag == "unread":
-            if not mailbox_id:
-                return drf.response.Response(
-                    {"detail": "mailbox_id is required for the 'unread' flag."},
-                    status=drf.status.HTTP_400_BAD_REQUEST,
-                )
+        if flag in ("unread", "starred") and not mailbox_id:
+            return drf.response.Response(
+                {"detail": f"mailbox_id is required for the '{flag}' flag."},
+                status=drf.status.HTTP_400_BAD_REQUEST,
+            )
 
-            if "read_at" not in request.data:
-                return drf.response.Response(
-                    {"detail": "read_at is required for the 'unread' flag."},
-                    status=drf.status.HTTP_400_BAD_REQUEST,
-                )
+        if flag == "unread" and "read_at" not in request.data:
+            return drf.response.Response(
+                {"detail": f"read_at is required for the '{flag}' flag."},
+                status=drf.status.HTTP_400_BAD_REQUEST,
+            )
 
         current_time = timezone.now()
         updated_threads = set()
@@ -185,9 +193,8 @@ class ChangeFlagView(APIView):
             mailbox__accesses__user=request.user,
         ).values_list("thread_id", flat=True)
 
-        # Except for unread flag, user must have EDITOR access to thread to
-        # modify it.
-        if flag != "unread":
+        # Unread and starred are personal actions that don't require EDITOR access.
+        if flag not in ("unread", "starred"):
             accessible_thread_ids_qs = accessible_thread_ids_qs.filter(
                 role__in=enums.THREAD_ROLES_CAN_EDIT
             )
@@ -197,19 +204,19 @@ class ChangeFlagView(APIView):
                 mailbox_id=mailbox_id
             )
 
+        if flag in ("unread", "starred") and not thread_ids and message_ids:
+            # If no thread_ids but we have message_ids, we need to get the thread_ids from the messages
+            thread_ids = (
+                models.Message.objects.filter(
+                    id__in=message_ids,
+                    thread_id__in=accessible_thread_ids_qs,
+                )
+                .values_list("thread_id", flat=True)
+                .distinct()
+            )
+
         with transaction.atomic():
             if flag == "unread":
-                if not thread_ids and message_ids:
-                    # If no thread_ids but we have message_ids, we need to get the thread_ids from the messages
-                    thread_ids = (
-                        models.Message.objects.filter(
-                            id__in=message_ids,
-                            thread_id__in=accessible_thread_ids_qs,
-                        )
-                        .values_list("thread_id", flat=True)
-                        .distinct()
-                    )
-
                 return self._handle_unread_flag(
                     request,
                     thread_ids,
@@ -217,7 +224,15 @@ class ChangeFlagView(APIView):
                     accessible_thread_ids_qs,
                 )
 
-            # --- Non-unread flags: update Message fields as before ---
+            if flag == "starred":
+                return self._handle_starred_flag(
+                    request,
+                    thread_ids,
+                    mailbox_id,
+                    accessible_thread_ids_qs,
+                )
+
+            # --- Non-unread/starred flags: update Message fields as before ---
             if message_ids:
                 messages_to_update = models.Message.objects.select_related(
                     "thread"
@@ -228,9 +243,7 @@ class ChangeFlagView(APIView):
 
                 if messages_to_update.exists():
                     batch_update_data = {"updated_at": current_time}
-                    if flag == "starred":
-                        batch_update_data["is_starred"] = value
-                    elif flag == "trashed":
+                    if flag == "trashed":
                         batch_update_data["is_trashed"] = value
                         batch_update_data["trashed_at"] = (
                             current_time if value else None
@@ -275,9 +288,7 @@ class ChangeFlagView(APIView):
 
                     # Prepare update data for messages within these threads
                     batch_update_data = {"updated_at": current_time}
-                    if flag == "starred":
-                        batch_update_data["is_starred"] = value
-                    elif flag == "trashed":
+                    if flag == "trashed":
                         batch_update_data["is_trashed"] = value
                         batch_update_data["trashed_at"] = (
                             current_time if value else None
@@ -354,7 +365,68 @@ class ChangeFlagView(APIView):
         updated_count = accesses.update(read_at=read_at)
 
         if thread_ids_to_sync:
-            update_threads_unread_mailboxes_task.delay(thread_ids_to_sync)
+            transaction.on_commit(
+                lambda ids=thread_ids_to_sync: update_threads_mailbox_flags_task.delay(
+                    ids
+                )
+            )
+
+        return drf.response.Response(
+            {"success": True, "updated_threads": updated_count}
+        )
+
+    def _handle_starred_flag(
+        self,
+        request,
+        thread_ids,
+        mailbox_id,
+        accessible_thread_ids_qs,
+    ):
+        """Handle the 'starred' flag by setting ThreadAccess.starred_at.
+
+        The caller sends value=true to star and value=false to unstar.
+        An optional starred_at timestamp can be provided; otherwise the
+        current time is used when starring.
+        """
+        value = request.data.get("value")
+        starred_at = request.data.get("starred_at")
+
+        if value:
+            # Use provided timestamp or default to now
+            if starred_at is not None:
+                parsed = parse_datetime(str(starred_at))
+                if parsed is None:
+                    return drf.response.Response(
+                        {"detail": "starred_at must be a valid ISO 8601 datetime."},
+                        status=drf.status.HTTP_400_BAD_REQUEST,
+                    )
+                starred_at = parsed
+            else:
+                starred_at = timezone.now()
+        else:
+            starred_at = None
+
+        thread_qs = models.Thread.objects.filter(
+            id__in=thread_ids,
+        ).filter(
+            id__in=accessible_thread_ids_qs,
+        )
+        accesses = models.ThreadAccess.objects.filter(
+            thread__in=thread_qs,
+            mailbox_id=mailbox_id,
+        )
+
+        thread_ids_to_sync = [
+            str(tid) for tid in accesses.values_list("thread_id", flat=True)
+        ]
+        updated_count = accesses.update(starred_at=starred_at)
+
+        if thread_ids_to_sync:
+            transaction.on_commit(
+                lambda ids=thread_ids_to_sync: update_threads_mailbox_flags_task.delay(
+                    ids
+                )
+            )
 
         return drf.response.Response(
             {"success": True, "updated_threads": updated_count}

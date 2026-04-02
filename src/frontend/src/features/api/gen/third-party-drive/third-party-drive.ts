@@ -29,6 +29,7 @@ import type {
 } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -48,7 +49,7 @@ export type thirdPartyDriveRetrieveResponse =
   thirdPartyDriveRetrieveResponseSuccess;
 
 export const getThirdPartyDriveRetrieveUrl = (
-  params: ThirdPartyDriveRetrieveParams,
+  params?: ThirdPartyDriveRetrieveParams,
 ) => {
   const normalizedParams = new URLSearchParams();
 
@@ -66,7 +67,7 @@ export const getThirdPartyDriveRetrieveUrl = (
 };
 
 export const thirdPartyDriveRetrieve = async (
-  params: ThirdPartyDriveRetrieveParams,
+  params?: ThirdPartyDriveRetrieveParams,
   options?: RequestInit,
 ): Promise<thirdPartyDriveRetrieveResponse> => {
   return fetchAPI<thirdPartyDriveRetrieveResponse>(
@@ -86,9 +87,9 @@ export const getThirdPartyDriveRetrieveQueryKey = (
 
 export const getThirdPartyDriveRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof thirdPartyDriveRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
-  params: ThirdPartyDriveRetrieveParams,
+  params?: ThirdPartyDriveRetrieveParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -120,13 +121,13 @@ export const getThirdPartyDriveRetrieveQueryOptions = <
 export type ThirdPartyDriveRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof thirdPartyDriveRetrieve>>
 >;
-export type ThirdPartyDriveRetrieveQueryError = unknown;
+export type ThirdPartyDriveRetrieveQueryError = ErrorType<unknown>;
 
 export function useThirdPartyDriveRetrieve<
   TData = Awaited<ReturnType<typeof thirdPartyDriveRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
-  params: ThirdPartyDriveRetrieveParams,
+  params: undefined | ThirdPartyDriveRetrieveParams,
   options: {
     query: Partial<
       UseQueryOptions<
@@ -151,9 +152,9 @@ export function useThirdPartyDriveRetrieve<
 };
 export function useThirdPartyDriveRetrieve<
   TData = Awaited<ReturnType<typeof thirdPartyDriveRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
-  params: ThirdPartyDriveRetrieveParams,
+  params?: ThirdPartyDriveRetrieveParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -178,9 +179,9 @@ export function useThirdPartyDriveRetrieve<
 };
 export function useThirdPartyDriveRetrieve<
   TData = Awaited<ReturnType<typeof thirdPartyDriveRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
-  params: ThirdPartyDriveRetrieveParams,
+  params?: ThirdPartyDriveRetrieveParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -198,9 +199,9 @@ export function useThirdPartyDriveRetrieve<
 
 export function useThirdPartyDriveRetrieve<
   TData = Awaited<ReturnType<typeof thirdPartyDriveRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
-  params: ThirdPartyDriveRetrieveParams,
+  params?: ThirdPartyDriveRetrieveParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -228,17 +229,24 @@ export function useThirdPartyDriveRetrieve<
 }
 
 /**
- * Create a new file in the main workspace.
+ * Save an attachment to the user's Drive workspace. If the file already exists (matched by title and size), returns the existing item with a 200 status. Otherwise, creates a new file and returns it with a 201 status.
  */
+export type thirdPartyDriveCreateResponse200 = {
+  data: PartialDriveItem;
+  status: 200;
+};
+
 export type thirdPartyDriveCreateResponse201 = {
   data: PartialDriveItem;
   status: 201;
 };
 
-export type thirdPartyDriveCreateResponseSuccess =
-  thirdPartyDriveCreateResponse201 & {
-    headers: Headers;
-  };
+export type thirdPartyDriveCreateResponseSuccess = (
+  | thirdPartyDriveCreateResponse200
+  | thirdPartyDriveCreateResponse201
+) & {
+  headers: Headers;
+};
 export type thirdPartyDriveCreateResponse =
   thirdPartyDriveCreateResponseSuccess;
 
@@ -262,7 +270,7 @@ export const thirdPartyDriveCreate = async (
 };
 
 export const getThirdPartyDriveCreateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -303,9 +311,12 @@ export type ThirdPartyDriveCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof thirdPartyDriveCreate>>
 >;
 export type ThirdPartyDriveCreateMutationBody = DriveUploadAttachmentRequest;
-export type ThirdPartyDriveCreateMutationError = unknown;
+export type ThirdPartyDriveCreateMutationError = ErrorType<unknown>;
 
-export const useThirdPartyDriveCreate = <TError = unknown, TContext = unknown>(
+export const useThirdPartyDriveCreate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof thirdPartyDriveCreate>>,

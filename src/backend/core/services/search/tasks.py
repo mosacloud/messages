@@ -12,7 +12,13 @@ from core.services.search import (
     delete_index,
     index_message,
     index_thread,
-    update_thread_unread_mailboxes,
+    update_thread_mailbox_flags,
+)
+from core.services.search import (
+    reindex_all as _reindex_all_impl,
+)
+from core.services.search import (
+    reindex_mailbox as _reindex_mailbox_impl,
 )
 
 from messages.celery_app import app as celery_app
@@ -23,6 +29,9 @@ logger = get_task_logger(__name__)
 def _reindex_all_base(update_progress=None):
     """Base function for reindexing all threads and messages.
 
+    Delegates to the bulk ``reindex_all`` implementation in the search index
+    module.
+
     Args:
         update_progress: Optional callback function to update progress
     """
@@ -30,35 +39,13 @@ def _reindex_all_base(update_progress=None):
         logger.info("OpenSearch thread indexing is disabled.")
         return {"success": False, "reason": "disabled"}
 
-    # Ensure index exists first
-    create_index_if_not_exists()
-
-    # Get all threads and index them
-    threads = models.Thread.objects.all()
-    total = threads.count()
-    success_count = 0
-    failure_count = 0
-
-    for i, thread in enumerate(threads):
-        try:
-            if index_thread(thread):
-                success_count += 1
-            else:
-                failure_count += 1
-        # pylint: disable=broad-exception-caught
-        except Exception as e:
-            failure_count += 1
-            logger.exception("Error indexing thread %s: %s", thread.id, e)
-
-        # Update progress if callback provided
-        if update_progress and i % 100 == 0:
-            update_progress(i, total, success_count, failure_count)
+    result = _reindex_all_impl(progress_callback=update_progress)
 
     return {
         "success": True,
-        "total": total,
-        "success_count": success_count,
-        "failure_count": failure_count,
+        "total": result["total"],
+        "success_count": result["indexed_threads"],
+        "failure_count": result["failure_count"],
     }
 
 
@@ -115,8 +102,8 @@ def reindex_thread_task(self, thread_id):
 
 
 @celery_app.task(bind=True)
-def update_threads_unread_mailboxes_task(self, thread_ids):
-    """Update unread_mailboxes for multiple threads in OpenSearch."""
+def update_threads_mailbox_flags_task(self, thread_ids):
+    """Update mailbox-scoped flags (unread_mailboxes, starred_mailboxes) in OpenSearch."""
     if not settings.OPENSEARCH_INDEX_THREADS:
         logger.info("OpenSearch thread indexing is disabled.")
         return {"success": False, "reason": "disabled"}
@@ -127,7 +114,7 @@ def update_threads_unread_mailboxes_task(self, thread_ids):
     for thread_id in thread_ids:
         try:
             thread = models.Thread.objects.get(id=thread_id)
-            success = update_thread_unread_mailboxes(thread)
+            success = update_thread_mailbox_flags(thread)
             results.append({"thread_id": thread_id, "success": success})
         except models.Thread.DoesNotExist:
             logger.error("Thread %s does not exist", thread_id)
@@ -136,52 +123,51 @@ def update_threads_unread_mailboxes_task(self, thread_ids):
     return {"success": True, "results": results}
 
 
-@celery_app.task(bind=True)
-def reindex_mailbox_task(self, mailbox_id):
-    """Reindex all threads and messages in a specific mailbox."""
+def _reindex_mailbox_base(mailbox_id, update_progress=None):
+    """Base function for reindexing all threads in a mailbox.
+
+    Delegates to the bulk ``reindex_mailbox`` implementation in the search
+    index module.
+
+    Args:
+        mailbox_id: The mailbox ID to reindex.
+        update_progress: Optional callback function to update progress.
+    """
     if not settings.OPENSEARCH_INDEX_THREADS:
         logger.info("OpenSearch thread indexing is disabled.")
         return {"success": False, "reason": "disabled"}
 
-    # Ensure index exists first
-    create_index_if_not_exists()
+    result = _reindex_mailbox_impl(mailbox_id, progress_callback=update_progress)
 
-    # Get all threads in the mailbox
-    threads = models.Mailbox.objects.get(id=mailbox_id).threads_viewer
-    total = threads.count()
-    success_count = 0
-    failure_count = 0
-
-    for i, thread in enumerate(threads):
-        try:
-            if index_thread(thread):
-                success_count += 1
-            else:
-                failure_count += 1
-        # pylint: disable=broad-exception-caught
-        except Exception as e:
-            failure_count += 1
-            logger.exception("Error indexing thread %s: %s", thread.id, e)
-
-        # Update progress every 50 threads
-        if i % 50 == 0:
-            self.update_state(
-                state="PROGRESS",
-                meta={
-                    "current": i,
-                    "total": total,
-                    "success_count": success_count,
-                    "failure_count": failure_count,
-                },
-            )
+    if result.get("status") == "error":
+        return {"success": False, **result}
 
     return {
         "mailbox_id": str(mailbox_id),
         "success": True,
-        "total": total,
-        "success_count": success_count,
-        "failure_count": failure_count,
+        "total": result["total"],
+        "success_count": result["indexed_threads"],
+        "failure_count": result["failure_count"],
     }
+
+
+@celery_app.task(bind=True)
+def reindex_mailbox_task(self, mailbox_id):
+    """Celery task wrapper for reindexing all threads in a mailbox."""
+
+    def update_progress(current, total, success_count, failure_count):
+        """Update task progress."""
+        self.update_state(
+            state="PROGRESS",
+            meta={
+                "current": current,
+                "total": total,
+                "success_count": success_count,
+                "failure_count": failure_count,
+            },
+        )
+
+    return _reindex_mailbox_base(mailbox_id, update_progress)
 
 
 @celery_app.task(bind=True)

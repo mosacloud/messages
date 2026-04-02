@@ -14,8 +14,11 @@ const useTrash = () => {
             thread: (count: number) => t('{{count}} threads have been deleted.', { count: count, defaultValue_one: 'The thread has been deleted.' }),
             message: (count: number) => t('{{count}} messages have been deleted.', { count: count, defaultValue_one: 'The message has been deleted.' }),
         },
-        onSuccess: () => {
-            invalidateThreadMessages();
+        onSuccess: (data) => {
+            invalidateThreadMessages({
+                type: 'update',
+                metadata: { threadIds: data.thread_ids, ids: data.message_ids },
+            });
             invalidateThreadsStats();
         }
     });

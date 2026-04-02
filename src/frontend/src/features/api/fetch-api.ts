@@ -5,13 +5,17 @@ import { SESSION_EXPIRED_KEY } from "../config/constants";
 import { APIError } from "./api-error";
 import { getHeaders, getRequestUrl, isJson } from "./utils";
 
+// https://github.com/orval-labs/orval/issues/258
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export type ErrorType<_E> = APIError;
+
 export interface fetchAPIOptions {
   logoutOn401?: boolean;
 }
 
 export const fetchAPI= async <T>(
   pathname: string,
-  { params, logoutOn401, ...requestInit }: RequestInit & fetchAPIOptions & { params?: Record<string, string> } = {},
+  { params, logoutOn401 = true, ...requestInit }: RequestInit & fetchAPIOptions & { params?: Record<string, string> } = {},
 ): Promise<T> => {
   const requestUrl = getRequestUrl(pathname, params);
   const isMultipartFormData = requestInit.body instanceof FormData;
@@ -22,7 +26,7 @@ export const fetchAPI= async <T>(
     headers: getHeaders(requestInit.headers, isMultipartFormData),
   });
 
-  if ((logoutOn401 ?? true) && response.status === 401) {
+  if (response.status === 401 && logoutOn401) {
     sessionStorage.setItem(SESSION_EXPIRED_KEY, 'true');
     logout();
   }

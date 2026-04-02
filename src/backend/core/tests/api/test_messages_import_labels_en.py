@@ -155,9 +155,11 @@ def test_api_import_labels_import_mbox_with_labels_and_flags(
     assert draft_access.read_at >= draft_message.created_at
     assert not models.Label.objects.filter(name="Draft").exists()
 
-    # Test starred message
-    starred_message = messages.filter(is_starred=True).first()
-    assert starred_message is not None
+    # Test starred message (starred is now on ThreadAccess, not Message)
+    starred_access = models.ThreadAccess.objects.filter(
+        starred_at__isnull=False, mailbox=mailbox
+    ).first()
+    assert starred_access is not None
     assert not models.Label.objects.filter(name="Starred").exists()
 
     # Test archived message

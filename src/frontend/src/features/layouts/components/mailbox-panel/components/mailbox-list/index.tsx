@@ -15,6 +15,7 @@ import { handle } from "@/features/utils/errors";
 import ViewHelper from "@/features/utils/view-helper";
 import { addToast, ToasterItem } from "@/features/ui/components/toaster";
 import { Tooltip } from "@gouvfr-lasuite/cunningham-react"
+import { THREAD_PANEL_FILTER_PARAMS } from "../../../thread-panel/components/thread-panel-filter"
 
 // @TODO: replace with real data when folder will be ready
 type Folder = {
@@ -22,6 +23,7 @@ type Folder = {
     name: string;
     icon: string;
     filter?: Record<string, string>;
+    showStats: boolean;
     searchable?: boolean;
     conditional?: boolean;
 }
@@ -32,6 +34,7 @@ export const MAILBOX_FOLDERS = () => [
         name: i18n.t("Inbox"),
         icon: "inbox",
         searchable: false,
+        showStats: true,
         filter: {
             has_active: "1"
         },
@@ -41,6 +44,7 @@ export const MAILBOX_FOLDERS = () => [
         name: i18n.t("All messages"),
         icon: "mark_as_unread",
         searchable: true,
+        showStats: true,
         filter: {
             has_messages: "1"
         },
@@ -50,6 +54,7 @@ export const MAILBOX_FOLDERS = () => [
         name: i18n.t("Drafts"),
         icon: "mode_edit",
         searchable: true,
+        showStats: true,
         filter: {
             has_draft: "1",
         },
@@ -60,6 +65,7 @@ export const MAILBOX_FOLDERS = () => [
         icon: "schedule_send",
         searchable: false,
         conditional: true,
+        showStats: true,
         filter: {
             has_sender: "1",
             has_delivery_pending: "1"
@@ -70,6 +76,7 @@ export const MAILBOX_FOLDERS = () => [
         name: i18n.t("Sent"),
         icon: "outbox",
         searchable: true,
+        showStats: true,
         filter: {
             has_sender: "1",
             has_delivery_pending: "0"
@@ -80,6 +87,7 @@ export const MAILBOX_FOLDERS = () => [
         name: i18n.t("Archives"),
         icon: "inventory_2",
         searchable: true,
+        showStats: true,
         filter: {
             has_archived: "1",
         },
@@ -89,6 +97,7 @@ export const MAILBOX_FOLDERS = () => [
         name: i18n.t("Spam"),
         icon: "report",
         searchable: true,
+        showStats: true,
         filter: {
             is_spam: "1",
         },
@@ -98,6 +107,7 @@ export const MAILBOX_FOLDERS = () => [
         name: i18n.t("Trash"),
         icon: "delete",
         searchable: true,
+        showStats: false,
         filter: {
             has_trashed: "1",
         },
@@ -169,6 +179,7 @@ const FolderItem = ({ folder }: FolderItemProps) => {
         ...folder.filter
     }, {
         query: {
+            enabled: folder.showStats,
             queryKey: ['threads', 'stats', selectedMailbox!.id, queryParams],
         }
     });
@@ -206,7 +217,11 @@ const FolderItem = ({ folder }: FolderItemProps) => {
 
     const isActive = useMemo(() => {
         const folderFilter = Object.entries(folder.filter || {});
-        if (folderFilter.length !== searchParams.size) return false;
+        // Exclude thread panel filter params from comparison so filters don't break folder matching
+        const folderParamsSize = Array.from(searchParams.keys()).filter(
+            (key) => !THREAD_PANEL_FILTER_PARAMS.includes(key as (typeof THREAD_PANEL_FILTER_PARAMS)[number])
+        ).length;
+        if (folderFilter.length !== folderParamsSize) return false;
 
         return folderFilter.every(([key, value]) => {
             return searchParams.get(key) === value;

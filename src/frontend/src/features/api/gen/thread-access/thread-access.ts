@@ -34,6 +34,7 @@ import type {
 } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -96,7 +97,7 @@ export const getThreadsAccessesListQueryKey = (
 
 export const getThreadsAccessesListQueryOptions = <
   TData = Awaited<ReturnType<typeof threadsAccessesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   threadId: string,
   params?: ThreadsAccessesListParams,
@@ -136,11 +137,11 @@ export const getThreadsAccessesListQueryOptions = <
 export type ThreadsAccessesListQueryResult = NonNullable<
   Awaited<ReturnType<typeof threadsAccessesList>>
 >;
-export type ThreadsAccessesListQueryError = unknown;
+export type ThreadsAccessesListQueryError = ErrorType<unknown>;
 
 export function useThreadsAccessesList<
   TData = Awaited<ReturnType<typeof threadsAccessesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   threadId: string,
   params: undefined | ThreadsAccessesListParams,
@@ -168,7 +169,7 @@ export function useThreadsAccessesList<
 };
 export function useThreadsAccessesList<
   TData = Awaited<ReturnType<typeof threadsAccessesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   threadId: string,
   params?: ThreadsAccessesListParams,
@@ -196,7 +197,7 @@ export function useThreadsAccessesList<
 };
 export function useThreadsAccessesList<
   TData = Awaited<ReturnType<typeof threadsAccessesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   threadId: string,
   params?: ThreadsAccessesListParams,
@@ -217,7 +218,7 @@ export function useThreadsAccessesList<
 
 export function useThreadsAccessesList<
   TData = Awaited<ReturnType<typeof threadsAccessesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   threadId: string,
   params?: ThreadsAccessesListParams,
@@ -303,7 +304,7 @@ export const threadsAccessesCreate = async (
 };
 
 export const getThreadsAccessesCreateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -356,9 +357,12 @@ export type ThreadsAccessesCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof threadsAccessesCreate>>
 >;
 export type ThreadsAccessesCreateMutationBody = ThreadAccessRequest;
-export type ThreadsAccessesCreateMutationError = unknown;
+export type ThreadsAccessesCreateMutationError = ErrorType<unknown>;
 
-export const useThreadsAccessesCreate = <TError = unknown, TContext = unknown>(
+export const useThreadsAccessesCreate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof threadsAccessesCreate>>,
@@ -441,7 +445,7 @@ export const threadsAccessesUpdate = async (
 };
 
 export const getThreadsAccessesUpdateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -497,9 +501,12 @@ export type ThreadsAccessesUpdateMutationResult = NonNullable<
   Awaited<ReturnType<typeof threadsAccessesUpdate>>
 >;
 export type ThreadsAccessesUpdateMutationBody = ThreadAccessRequest;
-export type ThreadsAccessesUpdateMutationError = unknown;
+export type ThreadsAccessesUpdateMutationError = ErrorType<unknown>;
 
-export const useThreadsAccessesUpdate = <TError = unknown, TContext = unknown>(
+export const useThreadsAccessesUpdate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof threadsAccessesUpdate>>,
@@ -584,7 +591,7 @@ export const threadsAccessesPartialUpdate = async (
 };
 
 export const getThreadsAccessesPartialUpdateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -647,10 +654,10 @@ export type ThreadsAccessesPartialUpdateMutationResult = NonNullable<
 >;
 export type ThreadsAccessesPartialUpdateMutationBody =
   PatchedThreadAccessRequest;
-export type ThreadsAccessesPartialUpdateMutationError = unknown;
+export type ThreadsAccessesPartialUpdateMutationError = ErrorType<unknown>;
 
 export const useThreadsAccessesPartialUpdate = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -735,7 +742,7 @@ export const threadsAccessesDestroy = async (
 };
 
 export const getThreadsAccessesDestroyMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -776,9 +783,12 @@ export type ThreadsAccessesDestroyMutationResult = NonNullable<
   Awaited<ReturnType<typeof threadsAccessesDestroy>>
 >;
 
-export type ThreadsAccessesDestroyMutationError = unknown;
+export type ThreadsAccessesDestroyMutationError = ErrorType<unknown>;
 
-export const useThreadsAccessesDestroy = <TError = unknown, TContext = unknown>(
+export const useThreadsAccessesDestroy = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof threadsAccessesDestroy>>,

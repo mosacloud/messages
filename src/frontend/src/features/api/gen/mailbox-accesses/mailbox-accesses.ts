@@ -31,6 +31,7 @@ import type {
 } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -97,7 +98,7 @@ export const getMailboxesAccessesListQueryKey = (
 
 export const getMailboxesAccessesListQueryOptions = <
   TData = Awaited<ReturnType<typeof mailboxesAccessesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   params?: MailboxesAccessesListParams,
@@ -138,11 +139,11 @@ export const getMailboxesAccessesListQueryOptions = <
 export type MailboxesAccessesListQueryResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesAccessesList>>
 >;
-export type MailboxesAccessesListQueryError = unknown;
+export type MailboxesAccessesListQueryError = ErrorType<unknown>;
 
 export function useMailboxesAccessesList<
   TData = Awaited<ReturnType<typeof mailboxesAccessesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   params: undefined | MailboxesAccessesListParams,
@@ -170,7 +171,7 @@ export function useMailboxesAccessesList<
 };
 export function useMailboxesAccessesList<
   TData = Awaited<ReturnType<typeof mailboxesAccessesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   params?: MailboxesAccessesListParams,
@@ -198,7 +199,7 @@ export function useMailboxesAccessesList<
 };
 export function useMailboxesAccessesList<
   TData = Awaited<ReturnType<typeof mailboxesAccessesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   params?: MailboxesAccessesListParams,
@@ -219,7 +220,7 @@ export function useMailboxesAccessesList<
 
 export function useMailboxesAccessesList<
   TData = Awaited<ReturnType<typeof mailboxesAccessesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   params?: MailboxesAccessesListParams,
@@ -292,7 +293,7 @@ export const mailboxesAccessesCreate = async (
 };
 
 export const getMailboxesAccessesCreateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -333,10 +334,10 @@ export type MailboxesAccessesCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesAccessesCreate>>
 >;
 export type MailboxesAccessesCreateMutationBody = MailboxAccessWriteRequest;
-export type MailboxesAccessesCreateMutationError = unknown;
+export type MailboxesAccessesCreateMutationError = ErrorType<unknown>;
 
 export const useMailboxesAccessesCreate = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -407,7 +408,7 @@ export const getMailboxesAccessesRetrieveQueryKey = (
 
 export const getMailboxesAccessesRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof mailboxesAccessesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   id: string,
@@ -448,11 +449,11 @@ export const getMailboxesAccessesRetrieveQueryOptions = <
 export type MailboxesAccessesRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesAccessesRetrieve>>
 >;
-export type MailboxesAccessesRetrieveQueryError = unknown;
+export type MailboxesAccessesRetrieveQueryError = ErrorType<unknown>;
 
 export function useMailboxesAccessesRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesAccessesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   id: string,
@@ -480,7 +481,7 @@ export function useMailboxesAccessesRetrieve<
 };
 export function useMailboxesAccessesRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesAccessesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   id: string,
@@ -508,7 +509,7 @@ export function useMailboxesAccessesRetrieve<
 };
 export function useMailboxesAccessesRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesAccessesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   id: string,
@@ -529,7 +530,7 @@ export function useMailboxesAccessesRetrieve<
 
 export function useMailboxesAccessesRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesAccessesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   id: string,
@@ -606,7 +607,7 @@ export const mailboxesAccessesUpdate = async (
 };
 
 export const getMailboxesAccessesUpdateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -647,10 +648,10 @@ export type MailboxesAccessesUpdateMutationResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesAccessesUpdate>>
 >;
 export type MailboxesAccessesUpdateMutationBody = MailboxAccessWriteRequest;
-export type MailboxesAccessesUpdateMutationError = unknown;
+export type MailboxesAccessesUpdateMutationError = ErrorType<unknown>;
 
 export const useMailboxesAccessesUpdate = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -716,7 +717,7 @@ export const mailboxesAccessesPartialUpdate = async (
 };
 
 export const getMailboxesAccessesPartialUpdateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -758,10 +759,10 @@ export type MailboxesAccessesPartialUpdateMutationResult = NonNullable<
 >;
 export type MailboxesAccessesPartialUpdateMutationBody =
   PatchedMailboxAccessWriteRequest;
-export type MailboxesAccessesPartialUpdateMutationError = unknown;
+export type MailboxesAccessesPartialUpdateMutationError = ErrorType<unknown>;
 
 export const useMailboxesAccessesPartialUpdate = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -825,7 +826,7 @@ export const mailboxesAccessesDestroy = async (
 };
 
 export const getMailboxesAccessesDestroyMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -866,10 +867,10 @@ export type MailboxesAccessesDestroyMutationResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesAccessesDestroy>>
 >;
 
-export type MailboxesAccessesDestroyMutationError = unknown;
+export type MailboxesAccessesDestroyMutationError = ErrorType<unknown>;
 
 export const useMailboxesAccessesDestroy = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {

@@ -3,7 +3,7 @@ DNS checking functionality for mail domains.
 """
 
 import re
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 import dns.resolver
 
@@ -15,6 +15,137 @@ def normalize_txt_value(value: str) -> str:
     Normalize a TXT record value.
     """
     return re.sub(r"\;$", "", re.sub(r"\s*\;\s*", ";", value.strip('"')))
+
+
+def parse_dkim_tags(value: str) -> Optional[Dict[str, str]]:
+    """Parse a DKIM record into a dict of tag=value pairs.
+
+    Per RFC 6376, tags are separated by semicolons, with tag=value format.
+    The v= tag MUST be first and equal to DKIM1.
+    Returns None if the record is not a valid DKIM record.
+    """
+    parts = [p.strip() for p in value.split(";") if p.strip()]
+    if not parts:
+        return None
+    # v= must be first
+    first = parts[0]
+    if not first.startswith("v=") or first.split("=", 1)[1].strip() != "DKIM1":
+        return None
+    tags = {}
+    for part in parts:
+        if "=" not in part:
+            continue
+        key, val = part.split("=", 1)
+        tags[key.strip()] = val.strip()
+    return tags
+
+
+def parse_spf_terms(value: str) -> Optional[Tuple[str, set]]:
+    """Parse an SPF record into its qualifier-all and set of other terms.
+
+    Per RFC 7208, v=spf1 must be first. Returns (all_mechanism, other_terms)
+    where all_mechanism is e.g. "-all", "~all", "+all", "?all" or None,
+    and other_terms is the set of remaining mechanisms/modifiers.
+    Returns None if not a valid SPF record.
+    """
+    if not value.startswith("v=spf1"):
+        return None
+    rest = value[len("v=spf1") :].strip()
+    terms = rest.split()
+    all_mechanism = None
+    other_terms = set()
+    for term in terms:
+        if term in ("-all", "~all", "+all", "?all", "all"):
+            all_mechanism = term
+        else:
+            other_terms.add(term)
+    return (all_mechanism, other_terms)
+
+
+def _check_dkim_semantic(
+    expected_value: str, found_values: List[str]
+) -> Optional[Dict[str, any]]:
+    """Semantic comparison for DKIM records (tag order doesn't matter per RFC 6376)."""
+    expected_tags = parse_dkim_tags(expected_value)
+    if not expected_tags:
+        return None
+    for found_value in found_values:
+        found_tags = parse_dkim_tags(found_value)
+        if not found_tags:
+            continue
+        if not all(found_tags.get(k) == v for k, v in expected_tags.items()):
+            continue
+        # Check for t=y (testing mode) → insecure
+        if found_tags.get("t") and "y" in found_tags["t"].split(":"):
+            return {"status": "insecure", "found": found_values}
+        return {"status": "correct", "found": found_values}
+    return None
+
+
+def _check_spf_semantic(
+    expected_value: str, found_values: List[str]
+) -> Optional[Dict[str, any]]:
+    """Semantic comparison for SPF records (term order doesn't matter)."""
+    expected_spf = parse_spf_terms(expected_value)
+    if not expected_spf:
+        return None
+    expected_all, expected_terms = expected_spf
+    for found_value in found_values:
+        found_spf = parse_spf_terms(found_value)
+        if not found_spf:
+            continue
+        found_all, found_terms = found_spf
+        if not expected_terms <= found_terms:
+            continue
+        if expected_all == found_all:
+            return {"status": "correct", "found": found_values}
+        if expected_all == "-all" and found_all == "~all":
+            return {"status": "correct", "found": found_values}
+    return None
+
+
+def _resolve_dns_values(record_type, target, query_name):
+    """Resolve DNS and return found values and normalized expected value flag."""
+    if record_type.upper() == "MX":
+        answers = dns.resolver.resolve(query_name, "MX")
+        return [f"{answer.preference} {answer.exchange}" for answer in answers]
+
+    if record_type.upper() == "TXT":
+        answers = dns.resolver.resolve(query_name, "TXT")
+        if target.endswith("._domainkey"):
+            return [
+                normalize_txt_value(answer.to_text().strip('"').replace('" "', ""))
+                for answer in answers
+            ]
+        return [normalize_txt_value(answer.to_text()) for answer in answers]
+
+    answers = dns.resolver.resolve(query_name, record_type)
+    return [answer.to_text() for answer in answers]
+
+
+def _check_txt_security(expected_value, found_values):
+    """Check for duplicate/insecure SPF and DMARC records. Returns result or None."""
+    # SPF duplicate and insecure checks
+    if expected_value.startswith("v=spf1"):
+        spf_records = [v for v in found_values if v.startswith("v=spf1")]
+        if len(spf_records) > 1:
+            return {"status": "duplicate", "found": found_values}
+        if expected_value.endswith("-all"):
+            for spf in spf_records:
+                if spf.endswith("+all") or spf.endswith("?all"):
+                    return {"status": "insecure", "found": found_values}
+
+    # DMARC duplicate and insecure checks
+    if expected_value.startswith("v=DMARC1"):
+        dmarc_records = [v for v in found_values if v.startswith("v=DMARC1")]
+        if len(dmarc_records) > 1:
+            return {"status": "duplicate", "found": found_values}
+        if "p=none" not in expected_value:
+            for dmarc in dmarc_records:
+                if "p=none" in dmarc:
+                    return {"status": "insecure", "found": found_values}
+
+    return None
 
 
 def check_single_record(
@@ -35,60 +166,20 @@ def check_single_record(
     expected_value = expected_record["value"]
 
     # Build the query name
-    if target:
-        query_name = f"{target}.{maildomain.name}"
-    else:
-        query_name = maildomain.name
+    query_name = f"{target}.{maildomain.name}" if target else maildomain.name
 
     try:
-        # Query DNS records
-        if record_type.upper() == "MX":
-            answers = dns.resolver.resolve(query_name, "MX")
-            found_values = [
-                f"{answer.preference} {answer.exchange}" for answer in answers
-            ]
-        elif record_type.upper() == "TXT":
-            answers = dns.resolver.resolve(query_name, "TXT")
-            if target.endswith("._domainkey"):
-                found_values = [
-                    normalize_txt_value(answer.to_text().strip('"').replace('" "', ""))
-                    for answer in answers
-                ]
-            else:
-                found_values = [
-                    normalize_txt_value(answer.to_text()) for answer in answers
-                ]
+        found_values = _resolve_dns_values(record_type, target, query_name)
+        if record_type.upper() == "TXT":
             expected_value = normalize_txt_value(expected_value)
-        else:
-            # For other record types, try to resolve them as-is
-            answers = dns.resolver.resolve(query_name, record_type)
-            found_values = [answer.to_text() for answer in answers]
 
-        # For SPF records, check for duplicates (multiple "v=spf1" TXT records
-        # is invalid per RFC 7208 and causes delivery issues)
-        if record_type.upper() == "TXT" and expected_value.startswith("v=spf1"):
-            spf_records = [v for v in found_values if v.startswith("v=spf1")]
-            if len(spf_records) > 1:
-                return {"status": "duplicate", "found": found_values}
-            # Check for insecure SPF: if we expect -all but found +all or ?all
-            if expected_value.endswith("-all"):
-                for spf in spf_records:
-                    if spf.endswith("+all") or spf.endswith("?all"):
-                        return {"status": "insecure", "found": found_values}
+        # Check for duplicate/insecure SPF and DMARC
+        if record_type.upper() == "TXT":
+            security_result = _check_txt_security(expected_value, found_values)
+            if security_result:
+                return security_result
 
-        # For DMARC records, check for duplicates and insecure policy
-        if record_type.upper() == "TXT" and expected_value.startswith("v=DMARC1"):
-            dmarc_records = [v for v in found_values if v.startswith("v=DMARC1")]
-            if len(dmarc_records) > 1:
-                return {"status": "duplicate", "found": found_values}
-            # Check for insecure DMARC: if we expect p=reject or p=quarantine
-            # but found p=none
-            if "p=none" not in expected_value:
-                for dmarc in dmarc_records:
-                    if "p=none" in dmarc:
-                        return {"status": "insecure", "found": found_values}
-
-        # Check if expected value is in found values
+        # Exact match
         if expected_value in found_values:
             return {"status": "correct", "found": found_values}
 
@@ -98,25 +189,30 @@ def check_single_record(
             if softfail_variant in found_values:
                 return {"status": "correct", "found": found_values}
 
+        # Semantic fallback comparisons for DKIM and SPF
+        if record_type.upper() == "TXT" and target.endswith("._domainkey"):
+            result = _check_dkim_semantic(expected_value, found_values)
+            if result:
+                return result
+
+        if record_type.upper() == "TXT" and expected_value.startswith("v=spf1"):
+            result = _check_spf_semantic(expected_value, found_values)
+            if result:
+                return result
+
         return {"status": "incorrect", "found": found_values}
 
     except dns.resolver.NXDOMAIN:
-        # Domain doesn't exist
         return {"status": "missing", "error": "Domain not found"}
     except dns.resolver.NoAnswer:
-        # No records found for this query
         return {"status": "missing", "error": "No records found"}
     except dns.resolver.NoNameservers:
-        # No nameservers found
         return {"status": "missing", "error": "No nameservers found"}
     except dns.resolver.Timeout:
-        # DNS query timed out
         return {"status": "error", "error": "DNS query timeout"}
     except dns.resolver.YXDOMAIN:
-        # Domain name is too long
         return {"status": "error", "error": "Domain name too long"}
     except Exception as e:  # pylint: disable=broad-exception-caught
-        # Other DNS errors
         return {"status": "error", "error": f"DNS query failed: {str(e)}"}
 
 

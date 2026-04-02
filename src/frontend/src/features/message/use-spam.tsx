@@ -13,8 +13,11 @@ const useSpam = () => {
             thread: (count: number) => t('{{count}} threads have been reported as spam.', { count: count, defaultValue_one: 'The thread has been reported as spam.' }),
             message: (count: number) => t('{{count}} messages have been reported as spam.', { count: count, defaultValue_one: 'The message has been reported as spam.' }),
         },
-        onSuccess: () => {
-            invalidateThreadMessages();
+        onSuccess: (data) => {
+            invalidateThreadMessages({
+                type: 'update',
+                metadata: { threadIds: data.thread_ids, ids: data.message_ids },
+            });
             invalidateThreadsStats();
         },
     });

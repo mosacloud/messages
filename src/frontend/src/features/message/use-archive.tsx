@@ -14,8 +14,11 @@ const useArchive = () => {
             thread: (count: number) => t('{{count}} threads have been archived.', { count: count, defaultValue_one: 'The thread has been archived.' }),
             message: (count: number) => t('{{count}} messages have been archived.', { count: count, defaultValue_one: 'The message has been archived.' }),
         },
-        onSuccess: () => {
-            invalidateThreadMessages();
+        onSuccess: (data) => {
+            invalidateThreadMessages({
+                type: 'update',
+                metadata: { threadIds: data.thread_ids, ids: data.message_ids },
+            });
             invalidateThreadsStats();
         }
     });

@@ -28,6 +28,7 @@ import type {
 } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -69,7 +70,7 @@ export const getMailboxesChannelsListQueryKey = (mailboxId?: string) => {
 
 export const getMailboxesChannelsListQueryOptions = <
   TData = Awaited<ReturnType<typeof mailboxesChannelsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   options?: {
@@ -108,11 +109,11 @@ export const getMailboxesChannelsListQueryOptions = <
 export type MailboxesChannelsListQueryResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesChannelsList>>
 >;
-export type MailboxesChannelsListQueryError = unknown;
+export type MailboxesChannelsListQueryError = ErrorType<unknown>;
 
 export function useMailboxesChannelsList<
   TData = Awaited<ReturnType<typeof mailboxesChannelsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   options: {
@@ -139,7 +140,7 @@ export function useMailboxesChannelsList<
 };
 export function useMailboxesChannelsList<
   TData = Awaited<ReturnType<typeof mailboxesChannelsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   options?: {
@@ -166,7 +167,7 @@ export function useMailboxesChannelsList<
 };
 export function useMailboxesChannelsList<
   TData = Awaited<ReturnType<typeof mailboxesChannelsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   options?: {
@@ -186,7 +187,7 @@ export function useMailboxesChannelsList<
 
 export function useMailboxesChannelsList<
   TData = Awaited<ReturnType<typeof mailboxesChannelsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   options?: {
@@ -269,7 +270,7 @@ export const mailboxesChannelsCreate = async (
 };
 
 export const getMailboxesChannelsCreateMutationOptions = <
-  TError = void,
+  TError = ErrorType<void>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -310,9 +311,12 @@ export type MailboxesChannelsCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesChannelsCreate>>
 >;
 export type MailboxesChannelsCreateMutationBody = ChannelRequest;
-export type MailboxesChannelsCreateMutationError = void;
+export type MailboxesChannelsCreateMutationError = ErrorType<void>;
 
-export const useMailboxesChannelsCreate = <TError = void, TContext = unknown>(
+export const useMailboxesChannelsCreate = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof mailboxesChannelsCreate>>,
@@ -378,7 +382,7 @@ export const getMailboxesChannelsRetrieveQueryKey = (
 
 export const getMailboxesChannelsRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof mailboxesChannelsRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   id: string,
@@ -419,11 +423,11 @@ export const getMailboxesChannelsRetrieveQueryOptions = <
 export type MailboxesChannelsRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesChannelsRetrieve>>
 >;
-export type MailboxesChannelsRetrieveQueryError = unknown;
+export type MailboxesChannelsRetrieveQueryError = ErrorType<unknown>;
 
 export function useMailboxesChannelsRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesChannelsRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   id: string,
@@ -451,7 +455,7 @@ export function useMailboxesChannelsRetrieve<
 };
 export function useMailboxesChannelsRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesChannelsRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   id: string,
@@ -479,7 +483,7 @@ export function useMailboxesChannelsRetrieve<
 };
 export function useMailboxesChannelsRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesChannelsRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   id: string,
@@ -500,7 +504,7 @@ export function useMailboxesChannelsRetrieve<
 
 export function useMailboxesChannelsRetrieve<
   TData = Awaited<ReturnType<typeof mailboxesChannelsRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   mailboxId: string,
   id: string,
@@ -598,7 +602,7 @@ export const mailboxesChannelsUpdate = async (
 };
 
 export const getMailboxesChannelsUpdateMutationOptions = <
-  TError = void,
+  TError = ErrorType<void>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -639,9 +643,12 @@ export type MailboxesChannelsUpdateMutationResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesChannelsUpdate>>
 >;
 export type MailboxesChannelsUpdateMutationBody = ChannelRequest;
-export type MailboxesChannelsUpdateMutationError = void;
+export type MailboxesChannelsUpdateMutationError = ErrorType<void>;
 
-export const useMailboxesChannelsUpdate = <TError = void, TContext = unknown>(
+export const useMailboxesChannelsUpdate = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof mailboxesChannelsUpdate>>,
@@ -702,7 +709,7 @@ export const mailboxesChannelsPartialUpdate = async (
 };
 
 export const getMailboxesChannelsPartialUpdateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -743,10 +750,10 @@ export type MailboxesChannelsPartialUpdateMutationResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesChannelsPartialUpdate>>
 >;
 export type MailboxesChannelsPartialUpdateMutationBody = PatchedChannelRequest;
-export type MailboxesChannelsPartialUpdateMutationError = unknown;
+export type MailboxesChannelsPartialUpdateMutationError = ErrorType<unknown>;
 
 export const useMailboxesChannelsPartialUpdate = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -825,7 +832,7 @@ export const mailboxesChannelsDestroy = async (
 };
 
 export const getMailboxesChannelsDestroyMutationOptions = <
-  TError = void,
+  TError = ErrorType<void>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -866,9 +873,12 @@ export type MailboxesChannelsDestroyMutationResult = NonNullable<
   Awaited<ReturnType<typeof mailboxesChannelsDestroy>>
 >;
 
-export type MailboxesChannelsDestroyMutationError = void;
+export type MailboxesChannelsDestroyMutationError = ErrorType<void>;
 
-export const useMailboxesChannelsDestroy = <TError = void, TContext = unknown>(
+export const useMailboxesChannelsDestroy = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof mailboxesChannelsDestroy>>,

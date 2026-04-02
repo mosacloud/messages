@@ -56,6 +56,7 @@ OIDC_OP_JWKS_ENDPOINT=http://keycloak:8802/realms/messages/protocol/openid-conne
 OIDC_OP_AUTHORIZATION_ENDPOINT=http://localhost:8902/realms/messages/protocol/openid-connect/auth
 OIDC_OP_TOKEN_ENDPOINT=http://keycloak:8802/realms/messages/protocol/openid-connect/token
 OIDC_OP_USER_ENDPOINT=http://keycloak:8802/realms/messages/protocol/openid-connect/userinfo
+OIDC_OP_LOGOUT_ENDPOINT=http://localhost:8902/realms/messages/protocol/openid-connect/logout
 
 OIDC_RP_CLIENT_ID=messages
 OIDC_RP_CLIENT_SECRET=ThisIsAnExampleKeyForDevPurposeOnly

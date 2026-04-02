@@ -307,6 +307,7 @@ Outbound message throttling limits the number of **external recipients** (recipi
 |----------|---------|-------------|----------|
 | `THROTTLE_MAILBOX_OUTBOUND_EXTERNAL_RECIPIENTS` | None | Rate limit per mailbox. Format: `count/period` where period is `minute`, `hour`, or `day`. Example: `1000/day` limits each mailbox to 1000 external recipients per day. | Optional |
 | `THROTTLE_MAILDOMAIN_OUTBOUND_EXTERNAL_RECIPIENTS` | None | Rate limit per maildomain. Format: `count/period`. Example: `10000/day` limits each domain to 10000 external recipients per day. | Optional |
+| `THROTTLE_AUTOREPLY_PER_SENDER` | `1/day` | Rate limit for autoreplies per sender per mailbox. Format: `count/period`. Example: `1/day` limits each sender to 1 autoreply per day per mailbox. | Optional |
 
 ### Image Proxy
 
@@ -318,6 +319,13 @@ it can lead to memory exhaustion, increase at your own risk.
 | `IMAGE_PROXY_ENABLED` | `False` | Whether external images should be proxied | Optional |
 | `IMAGE_PROXY_MAX_SIZE` | `5242880` (5MB) | Maximum size in bytes for external images | Optional |
 | `IMAGE_PROXY_CACHE_TTL` | `2592000` (30 days) | Cache TTL in seconds for external images | Optional |
+
+### Frontend
+
+| Variable | Default | Description | Required |
+|----------|---------|-------------|----------|
+| `FRONTEND_THEME` | `white-label` | Theme for the frontend | Optional |
+| `FRONTEND_SILENT_LOGIN_ENABLED` | `False` | Whether silent login is enabled | Optional |
 
 ### Third-party Services
 

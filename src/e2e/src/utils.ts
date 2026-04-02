@@ -49,7 +49,7 @@ export const getStorageStatePathIfExists = (username: string): string | undefine
   return fs.existsSync(path) ? path : undefined;
 };
 
-export const getMailboxEmail = (username: 'user' | 'mailbox_admin' | 'domain_admin' | 'super_admin' | 'shared', browserName?: 'chromium' | 'firefox' | 'webkit'): string => {
+export const getMailboxEmail = (username: 'user' | 'mailbox_admin' | 'domain_admin' | 'super_admin' | 'shared' | 'import', browserName?: 'chromium' | 'firefox' | 'webkit'): string => {
   if (browserName) return `${username}.e2e.${browserName}@example.local`;
   return `${username}.e2e@example.local`;
 };

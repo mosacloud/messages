@@ -1,10 +1,12 @@
 @use "../../../../styles/utils" as *;
+@use "./components/thread-event/index" as *;
+@use "./components/thread-event-input/index" as *;
 
 .thread-view {
     background-color: var(--c--contextuals--background--surface--tertiary);
     display: flex;
     flex-direction: column;
-    max-height: 100%;
+    height: 100%;
     overflow-y: auto;
 
     &--empty {
@@ -15,7 +17,7 @@
         background: var(--c--contextuals--background--surface--tertiary);
 
         & > div {
-            font-size: var(--c--globals--font--sizes--h4);
+            font-size: var(--c--globals--font--sizes--h6);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -48,6 +50,7 @@
         right: 0;
         bottom: 0;
         z-index: 900;
+        height: auto;
     }
 
     .thread-view--talk .thread-message:not(.thread-message--sender),
@@ -79,7 +82,7 @@
     flex-direction: column;
     gap: var(--c--globals--spacings--base);
     padding: var(--c--globals--spacings--base);
-    margin-bottom: 300px;
+    flex: 1;
 }
 
 .thread-view__trashed-banner__content {
@@ -111,12 +114,31 @@
         margin-left: var(--c--globals--spacings--base);
         margin-bottom: var(--c--globals--spacings--4xs);
     }
+
+    @media screen and (max-width: breakpoint(xs)) {
+        display: flex;
+        flex-direction: column;
+        gap: var(--c--globals--spacings--xs);
+
+        .thread-action-bar {
+            float: none;
+            align-self: flex-end;
+            margin-left: 0;
+            margin-bottom: 0;
+        }
+    }
 }
 
 .thread-view__subject {
     font-weight: 700;
     font-size: var(--c--globals--font--sizes--h4);
-    margin-top: var(--c--globals--spacings--xs);
+    vertical-align: baseline;
+
+    & > .thread-view__subject__star {
+        font-size: var(--c--globals--font--sizes--h4);
+        color: var(--c--contextuals--background--palette--yellow--secondary);
+        transform: translate(-4px, 3px)
+    }
 }
 
 .thread-view__sticky-container {

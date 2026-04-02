@@ -21,6 +21,7 @@ import type {
 import type { TaskStatusResponse } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -61,7 +62,7 @@ export const getTasksRetrieveQueryKey = (taskId?: string) => {
 
 export const getTasksRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof tasksRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   taskId: string,
   options?: {
@@ -94,11 +95,11 @@ export const getTasksRetrieveQueryOptions = <
 export type TasksRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof tasksRetrieve>>
 >;
-export type TasksRetrieveQueryError = unknown;
+export type TasksRetrieveQueryError = ErrorType<unknown>;
 
 export function useTasksRetrieve<
   TData = Awaited<ReturnType<typeof tasksRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   taskId: string,
   options: {
@@ -121,7 +122,7 @@ export function useTasksRetrieve<
 };
 export function useTasksRetrieve<
   TData = Awaited<ReturnType<typeof tasksRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   taskId: string,
   options?: {
@@ -144,7 +145,7 @@ export function useTasksRetrieve<
 };
 export function useTasksRetrieve<
   TData = Awaited<ReturnType<typeof tasksRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   taskId: string,
   options?: {
@@ -160,7 +161,7 @@ export function useTasksRetrieve<
 
 export function useTasksRetrieve<
   TData = Awaited<ReturnType<typeof tasksRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   taskId: string,
   options?: {

@@ -32,6 +32,8 @@ class ProvisioningMailDomainView(APIView):
 
         domains = serializer.validated_data["domains"]
         custom_attributes = serializer.validated_data.get("custom_attributes", {})
+        oidc_autojoin = serializer.validated_data["oidc_autojoin"]
+        identity_sync = serializer.validated_data["identity_sync"]
 
         created = []
         existing = []
@@ -41,13 +43,26 @@ class ProvisioningMailDomainView(APIView):
             try:
                 domain, was_created = MailDomain.objects.get_or_create(
                     name=domain_name,
-                    defaults={"custom_attributes": custom_attributes},
+                    defaults={
+                        "custom_attributes": custom_attributes,
+                        "oidc_autojoin": oidc_autojoin,
+                        "identity_sync": identity_sync,
+                    },
                 )
                 if was_created:
                     created.append(domain_name)
                 else:
+                    updated = False
                     if domain.custom_attributes != custom_attributes:
                         domain.custom_attributes = custom_attributes
+                        updated = True
+                    if domain.oidc_autojoin != oidc_autojoin:
+                        domain.oidc_autojoin = oidc_autojoin
+                        updated = True
+                    if domain.identity_sync != identity_sync:
+                        domain.identity_sync = identity_sync
+                        updated = True
+                    if updated:
                         domain.save()
                     existing.append(domain_name)
             except ValidationError as e:

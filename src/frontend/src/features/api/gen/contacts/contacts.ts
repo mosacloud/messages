@@ -21,6 +21,7 @@ import type {
 import type { Contact, ContactsListParams } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -75,7 +76,7 @@ export const getContactsListQueryKey = (params?: ContactsListParams) => {
 
 export const getContactsListQueryOptions = <
   TData = Awaited<ReturnType<typeof contactsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ContactsListParams,
   options?: {
@@ -103,11 +104,11 @@ export const getContactsListQueryOptions = <
 export type ContactsListQueryResult = NonNullable<
   Awaited<ReturnType<typeof contactsList>>
 >;
-export type ContactsListQueryError = unknown;
+export type ContactsListQueryError = ErrorType<unknown>;
 
 export function useContactsList<
   TData = Awaited<ReturnType<typeof contactsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params: undefined | ContactsListParams,
   options: {
@@ -130,7 +131,7 @@ export function useContactsList<
 };
 export function useContactsList<
   TData = Awaited<ReturnType<typeof contactsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ContactsListParams,
   options?: {
@@ -153,7 +154,7 @@ export function useContactsList<
 };
 export function useContactsList<
   TData = Awaited<ReturnType<typeof contactsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ContactsListParams,
   options?: {
@@ -169,7 +170,7 @@ export function useContactsList<
 
 export function useContactsList<
   TData = Awaited<ReturnType<typeof contactsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: ContactsListParams,
   options?: {
@@ -227,7 +228,7 @@ export const getContactsRetrieveQueryKey = (id?: string) => {
 
 export const getContactsRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof contactsRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -264,11 +265,11 @@ export const getContactsRetrieveQueryOptions = <
 export type ContactsRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof contactsRetrieve>>
 >;
-export type ContactsRetrieveQueryError = unknown;
+export type ContactsRetrieveQueryError = ErrorType<unknown>;
 
 export function useContactsRetrieve<
   TData = Awaited<ReturnType<typeof contactsRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options: {
@@ -295,7 +296,7 @@ export function useContactsRetrieve<
 };
 export function useContactsRetrieve<
   TData = Awaited<ReturnType<typeof contactsRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -322,7 +323,7 @@ export function useContactsRetrieve<
 };
 export function useContactsRetrieve<
   TData = Awaited<ReturnType<typeof contactsRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -342,7 +343,7 @@ export function useContactsRetrieve<
 
 export function useContactsRetrieve<
   TData = Awaited<ReturnType<typeof contactsRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {

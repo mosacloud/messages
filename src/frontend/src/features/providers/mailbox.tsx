@@ -1,12 +1,11 @@
-import { createContext, PropsWithChildren, useContext, useEffect, useMemo } from "react";
-import { Mailbox, MailboxRoleChoices, Message, messagesListResponse200, PaginatedThreadList, Thread, useLabelsList, useMailboxesList, useMessagesList, useThreadsListInfinite } from "../api/gen";
+import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useRef } from "react";
+import { Mailbox, MailboxRoleChoices, Message, messagesListResponse200, PaginatedThreadList, Thread, ThreadEvent, useLabelsList, useMailboxesList, useMessagesList, useThreadsEventsList, useThreadsListInfinite, getThreadsEventsListQueryKey } from "../api/gen";
 import { FetchStatus, InfiniteData, QueryStatus, RefetchOptions, useQueryClient } from "@tanstack/react-query";
 import type { threadsListResponse } from "../api/gen/threads/threads";
 import { useRouter } from "next/router";
 import usePrevious from "@/hooks/use-previous";
 import { useSearchParams } from "next/navigation";
 import { MAILBOX_FOLDERS } from "../layouts/components/mailbox-panel/components/mailbox-list";
-import { useDebounceCallback } from "@/hooks/use-debounce-callback";
 
 type QueryState = {
     status: QueryStatus,
@@ -25,23 +24,34 @@ type MessageQueryInvalidationSource = {
     payload?: Partial<Message>;
     /** When updating read state, optimistically patch ThreadAccess.read_at in the threads cache. */
     threadAccessReadAt?: { mailboxId: string; readAt: string | null };
+    /** Optimistically patch ThreadAccess.starred_at in the threads cache. */
+    threadAccessStarredAt?: { mailboxId: string; starredAt: string | null };
     /**
      * When set, only messages created at or before this timestamp
      * will receive the payload update (used for read pointer).
      * Messages after this date keep their current state.
      */
     readAt?: string | null;
+    /** When true, skip the threads list refetch (rely on optimistic cache only). */
+    skipThreadsRefetch?: boolean;
 }
+
+export type TimelineItem =
+    | { type: 'message'; data: Message; created_at: string }
+    | { type: 'event'; data: ThreadEvent; created_at: string };
 
 type MailboxContextType = {
     mailboxes: readonly Mailbox[] | null;
     threads: PaginatedThreadList | null;
     messages: readonly Message[] | null;
+    threadEvents: readonly ThreadEvent[] | null;
+    threadItems: readonly TimelineItem[] | null;
     selectedMailbox: Mailbox | null;
     selectedThread: Thread | null;
     unselectThread: () => void;
     loadNextThreads: () => Promise<unknown>;
     invalidateThreadMessages: (source?: MessageQueryInvalidationSource) => Promise<void>;
+    invalidateThreadEvents: () => Promise<void>;
     invalidateThreadsStats: () => Promise<void>;
     invalidateLabels: () => Promise<void>;
     refetchMailboxes: (options?: RefetchOptions) => Promise<unknown>;
@@ -50,23 +60,30 @@ type MailboxContextType = {
         mailboxes: QueryState,
         threads: PaginatedQueryState,
         messages: QueryState,
+        threadEvents: QueryState,
     };
     error: {
         mailboxes: unknown | null;
         threads: unknown | null;
         messages: unknown | null;
+        threadEvents: unknown | null;
     };
 }
+
+export const isThreadEvent = (item: TimelineItem | null): item is Extract<TimelineItem, { type: 'event' }> => item?.type === 'event';
 
 const MailboxContext = createContext<MailboxContextType>({
     mailboxes: null,
     threads: null,
     messages: null,
+    threadEvents: null,
+    threadItems: null,
     selectedMailbox: null,
     selectedThread: null,
     loadNextThreads: async () => {},
     unselectThread: () => {},
     invalidateThreadMessages: async () => {},
+    invalidateThreadEvents: async () => {},
     invalidateThreadsStats: async () => {},
     invalidateLabels: async () => {},
     refetchMailboxes: async () => {},
@@ -91,11 +108,18 @@ const MailboxContext = createContext<MailboxContextType>({
             isFetching: false,
             isLoading: false,
         },
+        threadEvents: {
+            status: 'pending',
+            fetchStatus: 'idle',
+            isFetching: false,
+            isLoading: false,
+        },
     },
     error: {
         mailboxes: null,
         threads: null,
         messages: null,
+        threadEvents: null,
     },
 });
 
@@ -107,6 +131,7 @@ const MailboxContext = createContext<MailboxContextType>({
 export const MailboxProvider = ({ children }: PropsWithChildren) => {
     const queryClient = useQueryClient();
     const router = useRouter();
+    const optimisticThreadIdsRef = useRef(new Set<string>());
     const searchParams = useSearchParams();
     const previousSearchParams = usePrevious(searchParams);
     const hasSearchParamsChanged = useMemo(() => {
@@ -147,6 +172,97 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
             queryKey: threadQueryKey,
             getNextPageParam: (lastPage, pages) => {
                 return pages.length + 1;
+            },
+            /**
+             * Merge-back optimistic threads on refetch.
+             *
+             * Problem: when a filter is active (e.g. "unread" or "starred"),
+             * a read/starred mutation optimistically patches the thread in
+             * cache but skips the list refetch (`skipThreadsRefetch`). Later,
+             * when a refetch does happen (polling, navigation…), the server
+             * no longer returns that thread (it no longer matches the filter)
+             * → it would vanish from the UI.
+             *
+             * Solution: `structuralSharing` runs *before* React re-renders.
+             * It compares old cache (with optimistic threads) to the new
+             * server response. Any thread tracked in `optimisticThreadIdsRef`
+             * that is missing from the server response is re-inserted at its
+             * original position so the user sees no flash.
+             *
+             * Lifecycle of an optimistic thread ID:
+             * - Added to the set by `invalidateThreadMessages({ skipThreadsRefetch })`
+             * - Removed from the set here when the server response includes it
+             *   (meaning the server still considers it valid for the current query)
+             * - Cleared entirely when the user changes filters or mailbox
+             *   (via the cleanup `useEffect` on `selectedMailbox?.id` / `searchParams`)
+             */
+            structuralSharing: (oldData, newData) => {
+                const optimisticIds = optimisticThreadIdsRef.current;
+                if (!oldData || optimisticIds.size === 0) return newData;
+
+                const oldInfinite = oldData as InfiniteData<threadsListResponse>;
+                const newInfinite = newData as InfiniteData<threadsListResponse>;
+
+                // 1. Build flat index of old thread positions to restore ordering later
+                const oldOrderedIds: string[] = [];
+                oldInfinite.pages.forEach(page =>
+                    page.data.results.forEach(t => oldOrderedIds.push(t.id))
+                );
+
+                // 2. Collect all thread IDs the server returned
+                const newThreadIds = new Set<string>();
+                newInfinite.pages.forEach(page =>
+                    page.data.results.forEach(t => newThreadIds.add(t.id))
+                );
+
+                // 3. Identify optimistic threads the server filtered out,
+                //    remembering their original flat index for position-preserving re-insertion
+                const missingByOldIndex = new Map<number, Thread>();
+                oldInfinite.pages.forEach(page =>
+                    page.data.results.forEach(thread => {
+                        if (optimisticIds.has(thread.id) && !newThreadIds.has(thread.id)) {
+                            missingByOldIndex.set(oldOrderedIds.indexOf(thread.id), thread);
+                        }
+                    })
+                );
+
+                // 4. Stop protecting threads the server still returns
+                //    (they don't need merge-back anymore)
+                optimisticIds.forEach(id => {
+                    if (newThreadIds.has(id)) optimisticIds.delete(id);
+                });
+
+                if (missingByOldIndex.size === 0) return newData;
+
+                // 5. Flatten new server results then splice missing threads
+                //    back at their original positions (sorted ascending so
+                //    earlier splices don't shift later indices)
+                const flatNewResults: Thread[] = [];
+                newInfinite.pages.forEach(page =>
+                    flatNewResults.push(...page.data.results)
+                );
+
+                const sortedEntries = [...missingByOldIndex.entries()].sort(([a], [b]) => a - b);
+                for (const [originalIndex, thread] of sortedEntries) {
+                    const insertAt = Math.min(originalIndex, flatNewResults.length);
+                    flatNewResults.splice(insertAt, 0, thread);
+                }
+
+                // 6. Return merged results in page 1
+                return {
+                    ...newInfinite,
+                    pages: newInfinite.pages.map((page, i) => {
+                        if (i !== 0) return page;
+                        return {
+                            ...page,
+                            data: {
+                                ...page.data,
+                                count: page.data.count + missingByOldIndex.size,
+                                results: flatNewResults,
+                            },
+                        };
+                    }),
+                };
             },
         },
         request: {
@@ -191,6 +307,29 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
             }
         }
     });
+
+    const threadEventsQuery = useThreadsEventsList(selectedThread?.id ?? '', {
+        query: {
+            enabled: !!selectedThread,
+        },
+    });
+
+    const threadItems = useMemo<TimelineItem[] | null>(() => {
+        if (!messagesQuery.data?.data) return null;
+        const messageItems: TimelineItem[] = messagesQuery.data.data.map((m) => ({
+            type: 'message' as const,
+            data: m,
+            created_at: m.created_at,
+        }));
+        const eventItems: TimelineItem[] = (threadEventsQuery.data?.data ?? []).map((e) => ({
+            type: 'event' as const,
+            data: e,
+            created_at: e.created_at,
+        }));
+        return [...messageItems, ...eventItems].sort(
+            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+    }, [messagesQuery.data, threadEventsQuery.data?.data]);
 
     const labelsQuery = useLabelsList({ mailbox_id: selectedMailbox?.id ?? '' }, {
         query: {
@@ -253,9 +392,50 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
                                 if (!threadIds.includes(thread.id)) return thread;
                                 return {
                                     ...thread,
+                                    has_unread: thread.messaged_at
+                                        ? (readAt === null || new Date(thread.messaged_at) > new Date(readAt))
+                                        : false,
                                     accesses: thread.accesses.map((access) =>
                                         access.mailbox.id === mailboxId
                                             ? { ...access, read_at: readAt }
+                                            : access
+                                    ),
+                                };
+                            }),
+                        },
+                    })),
+                };
+            },
+        );
+    };
+
+    /**
+     * Optimistically update ThreadAccess.starred_at in the infinite threads cache
+     * so ThreadItem sees the new starred state immediately without waiting for re-fetch.
+     */
+    const _updateThreadAccessStarredAt = (
+        threadIds: Thread['id'][],
+        mailboxId: string,
+        starredAt: string | null,
+    ) => {
+        queryClient.setQueriesData<InfiniteData<threadsListResponse>>(
+            { queryKey: ['threads', mailboxId] },
+            (oldData) => {
+                if (!oldData) return oldData;
+                return {
+                    ...oldData,
+                    pages: oldData.pages.map((page) => ({
+                        ...page,
+                        data: {
+                            ...page.data,
+                            results: page.data.results.map((thread) => {
+                                if (!threadIds.includes(thread.id)) return thread;
+                                return {
+                                    ...thread,
+                                    has_starred: starredAt !== null,
+                                    accesses: thread.accesses.map((access) =>
+                                        access.mailbox.id === mailboxId
+                                            ? { ...access, starred_at: starredAt }
                                             : access
                                     ),
                                 };
@@ -285,6 +465,17 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
             }
         }
 
+        if (source?.threadAccessStarredAt) {
+            const affectedThreadIds = source.metadata.threadIds ?? [];
+            if (affectedThreadIds.length > 0) {
+                _updateThreadAccessStarredAt(
+                    affectedThreadIds,
+                    source.threadAccessStarredAt.mailboxId,
+                    source.threadAccessStarredAt.starredAt,
+                );
+            }
+        }
+
         if (source && ((source.metadata.threadIds ?? []).length ?? 0) > 0) {
             source.metadata.threadIds!.forEach(threadId => {
                 if (queryClient.getQueryState(['messages', threadId])) {
@@ -297,17 +488,30 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
             _updateThreadMessagesQueryData(selectedThread.id, source);
         }
 
-        // Re-fetch from server to get the authoritative state.
-        await queryClient.invalidateQueries({ queryKey: ['threads', selectedMailbox?.id] });
+        if (source?.skipThreadsRefetch) {
+            // Track these threads so structuralSharing merges them back on future refetches
+            (source.metadata.threadIds ?? []).forEach(id =>
+                optimisticThreadIdsRef.current.add(id)
+            );
+        } else {
+            // Remove affected threads from optimistic tracking since the
+            // server response is authoritative after a real refetch.
+            (source?.metadata.threadIds ?? []).forEach(id =>
+                optimisticThreadIdsRef.current.delete(id)
+            );
+            await queryClient.invalidateQueries({ queryKey: ['threads', selectedMailbox?.id] });
+        }
+
         if (selectedThread) {
             await queryClient.invalidateQueries({ queryKey: ['messages', selectedThread.id] });
         }
     }
-    const resetSearchQueryDebounced = useDebounceCallback(() => {
-        queryClient.resetQueries(
-            { predicate: ({ queryKey}) => queryKey.includes('search') },
-        );
-    }, 500);
+
+    const invalidateThreadEvents = async () => {
+        if (selectedThread) {
+            await queryClient.invalidateQueries({ queryKey: getThreadsEventsListQueryKey(selectedThread.id) });
+        }
+    }
 
     const invalidateThreadsStats = async () => {
         await queryClient.invalidateQueries({
@@ -336,11 +540,14 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
         mailboxes: mailboxQuery.data?.data ?? null,
         threads: flattenThreads ?? null,
         messages: messagesQuery.data?.data ?? null,
+        threadEvents: threadEventsQuery.data?.data ?? null,
+        threadItems: threadItems,
         selectedMailbox,
         selectedThread,
         unselectThread,
         loadNextThreads: threadsQuery.fetchNextPage,
         invalidateThreadMessages,
+        invalidateThreadEvents,
         invalidateThreadsStats,
         invalidateLabels,
         refetchMailboxes: mailboxQuery.refetch,
@@ -366,11 +573,18 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
                 isFetching: messagesQuery.isFetching,
                 isLoading: messagesQuery.isLoading,
             },
+            threadEvents: {
+                status: threadEventsQuery.status,
+                fetchStatus: threadEventsQuery.fetchStatus,
+                isFetching: threadEventsQuery.isFetching,
+                isLoading: threadEventsQuery.isLoading,
+            },
         },
         error: {
             mailboxes: mailboxQuery.error,
             threads: threadsQuery.error,
             messages: messagesQuery.error,
+            threadEvents: threadEventsQuery.error,
         },
     };
 
@@ -435,10 +649,29 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
         }
     }, [messagesQuery.data?.data]);
 
+    // Clear optimistic thread IDs when filters or mailbox change so the next
+    // refetch shows the pure server-side list.
     useEffect(() => {
-        if (searchParams.get('search') !== previousSearchParams?.get('search')) {
-            resetSearchQueryDebounced();
+        optimisticThreadIdsRef.current.clear();
+    }, [selectedMailbox?.id, searchParams.toString()]);
+
+    useEffect(() => {
+        const previousSearch = previousSearchParams?.get('search');
+        const currentSearch = searchParams.get('search');
+
+        if (previousSearch && !currentSearch) {
+            // Exiting search mode: purge cached search results so re-entering
+            // search doesn't briefly flash stale results from the previous query.
+            queryClient.removeQueries({
+                queryKey: ['threads', selectedMailbox?.id, 'search'],
+                exact: true,
+            });
+        } else if (previousSearch && currentSearch && currentSearch !== previousSearch) {
+            // Search term changed while already in search mode:
+            // reset the query to force a refetch with the new params.
+            queryClient.resetQueries({ queryKey: ['threads', selectedMailbox?.id, 'search'] });
         }
+
         unselectThread();
     }, [hasSearchParamsChanged])
 

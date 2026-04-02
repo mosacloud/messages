@@ -144,6 +144,18 @@ class ThreadAccessFactory(factory.django.DjangoModelFactory):
     )
 
 
+class ThreadEventFactory(factory.django.DjangoModelFactory):
+    """A factory to create thread events for testing purposes."""
+
+    class Meta:
+        model = models.ThreadEvent
+
+    thread = factory.SubFactory(ThreadFactory)
+    type = "im"
+    data = factory.LazyAttribute(lambda o: {"content": fake.sentence()})
+    author = factory.SubFactory(UserFactory)
+
+
 class ContactFactory(factory.django.DjangoModelFactory):
     """A factory to random contacts for testing purposes."""
 
@@ -293,7 +305,18 @@ class MessageTemplateFactory(factory.django.DjangoModelFactory):
 
     name = factory.Sequence(lambda n: f"Template {n}")
     type = factory.fuzzy.FuzzyChoice(
-        [choice[0] for choice in enums.MessageTemplateTypeChoices.choices]
+        [
+            choice[0]
+            for choice in enums.MessageTemplateTypeChoices.choices
+            if choice[0] != enums.MessageTemplateTypeChoices.AUTOREPLY
+        ]
+    )
+    metadata = factory.LazyAttribute(
+        lambda o: (
+            {"schedule_type": "always"}
+            if o.type == enums.MessageTemplateTypeChoices.AUTOREPLY
+            else {}
+        )
     )
 
     @classmethod

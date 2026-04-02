@@ -21,6 +21,7 @@ import type {
 import type { UserWithoutAbilities, UsersListParams } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -71,7 +72,7 @@ export const getUsersListQueryKey = (params?: UsersListParams) => {
 
 export const getUsersListQueryOptions = <
   TData = Awaited<ReturnType<typeof usersList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: UsersListParams,
   options?: {
@@ -99,11 +100,11 @@ export const getUsersListQueryOptions = <
 export type UsersListQueryResult = NonNullable<
   Awaited<ReturnType<typeof usersList>>
 >;
-export type UsersListQueryError = unknown;
+export type UsersListQueryError = ErrorType<unknown>;
 
 export function useUsersList<
   TData = Awaited<ReturnType<typeof usersList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params: undefined | UsersListParams,
   options: {
@@ -126,7 +127,7 @@ export function useUsersList<
 };
 export function useUsersList<
   TData = Awaited<ReturnType<typeof usersList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: UsersListParams,
   options?: {
@@ -149,7 +150,7 @@ export function useUsersList<
 };
 export function useUsersList<
   TData = Awaited<ReturnType<typeof usersList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: UsersListParams,
   options?: {
@@ -165,7 +166,7 @@ export function useUsersList<
 
 export function useUsersList<
   TData = Awaited<ReturnType<typeof usersList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: UsersListParams,
   options?: {

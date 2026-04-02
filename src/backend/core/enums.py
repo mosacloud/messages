@@ -135,11 +135,18 @@ class MailboxAbilities(models.TextChoices):
     CAN_IMPORT_MESSAGES = "import_messages", "Can import messages"
 
 
+class ThreadEventTypeChoices(models.TextChoices):
+    """Defines the possible types of thread events."""
+
+    IM = "im", "Instant message"
+
+
 class MessageTemplateTypeChoices(models.IntegerChoices):
     """Defines the possible types of message templates."""
 
     MESSAGE = 1, "message"
     SIGNATURE = 2, "signature"
+    AUTOREPLY = 3, "autoreply"
 
 
 EML_SUPPORTED_MIME_TYPES = ["message/rfc822", "application/eml", "text/plain"]
