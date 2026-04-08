@@ -46,6 +46,38 @@ RETRY_INTERVALS = [
 ]
 
 
+def validate_mime_size(mime_size: int, message_id: str) -> None:
+    """Raise a ValidationError if *mime_size* exceeds the outgoing MIME limit."""
+    max_total_size = settings.MAX_OUTGOING_BODY_SIZE + (
+        settings.MAX_OUTGOING_ATTACHMENT_SIZE * 1.4
+    )
+    if mime_size > max_total_size:
+        mime_mb = mime_size / (1024 * 1024)
+        max_mb = max_total_size / (1024 * 1024)
+
+        logger.error(
+            "MIME for message %s exceeds size limit: %d bytes (%.1f MB) > %d bytes (%.0f MB)",
+            message_id,
+            mime_size,
+            mime_mb,
+            max_total_size,
+            max_mb,
+        )
+
+        raise drf.exceptions.ValidationError(
+            {
+                "message": (
+                    "The email (%(mime_size)s MB) exceeds the maximum allowed "
+                    "size of %(max_size)s MB."
+                )
+                % {
+                    "mime_size": f"{mime_mb:.1f}",
+                    "max_size": f"{max_mb:.0f}",
+                }
+            }
+        )
+
+
 def validate_attachments_size(total_size: int, message_id: str) -> None:
     """Raise a ValidationError if *total_size* exceeds the outgoing limit."""
     if total_size > settings.MAX_OUTGOING_ATTACHMENT_SIZE:
@@ -240,8 +272,14 @@ def prepare_outbound_message(
     text_body: str,
     html_body: str,
     user: Optional[models.User] = None,
+    raw_mime: Optional[bytes] = None,
 ) -> bool:
-    """Compose and sign an existing draft Message object before sending via SMTP.
+    """Prepare a Message for outbound delivery: compose (or accept raw) MIME,
+    sign with DKIM, create a blob, and mark the message as non-draft.
+
+    When ``raw_mime`` is provided (e.g. from a raw MIME submission),
+    the MIME composition step is skipped and the raw bytes are used directly.
+    Validation, throttling, DKIM signing, and blob creation still apply.
 
     This part is called synchronously from the API view.
     """
@@ -267,6 +305,16 @@ def prepare_outbound_message(
         maildomain=mailbox_sender.domain,
         message=message,
     )
+
+    if raw_mime is not None:
+        # Raw MIME path: the caller already composed the MIME.
+        validate_mime_size(len(raw_mime), message.id)
+        message.sender_user = user
+        message.blob = _sign_and_store_blob(mailbox_sender, raw_mime)
+        _finalize_sent_message(mailbox_sender, message)
+        return True
+
+    # --- Web/API path: compose MIME from text/html body --- #
 
     # TODO: Fetch MIME IDs of "references" from the thread
     # references = message.thread.messages.exclude(id=message.id).order_by("-created_at").all()
@@ -322,64 +370,22 @@ def prepare_outbound_message(
         logger.error("Failed to compose MIME for message %s: %s", message.id, e)
         return False
 
-    # Validate the composed MIME size
-    mime_size = message.blob.size
-    max_total_size = settings.MAX_OUTGOING_BODY_SIZE + (
-        settings.MAX_OUTGOING_ATTACHMENT_SIZE * 1.4
-    )
-    if mime_size > max_total_size:
-        mime_mb = mime_size / (1024 * 1024)
-        max_mb = max_total_size / (1024 * 1024)
-
-        logger.error(
-            "Composed MIME for message %s exceeds size limit: %d bytes (%.1f MB) > %d bytes (%.0f MB)",
-            message.id,
-            mime_size,
-            mime_mb,
-            max_total_size,
-            max_mb,
-        )
-
-        raise drf.exceptions.ValidationError(
-            {
-                "message": (
-                    "The composed email (%(mime_size)s MB) exceeds the maximum allowed size of %(max_size)s MB. "
-                    "Please reduce message content or attachments."
-                )
-                % {
-                    "mime_size": f"{mime_mb:.1f}",
-                    "max_size": f"{max_mb:.0f}",
-                }
-            }
-        )
+    # compose_and_store_mime already DKIM-signed and stored the blob.
+    # Validate the final size — clean up the blob if it's too large.
+    try:
+        validate_mime_size(message.blob.size, message.id)
+    except drf.exceptions.ValidationError:
+        message.blob.delete()
+        raise
 
     draft_blob = message.draft_blob
 
-    message.is_draft = False
     message.sender_user = user
-    message.draft_blob = None
-    message.created_at = timezone.now()
-    message.updated_at = timezone.now()
-    message.save(
-        update_fields=[
-            "updated_at",
-            "blob",
-            "mime_id",
-            "is_draft",
-            "sender_user",
-            "draft_blob",
-            "has_attachments",
-            "created_at",
-        ]
+    # has_attachments is already set by compose_and_store_mime (includes
+    # inline signature images), so we do not overwrite it here.
+    _finalize_sent_message(
+        mailbox_sender, message, extra_update_fields=("mime_id", "has_attachments")
     )
-    # Mark the thread as read for the sender — they've obviously seen
-    # their own message, so read_at must be >= messaged_at.
-    models.ThreadAccess.objects.filter(
-        thread=message.thread,
-        mailbox=mailbox_sender,
-    ).update(read_at=message.created_at)
-
-    message.thread.update_stats()
 
     # Clean up the draft blob and the attachment blobs
     if draft_blob:
@@ -390,6 +396,56 @@ def prepare_outbound_message(
         attachment.delete()
 
     return True
+
+
+def _sign_and_store_blob(
+    mailbox_sender: models.Mailbox, raw_mime: bytes
+) -> models.Blob:
+    """DKIM-sign raw MIME bytes and persist them as a blob on the mailbox."""
+    dkim_signature_header: Optional[bytes] = sign_message_dkim(
+        raw_mime_message=raw_mime, maildomain=mailbox_sender.domain
+    )
+
+    raw_mime_signed = raw_mime
+    if dkim_signature_header:
+        raw_mime_signed = dkim_signature_header + b"\r\n" + raw_mime
+
+    return mailbox_sender.create_blob(
+        content=raw_mime_signed,
+        content_type="message/rfc822",
+    )
+
+
+def _finalize_sent_message(
+    mailbox_sender: models.Mailbox,
+    message: models.Message,
+    extra_update_fields: tuple = (),
+) -> None:
+    """Finalize an outbound message once its blob is attached: clear draft
+    state, stamp timestamps, save, mark the thread as read for the sender,
+    and refresh thread stats."""
+    message.is_draft = False
+    message.draft_blob = None
+    message.created_at = timezone.now()
+    message.updated_at = timezone.now()
+
+    update_fields = [
+        "updated_at",
+        "blob",
+        "is_draft",
+        "sender_user",
+        "draft_blob",
+        "created_at",
+        *extra_update_fields,
+    ]
+    message.save(update_fields=update_fields)
+
+    models.ThreadAccess.objects.filter(
+        thread=message.thread,
+        mailbox=mailbox_sender,
+    ).update(read_at=message.created_at)
+
+    message.thread.update_stats()
 
 
 def send_message(message: models.Message, force_mta_out: bool = False):

@@ -944,6 +944,7 @@ class MessageSerializer(serializers.ModelSerializer):
             "is_trashed",
             "is_archived",
             "has_attachments",
+            "mime_id",
             "signature",
             "stmsg_headers",
         ]
@@ -1247,9 +1248,7 @@ class MailboxAdminSerializer(serializers.ModelSerializer):
 
         if metadata.get("type") == "personal":
             local_part = attrs.get("local_part", "")
-            denylist = getattr(
-                settings, "MESSAGES_MAILBOX_LOCALPART_DENYLIST_PERSONAL", []
-            )
+            denylist = settings.MESSAGES_MAILBOX_LOCALPART_DENYLIST_PERSONAL
             lower_value = local_part.lower()
             if any(lower_value == prefix.lower() for prefix in denylist):
                 raise serializers.ValidationError(
@@ -1542,12 +1541,17 @@ class ImportIMAPSerializer(ImportBaseSerializer):
     )
 
 
-class ChannelSerializer(serializers.ModelSerializer):
+class ChannelSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer):
     """Serialize Channel model."""
 
     # Explicitly mark nullable fields to fix OpenAPI schema
     mailbox = serializers.PrimaryKeyRelatedField(read_only=True, allow_null=True)
     maildomain = serializers.PrimaryKeyRelatedField(read_only=True, allow_null=True)
+    user = serializers.PrimaryKeyRelatedField(read_only=True, allow_null=True)
+    scope_level = serializers.ChoiceField(
+        choices=enums.ChannelScopeLevel.choices, read_only=True
+    )
+    last_used_at = serializers.DateTimeField(read_only=True, allow_null=True)
 
     class Meta:
         model = models.Channel
@@ -1555,13 +1559,60 @@ class ChannelSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "type",
+            "scope_level",
             "settings",
             "mailbox",
             "maildomain",
+            "user",
+            "last_used_at",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "mailbox", "maildomain", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "mailbox",
+            "maildomain",
+            "user",
+            "scope_level",
+            "last_used_at",
+            "created_at",
+            "updated_at",
+        ]
+        # ``type`` is writable on CREATE only — once a channel exists its
+        # type is frozen. PATCHing type=widget on an api_key channel
+        # would let a mailbox admin sneak around the create-time scope
+        # check (the new type wouldn't trip _validate_api_key_scopes) or
+        # strand encrypted_settings on a row whose type the auth class
+        # no longer recognizes. Lock it down via CreateOnlyFieldsMixin.
+        create_only_fields = ["type"]
+
+    # Per-type list of settings keys that are server-managed and must
+    # NEVER appear in caller-supplied ``settings``. Used by
+    # ``_reject_caller_supplied_encrypted_keys`` below — there is no
+    # automatic move-from-settings-to-encrypted shim, server-side
+    # generators write directly to ``encrypted_settings`` instead.
+    RESERVED_SETTINGS_KEYS = {
+        enums.ChannelTypes.API_KEY: ["api_key_hashes"],
+    }
+
+    def create(self, validated_data):
+        # For api_key channels, mint the secret on a transient instance so
+        # the resulting ``encrypted_settings`` rides through the normal
+        # ``super().create()`` save path. The plaintext is stashed on the
+        # saved row for ChannelViewSet.create() to surface exactly once,
+        # mirroring the ``_generated_password`` pattern at channel.py:68-74.
+        generated_api_key = None
+        if validated_data.get("type") == enums.ChannelTypes.API_KEY:
+            transient = models.Channel(**validated_data)
+            generated_api_key = transient.rotate_api_key(save=False)
+            validated_data["encrypted_settings"] = transient.encrypted_settings
+
+        instance = super().create(validated_data)
+
+        # pylint: disable=protected-access
+        if generated_api_key is not None:
+            instance._generated_api_key = generated_api_key  # noqa: SLF001
+        return instance
 
     def validate_settings(self, value):
         """Validate settings, including tags if present."""
@@ -1610,19 +1661,190 @@ class ChannelSerializer(serializers.ModelSerializer):
 
         return value
 
+    def _reject_caller_supplied_encrypted_keys(self, attrs):
+        """Refuse any request that puts ``RESERVED_SETTINGS_KEYS`` values
+        in ``settings``.
+
+        ``encrypted_settings`` itself is not in ``ChannelSerializer.fields``,
+        so callers can't write it directly. Reserved settings keys (e.g.
+        ``api_key_hashes``) are written by server-side generators and
+        must never originate from a request body. Without this check, a
+        mailbox admin could PATCH ``{"settings": {"scopes": [...],
+        "api_key_hashes": [<chosen>]}}`` and the row's settings JSON
+        would carry the attacker-chosen value alongside the legitimate
+        ones — confusing, even when not directly authenticatable.
+        """
+        settings_data = attrs.get("settings")
+        if not isinstance(settings_data, dict):
+            return
+        # Use the resolved type so this works on both CREATE and PATCH.
+        channel_type = attrs.get("type") or (
+            self.instance.type if self.instance else None
+        )
+        reserved = self.RESERVED_SETTINGS_KEYS.get(channel_type, [])
+        if any(k in settings_data for k in reserved):
+            raise serializers.ValidationError({"settings": "Invalid settings."})
+
+    def _resolve_type_and_settings(self, attrs):
+        """Compute (channel_type, settings_data, should_validate) for a
+        type-specific validator. The pair handles all three lifecycle paths:
+
+          - CREATE: ``type`` and ``settings`` come from ``attrs``.
+          - PATCH/PUT touching settings (or type): ``settings`` overrides
+            the instance's existing JSON; ``type`` falls back to the
+            instance.
+          - PATCH that doesn't touch ``type`` or ``settings`` (e.g. a
+            rename): the validator is skipped because the field being
+            validated isn't in play. ``should_validate`` is False.
+
+        This is the central fix for the PATCH-bypass escalation: the old
+        code returned early when ``attrs.get("type")`` was None, which is
+        the typical PATCH shape, allowing a mailbox admin to PATCH
+        ``{"settings": {"scopes": ["maildomains:create"]}}`` and have it
+        slip through unvalidated.
+        """
+        instance = self.instance
+        channel_type = attrs.get("type") or (instance.type if instance else None)
+        settings_in_attrs = "settings" in attrs
+
+        # If neither type nor settings are being introduced/changed, this
+        # validator has nothing to look at.
+        if not settings_in_attrs and "type" not in attrs:
+            return channel_type, None, False
+
+        if settings_in_attrs:
+            settings_data = attrs.get("settings") or {}
+        elif instance is not None:
+            # type was changed but settings weren't — fall back to the
+            # instance's existing settings so we validate the post-save
+            # combination.
+            settings_data = instance.settings or {}
+        else:
+            settings_data = {}
+
+        return channel_type, settings_data, True
+
+    def _validate_api_key_scopes(self, attrs):
+        """Validate the ``settings["scopes"]`` list on api_key channels.
+
+        Runs on every CREATE and on every PATCH/PUT that touches ``type``
+        or ``settings``. The validator looks at the EFFECTIVE post-save
+        state — explicit attrs win, instance state is the fallback —
+        which is the only way to airtight-block a mailbox admin from
+        granting themselves a global-only scope via a settings-only PATCH.
+
+        - Every value must be a member of ``ChannelApiKeyScope``.
+        - Global-only scopes (e.g. ``maildomains:create``) can only be
+          requested when the channel itself has ``scope_level=global``.
+          Since DRF clients cannot set scope_level, this always rejects
+          global-only scopes on the mailbox-nested and user-nested paths.
+        """
+        channel_type, settings_data, should_validate = self._resolve_type_and_settings(
+            attrs
+        )
+        if not should_validate or channel_type != enums.ChannelTypes.API_KEY:
+            return
+
+        raw_scopes = settings_data.get("scopes")
+        if raw_scopes is None:
+            raise serializers.ValidationError(
+                {
+                    "settings": "api_key channels require settings.scopes (a list of strings)."
+                }
+            )
+        if not isinstance(raw_scopes, list) or not all(
+            isinstance(s, str) for s in raw_scopes
+        ):
+            raise serializers.ValidationError(
+                {"settings": "settings.scopes must be a list of strings."}
+            )
+
+        valid_values = {choice.value for choice in enums.ChannelApiKeyScope}
+        unknown = [s for s in raw_scopes if s not in valid_values]
+        if unknown:
+            raise serializers.ValidationError(
+                {"settings": f"Unknown api_key scopes: {unknown}"}
+            )
+
+        # Any DRF path to this serializer is mailbox-nested or user-nested
+        # today, so the effective scope_level on save will be MAILBOX or
+        # USER. Global-only scopes are therefore never grantable via DRF.
+        # If that ever changes, the viewset must still pass scope_level
+        # explicitly on save.
+        global_only = enums.CHANNEL_API_KEY_SCOPES_GLOBAL_ONLY
+        if any(s in global_only for s in raw_scopes):
+            raise serializers.ValidationError(
+                {"settings": "One or more requested scopes are not permitted."}
+            )
+
+    def _validate_webhook_settings(self, attrs):
+        """Validate required fields on webhook channel settings.
+
+        Runs on CREATE and on every PATCH/PUT touching ``type`` or
+        ``settings``. Same airtight rule as ``_validate_api_key_scopes``:
+        a settings-only PATCH on an existing webhook channel must hit the
+        URL/events validators, otherwise a mailbox admin could PATCH
+        ``{"settings": {"url": "javascript:..."}}`` past the create-time
+        check.
+        """
+        channel_type, settings_data, should_validate = self._resolve_type_and_settings(
+            attrs
+        )
+        if not should_validate or channel_type != enums.ChannelTypes.WEBHOOK:
+            return
+
+        url = settings_data.get("url")
+        if not url or not isinstance(url, str):
+            raise serializers.ValidationError(
+                {"settings": "webhook channels require settings.url (a string)."}
+            )
+        if not url.startswith(("http://", "https://")):
+            raise serializers.ValidationError(
+                {"settings": "webhook settings.url must be http:// or https://"}
+            )
+
+        events = settings_data.get("events")
+        if not events or not isinstance(events, list):
+            raise serializers.ValidationError(
+                {
+                    "settings": "webhook channels require settings.events (a non-empty list)."
+                }
+            )
+        unknown = [e for e in events if e not in enums.WebhookEvents]
+        if unknown:
+            raise serializers.ValidationError(
+                {"settings": f"Unknown webhook events: {unknown}"}
+            )
+
     def validate(self, attrs):
         """Validate channel data.
 
-        When used in the nested mailbox context (via ChannelViewSet),
-        the mailbox is set from context and doesn't need to be validated here.
+        When used in the nested mailbox context (via ChannelViewSet) or the
+        user context (via UserChannelViewSet), the target FK is set by the
+        viewset and doesn't need to be validated here. Otherwise this is
+        the Django-admin / management-command path which still requires an
+        explicit mailbox or maildomain.
         """
-        # If we have a mailbox in context (from ChannelViewSet), validate channel type
-        # and skip mailbox/maildomain validation.
-        # This allows Django admin to create any channel type.
-        if self.context.get("mailbox"):
+        if self.context.get("mailbox") or self.context.get("user_channel"):
+            # On CREATE, ``type`` MUST be supplied explicitly. The model
+            # field used to default to "mta", which let a caller omit
+            # ``type`` from the body and bypass FEATURE_MAILBOX_ADMIN_CHANNELS
+            # even when "mta" was not in the allowlist. On UPDATE, ``type``
+            # is made read-only by ``CreateOnlyFieldsMixin`` so it's never
+            # in ``attrs`` — fall through to the other validators which
+            # read the instance's existing type.
+            if self.instance is None and "type" not in attrs:
+                raise serializers.ValidationError(
+                    {
+                        "type": (
+                            "Channel type is required for mailbox/user "
+                            "channel creation."
+                        )
+                    }
+                )
             channel_type = attrs.get("type")
             if channel_type:
-                allowed_types = settings.FEATURE_MAILBOX_ADMIN_CHANNELS
+                allowed_types = list(settings.FEATURE_MAILBOX_ADMIN_CHANNELS)
                 if channel_type not in allowed_types:
                     raise serializers.ValidationError(
                         {
@@ -1630,6 +1852,9 @@ class ChannelSerializer(serializers.ModelSerializer):
                             f"Allowed types: {', '.join(allowed_types)}"
                         }
                     )
+            self._reject_caller_supplied_encrypted_keys(attrs)
+            self._validate_api_key_scopes(attrs)
+            self._validate_webhook_settings(attrs)
             return attrs
 
         mailbox = attrs.get("mailbox")
@@ -1646,6 +1871,9 @@ class ChannelSerializer(serializers.ModelSerializer):
                 "Cannot specify both mailbox and maildomain."
             )
 
+        self._reject_caller_supplied_encrypted_keys(attrs)
+        self._validate_api_key_scopes(attrs)
+        self._validate_webhook_settings(attrs)
         return attrs
 
 

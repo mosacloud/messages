@@ -9,6 +9,7 @@ from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import receiver
 
 from core import models
+from core.enums import ChannelScopeLevel
 from core.services.identity.keycloak import (
     sync_mailbox_to_keycloak_user,
     sync_maildomain_to_keycloak_group,
@@ -54,7 +55,7 @@ def sync_mailbox_to_keycloak(sender, instance, created, **kwargs):
 @receiver(post_save, sender=models.Message)
 def index_message_post_save(sender, instance, created, **kwargs):
     """Index a message after it's saved."""
-    if not getattr(settings, "OPENSEARCH_INDEX_THREADS", False):
+    if not settings.OPENSEARCH_INDEX_THREADS:
         return
 
     try:
@@ -74,7 +75,7 @@ def index_message_post_save(sender, instance, created, **kwargs):
 @receiver(post_save, sender=models.MessageRecipient)
 def index_message_recipient_post_save(sender, instance, created, **kwargs):
     """Index a message recipient after it's saved."""
-    if not getattr(settings, "OPENSEARCH_INDEX_THREADS", False):
+    if not settings.OPENSEARCH_INDEX_THREADS:
         return
 
     try:
@@ -132,7 +133,7 @@ def update_thread_stats_on_delivery_status_change(sender, instance, **kwargs):
 @receiver(post_save, sender=models.Thread)
 def index_thread_post_save(sender, instance, created, **kwargs):
     """Index a thread after it's saved."""
-    if not getattr(settings, "OPENSEARCH_INDEX_THREADS", False):
+    if not settings.OPENSEARCH_INDEX_THREADS:
         return
 
     try:
@@ -167,7 +168,7 @@ def delete_message_blobs(sender, instance, **kwargs):
 @receiver(post_delete, sender=models.Message)
 def delete_message_from_index(sender, instance, **kwargs):
     """Remove a message from the index after it's deleted."""
-    if not getattr(settings, "OPENSEARCH_INDEX_THREADS", False):
+    if not settings.OPENSEARCH_INDEX_THREADS:
         return
 
     try:
@@ -191,7 +192,7 @@ def delete_message_from_index(sender, instance, **kwargs):
 @receiver(post_delete, sender=models.Thread)
 def delete_thread_from_index(sender, instance, **kwargs):
     """Remove a thread and its messages from the index after it's deleted."""
-    if not getattr(settings, "OPENSEARCH_INDEX_THREADS", False):
+    if not settings.OPENSEARCH_INDEX_THREADS:
         return
 
     try:
@@ -245,7 +246,7 @@ def delete_orphan_draft_attachments(sender, instance, **kwargs):
 @receiver(post_save, sender=models.ThreadAccess)
 def update_mailbox_flags_on_access_save(sender, instance, created, **kwargs):
     """Update mailbox flags in OpenSearch when ThreadAccess read/starred state changes."""
-    if not getattr(settings, "OPENSEARCH_INDEX_THREADS", False):
+    if not settings.OPENSEARCH_INDEX_THREADS:
         return
 
     update_fields = kwargs.get("update_fields")
@@ -271,7 +272,7 @@ def update_mailbox_flags_on_access_save(sender, instance, created, **kwargs):
 @receiver(post_delete, sender=models.ThreadAccess)
 def update_unread_mailboxes_on_access_delete(sender, instance, **kwargs):
     """Update unread_mailboxes in OpenSearch when a ThreadAccess is deleted."""
-    if not getattr(settings, "OPENSEARCH_INDEX_THREADS", False):
+    if not settings.OPENSEARCH_INDEX_THREADS:
         return
 
     thread_id = str(instance.thread_id)
@@ -286,3 +287,27 @@ def update_unread_mailboxes_on_access_delete(sender, instance, **kwargs):
             instance.thread_id,
             e,
         )
+
+
+@receiver(pre_delete, sender=models.User)
+def delete_user_scope_channels_on_user_delete(sender, instance, **kwargs):
+    """Delete the user's personal (scope_level=user) Channels before the
+    user row is removed.
+
+    Channel.user uses on_delete=SET_NULL deliberately — the FK alone must
+    not blanket-cascade, because a future relaxation of the
+    channel_scope_level_targets check constraint could otherwise let a
+    user delete silently sweep up unrelated channels. This handler is the
+    *only* place where user-scope channels are removed in response to a
+    user deletion. The query is filtered explicitly on
+    ``scope_level=user``, never on the FK alone.
+
+    If we did not delete these rows here, SET_NULL on the FK would null
+    ``user_id`` on the user-scope rows, immediately violating the check
+    constraint and aborting the user delete with an IntegrityError — so
+    this signal is also load-bearing for user deletion to succeed at all.
+    """
+    models.Channel.objects.filter(
+        user=instance,
+        scope_level=ChannelScopeLevel.USER,
+    ).delete()

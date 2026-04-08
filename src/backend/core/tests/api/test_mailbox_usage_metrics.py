@@ -1,11 +1,14 @@
 """Tests for the mailbox usage metrics endpoint."""
-# pylint: disable=redefined-outer-name, too-many-public-methods
+# pylint: disable=redefined-outer-name, too-many-public-methods, too-many-lines, unused-argument
 
 from django.urls import reverse
 
 import pytest
 
-from core.enums import MessageTemplateTypeChoices
+from core.enums import (
+    ChannelApiKeyScope,
+    MessageTemplateTypeChoices,
+)
 from core.factories import (
     AttachmentFactory,
     BlobFactory,
@@ -16,6 +19,7 @@ from core.factories import (
     MessageTemplateFactory,
     ThreadAccessFactory,
     ThreadFactory,
+    make_api_key_channel,
 )
 
 
@@ -26,9 +30,16 @@ def url():
 
 
 @pytest.fixture
-def correctly_configured_header(settings):
-    """Returns the authentication header for the metrics endpoint."""
-    return {"HTTP_AUTHORIZATION": f"Bearer {settings.METRICS_API_KEY}"}
+def correctly_configured_header(db):
+    """Returns the authentication headers via a global api_key Channel."""
+    channel, plaintext = make_api_key_channel(
+        scopes=(ChannelApiKeyScope.METRICS_READ.value,),
+        name="metrics-test",
+    )
+    return {
+        "HTTP_X_CHANNEL_ID": str(channel.id),
+        "HTTP_X_API_KEY": plaintext,
+    }
 
 
 CUSTOM_ATTRIBUTES_SCHEMA = {
@@ -52,14 +63,23 @@ class TestMailboxUsageMetrics:
 
     @pytest.mark.django_db
     def test_requires_auth(self, api_client, url, correctly_configured_header):
-        """Requires valid API key for access."""
+        """Requires a valid api_key Channel to access.
+
+        No headers → 401 (NotAuthenticated). Invalid → 401. Valid → 200.
+        """
         # Without authentication
         response = api_client.get(url)
-        assert response.status_code == 403
+        assert response.status_code == 401
 
-        # Invalid authentication
-        response = api_client.get(url, HTTP_AUTHORIZATION="Bearer invalid_token")
-        assert response.status_code == 403
+        # Invalid authentication: reuse the real channel id with a wrong
+        # secret so the hash-mismatch branch (not just Channel.DoesNotExist)
+        # is exercised.
+        response = api_client.get(
+            url,
+            HTTP_X_CHANNEL_ID=correctly_configured_header["HTTP_X_CHANNEL_ID"],
+            HTTP_X_API_KEY="invalid_token",
+        )
+        assert response.status_code == 401
 
         # Valid authentication
         response = api_client.get(url, **correctly_configured_header)
