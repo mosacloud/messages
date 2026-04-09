@@ -49,6 +49,19 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
 
     const { activeFilters } = useThreadPanelFilters();
 
+    // Whether at least one selected thread has full edit rights — gates
+    // shared-state mutations (archive, spam, trash).  The backend enforces
+    // per-thread permissions; the toast reports the actual updated count.
+    // Star and read/unread are personal state on the user's ThreadAccess
+    // and remain available regardless.
+    const canEditSelection = useMemo(() => {
+        if (selectedThreadIds.size === 0) return false;
+        return Array.from(selectedThreadIds).some((id) => {
+            const thread = threads?.results.find((t) => t.id === id);
+            return thread?.abilities?.edit === true;
+        });
+    }, [selectedThreadIds, threads?.results]);
+
     const title = useMemo(() => {
         if (searchParams.has('search')) return t('folder.search', { defaultValue: 'Search' });
         if (searchParams.has('label_slug')) return (labelsQuery.data?.data || []).find((label) => label.slug === searchParams.get('label_slug'))?.name;
@@ -182,7 +195,7 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                             aria-label={mainReadTooltip}
                         />
                     </Tooltip>
-                    {isSelectionMode && (
+                    {isSelectionMode && canEditSelection && (
                         <>
                             <VerticalSeparator withPadding={false} />
                             {!isSpamView && !isTrashedView && !isDraftsView && (
@@ -225,28 +238,26 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                                     />
                                 </Tooltip>
                             )}
-                            {
-                                !isDraftsView && (
-                                    <Tooltip content={trashLabel} className={selectedThreadIds.size === 0 ? 'hidden' : ''}>
-                                        <Button
-                                            onClick={() => {
-                                                trashMutation({
-                                                    threadIds: threadIdsToMark,
-                                                    onSuccess: () => {
-                                                        unselectThread();
-                                                        onClearSelection();
-                                                    }
-                                                });
-                                            }}
-                                            disabled={selectedThreadIds.size === 0}
-                                            icon={<Icon name={trashIconName} type={IconType.OUTLINED} />}
-                                            variant="tertiary"
-                                            size="nano"
-                                            aria-label={trashLabel}
-                                        />
-                                    </Tooltip>
-                                )
-                            }
+                            {!isDraftsView && (
+                                <Tooltip content={trashLabel} className={selectedThreadIds.size === 0 ? 'hidden' : ''}>
+                                    <Button
+                                        onClick={() => {
+                                            trashMutation({
+                                                threadIds: threadIdsToMark,
+                                                onSuccess: () => {
+                                                    unselectThread();
+                                                    onClearSelection();
+                                                }
+                                            });
+                                        }}
+                                        disabled={selectedThreadIds.size === 0}
+                                        icon={<Icon name={trashIconName} type={IconType.OUTLINED} />}
+                                        variant="tertiary"
+                                        size="nano"
+                                        aria-label={trashLabel}
+                                    />
+                                </Tooltip>
+                            )}
                             <VerticalSeparator withPadding={false} />
                         </>
                     )}

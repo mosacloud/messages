@@ -15,15 +15,20 @@ type ThreadLabelsWidgetProps = {
 
 export const ThreadLabelsWidget = ({ threadId, selectedLabels = [] }: ThreadLabelsWidgetProps) => {
     const { t } = useTranslation();
-    const { selectedMailbox } = useMailboxContext();
+    const { selectedMailbox, selectedThread } = useMailboxContext();
     const canManageLabels = useAbility(Abilities.CAN_MANAGE_MAILBOX_LABELS, selectedMailbox);
+    // Labelling a thread is a shared-state mutation: it also requires
+    // full edit rights on the thread itself (the label endpoint silently
+    // drops unauthorized threads otherwise).
+    const canEditThread = useAbility(Abilities.CAN_EDIT_THREAD, selectedThread ?? null);
+    const canAddLabel = canManageLabels && canEditThread;
     const {data: labelsList, isLoading: isLoadingLabelsList } = useLabelsList(
         { mailbox_id: selectedMailbox!.id },
-        { query: { enabled: canManageLabels } }
+        { query: { enabled: canAddLabel } }
     );
     const [isPopupOpen, setIsPopupOpen] = useState(false);
 
-    if (!canManageLabels) return null;
+    if (!canAddLabel) return null;
 
     if (isLoadingLabelsList) {
         return (

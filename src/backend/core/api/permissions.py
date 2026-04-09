@@ -123,17 +123,18 @@ class IsAllowedToAccess(IsAuthenticated):
         is_list_action = hasattr(view, "action") and view.action == "list"
 
         if not is_list_action:
-            # For create action on nested routes, check thread access with edit role
+            # For create action on nested routes, check full edit rights
+            # on the thread: EDITOR ThreadAccess role AND CAN_EDIT MailboxAccess role.
             if (
                 thread_id_from_url
                 and hasattr(view, "action")
                 and view.action == "create"
             ):
-                return models.ThreadAccess.objects.filter(
-                    thread_id=thread_id_from_url,
-                    role__in=enums.THREAD_ROLES_CAN_EDIT,
-                    mailbox__accesses__user=request.user,
-                ).exists()
+                return (
+                    models.ThreadAccess.objects.editable_by(request.user)
+                    .filter(thread_id=thread_id_from_url)
+                    .exists()
+                )
             # Allow non-list actions (like detail views or specific APIViews like SendMessageView)
             # to proceed to object-level checks or handle permissions within the view.
             return True
@@ -322,6 +323,17 @@ class IsAllowedToManageThreadAccess(IsAuthenticated):
         # Verify the thread access belongs to the thread in the URL
         if obj.thread.id != view.kwargs.get("thread_id"):
             return False
+
+        # Destroying a ThreadAccess removes the thread for every member of
+        # `obj.mailbox` (the row is unique per (thread, mailbox)). Require
+        # editor-level rights on that mailbox so a viewer cannot revoke
+        # access on behalf of the whole team. Thread role is irrelevant:
+        # a viewer on the thread but editor on the mailbox can still leave.
+        if view.action == "destroy":
+            return obj.mailbox.accesses.filter(
+                user=request.user,
+                role__in=enums.MAILBOX_ROLES_CAN_EDIT,
+            ).exists()
 
         return (
             models.ThreadAccess.objects.select_related("mailbox")
@@ -534,7 +546,15 @@ class IsGlobalChannelMixin:
 
 
 class HasThreadEditAccess(IsAuthenticated):
-    """Allows access only to users with EDITOR role on the thread via ThreadAccess."""
+    """Allows access only to users with full edit rights on the thread.
+
+    Full edit rights require BOTH:
+    - `ThreadAccess.role == EDITOR` on the thread
+    - A `MailboxAccess.role` in `MAILBOX_ROLES_CAN_EDIT` on the same mailbox
+
+    This prevents a user with VIEWER MailboxAccess on a shared mailbox
+    from mutating threads that the mailbox has EDITOR ThreadAccess to.
+    """
 
     message = "You do not have permission to perform this action on this thread."
 
@@ -554,11 +574,11 @@ class HasThreadEditAccess(IsAuthenticated):
         if thread_id_from_url is None:
             return True
 
-        return models.ThreadAccess.objects.filter(
-            thread_id=thread_id_from_url,
-            role__in=enums.THREAD_ROLES_CAN_EDIT,
-            mailbox__accesses__user=request.user,
-        ).exists()
+        return (
+            models.ThreadAccess.objects.editable_by(request.user)
+            .filter(thread_id=thread_id_from_url)
+            .exists()
+        )
 
     def has_object_permission(self, request, view, obj):
         """Check editor access on the thread the object belongs to.
@@ -577,11 +597,7 @@ class HasThreadEditAccess(IsAuthenticated):
         else:
             thread = obj
 
-        return models.ThreadAccess.objects.filter(
-            thread=thread,
-            mailbox__accesses__user=request.user,
-            role__in=enums.THREAD_ROLES_CAN_EDIT,
-        ).exists()
+        return thread.get_abilities(request.user)[enums.ThreadAbilities.CAN_EDIT]
 
 
 class HasAccessToMailbox(IsAuthenticated):

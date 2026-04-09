@@ -1,11 +1,14 @@
 """Tests for the ThreadAccess API endpoints."""
 
+import threading
 import uuid
 
+from django.db import connection
 from django.urls import reverse
 
 import pytest
 from rest_framework import status
+from rest_framework.test import APIClient
 
 from core import enums, factories, models
 
@@ -572,6 +575,10 @@ class TestThreadAccessDelete:
             thread=thread,
             role=thread_access_role,
         )
+        # Ensure another editor exists so the last-editor guard doesn't block
+        factories.ThreadAccessFactory(
+            thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+        )
         api_client.force_authenticate(user=user)
 
         url = get_thread_access_url(thread.id, thread_access.id)
@@ -584,20 +591,22 @@ class TestThreadAccessDelete:
     @pytest.mark.parametrize(
         "thread_access_role, mailbox_access_role",
         [
+            # A user with viewer rights on the thread but edit-level rights on
+            # the mailbox can still leave: destroying the shared ThreadAccess
+            # affects the whole mailbox, so mailbox authority is what matters.
             (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.ADMIN),
             (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.EDITOR),
             (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.SENDER),
-            (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.VIEWER),
         ],
     )
-    def test_delete_thread_access_forbidden(
+    def test_delete_thread_access_self_removal(
         self, api_client, thread_access_role, mailbox_access_role
     ):
-        """Test deleting a thread access without permission."""
+        """A user with edit-level rights on the mailbox can remove its own
+        ThreadAccess regardless of the thread role."""
         user = factories.UserFactory()
         api_client.force_authenticate(user=user)
 
-        # Create a thread access that the user doesn't have any role to delete
         mailbox = factories.MailboxFactory()
         factories.MailboxAccessFactory(
             mailbox=mailbox,
@@ -610,14 +619,93 @@ class TestThreadAccessDelete:
             thread=thread,
             role=thread_access_role,
         )
+        # Ensure another editor exists so the last-editor guard doesn't block
+        factories.ThreadAccessFactory(
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+
+        url = get_thread_access_url(thread.id, thread_access.id)
+        response = api_client.delete(url)
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert not models.ThreadAccess.objects.filter(id=thread_access.id).exists()
+
+    @pytest.mark.parametrize(
+        "thread_access_role",
+        [
+            enums.ThreadAccessRoleChoices.VIEWER,
+            enums.ThreadAccessRoleChoices.EDITOR,
+        ],
+    )
+    def test_delete_thread_access_mailbox_viewer_forbidden(
+        self, api_client, thread_access_role
+    ):
+        """A mailbox viewer cannot destroy the mailbox's ThreadAccess — that
+        would revoke the thread for every other member of the mailbox."""
+        user = factories.UserFactory()
+        api_client.force_authenticate(user=user)
+
+        mailbox = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.VIEWER,
+        )
+        thread = factories.ThreadFactory()
+        thread_access = factories.ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=thread_access_role,
+        )
+        factories.ThreadAccessFactory(
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
 
         url = get_thread_access_url(thread.id, thread_access.id)
         response = api_client.delete(url)
         assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert models.ThreadAccess.objects.filter(id=thread_access.id).exists()
 
-        # Create a thread access that the user doesn't have any role to delete
-        thread_access = factories.ThreadAccessFactory()
-        url = get_thread_access_url(thread.id, thread_access.id)
+    @pytest.mark.parametrize(
+        "thread_access_role, mailbox_access_role",
+        [
+            (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.ADMIN),
+            (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.EDITOR),
+            (enums.ThreadAccessRoleChoices.VIEWER, enums.MailboxRoleChoices.SENDER),
+            (enums.ThreadAccessRoleChoices.EDITOR, enums.MailboxRoleChoices.VIEWER),
+        ],
+    )
+    def test_delete_thread_access_other_forbidden(
+        self, api_client, thread_access_role, mailbox_access_role
+    ):
+        """A user without full edit rights cannot delete another user's thread access."""
+        user = factories.UserFactory()
+        api_client.force_authenticate(user=user)
+
+        mailbox = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=mailbox_access_role,
+        )
+        thread = factories.ThreadFactory()
+        factories.ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=thread_access_role,
+        )
+
+        # Another user's thread access on the same thread
+        other_thread_access = factories.ThreadAccessFactory(thread=thread)
+
+        url = get_thread_access_url(thread.id, other_thread_access.id)
+        response = api_client.delete(url)
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert models.ThreadAccess.objects.filter(id=other_thread_access.id).exists()
+
+        # Non-existent thread access
+        url = get_thread_access_url(thread.id, uuid.uuid4())
         response = api_client.delete(url)
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -631,9 +719,150 @@ class TestThreadAccessDelete:
         response = api_client.delete(url)
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
+    def test_delete_thread_access_last_editor_rejected(self, api_client):
+        """Deleting the last editor access on a thread must be rejected."""
+        user = factories.UserFactory()
+        mailbox = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.ADMIN,
+        )
+        thread = factories.ThreadFactory()
+        thread_access = factories.ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        api_client.force_authenticate(user=user)
+
+        url = get_thread_access_url(thread.id, thread_access.id)
+        response = api_client.delete(url)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert models.ThreadAccess.objects.filter(id=thread_access.id).exists()
+
+    def test_delete_thread_access_last_editor_with_viewers_rejected(self, api_client):
+        """Deleting the last editor is rejected even if viewers remain."""
+        user = factories.UserFactory()
+        mailbox = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.ADMIN,
+        )
+        thread = factories.ThreadFactory()
+        editor_access = factories.ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        # Add viewers — they don't count as editors
+        factories.ThreadAccessFactory(
+            thread=thread, role=enums.ThreadAccessRoleChoices.VIEWER
+        )
+        api_client.force_authenticate(user=user)
+
+        url = get_thread_access_url(thread.id, editor_access.id)
+        response = api_client.delete(url)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert models.ThreadAccess.objects.filter(id=editor_access.id).exists()
+
+    def test_delete_thread_access_editor_allowed_when_others_remain(self, api_client):
+        """Deleting an editor access is allowed when other editors remain."""
+        user = factories.UserFactory()
+        mailbox = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.ADMIN,
+        )
+        thread = factories.ThreadFactory()
+        editor_access = factories.ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        # Another editor on the thread
+        factories.ThreadAccessFactory(
+            thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
+        )
+        api_client.force_authenticate(user=user)
+
+        url = get_thread_access_url(thread.id, editor_access.id)
+        response = api_client.delete(url)
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert not models.ThreadAccess.objects.filter(id=editor_access.id).exists()
+
     def test_delete_thread_access_unauthorized(self, api_client):
         """Test deleting a thread access without authentication."""
         thread = factories.ThreadFactory()
         url = get_thread_access_url(thread.id, uuid.uuid4())
         response = api_client.delete(url)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    @pytest.mark.django_db(transaction=True)
+    def test_delete_thread_access_concurrent_last_editors(self):
+        """Two concurrent deletes of the last two editors must not orphan the thread.
+
+        Without select_for_update, both requests can see the other editor still
+        present and both proceed, leaving zero editors.
+        """
+        user = factories.UserFactory()
+        mailbox = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.ADMIN,
+        )
+        thread = factories.ThreadFactory()
+        editor_a = factories.ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        other_mailbox = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=other_mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.ADMIN,
+        )
+        editor_b = factories.ThreadAccessFactory(
+            mailbox=other_mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+
+        url_a = get_thread_access_url(thread.id, editor_a.id)
+        url_b = get_thread_access_url(thread.id, editor_b.id)
+
+        results = {}
+
+        def delete_access(name, url):
+            try:
+                client = APIClient()
+                client.force_authenticate(user=user)
+                results[name] = client.delete(url)
+            finally:
+                connection.close()
+
+        t1 = threading.Thread(target=delete_access, args=("a", url_a))
+        t2 = threading.Thread(target=delete_access, args=("b", url_b))
+        t1.start()
+        t2.start()
+        t1.join(timeout=10)
+        t2.join(timeout=10)
+
+        status_codes = {results["a"].status_code, results["b"].status_code}
+
+        # One must succeed (204), the other must be rejected (400)
+        assert status_codes == {
+            status.HTTP_204_NO_CONTENT,
+            status.HTTP_400_BAD_REQUEST,
+        }, f"Expected one 204 and one 400, got {status_codes}"
+
+        # At least one editor must remain
+        remaining = models.ThreadAccess.objects.filter(
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        ).count()
+        assert remaining == 1

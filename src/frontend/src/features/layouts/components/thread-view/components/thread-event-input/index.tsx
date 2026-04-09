@@ -275,7 +275,7 @@ export const ThreadEventInput = ({ threadId, editingEvent, onCancelEdit, onEvent
                     className="thread-event-input__submit-button"
                     size="small"
                     variant="tertiary"
-                    icon={<Icon name={isEditing ? "check" : "send"} type={IconType.OUTLINED} size={IconSize.MEDIUM} />}
+                    icon={<Icon name={isEditing ? "check" : "arrow_upward"} type={IconType.OUTLINED} size={IconSize.MEDIUM} />}
                     onClick={handleSubmit}
                     disabled={!content.trim() || isPending}
                     title={isEditing ? t("Save") : t("Send")}

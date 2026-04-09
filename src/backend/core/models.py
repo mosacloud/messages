@@ -34,6 +34,7 @@ from encrypted_fields.fields import EncryptedJSONField, EncryptedTextField
 from timezone_field import TimeZoneField
 
 from core.enums import (
+    MAILBOX_ROLES_CAN_EDIT,
     ChannelScopeLevel,
     CompressionTypeChoices,
     CRUDAbilities,
@@ -45,6 +46,7 @@ from core.enums import (
     MessageDeliveryStatusChoices,
     MessageRecipientTypeChoices,
     MessageTemplateTypeChoices,
+    ThreadAbilities,
     ThreadAccessRoleChoices,
     ThreadEventTypeChoices,
     UserAbilities,
@@ -1221,6 +1223,25 @@ class Thread(BaseModel):
             ]
         )
 
+    def get_abilities(self, user, mailbox_id=None):
+        """
+        Compute and return abilities for a given user on this thread.
+
+        Scoped to an optional mailbox context: when provided, the check
+        is restricted to the ThreadAccess of that mailbox. Otherwise the
+        check looks across any of the user's mailboxes.
+        """
+        if not user.is_authenticated:
+            return {ThreadAbilities.CAN_EDIT: False}
+
+        can_edit = (
+            ThreadAccess.objects.editable_by(user, mailbox_id=mailbox_id)
+            .filter(thread=self)
+            .exists()
+        )
+
+        return {ThreadAbilities.CAN_EDIT: can_edit}
+
 
 class Label(BaseModel):
     """Label model to organize threads into folders using slash-based naming."""
@@ -1425,6 +1446,41 @@ class Label(BaseModel):
         super().delete(*args, **kwargs)
 
 
+class ThreadAccessQuerySet(models.QuerySet):
+    """Custom queryset exposing reusable access-scoped filters."""
+
+    def editable_by(self, user, mailbox_id=None):
+        """Return ThreadAccess rows granting full edit rights to `user`.
+
+        Combines BOTH conditions, which are the single source of truth
+        for "can this user edit this thread?":
+
+        - `ThreadAccess.role == EDITOR`
+        - The user's `MailboxAccess.role` on that mailbox is in
+          `MAILBOX_ROLES_CAN_EDIT`
+
+        When `mailbox_id` is provided, the result is also scoped to that
+        mailbox. Used by the flag, label, thread and thread-event
+        endpoints to replace ad-hoc permission checks.
+
+        IMPORTANT: the two `mailbox__accesses__*` conditions MUST stay
+        inside the same `.filter()` call. If split, Django generates two
+        independent JOINs and the query matches any pair of mailbox
+        accesses satisfying either condition — a false positive.
+        """
+        qs = self.filter(
+            role=ThreadAccessRoleChoices.EDITOR,
+            mailbox__accesses__user=user,
+            mailbox__accesses__role__in=MAILBOX_ROLES_CAN_EDIT,
+        )
+        if mailbox_id is not None:
+            qs = qs.filter(mailbox_id=mailbox_id)
+        return qs
+
+
+ThreadAccessManager = models.Manager.from_queryset(ThreadAccessQuerySet)
+
+
 class ThreadAccess(BaseModel):
     """Thread access model to store thread access information for a mailbox."""
 
@@ -1441,6 +1497,8 @@ class ThreadAccess(BaseModel):
     )
     read_at = models.DateTimeField("read at", null=True, blank=True)
     starred_at = models.DateTimeField("starred at", null=True, blank=True)
+
+    objects = ThreadAccessManager()
 
     class Meta:
         db_table = "messages_threadaccess"

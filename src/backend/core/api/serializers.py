@@ -651,6 +651,30 @@ class ThreadSerializer(serializers.ModelSerializer):
     labels = serializers.SerializerMethodField()
     summary = serializers.CharField(read_only=True)
     events_count = serializers.IntegerField(read_only=True)
+    abilities = serializers.SerializerMethodField(read_only=True)
+
+    @extend_schema_field(serializers.DictField(child=serializers.BooleanField()))
+    def get_abilities(self, instance):
+        """Return the current user's abilities on the thread, scoped to
+        the mailbox context when provided. Frontend components use this
+        to hide mutating actions (archive, spam, delete, reply...) from
+        users with read-only access.
+
+        Prefers the ``_can_edit`` annotation set by the viewset queryset
+        (single SQL subquery for the whole page) and falls back to a
+        per-instance query for code paths that build threads outside the
+        annotated queryset (e.g. the split action).
+        """
+        can_edit = getattr(instance, "_can_edit", None)
+        if can_edit is not None:
+            return {enums.ThreadAbilities.CAN_EDIT: can_edit}
+
+        request = self.context.get("request")
+        if request is None:
+            return {}
+        return instance.get_abilities(
+            request.user, mailbox_id=self.context.get("mailbox_id")
+        )
 
     @extend_schema_field(serializers.BooleanField())
     def get_has_unread(self, instance):
@@ -750,6 +774,7 @@ class ThreadSerializer(serializers.ModelSerializer):
             "labels",
             "summary",
             "events_count",
+            "abilities",
         ]
         read_only_fields = fields  # Mark all as read-only for safety
 

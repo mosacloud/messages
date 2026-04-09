@@ -137,6 +137,7 @@ export * from "./task_status_response";
 export * from "./task_status_response_result";
 export * from "./third_party_drive_retrieve_params";
 export * from "./thread";
+export * from "./thread_abilities";
 export * from "./thread_access";
 export * from "./thread_access_detail";
 export * from "./thread_access_request";

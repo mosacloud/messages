@@ -1,6 +1,6 @@
 """Test changing flags on messages or threads."""
 
-# pylint: disable=redefined-outer-name
+# pylint: disable=redefined-outer-name,too-many-lines
 
 import json
 from datetime import timedelta
@@ -12,7 +12,7 @@ from django.utils import timezone
 import pytest
 from rest_framework import status
 
-from core import enums
+from core import enums, models
 from core.factories import (
     MailboxFactory,
     MessageFactory,
@@ -677,6 +677,49 @@ def test_api_flag_viewer_can_star_thread(api_client):
     assert access.starred_at is not None
 
 
+@pytest.mark.parametrize(
+    "flag,field",
+    [
+        ("trashed", "is_trashed"),
+        ("archived", "is_archived"),
+        ("spam", "is_spam"),
+    ],
+)
+def test_api_flag_viewer_mailbox_with_editor_thread_access_forbidden(
+    api_client, flag, field
+):
+    """A user with VIEWER MailboxAccess cannot mutate shared-state flags
+    via message_ids even when the mailbox has EDITOR ThreadAccess on the thread.
+    """
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])  # VIEWER mailbox role
+    thread = ThreadFactory()
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread,
+        role=enums.ThreadAccessRoleChoices.EDITOR,  # Mailbox has edit on thread
+    )
+    message = MessageFactory(thread=thread)
+
+    data = {"flag": flag, "value": True, "message_ids": [str(message.id)]}
+    response = api_client.post(API_URL, data=data, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["updated_threads"] == 0
+
+    message.refresh_from_db()
+    assert getattr(message, field) is False
+
+    # Elevating MailboxAccess to EDITOR lets the same request succeed.
+    models.MailboxAccess.objects.filter(user=user, mailbox=mailbox).update(
+        role=enums.MailboxRoleChoices.EDITOR
+    )
+    response = api_client.post(API_URL, data=data, format="json")
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["updated_threads"] == 1
+
+
 # --- Tests for Trashed Flag ---
 
 
@@ -684,7 +727,7 @@ def test_api_flag_mark_messages_trashed_success(api_client):
     """Test marking messages as trashed successfully."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = MailboxFactory(users_read=[user])
+    mailbox = MailboxFactory(users_admin=[user])
     thread = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
@@ -717,7 +760,7 @@ def test_api_flag_mark_messages_untrashed_success(api_client):
     """Test marking messages as untrashed successfully."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = MailboxFactory(users_read=[user])
+    mailbox = MailboxFactory(users_admin=[user])
     thread = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
@@ -753,7 +796,7 @@ def test_api_flag_mark_messages_archived_success(api_client):
     """Test marking messages as archived successfully."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = MailboxFactory(users_read=[user])
+    mailbox = MailboxFactory(users_admin=[user])
     thread = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
@@ -786,7 +829,7 @@ def test_api_flag_mark_messages_unarchived_success(api_client):
     """Test marking messages as unarchived successfully."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = MailboxFactory(users_read=[user])
+    mailbox = MailboxFactory(users_admin=[user])
     thread = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
@@ -820,7 +863,7 @@ def test_api_flag_mark_messages_spam_success(api_client):
     """Test marking messages as spam successfully."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = MailboxFactory(users_read=[user])
+    mailbox = MailboxFactory(users_admin=[user])
     thread = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
@@ -853,7 +896,7 @@ def test_api_flag_mark_messages_not_spam_success(api_client):
     """Test marking messages as not spam successfully."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = MailboxFactory(users_read=[user])
+    mailbox = MailboxFactory(users_admin=[user])
     thread = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
@@ -896,7 +939,7 @@ def test_api_flag_cascade_to_draft_children(api_client, flag, field, date_field)
     """Flagging a message by message_id cascades to its draft children."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = MailboxFactory(users_read=[user])
+    mailbox = MailboxFactory(users_admin=[user])
     thread = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
@@ -932,7 +975,7 @@ def test_api_flag_cascade_unflag_to_draft_children(api_client, flag, field, date
     """Unflagging a message by message_id cascades to its draft children."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = MailboxFactory(users_read=[user])
+    mailbox = MailboxFactory(users_admin=[user])
     thread = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR
@@ -965,7 +1008,7 @@ def test_api_flag_cascade_does_not_affect_non_draft_children(api_client):
     """Trashing a message does NOT cascade to non-draft children."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = MailboxFactory(users_read=[user])
+    mailbox = MailboxFactory(users_admin=[user])
     thread = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox, thread=thread, role=enums.ThreadAccessRoleChoices.EDITOR

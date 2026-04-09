@@ -305,6 +305,33 @@ class TestViewerCannotCreateEvents:
         response = api_client.post(get_thread_event_url(thread.id), data, format="json")
         assert response.status_code == status.HTTP_201_CREATED
 
+    def test_viewer_mailbox_with_editor_thread_access_cannot_create_event(
+        self, api_client
+    ):
+        """Previously-missed scenario: a user with only VIEWER MailboxAccess
+        cannot post events even when the mailbox has EDITOR ThreadAccess.
+        Creating a ThreadEvent mutates shared state, so both role checks
+        must pass.
+        """
+        user = factories.UserFactory()
+        mailbox = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.VIEWER,  # VIEWER mailbox role
+        )
+        thread = factories.ThreadFactory()
+        factories.ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        api_client.force_authenticate(user=user)
+
+        data = {"type": "im", "data": {"content": "from a mailbox viewer"}}
+        response = api_client.post(get_thread_event_url(thread.id), data, format="json")
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
 
 class TestParameterConfusionAttack:
     """Test that conflicting thread_id in URL path vs query params can't bypass permissions."""

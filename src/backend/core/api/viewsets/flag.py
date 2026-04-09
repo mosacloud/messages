@@ -13,7 +13,7 @@ from drf_spectacular.utils import (
 from rest_framework import serializers as drf_serializers
 from rest_framework.views import APIView
 
-from core import enums, models
+from core import models
 from core.services.search.tasks import update_threads_mailbox_flags_task
 
 from .. import permissions
@@ -188,21 +188,34 @@ class ChangeFlagView(APIView):
         current_time = timezone.now()
         updated_threads = set()
 
-        # Get IDs of threads the user has access to
-        accessible_thread_ids_qs = models.ThreadAccess.objects.filter(
-            mailbox__accesses__user=request.user,
-        ).values_list("thread_id", flat=True)
-
-        # Unread and starred are personal actions that don't require EDITOR access.
-        if flag not in ("unread", "starred"):
-            accessible_thread_ids_qs = accessible_thread_ids_qs.filter(
-                role__in=enums.THREAD_ROLES_CAN_EDIT
+        # Get IDs of threads the user has access to.
+        #
+        # Unread and starred are personal actions: they only mutate the
+        # user's own ThreadAccess row (read_at / starred_at) and are
+        # intentionally allowed for viewers. Any MailboxAccess is enough.
+        #
+        # All other flags (trashed / archived / spam) mutate shared
+        # Message state, so they require full edit rights on the thread:
+        # EDITOR ThreadAccess role AND CAN_EDIT MailboxAccess role. We
+        # delegate to ThreadAccess.objects.editable_by to keep the
+        # permission check consistent across the codebase.
+        if flag in ("unread", "starred"):
+            accessible_thread_ids_qs = models.ThreadAccess.objects.filter(
+                mailbox__accesses__user=request.user,
+            )
+        else:
+            accessible_thread_ids_qs = models.ThreadAccess.objects.editable_by(
+                request.user
             )
 
         if mailbox_id:
             accessible_thread_ids_qs = accessible_thread_ids_qs.filter(
                 mailbox_id=mailbox_id
             )
+
+        accessible_thread_ids_qs = accessible_thread_ids_qs.values_list(
+            "thread_id", flat=True
+        )
 
         if flag in ("unread", "starred") and not thread_ids and message_ids:
             # If no thread_ids but we have message_ids, we need to get the thread_ids from the messages

@@ -43,6 +43,7 @@ export const ThreadMessage = forwardRef<HTMLSpanElement, ThreadMessageProps>(
         }, [message.is_sender, message.to, message.cc, message.bcc]);
 
         const canSendMessages = useAbility(Abilities.CAN_SEND_MESSAGES, selectedMailbox);
+        const canEditThread = useAbility(Abilities.CAN_EDIT_THREAD, selectedThread ?? null);
         const canUpdateDeliveryStatus = useAbility(Abilities.CAN_MANAGE_THREAD_DELIVERY_STATUSES, [selectedMailbox!, selectedThread!]);
 
         // Derived state
@@ -117,7 +118,11 @@ export const ThreadMessage = forwardRef<HTMLSpanElement, ThreadMessageProps>(
 
         // Computed flags
         const showReplyForm = replyFormMode !== null;
-        const showReplyButton = canSendMessages && isLatest && !showReplyForm && !message.is_draft && !message.is_trashed && !draftMessage;
+        // Reply/Reply All/Forward require BOTH sending rights on the mailbox
+        // AND full edit rights on the thread. A user with only VIEWER access
+        // (mailbox or thread) must not see these buttons — the backend would
+        // reject the draft creation anyway.
+        const showReplyButton = canSendMessages && canEditThread && isLatest && !showReplyForm && !message.is_draft && !message.is_trashed && !draftMessage;
 
         // Handlers
         const toggleFold = useCallback(() => {

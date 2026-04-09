@@ -8,6 +8,7 @@ import { Badge } from "@/features/ui/components/badge";
 import { ContactChip, ContactChipDeliveryStatus, ContactChipDeliveryAction } from "@/features/ui/components/contact-chip";
 import { DateHelper } from "@/features/utils/date-helper";
 import useTrash from "@/features/message/use-trash";
+import useAbility, { Abilities } from "@/hooks/use-ability";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { ThreadMessageHeaderProps } from "./types";
 import ThreadMessageActions from "./thread-message-actions";
@@ -28,7 +29,10 @@ const ThreadMessageHeader = ({
     const { t, i18n } = useTranslation();
     const { user } = useAuth();
     const { markAsUntrashed } = useTrash();
-    const { selectedMailbox } = useMailboxContext();
+    const { selectedMailbox, selectedThread } = useMailboxContext();
+    // Untrash is a shared-state mutation — only show the banner action
+    // to users who have full edit rights on the thread.
+    const canEditThread = useAbility(Abilities.CAN_EDIT_THREAD, selectedThread ?? null);
 
     // Derived state specific to header
     const isSuspiciousSender = Boolean(message.stmsg_headers?.['sender-auth'] === 'none');
@@ -129,12 +133,12 @@ const ThreadMessageHeader = ({
                         type="info"
                         icon={<span className="material-icons">restore_from_trash</span>}
                         fullWidth
-                        actions={[
+                        actions={canEditThread ? [
                             {
                                 label: t('Undelete'),
                                 onClick: handleMarkAsUntrashed,
                             }
-                        ]}
+                        ] : undefined}
                     >
                         <p>{t('This message has been deleted.')}</p>
                     </Banner>

@@ -291,12 +291,22 @@ class LabelViewSet(
                 {"detail": "No thread IDs provided"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Require full edit rights on each thread **scoped to the label's
+        # own mailbox**. The mailbox here is intrinsic to the label (a
+        # property of the resource), not ambient from the caller's view,
+        # so we always pass `label.mailbox_id`. This enforces two things
+        # at once:
+        # - User must have full edit rights (EDITOR ThreadAccess role +
+        #   CAN_EDIT MailboxAccess role) on the thread — blocks viewer
+        #   access to the thread.
+        # - The thread must actually exist under label.mailbox — blocks
+        #   attaching a label to a thread that is only visible from a
+        #   different mailbox, even when the user has edit rights there.
         accessible_threads = models.Thread.objects.filter(
             Exists(
-                models.ThreadAccess.objects.filter(
-                    mailbox__accesses__user=request.user,
-                    thread=OuterRef("pk"),
-                )
+                models.ThreadAccess.objects.editable_by(
+                    request.user, mailbox_id=label.mailbox_id
+                ).filter(thread=OuterRef("pk"))
             ),
             id__in=thread_ids,
         )
@@ -350,12 +360,16 @@ class LabelViewSet(
                 {"detail": "No thread IDs provided"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Removing a label from a thread is a mutation on shared state,
+        # so it requires full edit rights (EDITOR ThreadAccess role +
+        # CAN_EDIT MailboxAccess role) scoped to the label's own mailbox
+        # — same check as add_threads. See the comment there for the
+        # rationale on using `label.mailbox_id` (intrinsic to the label).
         accessible_threads = models.Thread.objects.filter(
             Exists(
-                models.ThreadAccess.objects.filter(
-                    mailbox__accesses__user=request.user,
-                    thread=OuterRef("pk"),
-                )
+                models.ThreadAccess.objects.editable_by(
+                    request.user, mailbox_id=label.mailbox_id
+                ).filter(thread=OuterRef("pk"))
             ),
             id__in=thread_ids,
         )

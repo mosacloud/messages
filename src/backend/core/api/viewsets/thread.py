@@ -38,8 +38,12 @@ class ThreadViewSet(
     lookup_url_kwarg = "pk"
 
     def get_permissions(self):
-        """Use HasThreadEditAccess for actions that require EDITOR role."""
-        if self.action in ("destroy", "split"):
+        """Use HasThreadEditAccess for actions that require EDITOR role.
+
+        `refresh_summary` mutates thread state (writes `thread.summary`)
+        so it must also gate on full edit rights, not just authentication.
+        """
+        if self.action in ("destroy", "split", "refresh_summary"):
             return [permissions.HasThreadEditAccess()]
         return super().get_permissions()
 
@@ -143,6 +147,15 @@ class ThreadViewSet(
         both code paths always expose the same fields (e.g. ``events_count``),
         avoiding silent divergence in the serialized payload.
         """
+        can_edit_qs = models.ThreadAccess.objects.filter(
+            thread=OuterRef("pk"),
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+            mailbox__accesses__user=user,
+            mailbox__accesses__role__in=enums.MAILBOX_ROLES_CAN_EDIT,
+        )
+        if mailbox_id:
+            can_edit_qs = can_edit_qs.filter(mailbox_id=mailbox_id)
+
         return queryset.annotate(
             _has_unread=models.ThreadAccess.thread_unread_filter(user, mailbox_id),
             _has_starred=models.ThreadAccess.thread_starred_filter(user, mailbox_id),
@@ -162,6 +175,7 @@ class ThreadViewSet(
                 )
             ),
             events_count=Count("events", distinct=True),
+            _can_edit=Exists(can_edit_qs),
         )
 
     @staticmethod
@@ -867,7 +881,11 @@ class ThreadViewSet(
             )
 
         serializer = serializers.ThreadSerializer(
-            new_thread, context={"request": request}
+            new_thread,
+            context={
+                "request": request,
+                "mailbox_id": request.query_params.get("mailbox_id"),
+            },
         )
         return drf.response.Response(serializer.data, status=status.HTTP_201_CREATED)
 

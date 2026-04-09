@@ -407,7 +407,7 @@ class Command(BaseCommand):
             models.ThreadAccess.objects.create(
                 thread=thread,
                 mailbox=mailbox,
-                role=ThreadAccessRoleChoices.VIEWER,
+                role=ThreadAccessRoleChoices.EDITOR,
             )
             models.Message.objects.create(
                 thread=thread,

@@ -130,6 +130,28 @@ def test_split_thread_feature_disabled(api_client):
     assert Thread.objects.filter(id=thread.id).count() == 1
 
 
+def test_split_thread_viewer_mailbox_with_editor_thread_access_forbidden(api_client):
+    """Previously-missed scenario: a user with VIEWER MailboxAccess on a
+    shared inbox cannot split a thread even when the mailbox itself has
+    EDITOR ThreadAccess on the thread — the user's own mailbox role must
+    be honoured.
+    """
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+
+    mailbox = MailboxFactory(users_read=[user])  # VIEWER mailbox role
+    thread, messages = _create_thread_with_messages(mailbox, count=3)
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    url = _get_split_url(thread.id)
+    response = api_client.post(url, {"message_id": str(messages[1].id)})
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
 # --- Validation tests ---
 
 

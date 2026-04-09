@@ -139,6 +139,12 @@ class MailboxAbilities(models.TextChoices):
     CAN_IMPORT_MESSAGES = "import_messages", "Can import messages"
 
 
+class ThreadAbilities(models.TextChoices):
+    """Defines specific abilities a user can have on a Thread."""
+
+    CAN_EDIT = "edit", "Can edit the thread (archive, spam, trash, labels, events)"
+
+
 class ThreadEventTypeChoices(models.TextChoices):
     """Defines the possible types of thread events."""
 

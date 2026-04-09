@@ -10,6 +10,7 @@ import useRead from "@/features/message/use-read";
 import useSplitThread from "@/features/message/use-split-thread";
 import useTrash from "@/features/message/use-trash";
 import { FEATURE_KEYS, useFeatureFlag } from "@/hooks/use-feature";
+import useAbility, { Abilities } from "@/hooks/use-ability";
 import { ThreadMessageActionsProps } from "./types";
 
 const ThreadMessageActions = ({
@@ -32,6 +33,11 @@ const ThreadMessageActions = ({
     const { print } = usePrint();
     const modals = useModals();
     const isThreadSplitEnabled = useFeatureFlag(FEATURE_KEYS.THREAD_SPLIT);
+    // Full edit rights on the thread — required for reply/forward/delete/split.
+    // Mark read/unread, print and download are either read-only
+    // or personal actions and stay available to viewers.
+    const canEditThread = useAbility(Abilities.CAN_EDIT_THREAD, selectedThread ?? null);
+    const canReply = canSendMessages && canEditThread;
 
     const hasSiblingMessages = useMemo(() => {
         if (!selectedThread) return false;
@@ -39,14 +45,13 @@ const ThreadMessageActions = ({
     }, [selectedThread]);
 
     const canSplitThread = useMemo(() => {
-        if (!isThreadSplitEnabled) return false;
+        if (!isThreadSplitEnabled || !canEditThread) return false;
         if (!selectedThread || !hasSiblingMessages) return false;
         if (message.is_draft) return false;
-        if (selectedThread.user_role !== "editor") return false;
         // Cannot split at the first message
         if (selectedThread.messages[0] === message.id) return false;
         return true;
-    }, [isThreadSplitEnabled, selectedThread, hasSiblingMessages, message.id, message.is_draft]);
+    }, [isThreadSplitEnabled, selectedThread, hasSiblingMessages, message.id, message.is_draft, canEditThread]);
 
     // Handlers specific to actions
     const toggleReadStateFrom = useCallback((is_unread: boolean) => {
@@ -87,12 +92,12 @@ const ThreadMessageActions = ({
     }, [message.id]);
 
     const dropdownOptions = [
-        ...(canSendMessages && hasSeveralRecipients ? [{
+        ...(canReply && hasSeveralRecipients ? [{
             label: t('Reply all'),
             icon: <Icon type={IconType.FILLED} name="reply_all" />,
             callback: () => onSetReplyFormMode('reply_all')
         }] : []),
-        ...(canSendMessages ? [{
+        ...(canReply ? [{
             label: t('Forward'),
             icon: <Icon type={IconType.FILLED} name="forward" />,
             callback: () => onSetReplyFormMode('forward'),
@@ -124,18 +129,18 @@ const ThreadMessageActions = ({
             icon: <Icon type={IconType.FILLED} name="download" />,
             callback: handleDownloadRawEmail
         },
-        ...(message.is_trashed ? [] : [{
+        ...(canEditThread && !message.is_trashed ? [{
             label: t('Delete'),
             icon: <Icon type={IconType.FILLED} name="delete" />,
             callback: handleMarkAsTrashed
-        }]),
+        }] : []),
     ];
 
     return (
         <div className="thread-message__header-actions">
             {!isFolded && (
                 <>
-                    {canSendMessages && (
+                    {canReply && (
                         <Tooltip content={t('Reply')}>
                             <Button
                                 color="brand"
