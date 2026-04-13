@@ -26,6 +26,7 @@ pytestmark = pytest.mark.django_db
     FEATURE_MAILBOX_ADMIN_CHANNELS=[],
     FEATURE_MAILDOMAIN_CREATE=True,
     FEATURE_MAILDOMAIN_MANAGE_ACCESSES=True,
+    FEATURE_THREAD_SPLIT=True,
     DRIVE_CONFIG={"base_url": None, "app_name": "Drive"},
     MAX_OUTGOING_ATTACHMENT_SIZE=20971520,  # 20MB
     MAX_OUTGOING_BODY_SIZE=5242880,  # 5MB
@@ -34,6 +35,7 @@ pytestmark = pytest.mark.django_db
     MAX_TEMPLATE_IMAGE_SIZE=2097152,  # 2MB
     IMAGE_PROXY_ENABLED=False,
     MESSAGES_MANUAL_RETRY_MAX_AGE=86400,  # 1 day in seconds
+    FRONTEND_SILENT_LOGIN_ENABLED=True,
 )
 @pytest.mark.parametrize("is_authenticated", [False, True])
 def test_api_config(is_authenticated):
@@ -56,6 +58,7 @@ def test_api_config(is_authenticated):
         "FEATURE_MAILBOX_ADMIN_CHANNELS": [],
         "FEATURE_MAILDOMAIN_CREATE": True,
         "FEATURE_MAILDOMAIN_MANAGE_ACCESSES": True,
+        "FEATURE_THREAD_SPLIT": True,
         "SCHEMA_CUSTOM_ATTRIBUTES_USER": {},
         "SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN": {},
         "MAX_INCOMING_EMAIL_SIZE": 10485760,
@@ -65,6 +68,7 @@ def test_api_config(is_authenticated):
         "MAX_TEMPLATE_IMAGE_SIZE": 2097152,
         "IMAGE_PROXY_ENABLED": False,
         "MESSAGES_MANUAL_RETRY_MAX_AGE": 86400,
+        "FRONTEND_SILENT_LOGIN_ENABLED": True,
     }
 
 

@@ -21,6 +21,7 @@ import type {
 import type { PlaceholdersRetrieve200 } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -58,7 +59,7 @@ export const getPlaceholdersRetrieveQueryKey = () => {
 
 export const getPlaceholdersRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof placeholdersRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(options?: {
   query?: Partial<
     UseQueryOptions<
@@ -87,11 +88,11 @@ export const getPlaceholdersRetrieveQueryOptions = <
 export type PlaceholdersRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof placeholdersRetrieve>>
 >;
-export type PlaceholdersRetrieveQueryError = unknown;
+export type PlaceholdersRetrieveQueryError = ErrorType<unknown>;
 
 export function usePlaceholdersRetrieve<
   TData = Awaited<ReturnType<typeof placeholdersRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options: {
     query: Partial<
@@ -117,7 +118,7 @@ export function usePlaceholdersRetrieve<
 };
 export function usePlaceholdersRetrieve<
   TData = Awaited<ReturnType<typeof placeholdersRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<
@@ -143,7 +144,7 @@ export function usePlaceholdersRetrieve<
 };
 export function usePlaceholdersRetrieve<
   TData = Awaited<ReturnType<typeof placeholdersRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<
@@ -165,7 +166,7 @@ export function usePlaceholdersRetrieve<
 
 export function usePlaceholdersRetrieve<
   TData = Awaited<ReturnType<typeof placeholdersRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   options?: {
     query?: Partial<

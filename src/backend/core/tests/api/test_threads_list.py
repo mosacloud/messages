@@ -20,6 +20,7 @@ from core.factories import (
     MessageFactory,
     MessageRecipientFactory,
     ThreadAccessFactory,
+    ThreadEventFactory,
     ThreadFactory,
     UserFactory,
 )
@@ -28,6 +29,211 @@ from core.models import MailboxAccess, Thread
 pytestmark = pytest.mark.django_db
 
 API_URL = reverse("threads-list")
+
+
+# --- Tests for thread ordering ---
+
+
+def test_list_threads_default_ordering_by_messaged_at(api_client):
+    """Test that threads are ordered by messaged_at descending by default."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    now = timezone.now()
+
+    thread_old = ThreadFactory(messaged_at=now - timedelta(hours=2), has_messages=True)
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_old,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    thread_recent = ThreadFactory(
+        messaged_at=now - timedelta(hours=1), has_messages=True
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_recent,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    response = api_client.get(API_URL, {"mailbox_id": str(mailbox.id)})
+    assert response.status_code == status.HTTP_200_OK
+    result_ids = [r["id"] for r in response.data["results"]]
+    assert result_ids == [str(thread_recent.id), str(thread_old.id)]
+
+
+def test_list_threads_draft_only_thread_not_first(api_client):
+    """Test that a draft-only thread (messaged_at=NULL) does not appear before
+    threads with actual messages. The Coalesce fallback to draft_messaged_at
+    should position it according to its draft creation time."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    now = timezone.now()
+
+    # Thread with a regular message (messaged_at=now-1h)
+    thread_with_message = ThreadFactory(
+        messaged_at=now - timedelta(hours=1), has_messages=True
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_with_message,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    # Thread with only a draft (messaged_at=NULL, draft_messaged_at=now-2h)
+    thread_draft_only = ThreadFactory(
+        messaged_at=None,
+        draft_messaged_at=now - timedelta(hours=2),
+        has_draft=True,
+        has_messages=True,
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_draft_only,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    response = api_client.get(API_URL, {"mailbox_id": str(mailbox.id)})
+    assert response.status_code == status.HTTP_200_OK
+    result_ids = [r["id"] for r in response.data["results"]]
+    # messaged_at(1h ago) > draft_messaged_at(2h ago) → regular thread first
+    assert result_ids == [str(thread_with_message.id), str(thread_draft_only.id)]
+
+
+def test_list_threads_draft_only_ordered_by_draft_date(api_client):
+    """Test that among draft-only threads, the most recent draft comes first."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    now = timezone.now()
+
+    thread_old_draft = ThreadFactory(
+        messaged_at=None,
+        draft_messaged_at=now - timedelta(hours=2),
+        has_draft=True,
+        has_messages=True,
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_old_draft,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    thread_recent_draft = ThreadFactory(
+        messaged_at=None,
+        draft_messaged_at=now - timedelta(hours=1),
+        has_draft=True,
+        has_messages=True,
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_recent_draft,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    response = api_client.get(API_URL, {"mailbox_id": str(mailbox.id)})
+    assert response.status_code == status.HTTP_200_OK
+    result_ids = [r["id"] for r in response.data["results"]]
+    assert result_ids == [str(thread_recent_draft.id), str(thread_old_draft.id)]
+
+
+def test_list_threads_has_messages_filter_ordering(api_client):
+    """Test that has_messages=1 returns threads ordered correctly, with
+    draft-only threads positioned by their draft date, not at the top."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    now = timezone.now()
+
+    # Thread with regular message (recent)
+    thread_recent_msg = ThreadFactory(
+        messaged_at=now - timedelta(minutes=30), has_messages=True
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_recent_msg,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    # Thread with only a draft (oldest)
+    thread_draft = ThreadFactory(
+        messaged_at=None,
+        draft_messaged_at=now - timedelta(hours=2),
+        has_draft=True,
+        has_messages=True,
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_draft,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    # Thread with regular message (old)
+    thread_old_msg = ThreadFactory(
+        messaged_at=now - timedelta(hours=1), has_messages=True
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_old_msg,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    response = api_client.get(
+        API_URL, {"mailbox_id": str(mailbox.id), "has_messages": "1"}
+    )
+    assert response.status_code == status.HTTP_200_OK
+    result_ids = [r["id"] for r in response.data["results"]]
+    # Expected: recent msg (30min), old msg (1h), draft (2h)
+    assert result_ids == [
+        str(thread_recent_msg.id),
+        str(thread_old_msg.id),
+        str(thread_draft.id),
+    ]
+
+
+def test_list_threads_view_specific_ordering(api_client):
+    """Test that view-specific filters use their dedicated ordering field."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    now = timezone.now()
+
+    # Thread with an old messaged_at but recent draft
+    thread_a = ThreadFactory(
+        messaged_at=now - timedelta(hours=2),
+        draft_messaged_at=now,
+        has_draft=True,
+        has_messages=True,
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_a,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    # Thread with a less recent draft
+    thread_b = ThreadFactory(
+        messaged_at=None,
+        draft_messaged_at=now - timedelta(hours=1),
+        has_draft=True,
+        has_messages=True,
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_b,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    # has_draft=1 should order by draft_messaged_at desc
+    response = api_client.get(
+        API_URL, {"mailbox_id": str(mailbox.id), "has_draft": "1"}
+    )
+    assert response.status_code == status.HTTP_200_OK
+    result_ids = [r["id"] for r in response.data["results"]]
+    # thread_a draft_messaged_at(now) > thread_b draft_messaged_at(1h ago)
+    assert result_ids == [str(thread_a.id), str(thread_b.id)]
 
 
 def test_delete_thread_viewer_should_be_forbidden(api_client):
@@ -1480,3 +1686,93 @@ class TestThreadListAPI:
             )
 
         assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+class TestThreadListEventsCount:
+    """Test that ThreadSerializer exposes events_count on the list endpoint.
+
+    This count drives the frontend refetch-on-new-event effect in MailboxProvider.
+    """
+
+    @pytest.fixture
+    def url(self):
+        """Return the URL for the list endpoint."""
+        return reverse("threads-list")
+
+    @staticmethod
+    def _setup_user_with_thread(user=None):
+        """Create a user with an admin mailbox and an editor thread access."""
+        user = user or UserFactory()
+        mailbox = MailboxFactory()
+        MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.ADMIN,
+        )
+        thread = ThreadFactory()
+        ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        return user, mailbox, thread
+
+    def test_list_threads_events_count_zero_when_no_events(self, api_client, url):
+        """A thread without any ThreadEvent should expose events_count == 0."""
+        user, mailbox, thread = self._setup_user_with_thread()
+        api_client.force_authenticate(user=user)
+
+        response = api_client.get(url, {"mailbox_id": str(mailbox.id)})
+
+        assert response.status_code == status.HTTP_200_OK
+        payload = next(t for t in response.data["results"] if t["id"] == str(thread.id))
+        assert payload["events_count"] == 0
+
+    def test_list_threads_events_count_matches_thread_events(self, api_client, url):
+        """events_count should equal the number of ThreadEvents attached to the thread."""
+        user, mailbox, thread = self._setup_user_with_thread()
+        api_client.force_authenticate(user=user)
+
+        ThreadEventFactory(thread=thread, author=user)
+        ThreadEventFactory(thread=thread, author=user)
+        ThreadEventFactory(thread=thread, author=user)
+
+        response = api_client.get(url, {"mailbox_id": str(mailbox.id)})
+
+        assert response.status_code == status.HTTP_200_OK
+        payload = next(t for t in response.data["results"] if t["id"] == str(thread.id))
+        assert payload["events_count"] == 3
+
+    def test_list_threads_events_count_distinct_per_thread(self, api_client, url):
+        """events_count must use distinct counting to avoid JOIN multiplication.
+
+        The queryset joins on accesses__mailbox, so without ``distinct=True`` the
+        count would be multiplied by the number of ThreadAccess rows. Guard against
+        regressions by creating several accesses and expecting the raw event count.
+        """
+        user, mailbox, thread = self._setup_user_with_thread()
+        api_client.force_authenticate(user=user)
+
+        # Add two extra accesses on the same thread from other mailboxes the user
+        # also has access to, to force multiple JOIN rows.
+        for _ in range(2):
+            extra_mailbox = MailboxFactory()
+            MailboxAccessFactory(
+                mailbox=extra_mailbox,
+                user=user,
+                role=enums.MailboxRoleChoices.ADMIN,
+            )
+            ThreadAccessFactory(
+                mailbox=extra_mailbox,
+                thread=thread,
+                role=enums.ThreadAccessRoleChoices.EDITOR,
+            )
+
+        ThreadEventFactory(thread=thread, author=user)
+        ThreadEventFactory(thread=thread, author=user)
+
+        response = api_client.get(url, {"mailbox_id": str(mailbox.id)})
+
+        assert response.status_code == status.HTTP_200_OK
+        payload = next(t for t in response.data["results"] if t["id"] == str(thread.id))
+        assert payload["events_count"] == 2

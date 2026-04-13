@@ -6,7 +6,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from core.api.viewsets.blob import BlobViewSet
-from core.api.viewsets.channel import ChannelViewSet
+from core.api.viewsets.channel import ChannelViewSet, UserChannelViewSet
 from core.api.viewsets.config import ConfigView
 from core.api.viewsets.contacts import ContactViewSet
 from core.api.viewsets.draft import DraftMessageView
@@ -37,16 +37,23 @@ from core.api.viewsets.metrics import (
     MailDomainUsersMetricsApiView,
 )
 from core.api.viewsets.placeholder import DraftPlaceholderView, PlaceholderView
-from core.api.viewsets.provisioning import ProvisioningMailDomainView
+from core.api.viewsets.provisioning import (
+    ProvisioningMailboxView,
+    ProvisioningMailDomainView,
+)
 from core.api.viewsets.send import SendMessageView
+from core.api.viewsets.submit import SubmitRawEmailView
 from core.api.viewsets.task import TaskDetailView
 from core.api.viewsets.thread import ThreadViewSet
 from core.api.viewsets.thread_access import ThreadAccessViewSet
+from core.api.viewsets.thread_event import ThreadEventViewSet
+from core.api.viewsets.thread_user import ThreadUserViewSet
 from core.api.viewsets.user import UserViewSet
 from core.authentication.urls import urlpatterns as oidc_urls
 
 # - Main endpoints
 router = DefaultRouter()
+router.register("users/me/channels", UserChannelViewSet, basename="user-channels")
 router.register("users", UserViewSet, basename="users")
 router.register("messages", MessageViewSet, basename="messages")
 router.register("blob", BlobViewSet, basename="blob")
@@ -65,6 +72,12 @@ router.register(
 thread_access_nested_router = DefaultRouter()
 thread_access_nested_router.register(
     r"accesses", ThreadAccessViewSet, basename="thread-access"
+)
+thread_access_nested_router.register(
+    r"events", ThreadEventViewSet, basename="thread-event"
+)
+thread_access_nested_router.register(
+    r"users", ThreadUserViewSet, basename="thread-user"
 )
 
 # Router for /mailboxes/{mailbox_id}/accesses/
@@ -131,6 +144,8 @@ mailbox_channel_nested_router.register(
     ChannelViewSet,
     basename="mailbox-channels",
 )
+# /users/me/channels/ is registered directly on the main `router` above —
+# no nested router needed for a single viewset.
 
 urlpatterns = [
     path(
@@ -246,6 +261,17 @@ urlpatterns = [
         f"api/{settings.API_VERSION}/provisioning/maildomains/",
         ProvisioningMailDomainView.as_view(),
         name="provisioning-maildomains",
+    ),
+    path(
+        f"api/{settings.API_VERSION}/submit/",
+        SubmitRawEmailView.as_view(),
+        name="submit-email",
+    ),
+    # Provisioning: mailbox and user lookup (service-to-service, API key auth)
+    path(
+        f"api/{settings.API_VERSION}/provisioning/mailboxes/",
+        ProvisioningMailboxView.as_view(),
+        name="provisioning-mailboxes",
     ),
     # Alias for MTA check endpoint
     path(

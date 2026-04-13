@@ -5,6 +5,7 @@ from django.db.models import Q
 import rest_framework as drf
 from drf_spectacular.utils import (
     OpenApiParameter,
+    OpenApiResponse,
     OpenApiTypes,
     extend_schema,
 )
@@ -115,6 +116,15 @@ class UserViewSet(viewsets.GenericViewSet):
         )
         return drf.response.Response(serializer.data)
 
+    @extend_schema(
+        tags=["users"],
+        responses={
+            200: serializers.UserWithAbilitiesSerializer,
+            401: OpenApiResponse(
+                description="Authentication credentials were not provided or are invalid.",
+            ),
+        },
+    )
     @drf.decorators.action(
         detail=False,
         methods=["get"],

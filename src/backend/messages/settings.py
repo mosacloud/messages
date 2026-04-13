@@ -120,6 +120,16 @@ class Base(Configuration):
         500, environ_name="MAX_RECIPIENTS_PER_MESSAGE", environ_prefix=None
     )
 
+    # Thread events
+    # Time window (in seconds) during which a ThreadEvent can be edited or
+    # deleted after creation. Set to 0 to disable the restriction and allow
+    # edits indefinitely.
+    MAX_THREAD_EVENT_EDIT_DELAY = values.PositiveIntegerValue(
+        60 * 60,  # 1 hour in seconds
+        environ_name="MAX_THREAD_EVENT_EDIT_DELAY",
+        environ_prefix=None,
+    )
+
     # Throttling - limits external recipients per mailbox/maildomain per time period
     # Format: "count/period" where period is minute, hour, or day. None to disable.
     THROTTLE_MAILBOX_OUTBOUND_EXTERNAL_RECIPIENTS = ThrottleRateValue(
@@ -392,6 +402,13 @@ class Base(Configuration):
         environ_prefix=None,
     )
 
+    # Block outgoing messages when SPF includes are not correctly set up
+    MESSAGES_SPF_CHECK_OUTGOING = values.BooleanValue(
+        default=False,
+        environ_name="MESSAGES_SPF_CHECK_OUTGOING",
+        environ_prefix=None,
+    )
+
     # Technical domain for DNS records (MX, SPF, DKIM hosting)
     MESSAGES_TECHNICAL_DOMAIN = values.Value(
         "localhost", environ_name="MESSAGES_TECHNICAL_DOMAIN", environ_prefix=None
@@ -614,6 +631,9 @@ class Base(Configuration):
     FRONTEND_THEME = values.Value(
         None, environ_name="FRONTEND_THEME", environ_prefix=None
     )
+    FRONTEND_SILENT_LOGIN_ENABLED = values.BooleanValue(
+        default=False, environ_name="FRONTEND_SILENT_LOGIN_ENABLED", environ_prefix=None
+    )
 
     # Celery
     CELERY_BROKER_URL = values.Value(
@@ -698,6 +718,8 @@ class Base(Configuration):
     OIDC_RP_SCOPES = values.Value(
         "openid email", environ_name="OIDC_RP_SCOPES", environ_prefix=None
     )
+    OIDC_AUTHENTICATE_CLASS = "lasuite.oidc_login.views.OIDCAuthenticationRequestView"
+    OIDC_CALLBACK_CLASS = "lasuite.oidc_login.views.OIDCAuthenticationCallbackView"
     LOGIN_REDIRECT_URL = values.Value(
         None, environ_name="LOGIN_REDIRECT_URL", environ_prefix=None
     )
@@ -793,6 +815,9 @@ class Base(Configuration):
         None, environ_name="PROMETHEUS_API_KEY", environ_prefix=None
     )
 
+    # DEPRECATED: ignored since global api_key Channels landed.
+    # Kept only so AppConfig.ready() can emit a deprecation warning when
+    # either env var is set. Migrate to a global api_key Channel.
     METRICS_API_KEY = values.Value(
         None, environ_name="METRICS_API_KEY", environ_prefix=None
     )
@@ -838,8 +863,15 @@ class Base(Configuration):
     FEATURE_IMPORT_MESSAGES = values.BooleanValue(
         default=True, environ_name="FEATURE_IMPORT_MESSAGES", environ_prefix=None
     )
+    # NOTE: "webhook" is intentionally NOT in the default list — the
+    # outbound webhook delivery pipeline is not wired yet. Keeping the
+    # type creatable would let users mint dead-letter channels that look
+    # functional. Add "webhook" here once core/mda/webhook_tasks.py and
+    # the post_save signal land.
     FEATURE_MAILBOX_ADMIN_CHANNELS = values.ListValue(
-        default=[], environ_name="FEATURE_MAILBOX_ADMIN_CHANNELS", environ_prefix=None
+        default=["api_key"],
+        environ_name="FEATURE_MAILBOX_ADMIN_CHANNELS",
+        environ_prefix=None,
     )
     FEATURE_MAILDOMAIN_CREATE = values.BooleanValue(
         default=True, environ_name="FEATURE_MAILDOMAIN_CREATE", environ_prefix=None
@@ -848,6 +880,12 @@ class Base(Configuration):
         default=True,
         environ_name="FEATURE_MAILDOMAIN_MANAGE_ACCESSES",
         environ_prefix=None,
+    )
+    # Kill-switch for the "split thread" feature. When False, the
+    # corresponding API action is disabled and the frontend hides the
+    # related menu entry.
+    FEATURE_THREAD_SPLIT = values.BooleanValue(
+        default=True, environ_name="FEATURE_THREAD_SPLIT", environ_prefix=None
     )
 
     # Logging

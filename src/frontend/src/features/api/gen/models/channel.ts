@@ -5,6 +5,7 @@
  * This is the messages API schema.
  * OpenAPI spec version: 1.0.0 (v1.0)
  */
+import type { ScopeLevelEnum } from "./scope_level_enum";
 
 /**
  * Serialize Channel model.
@@ -21,7 +22,8 @@ export interface Channel {
    * Type of channel
    * @maxLength 255
    */
-  type?: string;
+  type: string;
+  readonly scope_level: ScopeLevelEnum;
   /** Channel-specific configuration settings */
   settings?: unknown;
   /**
@@ -34,6 +36,13 @@ export interface Channel {
    * @nullable
    */
   readonly maildomain: string | null;
+  /**
+   * primary key for the record as UUID
+   * @nullable
+   */
+  readonly user: string | null;
+  /** @nullable */
+  readonly last_used_at: string | null;
   /** date and time at which a record was created */
   readonly created_at: string;
   /** date and time at which a record was last updated */

@@ -3,6 +3,7 @@
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q
+from django.db.models.functions import Coalesce
 
 import rest_framework as drf
 from drf_spectacular.types import OpenApiTypes
@@ -74,10 +75,7 @@ class ThreadViewSet(
                     "You do not have access to this mailbox."
                 ) from e
 
-        queryset = queryset.annotate(
-            _has_unread=models.ThreadAccess.thread_unread_filter(user, mailbox_id),
-            _has_starred=models.ThreadAccess.thread_starred_filter(user, mailbox_id),
-        )
+        queryset = self._annotate_thread_permissions(queryset, user, mailbox_id)
 
         if label_slug:
             # Filter threads by label slug, ensuring user has access to the label's mailbox
@@ -106,6 +104,8 @@ class ThreadViewSet(
             "has_messages": "has_messages",
             "has_attachments": "has_attachments",
             "has_delivery_pending": "has_delivery_pending",
+            "has_unread_mention": "_has_unread_mention",
+            "has_mention": "_has_mention",
             "is_trashed": "is_trashed",
             "is_spam": "is_spam",
         }
@@ -131,13 +131,42 @@ class ThreadViewSet(
                 else:
                     queryset = queryset.filter(**{filter_field: False})
 
-        order_field = self._get_order_field(query_params)
-        queryset = queryset.order_by(f"-{order_field}", "-created_at")
+        order_expression = self._get_order_expression(query_params)
+        queryset = queryset.order_by(order_expression, "-created_at")
         return queryset
 
     @staticmethod
-    def _get_order_field(query_params):
-        """Return the appropriate ordering field based on the active view filter."""
+    def _annotate_thread_permissions(queryset, user, mailbox_id):
+        """Attach permission/state annotations expected by ThreadSerializer.
+
+        Shared between the regular DB queryset and the OpenSearch fallback so
+        both code paths always expose the same fields (e.g. ``events_count``),
+        avoiding silent divergence in the serialized payload.
+        """
+        return queryset.annotate(
+            _has_unread=models.ThreadAccess.thread_unread_filter(user, mailbox_id),
+            _has_starred=models.ThreadAccess.thread_starred_filter(user, mailbox_id),
+            _has_unread_mention=Exists(
+                models.UserEvent.objects.filter(
+                    thread=OuterRef("pk"),
+                    user=user,
+                    type=enums.UserEventTypeChoices.MENTION,
+                    read_at__isnull=True,
+                )
+            ),
+            _has_mention=Exists(
+                models.UserEvent.objects.filter(
+                    thread=OuterRef("pk"),
+                    user=user,
+                    type=enums.UserEventTypeChoices.MENTION,
+                )
+            ),
+            events_count=Count("events", distinct=True),
+        )
+
+    @staticmethod
+    def _get_order_expression(query_params):
+        """Return the ordering expression based on the active view filter."""
         view_field_map = {
             "has_trashed": "trashed_messaged_at",
             "has_draft": "draft_messaged_at",
@@ -148,8 +177,10 @@ class ThreadViewSet(
         }
         for param, field in view_field_map.items():
             if query_params.get(param) == "1":
-                return field
-        return "messaged_at"
+                return f"-{field}"
+
+        # Draft-only threads have messaged_at=NULL, fall back to draft_messaged_at
+        return Coalesce("messaged_at", "draft_messaged_at").desc()
 
     def destroy(self, request, *args, **kwargs):
         """Delete a thread, requiring EDITOR role on the thread."""
@@ -223,6 +254,18 @@ class ThreadViewSet(
                 ),
             ),
             OpenApiParameter(
+                name="has_unread_mention",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter threads with unread mentions for the current user (1=true, 0=false).",
+            ),
+            OpenApiParameter(
+                name="has_mention",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter threads with any mention (read or unread) for the current user (1=true, 0=false).",
+            ),
+            OpenApiParameter(
                 name="stats_fields",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
@@ -230,7 +273,7 @@ class ThreadViewSet(
                 description="""Comma-separated list of fields to aggregate.
                 Special values: 'all' (count all threads), 'all_unread' (count all unread threads).
                 Boolean fields: has_trashed, has_draft, has_starred, has_attachments, has_archived,
-                has_sender, has_active, has_delivery_pending, has_delivery_failed, is_spam, has_messages.
+                has_sender, has_active, has_delivery_pending, has_delivery_failed, is_spam, has_messages, has_unread_mention, has_mention.
                 Unread variants ('_unread' suffix): count threads where the condition is true AND the thread is unread.
                 Examples: 'all,all_unread', 'has_starred,has_starred_unread', 'is_spam,is_spam_unread'""",
                 enum=list(enums.THREAD_STATS_FIELDS_MAP.keys()),
@@ -293,12 +336,19 @@ class ThreadViewSet(
             "has_active",
             "has_delivery_failed",
             "has_delivery_pending",
+            "has_unread_mention",
+            "has_mention",
             "is_spam",
             "has_messages",
         }
 
         # Special fields
         special_fields = {"all", "all_unread"}
+
+        # Base fields that cannot be combined with the "_unread" suffix because
+        # they are annotations (not real model columns) and their unread variant
+        # is either already exposed (has_unread_mention) or meaningless.
+        annotation_fields = {"has_mention", "has_unread_mention"}
 
         # Validate requested fields
         for field in requested_fields:
@@ -312,6 +362,11 @@ class ThreadViewSet(
                         {"detail": f"Invalid base field in '{field}': {base_field}"},
                         status=drf.status.HTTP_400_BAD_REQUEST,
                     )
+                if base_field in annotation_fields:
+                    return drf.response.Response(
+                        {"detail": f"Invalid field requested in stats_fields: {field}"},
+                        status=drf.status.HTTP_400_BAD_REQUEST,
+                    )
             elif field in valid_base_fields:
                 continue
             else:
@@ -320,9 +375,11 @@ class ThreadViewSet(
                     status=drf.status.HTTP_400_BAD_REQUEST,
                 )
 
-        # Build unread/starred conditions from annotations (always available)
+        # Build conditions from annotations (always available)
         unread_condition = Q(_has_unread=True)
         starred_condition = Q(_has_starred=True)
+        unread_mention_condition = Q(_has_unread_mention=True)
+        mention_condition = Q(_has_mention=True)
 
         aggregations = {}
         for field in requested_fields:
@@ -338,6 +395,10 @@ class ThreadViewSet(
                 aggregations[agg_key] = Count(
                     "pk", filter=starred_condition & unread_condition
                 )
+            elif field == "has_unread_mention":
+                aggregations[agg_key] = Count("pk", filter=unread_mention_condition)
+            elif field == "has_mention":
+                aggregations[agg_key] = Count("pk", filter=mention_condition)
             elif field.endswith("_unread"):
                 base_field = field[:-7]
                 base_condition = Q(**{base_field: True})
@@ -459,6 +520,18 @@ class ThreadViewSet(
                 location=OpenApiParameter.QUERY,
                 description="Filter threads with unread messages (1=true, 0=false). Requires mailbox_id.",
             ),
+            OpenApiParameter(
+                name="has_unread_mention",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter threads with unread mentions for the current user (1=true, 0=false).",
+            ),
+            OpenApiParameter(
+                name="has_mention",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter threads with any mention (read or unread) for the current user (1=true, 0=false).",
+            ),
         ],
     )
     def list(self, request, *args, **kwargs):
@@ -524,13 +597,8 @@ class ThreadViewSet(
                         )
                     ),
                 )
-                threads = threads.annotate(
-                    _has_unread=models.ThreadAccess.thread_unread_filter(
-                        request.user, mailbox_id
-                    ),
-                    _has_starred=models.ThreadAccess.thread_starred_filter(
-                        request.user, mailbox_id
-                    ),
+                threads = self._annotate_thread_permissions(
+                    threads, request.user, mailbox_id
                 )
 
                 # Order the threads in the same order as the search results
@@ -652,6 +720,12 @@ class ThreadViewSet(
     )
     def split(self, request, pk=None):  # pylint: disable=unused-argument
         """Split a thread at the given message, moving it and all later messages to a new thread."""
+        # Kill-switch: when the feature is disabled at the instance level,
+        # behave as if the endpoint does not exist so clients cannot probe
+        # it via error messages.
+        if not settings.FEATURE_THREAD_SPLIT:
+            raise drf.exceptions.NotFound()
+
         old_thread = self.get_object()
 
         # Validate request
@@ -743,6 +817,36 @@ class ThreadViewSet(
             models.Message.objects.filter(
                 thread=new_thread, parent__thread=old_thread
             ).update(parent=None)
+
+            # Move ThreadEvents that belong chronologically to the new thread.
+            # Two cases:
+            #  - ThreadEvent attached to a moved message (FK `message`) — it
+            #    must follow its message so that `event.thread == message.thread`
+            #    stays coherent.
+            #  - Free ThreadEvent (no message FK) created at or after the split
+            #    point — symmetric with how messages are split, so the timeline
+            #    follows the cut.
+            event_ids = list(
+                models.ThreadEvent.objects.filter(thread=old_thread)
+                .filter(
+                    Q(message__thread=new_thread)
+                    | Q(
+                        message__isnull=True,
+                        created_at__gte=split_message.created_at,
+                    )
+                )
+                .values_list("id", flat=True)
+            )
+            if event_ids:
+                models.ThreadEvent.objects.filter(id__in=event_ids).update(
+                    thread=new_thread
+                )
+                # Keep the `UserEvent.thread` denormalization in sync with
+                # `thread_event.thread` — the ThreadViewSet annotations rely
+                # on filtering UserEvent by `thread` directly to avoid a JOIN.
+                models.UserEvent.objects.filter(thread_event_id__in=event_ids).update(
+                    thread=new_thread
+                )
 
             # Recalculate old thread snippet from its most recent remaining message
             last_remaining = old_thread.messages.order_by("-created_at").first()

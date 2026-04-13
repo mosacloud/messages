@@ -258,6 +258,22 @@ _Those settings are deprecated and will be removed in the future._
 
 ## Application Settings
 
+### Common Feature Flags
+
+Kill-switches for opt-out features. Flip to `False` to disable the
+corresponding API action and hide the related frontend entry points,
+without redeploying the frontend (the flag is pulled from
+`GET /api/v1.0/config/`).
+
+| Variable | Default | Description | Required |
+|----------|---------|-------------|----------|
+| `FEATURE_IMPORT_MESSAGES` | `True` | Enables message import (IMAP, PST, MBOX, etc.). When `False`, mailbox admins lose the `CAN_IMPORT_MESSAGES` ability. | Optional |
+| `FEATURE_MAILBOX_ADMIN_CHANNELS` | `` | Comma-separated list of channel types enabled for mailbox admin (e.g., `widget,api_key`). Empty list disables all channel types. | Optional |
+| `FEATURE_MAILDOMAIN_CREATE` | `True` | Allows superusers to create new mail domains via the API. When `False`, the create action returns 403. | Optional |
+| `FEATURE_MAILDOMAIN_MANAGE_ACCESSES` | `True` | Allows managing mail domain accesses (create/delete). When `False`, those actions return 403. | Optional |
+| `FEATURE_MESSAGE_TEMPLATES` | `True` | Enables the "message templates" feature. When `False`, mailbox admins lose the `CAN_MANAGE_MESSAGE_TEMPLATES` ability and the related UI is hidden. | Optional |
+| `FEATURE_THREAD_SPLIT` | `True` | Enables "split thread" feature. When `False`, the split API action returns 404 and the frontend hides the menu entry. | Optional |
+
 ### Business Logic
 
 | Variable | Default | Description | Required |
@@ -270,6 +286,7 @@ _Those settings are deprecated and will be removed in the future._
 | `MAX_OUTGOING_BODY_SIZE` | `5242880` | Maximum size in bytes for outgoing email body (text + HTML) (5MB) | Optional |
 | `MAX_TEMPLATE_IMAGE_SIZE` | `2097152` | Maximum size in bytes for images embedded in templates and signatures (2MB) | Optional |
 | `MAX_RECIPIENTS_PER_MESSAGE` | `500` | Maximum number of recipients per message (to + cc + bcc) | Optional |
+| `MAX_THREAD_EVENT_EDIT_DELAY` | `3600` | Time window in seconds during which a ThreadEvent (internal comment) can still be edited or deleted after creation. Set to `0` to disable the restriction. | Optional |
 
 ### Model custom attributes schema
 
@@ -296,7 +313,6 @@ _Those settings are deprecated and will be removed in the future._
 | `AI_MODEL` | None | Default model used for AI features | Optional |
 | `FEATURE_AI_SUMMARY` | `False` | Default enabled mode for summary AI features | Required |
 | `FEATURE_AI_AUTOLABELS` | `False` | Default enabled mode for label AI features | Required |
-| `FEATURE_MAILBOX_ADMIN_CHANNELS` | `` | Comma-separated list of channel types enabled for mailbox admin (e.g., `widget,api_key`). Empty list disables all channel types. | Optional |
 
 ### Throttling
 
@@ -319,6 +335,13 @@ it can lead to memory exhaustion, increase at your own risk.
 | `IMAGE_PROXY_ENABLED` | `False` | Whether external images should be proxied | Optional |
 | `IMAGE_PROXY_MAX_SIZE` | `5242880` (5MB) | Maximum size in bytes for external images | Optional |
 | `IMAGE_PROXY_CACHE_TTL` | `2592000` (30 days) | Cache TTL in seconds for external images | Optional |
+
+### Frontend
+
+| Variable | Default | Description | Required |
+|----------|---------|-------------|----------|
+| `FRONTEND_THEME` | `white-label` | Theme for the frontend | Optional |
+| `FRONTEND_SILENT_LOGIN_ENABLED` | `False` | Whether silent login is enabled | Optional |
 
 ### Third-party Services
 

@@ -32,6 +32,7 @@ import type {
 } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -89,7 +90,7 @@ export const getLabelsListQueryKey = (params?: LabelsListParams) => {
 
 export const getLabelsListQueryOptions = <
   TData = Awaited<ReturnType<typeof labelsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: LabelsListParams,
   options?: {
@@ -117,11 +118,11 @@ export const getLabelsListQueryOptions = <
 export type LabelsListQueryResult = NonNullable<
   Awaited<ReturnType<typeof labelsList>>
 >;
-export type LabelsListQueryError = unknown;
+export type LabelsListQueryError = ErrorType<unknown>;
 
 export function useLabelsList<
   TData = Awaited<ReturnType<typeof labelsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params: undefined | LabelsListParams,
   options: {
@@ -144,7 +145,7 @@ export function useLabelsList<
 };
 export function useLabelsList<
   TData = Awaited<ReturnType<typeof labelsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: LabelsListParams,
   options?: {
@@ -167,7 +168,7 @@ export function useLabelsList<
 };
 export function useLabelsList<
   TData = Awaited<ReturnType<typeof labelsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: LabelsListParams,
   options?: {
@@ -183,7 +184,7 @@ export function useLabelsList<
 
 export function useLabelsList<
   TData = Awaited<ReturnType<typeof labelsList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   params?: LabelsListParams,
   options?: {
@@ -257,7 +258,7 @@ export const labelsCreate = async (
 };
 
 export const getLabelsCreateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -298,9 +299,12 @@ export type LabelsCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof labelsCreate>>
 >;
 export type LabelsCreateMutationBody = LabelRequest;
-export type LabelsCreateMutationError = unknown;
+export type LabelsCreateMutationError = ErrorType<unknown>;
 
-export const useLabelsCreate = <TError = unknown, TContext = unknown>(
+export const useLabelsCreate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof labelsCreate>>,
@@ -371,7 +375,7 @@ export const labelsUpdate = async (
 };
 
 export const getLabelsUpdateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -412,9 +416,12 @@ export type LabelsUpdateMutationResult = NonNullable<
   Awaited<ReturnType<typeof labelsUpdate>>
 >;
 export type LabelsUpdateMutationBody = LabelRequest;
-export type LabelsUpdateMutationError = unknown;
+export type LabelsUpdateMutationError = ErrorType<unknown>;
 
-export const useLabelsUpdate = <TError = unknown, TContext = unknown>(
+export const useLabelsUpdate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof labelsUpdate>>,
@@ -467,7 +474,7 @@ export const labelsPartialUpdate = async (
 };
 
 export const getLabelsPartialUpdateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -508,9 +515,12 @@ export type LabelsPartialUpdateMutationResult = NonNullable<
   Awaited<ReturnType<typeof labelsPartialUpdate>>
 >;
 export type LabelsPartialUpdateMutationBody = PatchedLabelRequest;
-export type LabelsPartialUpdateMutationError = unknown;
+export type LabelsPartialUpdateMutationError = ErrorType<unknown>;
 
-export const useLabelsPartialUpdate = <TError = unknown, TContext = unknown>(
+export const useLabelsPartialUpdate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof labelsPartialUpdate>>,
@@ -578,7 +588,7 @@ export const labelsDestroy = async (
 };
 
 export const getLabelsDestroyMutationOptions = <
-  TError = unknown | void,
+  TError = ErrorType<unknown | void>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -619,9 +629,12 @@ export type LabelsDestroyMutationResult = NonNullable<
   Awaited<ReturnType<typeof labelsDestroy>>
 >;
 
-export type LabelsDestroyMutationError = unknown | void;
+export type LabelsDestroyMutationError = ErrorType<unknown | void>;
 
-export const useLabelsDestroy = <TError = unknown | void, TContext = unknown>(
+export const useLabelsDestroy = <
+  TError = ErrorType<unknown | void>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof labelsDestroy>>,
@@ -696,7 +709,7 @@ export const labelsAddThreadsCreate = async (
 };
 
 export const getLabelsAddThreadsCreateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -737,9 +750,12 @@ export type LabelsAddThreadsCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof labelsAddThreadsCreate>>
 >;
 export type LabelsAddThreadsCreateMutationBody = LabelsAddThreadsCreateBody;
-export type LabelsAddThreadsCreateMutationError = unknown;
+export type LabelsAddThreadsCreateMutationError = ErrorType<unknown>;
 
-export const useLabelsAddThreadsCreate = <TError = unknown, TContext = unknown>(
+export const useLabelsAddThreadsCreate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof labelsAddThreadsCreate>>,
@@ -814,7 +830,7 @@ export const labelsRemoveThreadsCreate = async (
 };
 
 export const getLabelsRemoveThreadsCreateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -856,10 +872,10 @@ export type LabelsRemoveThreadsCreateMutationResult = NonNullable<
 >;
 export type LabelsRemoveThreadsCreateMutationBody =
   LabelsRemoveThreadsCreateBody;
-export type LabelsRemoveThreadsCreateMutationError = unknown;
+export type LabelsRemoveThreadsCreateMutationError = ErrorType<unknown>;
 
 export const useLabelsRemoveThreadsCreate = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
