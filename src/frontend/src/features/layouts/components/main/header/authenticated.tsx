@@ -152,6 +152,7 @@ const ApplicationMenu = () => {
   }, [isDropdownOpen, selectedMailbox?.id]);
 
   const taskStatus = useImportTaskStatus(taskId, { enabled: canImportMessages && isDropdownOpen });
+  const hasOptions = canAccessDomainAdmin || canImportMessages || canManageMessageTemplates || canManageIntegrations;
   const importMessageOption = useMemo(() => {
     let label = t("Import messages");
     let icon = <Icon name="archive" type={IconType.OUTLINED} />;
@@ -180,6 +181,21 @@ const ApplicationMenu = () => {
       }
     }
   }, [t, taskStatus]);
+
+  if (!hasOptions) {
+    return (
+      <Tooltip content={t("No action available for this mailbox")}>
+        <Button
+          disabled
+          onClick={(e) => e.preventDefault()}
+          icon={<Icon name="settings" type={IconType.OUTLINED} />}
+          aria-label={t("More options (none available for this mailbox)")}
+          color="neutral"
+          variant="tertiary"
+        />
+      </Tooltip>
+    );
+  }
 
   return (
     <DropdownMenu
