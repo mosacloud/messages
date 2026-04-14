@@ -493,7 +493,7 @@
   "Message sent successfully": "Сообщение успешно отправлено",
   "Message templates for {{mailbox}}": "Шаблоны сообщений для {{mailbox}}",
   "Messages": "Сообщения",
-  "Messaging": "Переписка",
+  "Messaging": "Mosa Mail",
   "mime.archive": "Архив",
   "mime.audio": "Аудио",
   "mime.calc": "Электронная таблица",
@@ -827,5 +827,7 @@
   "You unassigned yourself": "Вы исключили себя из участников",
   "You were unassigned": "Вы исключены из числа участников",
   "Your email...": "Ваш e-mail...",
-  "Your session has expired. Please log in again.": "Время сеанса истекло. Пожалуйста, войдите снова."
+  "Your messages have been imported successfully!": "Ваши сообщения успешно импортированы!",
+  "Your session has expired. Please log in again.": "Время сеанса истекло. Пожалуйста, войдите снова.",
+  "Log in": "Войти"
 }

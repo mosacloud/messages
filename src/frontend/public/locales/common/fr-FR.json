@@ -601,9 +601,10 @@
   "Message from {referer_domain}": "Message de {referer_domain}",
   "Message sent successfully": "Message envoyé avec succès",
   "Message templates": "Modèles de message",
+  "Message templates for {{mailbox}}": "Modèles de message de {{mailbox}}",
   "Messages": "Messages",
   "Messages Logo": "Logo Messages",
-  "Messaging": "Messages",
+  "Messaging": "Mosa Mail",
   "mime.archive": "Archive",
   "mime.audio": "Audio",
   "mime.calc": "Tableur",
@@ -955,5 +956,15 @@
   "You were unassigned": "Vous avez été désassigné·e",
   "You will no longer have access to the mailbox \"{{mailboxName}}\".": "Vous n'aurez plus accès à la boîte aux lettres « {{mailboxName}} ».",
   "Your email...": "Renseigner votre email...",
-  "Your session has expired. Please log in again.": "Votre session a expiré. Veuillez vous reconnecter."
+  "Your messages have been imported successfully!": "Vos messages ont été importés avec succès !",
+  "Your session has expired. Please log in again.": "Votre session a expiré. Veuillez vous reconnecter.",
+  "Log in": "Se connecter",
+  "Sign in to Mail - mosa.cloud": "Connexion à Mail - mosa.cloud",
+  "Collaborate without compromise": "Collaborez sans compromis",
+  "Built in the EU": "Conçu dans l'UE",
+  "Welcome to": "Bienvenue sur",
+  "Email without boundaries": "L'email sans frontières",
+  "Sign in with your account": "Se connecter avec votre compte",
+  "Don't have an account?": "Vous n'avez pas de compte ?",
+  "Contact us": "Contactez-nous"
 }
