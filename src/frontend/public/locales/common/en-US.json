@@ -391,7 +391,7 @@
   "Message from {referer_domain}": "Message from {referer_domain}",
   "Message sent successfully": "Message sent successfully",
   "Message templates for {{mailbox}}": "Message templates for {{mailbox}}",
-  "Messaging": "Messaging",
+  "Messaging": "Mosa Mail",
   "Missing": "Missing",
   "Modified": "Modified",
   "Modify": "Modify",
@@ -644,5 +644,14 @@
   "You must confirm this statement.": "You must confirm this statement.",
   "Your email...": "Your email...",
   "Your messages have been imported successfully!": "Your messages have been imported successfully!",
-  "Your session has expired. Please log in again.": "Your session has expired. Please log in again."
+  "Your session has expired. Please log in again.": "Your session has expired. Please log in again.",
+  "Log in": "Log in",
+  "Sign in to Mail - mosa.cloud": "Sign in to Mail - mosa.cloud",
+  "Collaborate without compromise": "Collaborate without compromise",
+  "Built in the EU": "Built in the EU",
+  "Welcome to": "Welcome to",
+  "Email without boundaries": "Email without boundaries",
+  "Sign in with your account": "Sign in with your account",
+  "Don't have an account?": "Don't have an account?",
+  "Contact us": "Contact us"
 }
