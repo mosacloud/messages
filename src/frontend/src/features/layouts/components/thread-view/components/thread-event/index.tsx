@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { TextHelper } from "@/features/utils/text-helper";
+import { DateHelper } from "@/features/utils/date-helper";
 import { ThreadEvent as ThreadEventType, ThreadEventTypeEnum } from "@/features/api/gen/models";
 import { useThreadsEventsDestroy } from "@/features/api/gen/thread-events/thread-events";
 import { useTranslation } from "react-i18next";
@@ -45,16 +46,6 @@ type ThreadEventProps = {
     hasUnreadMention?: boolean;
 };
 
-const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-    });
-};
-
 /**
  * Returns true if this IM event should show a condensed view (no header),
  * because the previous event is also an IM from the same author within 2 minutes.
@@ -74,7 +65,7 @@ export const isCondensed = (event: ThreadEventType, previousEvent?: ThreadEventT
  * For other types: renders a minimal card with type badge and data.
  */
 export const ThreadEvent = ({ event, isCondensed = false, onEdit, onDelete, mentionRef, hasUnreadMention = false }: ThreadEventProps) => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const { user } = useAuth();
     const modals = useModals();
     const { invalidateThreadEvents } = useMailboxContext();
@@ -180,7 +171,13 @@ export const ThreadEvent = ({ event, isCondensed = false, onEdit, onDelete, ment
                                 {event.author?.full_name || event.author?.email || t("Unknown")}
                             </span>
                             <span className="thread-event__time">
-                                {formatTime(event.created_at)}
+                                {t('{{date}} at {{time}}', {
+                                    date: DateHelper.formatDate(event.created_at, i18n.resolvedLanguage, false),
+                                    time: new Date(event.created_at).toLocaleString(i18n.resolvedLanguage, {
+                                        minute: '2-digit',
+                                        hour: '2-digit',
+                                    }),
+                                })}
                             </span>
                             {hasUnreadMention && (
                                 <Badge
@@ -259,7 +256,13 @@ export const ThreadEvent = ({ event, isCondensed = false, onEdit, onDelete, ment
             <div className="thread-event__body">
                 <div className="thread-event__header">
                     <span className="thread-event__time">
-                        {formatTime(event.created_at)}
+                        {t('{{date}} at {{time}}', {
+                            date: DateHelper.formatDate(event.created_at, i18n.resolvedLanguage, false),
+                            time: new Date(event.created_at).toLocaleString(i18n.resolvedLanguage, {
+                                minute: '2-digit',
+                                hour: '2-digit',
+                            }),
+                        })}
                         {isEdited && ` · ${t('Modified')}`}
                     </span>
                 </div>
