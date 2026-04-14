@@ -4,7 +4,7 @@ import clsx from "clsx"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useMemo, useState } from "react"
-import { useLayoutContext } from "../../../main"
+import { useLayoutContext } from "@/features/layouts/components/layout-context"
 import { useTranslation } from "react-i18next"
 import { Icon, IconSize, IconType } from "@gouvfr-lasuite/ui-kit"
 import i18n from "@/features/i18n/initI18n";
@@ -340,9 +340,14 @@ const FolderItem = ({ folder, isChild, hasChildren, isExpanded, onToggleExpand, 
     const hasDeliveryFailed = (folderStats?.[ThreadsStatsRetrieveStatsFields.has_delivery_failed] ?? 0) > 0;
 
     const handleDragOver = (e: React.DragEvent<HTMLAnchorElement>) => {
+        // All folder actions (archive/spam/trash and restore-to-inbox)
+        // mutate shared thread state, so the drop is refused when the
+        // dragged selection has no editable thread. The source advertises
+        // this via the `text/thread-editable` dataTransfer type (the JSON
+        // payload is not readable on dragover).
+        if (!e.dataTransfer.types.includes('text/thread-editable')) return;
         e.preventDefault();
         e.stopPropagation();
-        e.dataTransfer.dropEffect = 'link';
         setIsDragOver(true);
     };
 
@@ -361,6 +366,10 @@ const FolderItem = ({ folder, isChild, hasChildren, isExpanded, onToggleExpand, 
         try {
             const data = JSON.parse(rawData);
             if (data.type !== 'thread' || !data.threadIds?.length) return;
+            // Defence in depth: dragover already filtered this out, but
+            // re-check on drop in case a source ever sets the JSON without
+            // the dataTransfer type (e.g. programmatic DnD in tests).
+            if (!data.hasEditable) return;
 
             const threadIds = data.threadIds as string[];
 

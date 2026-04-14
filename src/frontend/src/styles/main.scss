@@ -35,6 +35,7 @@
 @use "./../features/layouts/components/mailbox-panel/components/mailbox-labels/components/label-item";
 @use "./../features/layouts/components/thread-panel";
 @use "./../features/layouts/components/thread-panel/components/thread-item";
+@use "./../features/layouts/components/labels-widget";
 @use "./../features/layouts/components/thread-view";
 @use "./../features/layouts/components/thread-view/components/thread-action-bar";
 @use "./../features/layouts/components/thread-view/components/thread-message";
@@ -43,7 +44,6 @@
 @use "./../features/layouts/components/thread-view/components/thread-attachment-list";
 @use "./../features/layouts/components/thread-view/components/calendar-invite";
 @use "./../features/layouts/components/thread-view/components/thread-accesses-widget";
-@use "./../features/layouts/components/thread-view/components/thread-labels-widget";
 @use "./../features/forms/components/message-form";
 @use "./../features/forms/components/search-input";
 @use "./../features/forms/components/search-filters-form";

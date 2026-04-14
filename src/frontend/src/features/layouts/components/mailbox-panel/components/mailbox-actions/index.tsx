@@ -2,7 +2,7 @@ import { useRouter } from "next/router";
 import { useTranslation } from "react-i18next";
 import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { useMailboxContext } from "@/features/providers/mailbox";
-import { useLayoutContext } from "../../../main";
+import { useLayoutContext } from "@/features/layouts/components/layout-context";
 import useAbility, { Abilities } from "@/hooks/use-ability";
 import { Icon, IconType, Spinner } from "@gouvfr-lasuite/ui-kit";
 import { useState } from "react";

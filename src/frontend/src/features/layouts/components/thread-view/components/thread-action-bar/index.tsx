@@ -7,7 +7,7 @@ import { Button, Tooltip, useModals } from "@gouvfr-lasuite/cunningham-react"
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ThreadAccessesWidget } from "../thread-accesses-widget";
-import { ThreadLabelsWidget } from "../thread-labels-widget";
+import { LabelsWidget } from "@/features/layouts/components/labels-widget";
 import useArchive from "@/features/message/use-archive";
 import useSpam from "@/features/message/use-spam";
 import useStarred from "@/features/message/use-starred";
@@ -32,6 +32,8 @@ export const ThreadActionBar = ({ canUndelete, canUnarchive }: ThreadActionBarPr
     // Full edit rights on the thread — gates archive, spam, delete.
     // Star and "mark as unread" remain visible because they are personal
     // state on the user's ThreadAccess (read_at / starred_at).
+    // Label assignment is scoped to the mailbox (see `LabelsWidget`) and
+    // therefore stays visible for viewer-only threads.
     const canEditThread = useAbility(Abilities.CAN_EDIT_THREAD, selectedThread ?? null);
     const canShowArchiveCTA = canEditThread && !selectedThread?.is_spam
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -173,7 +175,7 @@ export const ThreadActionBar = ({ canUndelete, canUnarchive }: ThreadActionBarPr
                     />
                 </Tooltip>
             )}
-            <ThreadLabelsWidget threadId={selectedThread!.id} selectedLabels={selectedThread!.labels} />
+            <LabelsWidget threadIds={[selectedThread!.id]} initialLabels={selectedThread!.labels} />
             <ThreadAccessesWidget accesses={selectedThread!.accesses} />
             <DropdownMenu
                 isOpen={isDropdownOpen}

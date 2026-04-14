@@ -662,49 +662,44 @@ class TestLabelViewSet:
         assert response.status_code == status.HTTP_200_OK
         assert label.threads.count() == 1  # Thread not removed
 
-    def test_add_threads_cross_mailbox_viewer_thread_access_forbidden(
-        self, api_client, label, user
+    def test_add_threads_viewer_thread_access_allowed(
+        self, api_client, label, mailbox, user
     ):
-        """User is EDITOR/ADMIN on label.mailbox (can manage labels) but
-        only has VIEWER ThreadAccess to the thread (via a different
-        mailbox). Labelling the thread is a shared-state mutation on the
-        thread, so it must be blocked.
+        """A label is a mailbox-local organizational tool: mailbox-level
+        permission on label.mailbox is enough to attach it. The caller's
+        per-thread role is irrelevant — a VIEWER on a shared thread can
+        still label it from within their own mailbox.
         """
-        other_mailbox = MailboxFactory()
-        other_mailbox.accesses.create(user=user, role=models.MailboxRoleChoices.VIEWER)
         thread = ThreadFactory()
         thread.accesses.create(
-            mailbox=other_mailbox,
-            role=enums.ThreadAccessRoleChoices.EDITOR,  # Mailbox has edit access
+            mailbox=mailbox,
+            role=enums.ThreadAccessRoleChoices.VIEWER,
         )
 
         url = reverse("labels-add-threads", args=[label.pk])
         response = api_client.post(url, {"thread_ids": [str(thread.id)]}, format="json")
 
-        # The endpoint returns 200 but silently skips the thread.
         assert response.status_code == status.HTTP_200_OK
-        assert label.threads.count() == 0
+        assert label.threads.count() == 1
 
-    def test_remove_threads_cross_mailbox_viewer_thread_access_forbidden(
-        self, api_client, label, user
+    def test_remove_threads_viewer_thread_access_allowed(
+        self, api_client, label, mailbox, user
     ):
-        """Mirror of add_threads above — removing a label from a thread
-        also requires full edit rights on the thread.
+        """Mirror of add_threads above — removing a label only requires
+        mailbox-level permission on label.mailbox.
         """
-        other_mailbox = MailboxFactory()
-        other_mailbox.accesses.create(user=user, role=models.MailboxRoleChoices.VIEWER)
         thread = ThreadFactory()
         thread.accesses.create(
-            mailbox=other_mailbox,
-            role=enums.ThreadAccessRoleChoices.EDITOR,
+            mailbox=mailbox,
+            role=enums.ThreadAccessRoleChoices.VIEWER,
         )
-        label.threads.add(thread)  # Pre-existing association
+        label.threads.add(thread)
 
         url = reverse("labels-remove-threads", args=[label.pk])
         response = api_client.post(url, {"thread_ids": [str(thread.id)]}, format="json")
 
         assert response.status_code == status.HTTP_200_OK
-        assert label.threads.count() == 1  # Not removed
+        assert label.threads.count() == 0
 
     def test_add_threads_thread_not_in_label_mailbox_forbidden(
         self, api_client, label, user

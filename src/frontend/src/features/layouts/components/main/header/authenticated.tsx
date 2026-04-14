@@ -16,7 +16,7 @@ import { MessageTemplateTypeChoices, StatusEnum, useMailboxesMessageTemplatesLis
 import { CircularProgress } from "@/features/ui/components/circular-progress";
 import { TaskImportCacheHelper } from "@/features/utils/task-import-cache";
 import { useTheme } from "@/features/providers/theme";
-import { useLayoutContext } from "..";
+import { useLayoutContext } from "@/features/layouts/components/layout-context";
 
 
 type AuthenticatedHeaderProps = HeaderProps & {

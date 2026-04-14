@@ -12,9 +12,11 @@ import useArchive from "@/features/message/use-archive";
 import useSpam from "@/features/message/use-spam";
 import useTrash from "@/features/message/use-trash";
 import useStarred from "@/features/message/use-starred";
+import useCanEditThreads from "@/features/message/use-can-edit-threads";
 import { ThreadPanelFilter } from "./thread-panel-filter";
 import { THREAD_PANEL_FILTER_PARAMS, useThreadPanelFilters } from "../hooks/use-thread-panel-filters";
 import { SelectionReadStatus, SelectionStarredStatus } from "@/features/providers/thread-selection";
+import { LabelsWidget } from "@/features/layouts/components/labels-widget";
 
 type ThreadPanelTitleProps = {
     selectedThreadIds: Set<string>;
@@ -50,17 +52,10 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
     const { activeFilters } = useThreadPanelFilters();
 
     // Whether at least one selected thread has full edit rights — gates
-    // shared-state mutations (archive, spam, trash).  The backend enforces
-    // per-thread permissions; the toast reports the actual updated count.
-    // Star and read/unread are personal state on the user's ThreadAccess
-    // and remain available regardless.
-    const canEditSelection = useMemo(() => {
-        if (selectedThreadIds.size === 0) return false;
-        return Array.from(selectedThreadIds).some((id) => {
-            const thread = threads?.results.find((t) => t.id === id);
-            return thread?.abilities?.edit === true;
-        });
-    }, [selectedThreadIds, threads?.results]);
+    // shared-state mutations (archive, spam, trash). Star and read/unread
+    // are personal state on the user's ThreadAccess and remain available
+    // regardless.
+    const canEditSelection = useCanEditThreads(selectedThreadIds);
 
     const title = useMemo(() => {
         if (searchParams.has('search')) return t('folder.search', { defaultValue: 'Search' });
@@ -195,10 +190,10 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                             aria-label={mainReadTooltip}
                         />
                     </Tooltip>
-                    {isSelectionMode && canEditSelection && (
+                    {isSelectionMode && (
                         <>
                             <VerticalSeparator withPadding={false} />
-                            {!isSpamView && !isTrashedView && !isDraftsView && (
+                            {canEditSelection && !isSpamView && !isTrashedView && !isDraftsView && (
                                 <Tooltip content={archiveLabel} className={selectedThreadIds.size === 0 ? 'hidden' : ''}>
                                     <Button
                                         onClick={() => {
@@ -218,7 +213,7 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                                     />
                                 </Tooltip>
                             )}
-                            {!isTrashedView && !isSentView && !isDraftsView && (
+                            {canEditSelection && !isTrashedView && !isSentView && !isDraftsView && (
                                 <Tooltip content={spamLabel} className={selectedThreadIds.size === 0 ? 'hidden' : ''}>
                                     <Button
                                         onClick={() => {
@@ -238,7 +233,7 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                                     />
                                 </Tooltip>
                             )}
-                            {!isDraftsView && (
+                            {canEditSelection && !isDraftsView && (
                                 <Tooltip content={trashLabel} className={selectedThreadIds.size === 0 ? 'hidden' : ''}>
                                     <Button
                                         onClick={() => {
@@ -257,6 +252,11 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                                         aria-label={trashLabel}
                                     />
                                 </Tooltip>
+                            )}
+                            {!isSpamView && !isTrashedView && !isDraftsView && (
+                                <LabelsWidget
+                                    threadIds={Array.from(selectedThreadIds)}
+                                />
                             )}
                             <VerticalSeparator withPadding={false} />
                         </>

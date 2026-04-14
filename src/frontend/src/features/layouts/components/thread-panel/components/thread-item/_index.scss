@@ -202,14 +202,53 @@
 
 // Drag preview styles
 .thread-drag-preview {
+    position: fixed;
+    top: 0;
+    left: -100px;
+    z-index: 100000;
     background: var(--c--contextuals--background--semantic--brand--primary);
+    background: color-mix(in srgb, var(--c--contextuals--background--semantic--brand--primary) 90%, transparent);
+    backdrop-filter: blur(6px);
     color: var(--c--contextuals--content--semantic--brand--on-brand);
     border-radius: 50vw;
+    border: 1px solid var(--c--contextuals--border--semantic--brand--primary);
     font-size: var(--c--globals--font--sizes--xs);
     line-height: 1;
     box-shadow: none;
     font-weight: 700;
     padding: var(--c--globals--spacings--xs) var(--c--globals--spacings--sm);
-    display: inline-block;
+    white-space: nowrap;
+    pointer-events: none;
     cursor: grabbing;
+    animation: popIn 0.15s var(--c--globals--transitions--ease-in-out);
+    transform-origin: left center;
+}
+
+.thread-drag-preview--exiting {
+    animation: popOut 0.15s var(--c--globals--transitions--ease-in-out) forwards;
+}
+
+@keyframes popIn {
+    0% {
+        scale: 0.7;
+        opacity: 0;
+    }
+    20% {
+        opacity: 0;
+    }
+    100% {
+        scale: 1;
+        opacity: 1;
+    }
+}
+
+@keyframes popOut {
+    0% {
+        scale: 1;
+        opacity: 1;
+    }
+    100% {
+        scale: 0.7;
+        opacity: 0;
+    }
 }

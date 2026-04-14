@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next"
 import Link from "next/link"
 import { useParams, useSearchParams } from "next/navigation"
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import clsx from "clsx"
 import { DateHelper } from "@/features/utils/date-helper"
@@ -13,8 +13,9 @@ import { PORTALS } from "@/features/config/constants"
 import { Checkbox } from "@gouvfr-lasuite/cunningham-react"
 import { Icon, IconSize, IconType } from "@gouvfr-lasuite/ui-kit"
 import { LabelBadge } from "@/features/ui/components/label-badge"
-import { useLayoutContext } from "../../../main"
+import { useLayoutDragContext } from "@/features/layouts/components/layout-context"
 import ViewHelper from "@/features/utils/view-helper"
+import useCanEditThreads from "@/features/message/use-can-edit-threads"
 
 type ThreadItemProps = {
     thread: Thread
@@ -29,7 +30,8 @@ export const ThreadItem = ({ thread, isSelected, onToggleSelection, selectedThre
     const params = useParams<{ mailboxId: string, threadId: string }>()
     const searchParams = useSearchParams()
     const [isDragging, setIsDragging] = useState(false)
-    const { setIsDragging: setGlobalDragging } = useLayoutContext();
+    const [isExiting, setIsExiting] = useState(false)
+    const { setIsDragging: setGlobalDragging, setDragAction } = useLayoutDragContext();
     const dragPreviewContainer = useRef(document.getElementById(PORTALS.DRAG_PREVIEW));
     const threadDate = useMemo(() => {
         if (ViewHelper.isInboxView() && thread.active_messaged_at) {
@@ -63,6 +65,16 @@ export const ThreadItem = ({ thread, isSelected, onToggleSelection, selectedThre
     const hasSelection = isSelectionMode || selectedThreadIds.size > 0;
     const showCheckbox = hasSelection;
 
+    // Used by drop zones (folders, label auto-archive) to decide whether
+    // the dragged threads can be mutated. Expressed as a dataTransfer
+    // type so drop zones can read it on dragover — JSON payloads are only
+    // readable on drop per the browser security model.
+    const dragThreadIds = useMemo(
+        () => isSelectionMode ? Array.from(selectedThreadIds) : [thread.id],
+        [isSelectionMode, selectedThreadIds, thread.id]
+    );
+    const hasEditableInDrag = useCanEditThreads(dragThreadIds);
+
     const handleCheckboxClick = (e: React.MouseEvent) => {
         e.stopPropagation();
         onToggleSelection(thread.id, e.shiftKey, e.ctrlKey || e.metaKey);
@@ -91,26 +103,48 @@ export const ThreadItem = ({ thread, isSelected, onToggleSelection, selectedThre
         setIsDragging(true)
         setGlobalDragging(true)
 
-        // If this thread is selected, drag all selected threads
-        const threadsToDrag = isSelectionMode ? Array.from(selectedThreadIds) : [thread.id];
-
         e.dataTransfer.setData('application/json', JSON.stringify({
             type: 'thread',
-            threadIds: threadsToDrag,
+            threadIds: dragThreadIds,
             labels: isSelectionMode ? [] : thread.labels.map((label) => label.id),
+            hasEditable: hasEditableInDrag,
         }));
-        e.dataTransfer.effectAllowed = 'link'
-        // Set the drag image
-        if (dragPreviewContainer.current) {
-            e.dataTransfer.setDragImage(dragPreviewContainer.current, 40, 40)
+        e.dataTransfer.setData('text/thread-drag', '');
+        // Advertised on dragover so folder drop zones can refuse drops
+        // when the dragged selection has no editable thread (archive,
+        // spam, trash and restore-to-inbox all require edit rights).
+        if (hasEditableInDrag) {
+            e.dataTransfer.setData('text/thread-editable', '');
         }
+
+        // Hide native drag image by using an offscreen empty element as drag image
+        // (Safari-compatible — `new Image()` with an inline data URL is unreliable
+        // because Safari requires the image to be loaded/in the DOM).
+        // The ThreadDragPreview portal follows the cursor instead.
+        const ghost = document.createElement('div');
+        ghost.style.cssText = 'position:absolute;top:-1000px;left:-1000px;width:1px;height:1px;';
+        document.body.appendChild(ghost);
+        e.dataTransfer.setDragImage(ghost, 0, 0);
+        setTimeout(() => document.body.removeChild(ghost), 0);
     }
     const handleDragEnd = () => {
         setIsDragging(false);
         setGlobalDragging(false);
+        setIsExiting(true);
+    };
+
+    const handleExitEnd = () => {
+        setIsExiting(false);
+        setDragAction(null);
     };
 
     const dragCount = selectedThreadIds.size > 0 ? selectedThreadIds.size : 1;
+
+    // Clear any pending drag action if the item unmounts before the
+    // exit animation completes (e.g. archived after label assignment),
+    // otherwise the stale action would leak into the next drag preview.
+    useEffect(() => () => setDragAction(null), [setDragAction]);
+
 
     return (
         <>
@@ -260,8 +294,12 @@ export const ThreadItem = ({ thread, isSelected, onToggleSelection, selectedThre
                  </div>
                 </div>
             </Link>
-            {isDragging && dragPreviewContainer.current && createPortal(
-                <ThreadDragPreview count={dragCount} />,
+            {(isDragging || isExiting) && dragPreviewContainer.current && createPortal(
+                <ThreadDragPreview
+                    count={dragCount}
+                    exiting={isExiting}
+                    onExitEnd={handleExitEnd}
+                />,
                 dragPreviewContainer.current
             )}
         </>
