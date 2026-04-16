@@ -105,7 +105,8 @@ class TaskDetailView(APIView):
             result_data["error"] = task_result.result["error"]
         elif isinstance(task_result.result, Exception):
             logger.exception(
-                "Task %s failed with unhandled exception", task_id,
+                "Task %s failed with unhandled exception",
+                task_id,
                 exc_info=task_result.result,
             )
             result_data["status"] = "FAILURE"

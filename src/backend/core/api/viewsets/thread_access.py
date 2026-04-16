@@ -70,16 +70,17 @@ class ThreadAccessViewSet(
     def perform_destroy(self, instance):
         """Prevent deletion of the last editor access on a thread."""
         if instance.role == enums.ThreadAccessRoleChoices.EDITOR:
-            remaining_editors = (
+            # Evaluate the queryset to actually acquire FOR UPDATE locks;
+            # .count() generates SELECT COUNT(*) which drops FOR UPDATE.
+            editor_ids = list(
                 models.ThreadAccess.objects.select_for_update()
                 .filter(
                     thread=instance.thread,
                     role=enums.ThreadAccessRoleChoices.EDITOR,
                 )
-                .exclude(id=instance.id)
-                .exists()
+                .values_list("id", flat=True)
             )
-            if not remaining_editors:
+            if len(editor_ids) <= 1:
                 raise ValidationError(
                     "Cannot delete the last editor access of a thread."
                 )

@@ -80,7 +80,6 @@ class TestTaskDetailViewPermissions:
             assert response.status_code == status.HTTP_200_OK
             assert response.data["result"]["imported"] == 42
 
-
     def test_api_task_detail_worker_crash_exception_should_be_serialized(self):
         """Test that a task with an exception result (e.g. WorkerLostError)
         returns a properly serialized error instead of a 500."""
