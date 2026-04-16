@@ -536,11 +536,6 @@ export const MessageForm = ({
     }
 
     useEffect(() => {
-        if (draftMessage) form.setFocus("subject");
-        else form.setFocus("to")
-    }, []);
-
-    useEffect(() => {
         startAutoSave();
         return () => stopAutoSave();
     }, [draft]);
@@ -599,6 +594,7 @@ export const MessageForm = ({
                     <RhfContactComboBox
                         name="to"
                         label={t("To:")}
+                        autoFocus={mode === "forward"}
                         // icon={<span className="material-icons">group</span>}
                         text={form.formState.errors.to && !Array.isArray(form.formState.errors.to) ? form.formState.errors.to.message : t("Enter the email addresses of the recipients separated by commas")}
                         textItems={Array.isArray(form.formState.errors.to) ? form.formState.errors.to?.map((error, index) => t(error!.message as string, { email: form.getValues('to')?.[index] })) : []}
@@ -668,7 +664,7 @@ export const MessageForm = ({
                         draft={draft}
                         submitDraft={form.handleSubmit(saveDraft)}
                         ensureDraft={ensureDraft}
-                        blockNoteOptions={{ autofocus: canWriteMessages ? "end" : undefined }}
+                        blockNoteOptions={{ autofocus: canWriteMessages && mode !== "forward" ? "end" : undefined }}
                         uploadInlineImage={attachmentHook.uploadInlineImage}
                         uploadFiles={attachmentHook.uploadFiles}
                         removeInlineImage={attachmentHook.removeInlineImage}
