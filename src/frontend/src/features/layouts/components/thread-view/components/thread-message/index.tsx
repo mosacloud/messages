@@ -321,7 +321,16 @@ export const ThreadMessage = forwardRef<HTMLSpanElement, ThreadMessageProps>(
                 />
 
                 {isMessageReady && showReplyForm && (
-                    <section className="thread-message__reply-form" ref={replyFormRef}>
+                    <section
+                        className="thread-message__reply-form"
+                        ref={replyFormRef}
+                        onFocus={() => threadViewContext.setIsMessageFormFocused(true)}
+                        onBlur={(e) => {
+                            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                                threadViewContext.setIsMessageFormFocused(false);
+                            }
+                        }}
+                    >
                         <MessageReplyForm
                             mode={replyFormMode}
                             handleClose={handleCloseReplyForm}

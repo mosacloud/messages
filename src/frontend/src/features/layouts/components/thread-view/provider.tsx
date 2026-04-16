@@ -1,6 +1,7 @@
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from "react";
 
 type ThreadViewProviderProps = PropsWithChildren<{
+    threadId: string;
     messageIds: readonly string[];
 }>
 
@@ -11,6 +12,8 @@ type ThreadViewContextType = {
     reset: (messageId?: string) => void;
     hasBeenInitialized: boolean;
     setHasBeenInitialized: (hasBeenInitialized: boolean) => void;
+    isMessageFormFocused: boolean;
+    setIsMessageFormFocused: (focused: boolean) => void;
 }
 
 const ThreadViewContext = createContext<ThreadViewContextType | undefined>(undefined);
@@ -19,9 +22,10 @@ const ThreadViewContext = createContext<ThreadViewContextType | undefined>(undef
  * Provider to manage the thread view context.
  * It allows to track the readiness state of the thread view (Does all messages content are loaded?).
  */
-const ThreadViewProvider = ({ messageIds, children }: ThreadViewProviderProps) => {
+const ThreadViewProvider = ({ threadId, messageIds, children }: ThreadViewProviderProps) => {
     const [messagesReadiness, setMessagesReadiness] = useState(new Map(messageIds.map((id) => [id, false])));
     const [hasBeenInitialized, setHasBeenInitialized] = useState(false);
+    const [isMessageFormFocused, setIsMessageFormFocused] = useState(false);
 
     const isReady = useMemo(() => {
         return Array.from(messagesReadiness.values()).every((isReady) => isReady === true);
@@ -62,10 +66,17 @@ const ThreadViewProvider = ({ messageIds, children }: ThreadViewProviderProps) =
         reset,
         hasBeenInitialized,
         setHasBeenInitialized,
-        messagesReadiness,
-    }), [isReady, setMessageReadiness, isMessageReady, reset, messagesReadiness, hasBeenInitialized, setHasBeenInitialized]);
+        isMessageFormFocused,
+        setIsMessageFormFocused,
+    }), [isReady, setMessageReadiness, isMessageReady, reset, hasBeenInitialized, setHasBeenInitialized, isMessageFormFocused]);
 
 
+
+    // Reset focus state when the active thread changes to prevent a stale
+    // `true` from hiding ThreadEventInput on the next thread.
+    useEffect(() => {
+        setIsMessageFormFocused(false);
+    }, [threadId]);
 
     // If the list of message IDs changes, update the readiness state context
     useEffect(() => {

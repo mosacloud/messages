@@ -335,6 +335,7 @@ const ThreadViewComponent = ({ threadItems, mailboxId, thread, showTrashedMessag
                     editingEvent={editingEvent}
                     onCancelEdit={() => setEditingEvent(null)}
                     onEventCreated={scrollToBottom}
+                    containerRef={rootRef}
                 />
             )}
         </div>
@@ -410,7 +411,7 @@ export const ThreadView = () => {
     }
 
     return (
-        <ThreadViewProvider messageIds={messageIds}>
+        <ThreadViewProvider threadId={selectedThread!.id} messageIds={messageIds}>
             <ThreadViewComponent
                 mailboxId={selectedMailbox!.id}
                 thread={selectedThread!}
