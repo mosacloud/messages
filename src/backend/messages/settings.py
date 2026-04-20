@@ -78,6 +78,14 @@ class Base(Configuration):
     OPENSEARCH_TIMEOUT = values.PositiveIntegerValue(
         20, environ_name="OPENSEARCH_TIMEOUT", environ_prefix=None
     )
+    OPENSEARCH_BULK_TIMEOUT = values.PositiveIntegerValue(
+        60, environ_name="OPENSEARCH_BULK_TIMEOUT", environ_prefix=None
+    )
+    OPENSEARCH_BULK_MAX_BYTES = values.PositiveIntegerValue(
+        50 * 1024 * 1024,
+        environ_name="OPENSEARCH_BULK_MAX_BYTES",
+        environ_prefix=None,
+    )
     OPENSEARCH_INDEX_THREADS = values.BooleanValue(
         True, environ_name="OPENSEARCH_INDEX_THREADS", environ_prefix=None
     )

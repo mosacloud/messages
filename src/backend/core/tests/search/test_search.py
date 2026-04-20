@@ -2,6 +2,7 @@
 
 from unittest import mock
 
+from django.conf import settings
 from django.test import override_settings
 from django.utils import timezone
 
@@ -446,6 +447,13 @@ class TestSearchReindexAllBulk:
         actions = mock_bulk.call_args[0][1]
         assert len(actions) == 2  # 1 thread doc + 1 message doc
         assert kwargs["raise_on_error"] is False
+        # Timeout, payload-size cap and retry policy must be forwarded so that
+        # large reindex runs don't hit opensearch-py defaults (10s timeout,
+        # no bulk-level retry on 429).
+        assert kwargs["request_timeout"] == settings.OPENSEARCH_BULK_TIMEOUT
+        assert kwargs["max_chunk_bytes"] == settings.OPENSEARCH_BULK_MAX_BYTES
+        assert kwargs["max_retries"] == 3
+        assert kwargs["initial_backoff"] == 2
 
     def test_search_reindex_all_progress_callback(self, mock_es_client_index):
         """Test that the progress callback is called."""

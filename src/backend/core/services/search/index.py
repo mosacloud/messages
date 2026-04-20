@@ -55,7 +55,11 @@ def _flush_bulk_actions(es, actions):
 def get_opensearch_client():
     """Get OpenSearch client instance."""
     if not hasattr(get_opensearch_client, "cached_client"):
-        kwargs = {"hosts": settings.OPENSEARCH_HOSTS}
+        kwargs = {
+            "hosts": settings.OPENSEARCH_HOSTS,
+            "timeout": settings.OPENSEARCH_TIMEOUT,
+            "retry_on_timeout": True,
+        }
         if settings.OPENSEARCH_CA_CERTS:
             kwargs["ca_certs"] = settings.OPENSEARCH_CA_CERTS
         get_opensearch_client.cached_client = OpenSearch(**kwargs)
