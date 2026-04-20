@@ -33,101 +33,162 @@ def extract_snippet(parsed_data: dict[str, Any], fallback: str = "") -> str:
     return fallback[:SNIPPET_MAX_LENGTH]
 
 
-class ThreadStatsUpdateDeferrer:
+class AbstractBatchingDeferrer:
     """
-    Manages deferred thread.update_stats() calls.
+    Base class for scoped batching of deferred actions via ContextVar.
+    Do not use this class directly; implement a subclass instead.
 
-    Use the context manager to batch multiple delivery status updates
-    and trigger a single update_stats() call per affected thread.
+    Subclasses must implement `_flush(items)` method with the action to run once on the
+    outermost `defer()` exit with the set of collected items. Nested
+    `defer()` calls reuse the outermost scope's collection; only the
+    outermost exit flushes.
+
+    Subclasses must set `_context_var_name` class attribute.
+    A fresh ContextVar is bound per subclass via `__init_subclass__`
+    so that subclasses don't share state.
+    """
+
+    _context_var_name: str = ""
+    _deferred_items: ContextVar[set | None]
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        name = cls._context_var_name or f"batching_deferrer:{cls.__name__}"
+        cls._deferred_items = ContextVar(name, default=None)
+
+    @classmethod
+    def is_deferred(cls) -> bool:
+        """Return whether a `defer()` scope is currently active."""
+        return cls._deferred_items.get() is not None
+
+    @classmethod
+    def defer_item(cls, item) -> bool:
+        """Add `item` to the current scope; return True if a scope is active.
+
+        Returns True when the caller must skip the immediate action (the item
+        is batched). Returns False when no scope is active (caller acts
+        immediately).
+        """
+        items = cls._deferred_items.get()
+        if items is None:
+            return False
+        if item is not None:
+            items.add(item)
+        return True
+
+    @classmethod
+    @contextmanager
+    def defer(cls):
+        """Collect items during the scope; flush once on outermost exit."""
+        is_deferring = cls.is_deferred()
+
+        if not is_deferring:
+            cls._deferred_items.set(set())
+
+        try:
+            yield
+        finally:
+            if not is_deferring:
+                items = cls._deferred_items.get()
+                cls._deferred_items.set(None)
+                if items:
+                    cls._flush(items)
+
+    @classmethod
+    def _flush(cls, items: set) -> None:
+        """Subclass hook called with collected items on outermost scope exit."""
+        raise NotImplementedError
+
+
+class ThreadStatsUpdateDeferrer(AbstractBatchingDeferrer):
+    """Batch `Thread.update_stats()` calls.
 
     Example:
         with ThreadStatsUpdateDeferrer.defer():
             for recipient in recipients:
                 recipient.delivery_status = new_status
                 recipient.save()
-        # update_stats() called once per affected thread at exit
+        # One update_stats() call per affected thread at scope exit.
 
-    Errors during update_stats() are logged but do not propagate,
-    ensuring the main logic is not impacted by stats update failures.
+    Per-thread update errors are logged; the main logic is never impacted.
     """
 
-    # Set of thread IDs to ensure uniqueness even if the same thread
-    # is loaded via different ORM queries within the defer() block
-    _deferred_thread_ids: ContextVar[set | None] = ContextVar(
-        "deferred_thread_ids", default=None
-    )
+    _context_var_name = "deferred_thread_stats_ids"
+
+    # Cap the SQL ``IN`` clause and bound the resultset materialized per
+    # query. Without chunking, a large bulk import (>10k unique threads)
+    # would issue a single ``filter(id__in=[…])`` whose payload and planner
+    # cost grow with the input size.
+    STATS_FLUSH_BATCH_SIZE = 500
 
     @classmethod
-    def _get_deferred_thread_ids(cls):
-        """Get the set of thread IDs pending stats update, or None if not deferring."""
-        return cls._deferred_thread_ids.get()
+    def _flush(cls, items):
+        # Lazy import: this module is loaded by settings.py (for JSONValue /
+        # ThrottleRateValue), so importing Django models at module level
+        # would hit AppRegistryNotReady before the apps finish loading.
+        # pylint: disable-next=import-outside-toplevel
+        from core.models import Thread
+
+        item_list = list(items)
+        for start in range(0, len(item_list), cls.STATS_FLUSH_BATCH_SIZE):
+            chunk_ids = item_list[start : start + cls.STATS_FLUSH_BATCH_SIZE]
+            for thread in Thread.objects.filter(id__in=chunk_ids):
+                try:
+                    thread.update_stats()
+                # pylint: disable=broad-exception-caught
+                except Exception:
+                    logger.exception("Failed to update stats for thread %s", thread.id)
+
+
+class ThreadReindexDeferrer(AbstractBatchingDeferrer):
+    """Batch OpenSearch thread reindex enqueues within a scope.
+
+    When active, signal handlers collect thread IDs instead of enqueuing one
+    Celery task per row. On outermost scope exit, collected IDs are sliced
+    into chunks of ``DEFAULT_FLUSH_BATCH_SIZE`` and one
+    ``bulk_reindex_threads_task`` is enqueued per chunk — avoiding broker
+    saturation and worker churn during bulk delivery flows (imports,
+    migrations, …) while bounding each task's payload to match the cap
+    applied by ``process_pending_reindex``.
+
+    Example:
+        with ThreadReindexDeferrer.defer():
+            for email in large_mailbox:
+                deliver_inbound_message(...)
+        # One or more bulk_reindex_threads_task.delay(chunk) at scope exit,
+        # each chunk capped at DEFAULT_FLUSH_BATCH_SIZE thread IDs.
+    """
+
+    _context_var_name = "deferred_reindex_thread_ids"
 
     @classmethod
-    def _set_deferred_thread_ids(cls, thread_ids):
-        """Set the deferred thread IDs set."""
-        cls._deferred_thread_ids.set(thread_ids)
+    def _flush(cls, items):
+        # Lazy imports: this module is loaded by settings.py (for JSONValue /
+        # ThrottleRateValue), and the search modules pull in Django models
+        # and the Celery app — both would fail at top-level import time.
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.coalescer import (
+            DEFAULT_FLUSH_BATCH_SIZE,
+            enqueue_thread_reindex,
+        )
 
-    @classmethod
-    def is_deferred(cls):
-        """Check if thread stats updates are currently being deferred."""
-        return cls._get_deferred_thread_ids() is not None
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_reindex_threads_task
 
-    @classmethod
-    def defer_for(cls, thread):
-        """
-        Mark a thread for deferred stats update.
-
-        If deferring is active, adds the thread ID to the deferred set and returns True.
-        If not deferring, returns False (caller should update immediately).
-        """
-        deferred = cls._get_deferred_thread_ids()
-        if deferred is not None:
-            deferred.add(thread.id)
-            return True
-        return False
-
-    @classmethod
-    @contextmanager
-    def defer(cls):
-        """
-        Context manager to defer thread.update_stats() calls.
-
-        Use this when performing bulk updates that could trigger thread.update_stats()
-        multiple times unnecessarily (e.g. updating delivery status of multiple recipients).
-        With this context manager, stats will be updated once when exiting the context.
-
-        Supports nested contexts - only the outermost one triggers updates.
-
-        Errors during update_stats() are caught and logged to ensure the main
-        logic is not impacted by stats update failures.
-        """
-        already_deferring = cls.is_deferred()
-
-        if not already_deferring:
-            cls._set_deferred_thread_ids(set())
-
-        try:
-            yield
-        finally:
-            if not already_deferring:
-                deferred_ids = cls._get_deferred_thread_ids()
-                cls._set_deferred_thread_ids(None)
-
-                # Update stats for all affected threads
-                # Errors are caught to not impact the main logic
-                if deferred_ids:
-                    # Import here to avoid circular imports
-                    # pylint: disable-next=import-outside-toplevel
-                    from core.models import Thread
-
-                    for thread in Thread.objects.filter(id__in=deferred_ids):
-                        try:
-                            thread.update_stats()
-                        # pylint: disable=broad-exception-caught
-                        except Exception:
-                            logger.exception(
-                                "Failed to update stats for thread %s", thread.id
-                            )
+        thread_ids = [str(tid) for tid in items]
+        for start in range(0, len(thread_ids), DEFAULT_FLUSH_BATCH_SIZE):
+            chunk = thread_ids[start : start + DEFAULT_FLUSH_BATCH_SIZE]
+            try:
+                bulk_reindex_threads_task.delay(chunk)
+            # pylint: disable=broad-exception-caught
+            except Exception:
+                logger.exception(
+                    "Failed to enqueue bulk_reindex_threads_task for %d threads; "
+                    "returning them to the pending reindex set for retry",
+                    len(chunk),
+                )
+                for tid in chunk:
+                    enqueue_thread_reindex(tid)
 
 
 class JSONValue(values.Value):

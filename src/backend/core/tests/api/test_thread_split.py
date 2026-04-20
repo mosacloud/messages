@@ -259,11 +259,7 @@ def test_split_thread_at_first_message(api_client):
 # --- Success tests ---
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
-def test_split_thread_at_second_message_in_two_message_thread(
-    _mock_index_msg, _mock_reindex_thread, api_client
-):
+def test_split_thread_at_second_message_in_two_message_thread(api_client):
     """Split at the 2nd message in a 2-message thread."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
@@ -292,9 +288,7 @@ def test_split_thread_at_second_message_in_two_message_thread(
     assert messages[0].thread_id == thread.id
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
-def test_split_thread_multi_message(_mock_index_msg, _mock_reindex_thread, api_client):
+def test_split_thread_multi_message(api_client):
     """Split at the 3rd message in a 5-message thread: msgs 3-5 move, 1-2 stay."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
@@ -324,11 +318,7 @@ def test_split_thread_multi_message(_mock_index_msg, _mock_reindex_thread, api_c
         assert msg.thread_id == new_thread.id
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
-def test_split_thread_accesses_copied(
-    _mock_index_msg, _mock_reindex_thread, api_client
-):
+def test_split_thread_accesses_copied(api_client):
     """All ThreadAccess entries are copied to the new thread."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
@@ -371,11 +361,7 @@ def test_split_thread_accesses_copied(
     ).exists()
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
-def test_split_thread_accesses_preserve_read_at_and_starred_at(
-    _mock_index_msg, _mock_reindex_thread, api_client
-):
+def test_split_thread_accesses_preserve_read_at_and_starred_at(api_client):
     """read_at is always preserved. starred_at is only preserved when it is
     more recent than the split message creation date."""
     user = UserFactory()
@@ -426,9 +412,7 @@ def test_split_thread_accesses_preserve_read_at_and_starred_at(
     assert access2.starred_at == split_message.created_at + timedelta(hours=1)
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
-def test_split_thread_labels_copied(_mock_index_msg, _mock_reindex_thread, api_client):
+def test_split_thread_labels_copied(api_client):
     """Labels from the old thread are also applied to the new thread."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
@@ -450,11 +434,7 @@ def test_split_thread_labels_copied(_mock_index_msg, _mock_reindex_thread, api_c
     assert label2.id in new_labels
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
-def test_split_thread_parent_references_fixed(
-    _mock_index_msg, _mock_reindex_thread, api_client
-):
+def test_split_thread_parent_references_fixed(api_client):
     """Cross-thread parent references are set to None after split."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
@@ -494,11 +474,7 @@ def test_split_thread_parent_references_fixed(
     assert msg3.parent_id == msg2.id
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
-def test_split_thread_stats_snippet_updated(
-    _mock_index_msg, _mock_reindex_thread, api_client
-):
+def test_split_thread_stats_snippet_updated(api_client):
     """Both old and new threads have their stats and snippet updated after split."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
@@ -528,11 +504,7 @@ def test_split_thread_stats_snippet_updated(
     assert new_thread.snippet is not None
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
-def test_split_thread_summaries_invalidated(
-    _mock_index_msg, _mock_reindex_thread, api_client
-):
+def test_split_thread_summaries_invalidated(api_client):
     """Both old and new thread summaries are set to None after split."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
@@ -554,11 +526,7 @@ def test_split_thread_summaries_invalidated(
     assert new_thread.summary is None
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
-def test_split_thread_subject_inherited(
-    _mock_index_msg, _mock_reindex_thread, api_client
-):
+def test_split_thread_subject_inherited(api_client):
     """New thread inherits subject from split message or original thread."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
@@ -585,11 +553,7 @@ def test_split_thread_subject_inherited(
     assert new_thread.subject == "Second msg subject"
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
-def test_split_thread_subject_fallback_to_original(
-    _mock_index_msg, _mock_reindex_thread, api_client
-):
+def test_split_thread_subject_fallback_to_original(api_client):
     """When split message has no subject, new thread inherits from original."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
@@ -616,12 +580,12 @@ def test_split_thread_subject_fallback_to_original(
     assert new_thread.subject == "Original Subject"
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
+@override_settings(OPENSEARCH_INDEX_THREADS=True)
+@patch("core.signals.enqueue_thread_reindex")
 def test_split_thread_opensearch_reindex_called(
-    mock_index_msg, mock_reindex_thread, api_client
+    mock_enqueue_reindex, api_client, django_capture_on_commit_callbacks
 ):
-    """OpenSearch reindex tasks are called for moved messages and both threads."""
+    """Both threads are scheduled for reindex after a split."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
 
@@ -629,29 +593,28 @@ def test_split_thread_opensearch_reindex_called(
     thread, messages = _create_thread_with_messages(mailbox, count=3)
     _setup_editor_access(user, mailbox, thread)
 
-    # Reset mocks to ignore calls from setup (MessageFactory triggers signals)
-    mock_index_msg.reset_mock()
-    mock_reindex_thread.reset_mock()
+    # Reset the mock to ignore calls from setup (MessageFactory triggers signals)
+    mock_enqueue_reindex.reset_mock()
 
     url = _get_split_url(thread.id)
-    response = api_client.post(url, {"message_id": str(messages[1].id)})
+    # The reindex enqueue runs inside ``transaction.on_commit``; pytest-django's
+    # rolling test transaction never commits, so we capture & fire the
+    # callbacks manually to exercise the real signal path.
+    with django_capture_on_commit_callbacks(execute=True):
+        response = api_client.post(url, {"message_id": str(messages[1].id)})
     assert response.status_code == status.HTTP_201_CREATED
 
     new_thread_id = response.data["id"]
 
-    # reindex_thread_task should be called for both threads
-    thread_ids = {str(thread.id), new_thread_id}
-    actual_thread_calls = {
-        call.args[0] for call in mock_reindex_thread.delay.call_args_list
+    # enqueue_thread_reindex must be called for both threads.
+    expected_thread_ids = {str(thread.id), str(new_thread_id)}
+    actual_thread_ids = {
+        str(call.args[0]) for call in mock_enqueue_reindex.call_args_list
     }
-    assert actual_thread_calls == thread_ids
+    assert expected_thread_ids <= actual_thread_ids
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
-def test_split_thread_returns_new_thread_data(
-    _mock_index_msg, _mock_reindex_thread, api_client
-):
+def test_split_thread_returns_new_thread_data(api_client):
     """The response contains the serialized new thread."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
@@ -680,11 +643,7 @@ def _force_event_created_at(event, created_at):
     event.refresh_from_db()
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
-def test_split_thread_moves_free_event_after_split_point(
-    _mock_index_msg, _mock_reindex_thread, api_client
-):
+def test_split_thread_moves_free_event_after_split_point(api_client):
     """A ThreadEvent without a message FK created at or after the split point
     must follow the new thread, symmetric with how messages are split."""
     user = UserFactory()
@@ -718,11 +677,7 @@ def test_split_thread_moves_free_event_after_split_point(
     assert event_before.thread_id == thread.id
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
-def test_split_thread_moves_event_attached_to_moved_message(
-    _mock_index_msg, _mock_reindex_thread, api_client
-):
+def test_split_thread_moves_event_attached_to_moved_message(api_client):
     """A ThreadEvent attached to a moved message must follow its message, even
     if its own created_at is earlier than the split point."""
     user = UserFactory()
@@ -755,11 +710,7 @@ def test_split_thread_moves_event_attached_to_moved_message(
     assert event_on_staying.thread_id == thread.id
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
-def test_split_thread_moves_user_events_with_their_thread_event(
-    _mock_index_msg, _mock_reindex_thread, api_client
-):
+def test_split_thread_moves_user_events_with_their_thread_event(api_client):
     """UserEvent.thread is denormalized from thread_event.thread. When an
     event is moved, its UserEvents must be updated to keep the invariant."""
     user = UserFactory()
@@ -799,11 +750,7 @@ def test_split_thread_moves_user_events_with_their_thread_event(
         assert ue.thread_id == ue.thread_event.thread_id
 
 
-@patch("core.signals.reindex_thread_task")
-@patch("core.signals.index_message_task")
-def test_split_thread_events_are_counted_on_new_thread(
-    _mock_index_msg, _mock_reindex_thread, api_client
-):
+def test_split_thread_events_are_counted_on_new_thread(api_client):
     """After split, events must be distributed so that counts add up on both
     threads — guards against a regression where events would stay on the old
     thread or be duplicated."""

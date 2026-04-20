@@ -16,6 +16,7 @@ from core.mda.inbound import deliver_inbound_message
 from core.mda.rfc5322 import parse_email_message
 from core.mda.rfc5322.parser import parse_date
 from core.models import Mailbox
+from core.utils import ThreadReindexDeferrer, ThreadStatsUpdateDeferrer
 
 from messages.celery_app import app as celery_app
 
@@ -266,54 +267,63 @@ def process_mbox_file_task(self, file_key: str, recipient_id: str) -> Dict[str, 
                 )
             )
 
-            # Pass 2: Process messages in chronological order
-            for i, msg_index in enumerate(message_indices, 1):
-                current_message = i
-                try:
-                    result = {
-                        "message_status": f"Processing message {i} of {total_messages}",
-                        "total_messages": total_messages,
-                        "success_count": success_count,
-                        "failure_count": failure_count,
-                        "type": "mbox",
-                        "current_message": i,
-                    }
-                    self.update_state(
-                        state="PROGRESS",
-                        meta={
-                            "result": result,
-                            "error": None,
-                        },
-                    )
+            # Pass 2: Process messages in chronological order. The deferrers
+            # batch all OpenSearch indexing and thread-stats updates into a
+            # single bulk task at context exit.
+            with (
+                ThreadReindexDeferrer.defer(),
+                ThreadStatsUpdateDeferrer.defer(),
+            ):
+                for i, msg_index in enumerate(message_indices, 1):
+                    current_message = i
+                    try:
+                        result = {
+                            "message_status": f"Processing message {i} of {total_messages}",
+                            "total_messages": total_messages,
+                            "success_count": success_count,
+                            "failure_count": failure_count,
+                            "type": "mbox",
+                            "current_message": i,
+                        }
+                        self.update_state(
+                            state="PROGRESS",
+                            meta={
+                                "result": result,
+                                "error": None,
+                            },
+                        )
 
-                    reader.seek(msg_index.start_byte)
-                    message_content = reader.read(
-                        msg_index.end_byte - msg_index.start_byte + 1
-                    )
+                        reader.seek(msg_index.start_byte)
+                        message_content = reader.read(
+                            msg_index.end_byte - msg_index.start_byte + 1
+                        )
 
-                    if len(message_content) > settings.MAX_INCOMING_EMAIL_SIZE:
-                        logger.warning(
-                            "Skipping oversized message: %d bytes",
-                            len(message_content),
+                        if len(message_content) > settings.MAX_INCOMING_EMAIL_SIZE:
+                            logger.warning(
+                                "Skipping oversized message: %d bytes",
+                                len(message_content),
+                            )
+                            failure_count += 1
+                            continue
+
+                        parsed_email = parse_email_message(message_content)
+                        if deliver_inbound_message(
+                            str(recipient),
+                            parsed_email,
+                            message_content,
+                            is_import=True,
+                        ):
+                            success_count += 1
+                        else:
+                            failure_count += 1
+                    except Exception as e:
+                        capture_exception(e)
+                        logger.exception(
+                            "Error processing message from mbox file for recipient %s: %s",
+                            recipient_id,
+                            e,
                         )
                         failure_count += 1
-                        continue
-
-                    parsed_email = parse_email_message(message_content)
-                    if deliver_inbound_message(
-                        str(recipient), parsed_email, message_content, is_import=True
-                    ):
-                        success_count += 1
-                    else:
-                        failure_count += 1
-                except Exception as e:
-                    capture_exception(e)
-                    logger.exception(
-                        "Error processing message from mbox file for recipient %s: %s",
-                        recipient_id,
-                        e,
-                    )
-                    failure_count += 1
 
         result = {
             "message_status": "Completed processing messages",

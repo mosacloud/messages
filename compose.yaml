@@ -163,6 +163,7 @@ services:
     volumes:
       - ./src/backend:/app
       - ./data/static:/data/static
+    mem_limit: 2G
     depends_on:
       - backend-dev
 

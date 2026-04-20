@@ -84,6 +84,15 @@ class Base(Configuration):
     OPENSEARCH_CA_CERTS = values.Value(
         None, environ_name="OPENSEARCH_CA_CERTS", environ_prefix=None
     )
+    # Interval (seconds) at which the Celery Beat task drains the Redis
+    # coalescing buffers (reindex + delete) and enqueues bulk thread tasks.
+    # Longer intervals reduce Celery/OpenSearch load at the cost of search
+    # result staleness for recent writes.
+    SEARCH_REINDEX_TASKS_INTERVAL = values.PositiveIntegerValue(
+        30,
+        environ_name="SEARCH_REINDEX_TASKS_INTERVAL",
+        environ_prefix=None,
+    )
 
     # Upload limits
     DATA_UPLOAD_MAX_MEMORY_SIZE = values.PositiveIntegerValue(

@@ -2,6 +2,7 @@
 
 # pylint: disable=too-many-positional-arguments,unused-argument
 import time
+from unittest.mock import patch
 
 from django.conf import settings
 from django.urls import reverse
@@ -9,7 +10,7 @@ from django.urls import reverse
 import pytest
 from rest_framework.test import APIClient
 
-from core import enums
+from core import enums, models
 from core.factories import (
     ContactFactory,
     MailboxAccessFactory,
@@ -25,6 +26,8 @@ from core.services.search import (
     delete_index,
     get_opensearch_client,
 )
+from core.services.search.coalescer import process_pending_reindex
+from core.services.search.index import reindex_bulk_threads
 from core.services.search.mapping import MESSAGE_INDEX
 
 
@@ -83,7 +86,14 @@ def fixture_wait_for_indexing():
     """Fixture to create a function that waits for indexing to complete."""
 
     def _wait(max_retries=10, delay=0.5):
-        """Wait for indexing to complete by refreshing the index."""
+        """Wait for indexing to complete by refreshing the index.
+
+        Drains the coalescing buffers (reindex + delete) first so any thread
+        IDs queued by signal handlers are handed off to the bulk tasks. Under
+        ``CELERY_TASK_ALWAYS_EAGER=True`` the tasks run synchronously, which
+        makes the documents visible as soon as OpenSearch refreshes.
+        """
+        process_pending_reindex()
         es = get_opensearch_client()
         for _ in range(max_retries):
             try:
@@ -144,7 +154,7 @@ def fixture_create_test_thread(test_mailbox, wait_for_indexing):
     len(settings.OPENSEARCH_HOSTS) == 0,
     reason="OpenSearch is not configured",
 )
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 class TestSearchE2E:
     """End-to-end tests for OpenSearch search functionality."""
 
@@ -207,6 +217,54 @@ class TestSearchE2E:
         assert response.status_code == 200
         thread_ids = [t["id"] for t in response.data["results"]]
         assert str(thread.id) in thread_ids
+
+    def test_reindex_preserves_message_when_doc_build_fails(
+        self,
+        setup_search,
+        api_client,
+        test_url,
+        create_test_thread,
+        test_mailbox,
+        wait_for_indexing,
+    ):
+        """A message whose doc cannot be rebuilt must not be purged from the index.
+
+        Guards against a regression of ``_purge_orphan_docs``: when
+        ``_build_message_doc`` returns ``None`` (parse error on a blob, for
+        instance), the message row still exists in the DB, so its index
+        entry — if any — is closer to the truth than nothing. The purge
+        must treat it like any other indexed ID and skip it.
+        """
+        # pylint: disable-next=import-outside-toplevel
+
+        thread, message = create_test_thread(
+            subject="Purge Guard", content="A specific phrase we can search for"
+        )
+
+        # Sanity check: the message is searchable before the simulated failure.
+        response = api_client.get(f"{test_url}?search=specific")
+        assert str(thread.id) in [t["id"] for t in response.data["results"]]
+
+        failing_message_id = str(message.id)
+
+        def selective_build(msg, *args, **kwargs):  # pylint: disable=unused-argument
+            if str(msg.id) == failing_message_id:
+                return None
+            return {"dummy": True}
+
+        with patch(
+            "core.services.search.index._build_message_doc",
+            side_effect=selective_build,
+        ):
+            reindex_bulk_threads(models.Thread.objects.filter(id=thread.id))
+
+        wait_for_indexing()
+
+        es = get_opensearch_client()
+        # pylint: disable-next=unexpected-keyword-arg
+        assert es.exists(
+            index=MESSAGE_INDEX, id=failing_message_id, routing=str(thread.id)
+        ), "Message doc was purged despite its DB row still existing"
 
     def test_multiple_threads_in_search_results(
         self,

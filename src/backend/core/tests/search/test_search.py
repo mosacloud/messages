@@ -6,6 +6,7 @@ from django.test import override_settings
 from django.utils import timezone
 
 import pytest
+from opensearchpy.exceptions import TransportError
 
 from core.factories import (
     BlobFactory,
@@ -548,3 +549,29 @@ class TestSearchReindexAllBulk:
 
         assert result["status"] == "success"
         mock_logger.error.assert_called_with("Bulk indexing error: %s", bulk_errors[0])
+
+    def test_bulk_transport_error_is_caught_and_counted_as_failure(
+        self, mock_es_client_index
+    ):
+        """A TransportError from bulk() must not abort the reindex loop."""
+        thread = ThreadFactory()
+        mailbox = MailboxFactory()
+        ThreadAccessFactory(mailbox=mailbox, thread=thread)
+        MessageFactory(thread=thread)
+
+        mock_es_client_index.indices.exists.return_value = False
+
+        with (
+            mock.patch(
+                "core.services.search.index.bulk",
+                side_effect=TransportError(504, "timeout", {}),
+            ),
+            mock.patch("core.services.search.index.logger") as mock_logger,
+        ):
+            result = reindex_all()
+
+        # The call must return normally with a non-zero failure_count rather
+        # than propagating the TransportError and losing coalescer IDs.
+        assert result["status"] == "success"
+        assert result["failure_count"] == 2  # 1 thread doc + 1 message doc
+        mock_logger.exception.assert_called_once()

@@ -73,6 +73,7 @@ The application uses a new environment file structure with `.defaults` and `.loc
 | `OPENSEARCH_URL` | `["http://opensearch:9200"]` | OpenSearch hosts list | Optional |
 | `OPENSEARCH_TIMEOUT` | `20` | OpenSearch query timeout | Optional |
 | `OPENSEARCH_INDEX_THREADS` | `True` | Enable thread indexing | Optional |
+| `SEARCH_REINDEX_TASKS_INTERVAL` | `30` | Interval (seconds) between Celery Beat runs of `process_pending_reindex_task`, which drains the reindex and delete coalescing buffers and enqueues bulk thread tasks. Longer values cut Celery/OpenSearch load at the cost of search-result staleness. | Optional |
 
 ## Mail Processing Configuration
 
