@@ -1239,6 +1239,8 @@ class Test(Base):
     # Add a test encryption key for django-fernet-encrypted-fields
     SALT_KEY = ["test-salt-for-development-only"]
 
+    FEATURE_MAILBOX_ADMIN_CHANNELS = ["api_key", "widget"]
+
     SCHEMA_CUSTOM_ATTRIBUTES_USER = {}
     SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN = {}
 

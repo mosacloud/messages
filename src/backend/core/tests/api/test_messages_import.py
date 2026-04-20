@@ -2,7 +2,6 @@
 # pylint: disable=redefined-outer-name, unused-argument, no-value-for-parameter, too-many-lines
 
 import datetime
-import socket
 from unittest.mock import patch
 
 from django.core.files.storage import storages
@@ -27,14 +26,14 @@ def _mock_ssrf_dns():
 
     The IMAP endpoint validates the server hostname via
     ``core.services.ssrf.validate_hostname``; tests use unresolvable fixtures
-    like ``imap.example.com`` so we return a public IP to reach the mocked
-    IMAP task code.
+    like ``imap.example.com`` so we bypass validation to reach the mocked IMAP
+    task code. We patch the symbol imported into
+    ``core.services.importer.imap`` rather than ``socket.getaddrinfo``, which
+    would also break real DNS lookups (e.g. boto3 reaching the S3 bucket).
     """
     with patch(
-        "core.services.ssrf.socket.getaddrinfo",
-        return_value=[
-            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))
-        ],
+        "core.services.importer.imap.validate_hostname",
+        return_value=["93.184.216.34"],
     ):
         yield
 
