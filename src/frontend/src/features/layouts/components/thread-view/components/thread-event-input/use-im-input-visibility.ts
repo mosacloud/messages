@@ -56,14 +56,20 @@ export const useIMInputVisibility = ({
         const el = containerRef.current;
         if (!el) return;
 
+        const updateNearBottom = () => {
+            const distanceFromBottom =
+                el.scrollHeight - el.scrollTop - el.clientHeight;
+            setIsNearBottom(distanceFromBottom <= NEAR_BOTTOM_THRESHOLD);
+        };
+
+        updateNearBottom();
+
         const handleScroll = () => {
             if (rafRef.current !== null) return;
             rafRef.current = requestAnimationFrame(() => {
                 rafRef.current = null;
                 const scrollTop = el.scrollTop;
-                const distanceFromBottom =
-                    el.scrollHeight - scrollTop - el.clientHeight;
-                setIsNearBottom(distanceFromBottom <= NEAR_BOTTOM_THRESHOLD);
+                updateNearBottom();
 
                 // Detect fast downward scroll
                 const prevScrollTop = lastScrollTopRef.current;
