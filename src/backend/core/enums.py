@@ -93,6 +93,8 @@ THREAD_STATS_FIELDS_MAP = {
     "has_delivery_failed": "has_delivery_failed",
     "has_unread_mention": "has_unread_mention",
     "has_mention": "has_mention",
+    "has_assigned_to_me": "has_assigned_to_me",
+    "has_unassigned": "has_unassigned",
 }
 
 
@@ -149,6 +151,8 @@ class ThreadEventTypeChoices(models.TextChoices):
     """Defines the possible types of thread events."""
 
     IM = "im", "Instant message"
+    ASSIGN = "assign", "Assign"
+    UNASSIGN = "unassign", "Unassign"
 
 
 class ChannelScopeLevel(models.TextChoices):
@@ -278,6 +282,7 @@ class UserEventTypeChoices(models.TextChoices):
     """Defines the possible types of user events."""
 
     MENTION = "mention", "Mention"
+    ASSIGN = "assign", "Assign"
 
 
 def user_event_type_choices():

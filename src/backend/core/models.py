@@ -1449,33 +1449,57 @@ class Label(BaseModel):
 class ThreadAccessQuerySet(models.QuerySet):
     """Custom queryset exposing reusable access-scoped filters."""
 
+    # Shared ORM conditions that define "full edit rights on a thread":
+    #   - ``ThreadAccess.role == EDITOR``
+    #   - ``MailboxAccess.role`` is in ``MAILBOX_ROLES_CAN_EDIT``
+    # Single source of truth consumed by ``editable_by`` (per-user check) and
+    # ``editor_user_ids`` (per-thread listing). Keep the two
+    # ``mailbox__accesses__*`` conditions on the same ``.filter()`` call at the
+    # call site — splitting them generates independent JOINs and matches any
+    # pair of mailbox accesses satisfying either condition (false positive).
+    _EDITOR_CONDITIONS = {
+        "role": ThreadAccessRoleChoices.EDITOR,
+        "mailbox__accesses__role__in": MAILBOX_ROLES_CAN_EDIT,
+    }
+
     def editable_by(self, user, mailbox_id=None):
         """Return ThreadAccess rows granting full edit rights to `user`.
-
-        Combines BOTH conditions, which are the single source of truth
-        for "can this user edit this thread?":
-
-        - `ThreadAccess.role == EDITOR`
-        - The user's `MailboxAccess.role` on that mailbox is in
-          `MAILBOX_ROLES_CAN_EDIT`
 
         When `mailbox_id` is provided, the result is also scoped to that
         mailbox. Used by the flag, label, thread and thread-event
         endpoints to replace ad-hoc permission checks.
-
-        IMPORTANT: the two `mailbox__accesses__*` conditions MUST stay
-        inside the same `.filter()` call. If split, Django generates two
-        independent JOINs and the query matches any pair of mailbox
-        accesses satisfying either condition — a false positive.
         """
         qs = self.filter(
-            role=ThreadAccessRoleChoices.EDITOR,
+            **self._EDITOR_CONDITIONS,
             mailbox__accesses__user=user,
-            mailbox__accesses__role__in=MAILBOX_ROLES_CAN_EDIT,
         )
         if mailbox_id is not None:
             qs = qs.filter(mailbox_id=mailbox_id)
         return qs
+
+    def editor_user_ids(self, thread_id, user_ids=None):
+        """Return user ids with full edit rights on ``thread_id``.
+
+        Inverse of :meth:`editable_by`: starts from a thread and returns the
+        set of users qualifying as editors (via any mailbox sharing the
+        thread). When ``user_ids`` is provided, the result is narrowed to
+        that subset — callers can batch-validate a list of candidate
+        assignees in a single query and diff against the input.
+        """
+        filters = {
+            "thread_id": thread_id,
+            **self._EDITOR_CONDITIONS,
+        }
+        if user_ids is not None:
+            filters["mailbox__accesses__user_id__in"] = user_ids
+        # ``distinct()`` is required: a user reachable through several mailboxes
+        # sharing the thread is joined once per path and would otherwise be
+        # returned multiple times.
+        return (
+            self.filter(**filters)
+            .values_list("mailbox__accesses__user_id", flat=True)
+            .distinct()
+        )
 
 
 ThreadAccessManager = models.Manager.from_queryset(ThreadAccessQuerySet)
@@ -1593,32 +1617,58 @@ class ThreadAccess(BaseModel):
         return Q(starred_at__isnull=False)
 
 
+_ASSIGNEES_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "assignees": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "format": "uuid"},
+                    "name": {"type": "string"},
+                },
+                "required": ["id", "name"],
+                "additionalProperties": False,
+            },
+            "minItems": 1,
+        },
+    },
+    "required": ["assignees"],
+    "additionalProperties": False,
+}
+
+_IM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "content": {
+            "type": "string",
+        },
+        "mentions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "format": "uuid"},
+                    "name": {"type": "string"},
+                },
+                "required": ["id", "name"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["content"],
+    "additionalProperties": False,
+}
+
+
 class ThreadEvent(BaseModel):
     """Thread event model to store events in a thread timeline (internal comments, notifications, etc.)."""
 
     DATA_SCHEMAS = {
-        ThreadEventTypeChoices.IM: {
-            "type": "object",
-            "properties": {
-                "content": {
-                    "type": "string",
-                },
-                "mentions": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "id": {"type": "string", "format": "uuid"},
-                            "name": {"type": "string"},
-                        },
-                        "required": ["id", "name"],
-                        "additionalProperties": False,
-                    },
-                },
-            },
-            "required": ["content"],
-            "additionalProperties": False,
-        },
+        ThreadEventTypeChoices.IM: _IM_SCHEMA,
+        ThreadEventTypeChoices.ASSIGN: _ASSIGNEES_SCHEMA,
+        ThreadEventTypeChoices.UNASSIGN: _ASSIGNEES_SCHEMA,
     }
 
     thread = models.ForeignKey(
@@ -1677,7 +1727,7 @@ class ThreadEvent(BaseModel):
     def is_editable(self):
         """Return whether the event can still be edited or deleted.
 
-        The time window is controlled by ``settings.MAX_THREAD_EVENT_EDIT_DELAY``
+        The time window is controlled by `settings.MAX_THREAD_EVENT_EDIT_DELAY`
         (in seconds). A value of 0 disables the restriction.
         """
         delay = settings.MAX_THREAD_EVENT_EDIT_DELAY
@@ -1740,6 +1790,15 @@ class UserEvent(BaseModel):
             models.UniqueConstraint(
                 fields=["user", "thread_event", "type"],
                 name="usrevt_user_event_type_uniq",
+            ),
+            # Enforce at most one active ASSIGN UserEvent per (user, thread).
+            # This is the schema-level guarantee behind the idempotence logic
+            # in ThreadEventViewSet.create and absorbs races between concurrent
+            # ASSIGN requests. MENTION has no such invariant (one per message).
+            models.UniqueConstraint(
+                fields=["user", "thread"],
+                condition=Q(type="assign"),
+                name="usrevt_user_thread_assign_uniq",
             ),
         ]
         indexes = [

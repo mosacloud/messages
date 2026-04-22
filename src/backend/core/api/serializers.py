@@ -10,7 +10,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Count, Q
 
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import PolymorphicProxySerializer, extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 
@@ -40,18 +40,90 @@ class ObjectJSONField(serializers.JSONField):
     """JSONField annotated as ``type: object`` for OpenAPI schema generation."""
 
 
-def _build_thread_event_data_schema():
-    """Build the OpenAPI schema for ThreadEvent.data from model DATA_SCHEMAS.
-
-    Returns a `oneOf` composition when multiple types are defined.
+class ThreadEventUserSerializer(serializers.Serializer):
     """
-    schemas = models.ThreadEvent.DATA_SCHEMAS
-    return {"oneOf": list(schemas.values())}
+    OpenAPI-only serializer: describes a single user inside
+    an ThreadEvent.data payload. (used for ``IM`` and ``ASSIGNEES`` events)
+
+    Not used for runtime validation (handled by ``ThreadEvent.clean()`` against
+    ``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component
+    in the OpenAPI schema consumed by the generated frontend client.
+    """
+
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+
+    def create(self, validated_data):
+        """Do not allow creating instances from this serializer."""
+        raise RuntimeError(f"{self.__class__.__name__} does not support create method")
+
+    def update(self, instance, validated_data):
+        """Do not allow updating instances from this serializer."""
+        raise RuntimeError(f"{self.__class__.__name__} does not support update method")
 
 
-@extend_schema_field(_build_thread_event_data_schema())
+class ThreadEventIMDataSerializer(serializers.Serializer):
+    """OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``IM`` events.
+
+    Not used for runtime validation (handled by ``ThreadEvent.clean()`` against
+    ``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component
+    in the OpenAPI schema consumed by the generated frontend client.
+    """
+
+    content = serializers.CharField()
+    mentions = ThreadEventUserSerializer(many=True, required=False)
+
+    def create(self, validated_data):
+        """Do not allow creating instances from this serializer."""
+        raise RuntimeError(f"{self.__class__.__name__} does not support create method")
+
+    def update(self, instance, validated_data):
+        """Do not allow updating instances from this serializer."""
+        raise RuntimeError(f"{self.__class__.__name__} does not support update method")
+
+
+class ThreadEventAssigneesDataSerializer(serializers.Serializer):
+    """OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``ASSIGN`` and ``UNASSIGN`` events.
+
+    Both event types share the exact same payload shape, so a single serializer
+    (and thus a single generated TypeScript type) covers them.
+
+    Not used for runtime validation (handled by ``ThreadEvent.clean()`` against
+    ``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component
+    in the OpenAPI schema consumed by the generated frontend client.
+    """
+
+    assignees = ThreadEventUserSerializer(many=True, min_length=1)
+
+    def create(self, validated_data):
+        """Do not allow creating instances from this serializer."""
+        raise RuntimeError(f"{self.__class__.__name__} does not support create method")
+
+    def update(self, instance, validated_data):
+        """Do not allow updating instances from this serializer."""
+        raise RuntimeError(f"{self.__class__.__name__} does not support update method")
+
+
+@extend_schema_field(
+    PolymorphicProxySerializer(
+        component_name="ThreadEventData",
+        serializers=[
+            ThreadEventIMDataSerializer,
+            ThreadEventAssigneesDataSerializer,
+        ],
+        resource_type_field_name=None,
+    )
+)
 class ThreadEventDataField(serializers.JSONField):
-    """JSONField for ThreadEvent.data, OpenAPI-annotated from model DATA_SCHEMAS."""
+    """JSONField for ``ThreadEvent.data``.
+
+    Runtime validation is performed by ``ThreadEvent.clean()`` against
+    ``ThreadEvent.DATA_SCHEMAS``. The ``@extend_schema_field`` decorator only
+    affects OpenAPI generation: it emits a named ``oneOf`` over the two
+    ``*DataSerializer`` variants so orval produces stable, readable TypeScript
+    types (``ThreadEventImData``, ``ThreadEventAssigneesData``) instead of
+    positional ``OneOfN`` names.
+    """
 
 
 class IntegerChoicesField(serializers.ChoiceField):
@@ -379,7 +451,7 @@ class MailboxLightSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Mailbox
-        fields = ["id", "email", "name"]
+        fields = ["id", "email", "name", "is_identity"]
         read_only_fields = fields
 
     def get_email(self, instance):
@@ -631,11 +703,29 @@ class ThreadAccessDetailSerializer(serializers.ModelSerializer):
     role = IntegerChoicesField(
         choices_class=models.ThreadAccessRoleChoices, read_only=True
     )
+    users = serializers.SerializerMethodField()
 
     class Meta:
         model = models.ThreadAccess
-        fields = ["id", "mailbox", "role", "read_at", "starred_at"]
+        fields = ["id", "mailbox", "role", "read_at", "starred_at", "users"]
         read_only_fields = fields
+
+    @extend_schema_field(UserWithoutAbilitiesSerializer(many=True))
+    def get_users(self, instance):
+        """Return assignable users of the mailbox (viewers excluded).
+
+        Surfaced so the share modal can offer per-mailbox assignment without
+        an extra round-trip per access.
+        """
+        accesses = [
+            access
+            for access in instance.mailbox.accesses.all()
+            if access.role != models.MailboxRoleChoices.VIEWER
+        ]
+        accesses.sort(key=lambda a: (a.user.full_name or "", a.user.email or ""))
+        return UserWithoutAbilitiesSerializer(
+            [a.user for a in accesses], many=True
+        ).data
 
 
 class ThreadSerializer(serializers.ModelSerializer):
@@ -706,7 +796,11 @@ class ThreadSerializer(serializers.ModelSerializer):
     @extend_schema_field(ThreadAccessDetailSerializer(many=True))
     def get_accesses(self, instance):
         """Return the accesses for the thread."""
-        accesses = instance.accesses.select_related("mailbox", "mailbox__contact")
+        # Prefetch mailbox.accesses + user so ThreadAccessDetailSerializer.get_users
+        # can enumerate assignable users without N+1 queries.
+        accesses = instance.accesses.select_related(
+            "mailbox", "mailbox__contact"
+        ).prefetch_related("mailbox__accesses__user")
 
         return ThreadAccessDetailSerializer(accesses, many=True).data
 
@@ -1028,6 +1122,12 @@ class ThreadAccessSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer)
 class ThreadEventSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer):
     """Serialize thread event information."""
 
+    _DATA_SERIALIZERS = {
+        enums.ThreadEventTypeChoices.IM: ThreadEventIMDataSerializer,
+        enums.ThreadEventTypeChoices.ASSIGN: ThreadEventAssigneesDataSerializer,
+        enums.ThreadEventTypeChoices.UNASSIGN: ThreadEventAssigneesDataSerializer,
+    }
+
     author = UserWithoutAbilitiesSerializer(read_only=True)
     data = ThreadEventDataField()
     has_unread_mention = serializers.SerializerMethodField()
@@ -1058,7 +1158,30 @@ class ThreadEventSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        create_only_fields = ["type", "message"]
+        create_only_fields = ["type", "message", "author"]
+
+    def validate(self, attrs):
+        """Validate `data` against the sub-serializer matching `type`.
+
+        ThreadEvent.clean() enforces the same JSON Schema at save time, but
+        routing through the dedicated sub-serializer here surfaces
+        field-level 400 errors to the client instead of a generic
+        ValidationError bubbled up from full_clean().
+        """
+        # On partial updates where ``data`` is untouched, skip revalidation:
+        # the stored ``data`` was already validated at creation.
+        if "data" not in attrs:
+            return attrs
+
+        event_type = attrs.get("type") or getattr(self.instance, "type", None)
+        data_serializer_cls = self._DATA_SERIALIZERS.get(event_type)
+        if data_serializer_cls is None:
+            return attrs
+
+        data_serializer = data_serializer_cls(data=attrs["data"])
+        if not data_serializer.is_valid():
+            raise serializers.ValidationError({"data": data_serializer.errors})
+        return attrs
 
     @extend_schema_field(serializers.BooleanField())
     def get_has_unread_mention(self, obj):

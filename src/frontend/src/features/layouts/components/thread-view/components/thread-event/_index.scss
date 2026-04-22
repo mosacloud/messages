@@ -126,6 +126,50 @@
     margin-left: var(--c--globals--spacings--3xs);
 }
 
+// System events (ASSIGN/UNASSIGN) — compact centered line (D-14)
+.thread-event--system {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--c--globals--spacings--xs);
+    padding: var(--c--globals--spacings--xs) var(--c--globals--spacings--base);
+    color: var(--c--contextuals--content--semantic--neutral--tertiary);
+    font-size: var(--c--globals--font--sizes--xs);
+}
+
+.thread-event__system-text {
+    font-style: italic;
+}
+
+.thread-event__system-time {
+    font-size: var(--c--globals--font--sizes--xs);
+    color: var(--c--contextuals--content--semantic--neutral--tertiary);
+}
+
+// Grouped assignment summary: +Name / -Name chips shown inline after the
+// system message when consecutive ASSIGN/UNASSIGN events by the same author
+// are collapsed.
+.thread-event__assignment-changes {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: var(--c--globals--spacings--2xs);
+    margin-left: var(--c--globals--spacings--2xs);
+    font-style: normal;
+}
+
+.thread-event__assignment-change {
+    font-weight: 600;
+
+    &--added {
+        color: var(--c--contextuals--content--semantic--success--primary);
+    }
+
+    &--removed {
+        color: var(--c--contextuals--content--semantic--neutral--secondary);
+        text-decoration: line-through;
+    }
+}
+
 // Generic event types (non-IM)
 .thread-event--generic {
     padding: var(--c--globals--spacings--xs) var(--c--globals--spacings--base);

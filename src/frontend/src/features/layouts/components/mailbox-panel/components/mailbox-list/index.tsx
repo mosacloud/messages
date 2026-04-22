@@ -73,6 +73,28 @@ export const MAILBOX_FOLDERS = () => [
                     has_mention: "1",
                 },
             },
+            {
+                id: "assigned_to_me",
+                name: i18n.t("Assigned to me"),
+                icon: "person",
+                searchable: false,
+                showStats: true,
+                filter: {
+                    has_assigned_to_me: "1",
+                    has_active: "1",
+                },
+            },
+            {
+                id: "unassigned",
+                name: i18n.t("Unassigned"),
+                icon: "person_off",
+                searchable: false,
+                showStats: true,
+                filter: {
+                    has_unassigned: "1",
+                    has_active: "1",
+                },
+            },
         ],
     },
     {
@@ -277,6 +299,8 @@ const FolderItem = ({ folder, isChild, hasChildren, isExpanded, onToggleExpand, 
         if (folder.id === 'drafts') return ThreadsStatsRetrieveStatsFields.all;
         if (folder.id === 'outbox') return ThreadsStatsRetrieveStatsFields.all;
         if (folder.id === 'mentioned') return ThreadsStatsRetrieveStatsFields.has_unread_mention;
+        if (folder.id === 'assigned_to_me') return ThreadsStatsRetrieveStatsFields.all;
+        if (folder.id === 'unassigned') return ThreadsStatsRetrieveStatsFields.all;
         return ThreadsStatsRetrieveStatsFields.all_unread;
     }, [folder.id]);
     const { data } = useThreadsStatsRetrieve({

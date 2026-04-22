@@ -1,4 +1,5 @@
 """Tests for the ThreadEvent API endpoints."""
+# pylint: disable=too-many-lines
 
 import uuid
 from datetime import timedelta
@@ -235,6 +236,31 @@ class TestThreadEventUpdate:
         # Type should not change (create-only)
         event.refresh_from_db()
         assert event.type == "im"
+
+    def test_update_cannot_reattach_event_to_another_thread(self, api_client):
+        """``thread`` is read-only on the serializer: a PATCH carrying a
+        different ``thread`` id must be silently ignored, preventing an
+        attacker with write access on thread A from moving one of its
+        events onto thread B (possibly bypassing thread B's ACL)."""
+        user, mailbox, thread = setup_user_with_thread_access()
+        api_client.force_authenticate(user=user)
+
+        other_thread = factories.ThreadFactory()
+        factories.ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=other_thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        event = factories.ThreadEventFactory(thread=thread, author=user, type="im")
+
+        response = api_client.patch(
+            get_thread_event_url(thread.id, event.id),
+            {"thread": str(other_thread.id)},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_200_OK
+        event.refresh_from_db()
+        assert event.thread_id == thread.id
 
 
 def _grant_thread_access(thread):
@@ -588,6 +614,33 @@ class TestThreadEventDataValidation:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "data" in response.data
 
+    def test_serializer_validate_dispatches_per_type(self, api_client):
+        """Invalid payloads are rejected at the serializer layer with
+        field-level error keys, proving ``ThreadEventSerializer.validate()``
+        routes ``data`` to the right sub-serializer for each event type
+        before the model's ``full_clean()`` would catch it."""
+        user, _mailbox, thread = setup_user_with_thread_access()
+        api_client.force_authenticate(user=user)
+
+        # IM without 'content' → ThreadEventIMDataSerializer flags 'content'
+        response = api_client.post(
+            get_thread_event_url(thread.id),
+            {"type": "im", "data": {}},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "content" in response.data["data"]
+
+        # ASSIGN without 'assignees' → ThreadEventAssigneesDataSerializer
+        # flags 'assignees' (same sub-serializer reused for UNASSIGN)
+        response = api_client.post(
+            get_thread_event_url(thread.id),
+            {"type": "assign", "data": {}},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "assignees" in response.data["data"]
+
 
 def get_read_mention_url(thread_id, event_id):
     """Helper to build the read-mention URL for a thread event."""
@@ -621,6 +674,296 @@ class TestThreadEventReadMention:
 
     def test_read_mention_viewer_access(self, api_client):
         """A viewer can acknowledge their own mention (no edit access required)."""
+
+
+class TestThreadEventAssign:
+    """Test the POST /threads/{thread_id}/events/ endpoint for ASSIGN events."""
+
+    def test_create_assign_success(self, api_client):
+        """POST type=assign with valid assignee returns 201 and creates UserEvent ASSIGN."""
+        user, mailbox, thread = setup_user_with_thread_access()
+        assignee = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=assignee, role=enums.MailboxRoleChoices.ADMIN
+        )
+        api_client.force_authenticate(user=user)
+
+        data = {
+            "type": "assign",
+            "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+        }
+        response = api_client.post(get_thread_event_url(thread.id), data, format="json")
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data["type"] == "assign"
+
+        # Verify UserEvent ASSIGN was created by signal
+        assert (
+            models.UserEvent.objects.filter(
+                user=assignee,
+                thread=thread,
+                type=enums.UserEventTypeChoices.ASSIGN,
+            ).count()
+            == 1
+        )
+
+    def test_create_assign_multiple_assignees(self, api_client):
+        """POST type=assign with multiple assignees creates UserEvent for each."""
+        user, mailbox, thread = setup_user_with_thread_access()
+        assignee1 = factories.UserFactory()
+        assignee2 = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=assignee1, role=enums.MailboxRoleChoices.ADMIN
+        )
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=assignee2, role=enums.MailboxRoleChoices.ADMIN
+        )
+        api_client.force_authenticate(user=user)
+
+        data = {
+            "type": "assign",
+            "data": {
+                "assignees": [
+                    {"id": str(assignee1.id), "name": "A1"},
+                    {"id": str(assignee2.id), "name": "A2"},
+                ]
+            },
+        }
+        response = api_client.post(get_thread_event_url(thread.id), data, format="json")
+        assert response.status_code == status.HTTP_201_CREATED
+
+        assert (
+            models.UserEvent.objects.filter(
+                thread=thread,
+                type=enums.UserEventTypeChoices.ASSIGN,
+            ).count()
+            == 2
+        )
+
+    def test_create_assign_self_assign(self, api_client):
+        """POST type=assign where assignee is the author (self-assign) returns 201 per D-07."""
+        user, _mailbox, thread = setup_user_with_thread_access()
+        api_client.force_authenticate(user=user)
+
+        data = {
+            "type": "assign",
+            "data": {"assignees": [{"id": str(user.id), "name": "Self"}]},
+        }
+        response = api_client.post(get_thread_event_url(thread.id), data, format="json")
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_assign_idempotent(self, api_client):
+        """POST type=assign when all assignees already assigned returns 204 without creating ThreadEvent (D-08)."""
+        user, mailbox, thread = setup_user_with_thread_access()
+        assignee = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=assignee, role=enums.MailboxRoleChoices.ADMIN
+        )
+        api_client.force_authenticate(user=user)
+
+        data = {
+            "type": "assign",
+            "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+        }
+
+        # First assign
+        response1 = api_client.post(
+            get_thread_event_url(thread.id), data, format="json"
+        )
+        assert response1.status_code == status.HTTP_201_CREATED
+
+        # Second assign (same assignee) - should be idempotent
+        response2 = api_client.post(
+            get_thread_event_url(thread.id), data, format="json"
+        )
+        assert response2.status_code == status.HTTP_204_NO_CONTENT
+
+        # Only 1 ThreadEvent ASSIGN should exist
+        assert (
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.ASSIGN
+            ).count()
+            == 1
+        )
+
+    def test_assign_partial_idempotent(self, api_client):
+        """POST type=assign with mix of already-assigned and new assignees returns 201 with only new assignees."""
+        user, mailbox, thread = setup_user_with_thread_access()
+        assignee_a = factories.UserFactory()
+        assignee_b = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=assignee_a, role=enums.MailboxRoleChoices.ADMIN
+        )
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=assignee_b, role=enums.MailboxRoleChoices.ADMIN
+        )
+        api_client.force_authenticate(user=user)
+
+        # First assign user A
+        data_a = {
+            "type": "assign",
+            "data": {"assignees": [{"id": str(assignee_a.id), "name": "A"}]},
+        }
+        response1 = api_client.post(
+            get_thread_event_url(thread.id), data_a, format="json"
+        )
+        assert response1.status_code == status.HTTP_201_CREATED
+
+        # Assign [A, B] - A is already assigned, B is new
+        data_ab = {
+            "type": "assign",
+            "data": {
+                "assignees": [
+                    {"id": str(assignee_a.id), "name": "A"},
+                    {"id": str(assignee_b.id), "name": "B"},
+                ]
+            },
+        }
+        response2 = api_client.post(
+            get_thread_event_url(thread.id), data_ab, format="json"
+        )
+        assert response2.status_code == status.HTTP_201_CREATED
+
+        # 2 ThreadEvent ASSIGN should exist (first for A, second for B only)
+        assert (
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.ASSIGN
+            ).count()
+            == 2
+        )
+
+        # Second event data should contain only B
+        second_event = (
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.ASSIGN
+            )
+            .order_by("created_at")
+            .last()
+        )
+        assignee_ids_in_event = [a["id"] for a in second_event.data["assignees"]]
+        assert str(assignee_b.id) in assignee_ids_in_event
+        assert str(assignee_a.id) not in assignee_ids_in_event
+
+    def test_assign_visible_in_timeline(self, api_client):
+        """After ASSIGN, GET events returns the ASSIGN event in the timeline."""
+        user, mailbox, thread = setup_user_with_thread_access()
+        assignee = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=assignee, role=enums.MailboxRoleChoices.ADMIN
+        )
+        api_client.force_authenticate(user=user)
+
+        data = {
+            "type": "assign",
+            "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+        }
+        api_client.post(get_thread_event_url(thread.id), data, format="json")
+
+        response = api_client.get(get_thread_event_url(thread.id))
+        assert response.status_code == status.HTTP_200_OK
+        assign_events = [e for e in response.data if e["type"] == "assign"]
+        assert len(assign_events) == 1
+        assert assign_events[0]["data"]["assignees"][0]["id"] == str(assignee.id)
+
+    def test_assign_viewer_forbidden(self, api_client):
+        """Viewer role POST type=assign returns 403 per D-02."""
+        user, mailbox, thread = setup_user_with_thread_access(
+            role=enums.ThreadAccessRoleChoices.VIEWER
+        )
+        assignee = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=assignee, role=enums.MailboxRoleChoices.ADMIN
+        )
+        api_client.force_authenticate(user=user)
+
+        data = {
+            "type": "assign",
+            "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+        }
+        response = api_client.post(get_thread_event_url(thread.id), data, format="json")
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_assign_rejects_assignee_without_thread_access(self, api_client):
+        """Assigning a user that has no ThreadAccess at all returns 400."""
+        user, _mailbox, thread = setup_user_with_thread_access()
+        no_access_user = factories.UserFactory()
+        api_client.force_authenticate(user=user)
+
+        data = {
+            "type": "assign",
+            "data": {"assignees": [{"id": str(no_access_user.id), "name": "NoAccess"}]},
+        }
+        response = api_client.post(get_thread_event_url(thread.id), data, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+        # No ThreadEvent nor UserEvent created.
+        assert (
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.ASSIGN
+            ).count()
+            == 0
+        )
+        assert (
+            models.UserEvent.objects.filter(
+                user=no_access_user,
+                type=enums.UserEventTypeChoices.ASSIGN,
+            ).count()
+            == 0
+        )
+
+    def test_assign_rejects_assignee_with_viewer_mailbox_role(self, api_client):
+        """Assigning a user whose MailboxAccess role is VIEWER returns 400."""
+        user, mailbox, thread = setup_user_with_thread_access()
+        viewer_assignee = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=viewer_assignee,
+            role=enums.MailboxRoleChoices.VIEWER,
+        )
+        api_client.force_authenticate(user=user)
+
+        data = {
+            "type": "assign",
+            "data": {"assignees": [{"id": str(viewer_assignee.id), "name": "Viewer"}]},
+        }
+        response = api_client.post(get_thread_event_url(thread.id), data, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert (
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.ASSIGN
+            ).count()
+            == 0
+        )
+
+    def test_assign_rejects_assignee_with_viewer_thread_access(self, api_client):
+        """Assigning a user reachable only through a VIEWER ThreadAccess returns 400."""
+        user, _mailbox, thread = setup_user_with_thread_access()
+        viewer_mailbox = factories.MailboxFactory()
+        viewer_assignee = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=viewer_mailbox,
+            user=viewer_assignee,
+            role=enums.MailboxRoleChoices.ADMIN,
+        )
+        factories.ThreadAccessFactory(
+            mailbox=viewer_mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.VIEWER,
+        )
+        api_client.force_authenticate(user=user)
+
+        data = {
+            "type": "assign",
+            "data": {"assignees": [{"id": str(viewer_assignee.id), "name": "Viewer"}]},
+        }
+        response = api_client.post(get_thread_event_url(thread.id), data, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_im_viewer_forbidden(self, api_client):
+        """Viewer role POST type=im returns 403 — D-02 regression test.
+
+        After switching ThreadEventViewSet to use HasThreadEditAccess for create,
+        the existing IM permission enforcement must still work.
+        """
         user, _mailbox, thread = setup_user_with_thread_access(
             role=enums.ThreadAccessRoleChoices.VIEWER
         )
@@ -712,4 +1055,380 @@ class TestThreadEventReadMention:
         assert response.status_code in (
             status.HTTP_401_UNAUTHORIZED,
             status.HTTP_403_FORBIDDEN,
+        )
+        data = {"type": "im", "data": {"content": "test"}}
+        response = api_client.post(get_thread_event_url(thread.id), data, format="json")
+        assert response.status_code in (
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+
+class TestThreadEventUnassign:
+    """Test the POST /threads/{thread_id}/events/ endpoint for UNASSIGN events."""
+
+    def test_create_unassign_success(self, api_client):
+        """First assign, then unassign returns 201 and deletes the ASSIGN UserEvent."""
+        user, mailbox, thread = setup_user_with_thread_access()
+        assignee = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=assignee, role=enums.MailboxRoleChoices.ADMIN
+        )
+        api_client.force_authenticate(user=user)
+
+        # First assign
+        assign_data = {
+            "type": "assign",
+            "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+        }
+        api_client.post(get_thread_event_url(thread.id), assign_data, format="json")
+
+        # Push the ASSIGN out of the undo window so the UNASSIGN below is
+        # recorded as a distinct event instead of being absorbed.
+        assign_event = models.ThreadEvent.objects.get(
+            thread=thread, type=enums.ThreadEventTypeChoices.ASSIGN
+        )
+        _force_created_at(assign_event, timezone.now() - timedelta(minutes=10))
+
+        # Then unassign
+        unassign_data = {
+            "type": "unassign",
+            "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+        }
+        response = api_client.post(
+            get_thread_event_url(thread.id), unassign_data, format="json"
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+        # UserEvent ASSIGN should be deleted
+        assert (
+            models.UserEvent.objects.filter(
+                user=assignee,
+                thread=thread,
+                type=enums.UserEventTypeChoices.ASSIGN,
+            ).count()
+            == 0
+        )
+
+    def test_unassign_idempotent(self, api_client):
+        """Unassign someone who is not assigned returns 204 without creating ThreadEvent."""
+        user, mailbox, thread = setup_user_with_thread_access()
+        assignee = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=assignee, role=enums.MailboxRoleChoices.ADMIN
+        )
+        api_client.force_authenticate(user=user)
+
+        data = {
+            "type": "unassign",
+            "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+        }
+        response = api_client.post(get_thread_event_url(thread.id), data, format="json")
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+
+        # No ThreadEvent UNASSIGN should be created
+        assert (
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.UNASSIGN
+            ).count()
+            == 0
+        )
+
+    def test_unassign_visible_in_timeline(self, api_client):
+        """After UNASSIGN, GET events returns the UNASSIGN event in the timeline."""
+        user, mailbox, thread = setup_user_with_thread_access()
+        assignee = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=assignee, role=enums.MailboxRoleChoices.ADMIN
+        )
+        api_client.force_authenticate(user=user)
+
+        # First assign
+        assign_data = {
+            "type": "assign",
+            "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+        }
+        api_client.post(get_thread_event_url(thread.id), assign_data, format="json")
+
+        # Push the ASSIGN out of the undo window so the UNASSIGN below is not
+        # absorbed as an "undo".
+        assign_event = models.ThreadEvent.objects.get(
+            thread=thread, type=enums.ThreadEventTypeChoices.ASSIGN
+        )
+        _force_created_at(assign_event, timezone.now() - timedelta(minutes=10))
+
+        # Then unassign
+        unassign_data = {
+            "type": "unassign",
+            "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+        }
+        api_client.post(get_thread_event_url(thread.id), unassign_data, format="json")
+
+        response = api_client.get(get_thread_event_url(thread.id))
+        assert response.status_code == status.HTTP_200_OK
+        unassign_events = [e for e in response.data if e["type"] == "unassign"]
+        assert len(unassign_events) == 1
+
+    def test_unassign_viewer_forbidden(self, api_client):
+        """Viewer role POST type=unassign returns 403 per D-02."""
+        user, mailbox, thread = setup_user_with_thread_access(
+            role=enums.ThreadAccessRoleChoices.VIEWER
+        )
+        assignee = factories.UserFactory()
+        factories.MailboxAccessFactory(mailbox=mailbox, user=assignee)
+        api_client.force_authenticate(user=user)
+
+        data = {
+            "type": "unassign",
+            "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+        }
+        response = api_client.post(get_thread_event_url(thread.id), data, format="json")
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+class TestThreadEventUnassignUndoWindow:
+    """Test the assign/unassign "undo window" that swallows back-to-back events.
+
+    When an UNASSIGN arrives within ``UNDO_WINDOW_SECONDS`` after an ASSIGN from
+    the same author for the same user, both events are elided from the
+    timeline: the matching assignees are stripped from the ASSIGN event (event
+    deleted if it becomes empty) and no UNASSIGN event is emitted.
+    """
+
+    def test_undo_within_window_removes_both_events(self, api_client):
+        """Assign then immediately unassign: 204, no events remain, UserEvent gone."""
+        user, mailbox, thread = setup_user_with_thread_access()
+        assignee = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=assignee, role=enums.MailboxRoleChoices.ADMIN
+        )
+        api_client.force_authenticate(user=user)
+
+        api_client.post(
+            get_thread_event_url(thread.id),
+            {
+                "type": "assign",
+                "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+            },
+            format="json",
+        )
+
+        response = api_client.post(
+            get_thread_event_url(thread.id),
+            {
+                "type": "unassign",
+                "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+            },
+            format="json",
+        )
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+
+        assert models.ThreadEvent.objects.filter(thread=thread).count() == 0
+        assert (
+            models.UserEvent.objects.filter(
+                user=assignee,
+                thread=thread,
+                type=enums.UserEventTypeChoices.ASSIGN,
+            ).count()
+            == 0
+        )
+
+    def test_undo_different_author_does_not_apply(self, api_client):
+        """An UNASSIGN by a different author leaves both events in place."""
+        author_a, mailbox, thread = setup_user_with_thread_access()
+        author_b = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=author_b, role=enums.MailboxRoleChoices.ADMIN
+        )
+        assignee = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=assignee, role=enums.MailboxRoleChoices.ADMIN
+        )
+
+        # author_a assigns
+        api_client.force_authenticate(user=author_a)
+        api_client.post(
+            get_thread_event_url(thread.id),
+            {
+                "type": "assign",
+                "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+            },
+            format="json",
+        )
+
+        # author_b unassigns within the window
+        api_client.force_authenticate(user=author_b)
+        response = api_client.post(
+            get_thread_event_url(thread.id),
+            {
+                "type": "unassign",
+                "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+            },
+            format="json",
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+        assert (
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.ASSIGN
+            ).count()
+            == 1
+        )
+        assert (
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.UNASSIGN
+            ).count()
+            == 1
+        )
+
+    def test_undo_outside_window_does_not_apply(self, api_client):
+        """An UNASSIGN past the undo window follows the regular path."""
+        user, mailbox, thread = setup_user_with_thread_access()
+        assignee = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=assignee, role=enums.MailboxRoleChoices.ADMIN
+        )
+        api_client.force_authenticate(user=user)
+
+        api_client.post(
+            get_thread_event_url(thread.id),
+            {
+                "type": "assign",
+                "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+            },
+            format="json",
+        )
+
+        # Push ASSIGN past the undo window
+        assign_event = models.ThreadEvent.objects.get(
+            thread=thread, type=enums.ThreadEventTypeChoices.ASSIGN
+        )
+        _force_created_at(assign_event, timezone.now() - timedelta(minutes=10))
+
+        response = api_client.post(
+            get_thread_event_url(thread.id),
+            {
+                "type": "unassign",
+                "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+            },
+            format="json",
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+        assert (
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.ASSIGN
+            ).count()
+            == 1
+        )
+        assert (
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.UNASSIGN
+            ).count()
+            == 1
+        )
+
+    def test_undo_partial_trims_assignees(self, api_client):
+        """Assign [A, B], then unassign A within window: ASSIGN keeps B, no UNASSIGN event."""
+        user, mailbox, thread = setup_user_with_thread_access()
+        assignee_a = factories.UserFactory()
+        assignee_b = factories.UserFactory()
+        for target in (assignee_a, assignee_b):
+            factories.MailboxAccessFactory(
+                mailbox=mailbox, user=target, role=enums.MailboxRoleChoices.ADMIN
+            )
+        api_client.force_authenticate(user=user)
+
+        api_client.post(
+            get_thread_event_url(thread.id),
+            {
+                "type": "assign",
+                "data": {
+                    "assignees": [
+                        {"id": str(assignee_a.id), "name": "A"},
+                        {"id": str(assignee_b.id), "name": "B"},
+                    ]
+                },
+            },
+            format="json",
+        )
+
+        response = api_client.post(
+            get_thread_event_url(thread.id),
+            {
+                "type": "unassign",
+                "data": {"assignees": [{"id": str(assignee_a.id), "name": "A"}]},
+            },
+            format="json",
+        )
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+
+        assign_events = list(
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.ASSIGN
+            )
+        )
+        assert len(assign_events) == 1
+        remaining_ids = {a["id"] for a in assign_events[0].data["assignees"]}
+        assert remaining_ids == {str(assignee_b.id)}
+        assert (
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.UNASSIGN
+            ).count()
+            == 0
+        )
+        # Only B's UserEvent should survive
+        surviving = set(
+            models.UserEvent.objects.filter(
+                thread=thread, type=enums.UserEventTypeChoices.ASSIGN
+            ).values_list("user_id", flat=True)
+        )
+        assert surviving == {assignee_b.id}
+
+    def test_undo_then_reassign_leaves_clean_state(self, api_client):
+        """Assign, undo within window, then reassign: exactly one active ASSIGN."""
+        user, mailbox, thread = setup_user_with_thread_access()
+        assignee = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=assignee, role=enums.MailboxRoleChoices.ADMIN
+        )
+        api_client.force_authenticate(user=user)
+
+        assign_payload = {
+            "type": "assign",
+            "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+        }
+        unassign_payload = {
+            "type": "unassign",
+            "data": {"assignees": [{"id": str(assignee.id), "name": "Assignee"}]},
+        }
+
+        api_client.post(get_thread_event_url(thread.id), assign_payload, format="json")
+        api_client.post(
+            get_thread_event_url(thread.id), unassign_payload, format="json"
+        )
+        response = api_client.post(
+            get_thread_event_url(thread.id), assign_payload, format="json"
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+        assert (
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.ASSIGN
+            ).count()
+            == 1
+        )
+        assert (
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.UNASSIGN
+            ).count()
+            == 0
+        )
+        assert (
+            models.UserEvent.objects.filter(
+                user=assignee,
+                thread=thread,
+                type=enums.UserEventTypeChoices.ASSIGN,
+            ).count()
+            == 1
         )

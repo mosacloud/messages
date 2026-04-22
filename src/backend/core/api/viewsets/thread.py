@@ -1,4 +1,5 @@
 """API ViewSet for Thread model."""
+# pylint: disable=too-many-lines
 
 from django.conf import settings
 from django.db import transaction
@@ -110,6 +111,8 @@ class ThreadViewSet(
             "has_delivery_pending": "has_delivery_pending",
             "has_unread_mention": "_has_unread_mention",
             "has_mention": "_has_mention",
+            "has_assigned_to_me": "_has_assigned_to_me",
+            "has_unassigned": "_has_unassigned",
             "is_trashed": "is_trashed",
             "is_spam": "is_spam",
         }
@@ -172,6 +175,19 @@ class ThreadViewSet(
                     thread=OuterRef("pk"),
                     user=user,
                     type=enums.UserEventTypeChoices.MENTION,
+                )
+            ),
+            _has_assigned_to_me=Exists(
+                models.UserEvent.objects.filter(
+                    thread=OuterRef("pk"),
+                    user=user,
+                    type=enums.UserEventTypeChoices.ASSIGN,
+                )
+            ),
+            _has_unassigned=~Exists(
+                models.UserEvent.objects.filter(
+                    thread=OuterRef("pk"),
+                    type=enums.UserEventTypeChoices.ASSIGN,
                 )
             ),
             events_count=Count("events", distinct=True),
@@ -280,6 +296,18 @@ class ThreadViewSet(
                 description="Filter threads with any mention (read or unread) for the current user (1=true, 0=false).",
             ),
             OpenApiParameter(
+                name="has_assigned_to_me",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter threads assigned to the current user (1=true, 0=false).",
+            ),
+            OpenApiParameter(
+                name="has_unassigned",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter threads with no active assignment from any user (1=true, 0=false).",
+            ),
+            OpenApiParameter(
                 name="stats_fields",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.QUERY,
@@ -287,7 +315,7 @@ class ThreadViewSet(
                 description="""Comma-separated list of fields to aggregate.
                 Special values: 'all' (count all threads), 'all_unread' (count all unread threads).
                 Boolean fields: has_trashed, has_draft, has_starred, has_attachments, has_archived,
-                has_sender, has_active, has_delivery_pending, has_delivery_failed, is_spam, has_messages, has_unread_mention, has_mention.
+                has_sender, has_active, has_delivery_pending, has_delivery_failed, is_spam, has_messages, has_unread_mention, has_mention, has_assigned_to_me, has_unassigned.
                 Unread variants ('_unread' suffix): count threads where the condition is true AND the thread is unread.
                 Examples: 'all,all_unread', 'has_starred,has_starred_unread', 'is_spam,is_spam_unread'""",
                 enum=list(enums.THREAD_STATS_FIELDS_MAP.keys()),
@@ -352,6 +380,8 @@ class ThreadViewSet(
             "has_delivery_pending",
             "has_unread_mention",
             "has_mention",
+            "has_assigned_to_me",
+            "has_unassigned",
             "is_spam",
             "has_messages",
         }
@@ -394,6 +424,8 @@ class ThreadViewSet(
         starred_condition = Q(_has_starred=True)
         unread_mention_condition = Q(_has_unread_mention=True)
         mention_condition = Q(_has_mention=True)
+        assigned_to_me_condition = Q(_has_assigned_to_me=True)
+        unassigned_condition = Q(_has_unassigned=True)
 
         aggregations = {}
         for field in requested_fields:
@@ -413,6 +445,10 @@ class ThreadViewSet(
                 aggregations[agg_key] = Count("pk", filter=unread_mention_condition)
             elif field == "has_mention":
                 aggregations[agg_key] = Count("pk", filter=mention_condition)
+            elif field == "has_assigned_to_me":
+                aggregations[agg_key] = Count("pk", filter=assigned_to_me_condition)
+            elif field == "has_unassigned":
+                aggregations[agg_key] = Count("pk", filter=unassigned_condition)
             elif field.endswith("_unread"):
                 base_field = field[:-7]
                 base_condition = Q(**{base_field: True})
@@ -545,6 +581,18 @@ class ThreadViewSet(
                 type=OpenApiTypes.INT,
                 location=OpenApiParameter.QUERY,
                 description="Filter threads with any mention (read or unread) for the current user (1=true, 0=false).",
+            ),
+            OpenApiParameter(
+                name="has_assigned_to_me",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter threads assigned to the current user (1=true, 0=false).",
+            ),
+            OpenApiParameter(
+                name="has_unassigned",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter threads with no active assignment from any user (1=true, 0=false).",
             ),
         ],
     )
