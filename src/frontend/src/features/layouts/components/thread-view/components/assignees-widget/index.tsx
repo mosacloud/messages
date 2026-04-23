@@ -1,10 +1,10 @@
-import { UserAvatar } from "@gouvfr-lasuite/ui-kit";
-import { Tooltip } from "@gouvfr-lasuite/cunningham-react";
+import { Button, Tooltip } from "@gouvfr-lasuite/cunningham-react";
 import { useTranslation } from "react-i18next";
 import { useAssignedUsers } from "@/features/message/use-assigned-users";
 import { useIsSharedContext } from "@/hooks/use-is-shared-context";
+import { AssigneesAvatarGroup } from "@/features/ui/components/assignees-avatar-group";
 
-const MAX_VISIBLE_AVATARS = 3;
+
 
 type AssigneesWidgetProps = {
     onClick: () => void;
@@ -25,29 +25,22 @@ export const AssigneesWidget = ({ onClick }: AssigneesWidgetProps) => {
     if (!isSharedContext) return null;
     if (assignedUsers.length === 0) return null;
 
-    const visible = assignedUsers.slice(0, MAX_VISIBLE_AVATARS);
-    const overflow = assignedUsers.length - visible.length;
     const tooltipContent = t('Assigned to {{names}}', {
         names: assignedUsers.map((u) => u.name).join(', '),
     });
 
     return (
         <Tooltip content={tooltipContent}>
-            <button
-                type="button"
+            <Button
+          type="button"
+          variant="tertiary"
                 className="assignees-widget"
                 onClick={onClick}
-                aria-label={tooltipContent}
+          aria-label={tooltipContent}
+          size="nano"
             >
-                <span className="assignees-widget__avatars">
-                    {visible.map((user) => (
-                        <UserAvatar key={user.id} fullName={user.name} size="xsmall" />
-                    ))}
-                    {overflow > 0 && (
-                        <span className="assignees-widget__overflow">+{overflow}</span>
-                    )}
-                </span>
-            </button>
+                <AssigneesAvatarGroup users={assignedUsers} maxAvatars={3} />
+            </Button>
         </Tooltip>
     );
 };

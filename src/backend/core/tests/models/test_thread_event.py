@@ -81,19 +81,15 @@ class TestThreadEventAssignSchema:
                 data={"content": "hello"},
             )
 
-    def test_assign_with_non_uuid_id_passes_clean(self):
-        """ThreadEvent type=assign with non-UUID id passes full_clean().
-
-        jsonschema format 'uuid' is not enforced by default;
-        actual UUID validation is done in the signal helper.
-        """
+    def test_assign_with_non_uuid_id_raises_validation_error(self):
+        """ThreadEvent type=assign with a non-UUID id must be rejected."""
         thread = factories.ThreadFactory()
         author = factories.UserFactory()
 
-        event = factories.ThreadEventFactory(
-            thread=thread,
-            author=author,
-            type="assign",
-            data={"assignees": [{"id": "not-uuid", "name": "X"}]},
-        )
-        assert event.id is not None
+        with pytest.raises(ValidationError):
+            factories.ThreadEventFactory(
+                thread=thread,
+                author=author,
+                type="assign",
+                data={"assignees": [{"id": "not-uuid", "name": "X"}]},
+            )

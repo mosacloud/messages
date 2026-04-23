@@ -6,9 +6,7 @@
  * OpenAPI spec version: 1.0.0 (v1.0)
  */
 
-export type ThreadsAccessesListParams = {
-  /**
-   * Filter thread accesses by mailbox ID.
-   */
-  mailbox_id?: string;
-};
+/**
+ * Get custom attributes for the instance.
+ */
+export type ThreadMentionableUserCustomAttributes = { [key: string]: unknown };

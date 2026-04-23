@@ -4,11 +4,16 @@
 from unittest.mock import patch
 
 from django.db.models.signals import post_save
+from django.utils import timezone
 
 import pytest
 
 from core import enums, factories, models
-from core.signals import handle_thread_event_post_save
+from core.signals import (
+    create_assign_user_events,
+    delete_assign_user_events,
+    handle_thread_event_post_save,
+)
 from core.utils import ThreadStatsUpdateDeferrer
 
 pytestmark = pytest.mark.django_db
@@ -845,20 +850,26 @@ class TestAssignUserEvents:
         mock_logger.warning.assert_called()
 
     def test_assign_skips_invalid_uuid(self):
-        """Assignee with invalid UUID should not create a UserEvent."""
-        author, _, thread, _ = self._setup_thread_with_assigned_user()
+        """``create_assign_user_events`` is idempotent on malformed ids."""
+        author, target_user, thread, _ = self._setup_thread_with_assigned_user()
+        event = factories.ThreadEventFactory(
+            thread=thread,
+            author=author,
+            type="assign",
+            data={"assignees": [{"id": str(target_user.id), "name": "Target"}]},
+        )
         initial_count = models.UserEvent.objects.filter(
             type=enums.UserEventTypeChoices.ASSIGN,
         ).count()
 
         with patch("core.signals.logger") as mock_logger:
-            factories.ThreadEventFactory(
-                thread=thread,
-                author=author,
-                type="assign",
-                data={"assignees": [{"id": "not-a-valid-uuid", "name": "Bad"}]},
+            created = create_assign_user_events(
+                event,
+                thread,
+                [{"id": "not-a-valid-uuid", "name": "Bad"}],
             )
 
+        assert created == []
         assert (
             models.UserEvent.objects.filter(
                 type=enums.UserEventTypeChoices.ASSIGN,
@@ -1053,20 +1064,17 @@ class TestDeleteAssignUserEvents:
             mock_delete.assert_called_once()
 
     def test_unassign_with_invalid_uuid_logs_warning(self):
-        """UNASSIGN with invalid UUID should log warning and update 0 records."""
-        author, _, thread, _ = self._setup_thread_with_assigned_user()
+        """``delete_assign_user_events`` logs and skips malformed ids."""
+        _, _, thread, _ = self._setup_thread_with_assigned_user()
 
         with patch("core.signals.logger") as mock_logger:
-            factories.ThreadEventFactory(
-                thread=thread,
-                author=author,
-                type="unassign",
-                data={
-                    "assignees": [
-                        {"id": "not-a-valid-uuid", "name": "Bad"},
-                    ]
-                },
+            deleted = delete_assign_user_events(
+                None,
+                thread,
+                [{"id": "not-a-valid-uuid", "name": "Bad"}],
             )
+
+        assert deleted == 0
         mock_logger.warning.assert_called()
 
 
@@ -1224,4 +1232,187 @@ class TestCleanupInvalidAssignments:
         assert not models.ThreadEvent.objects.filter(
             thread=thread,
             type=enums.ThreadEventTypeChoices.UNASSIGN,
+        ).exists()
+
+
+class TestCleanupInvalidMentions:
+    """Auto-clean UserEvent MENTION rows when a user loses access to the thread.
+
+    MENTION notifications are only valid as long as the user can still
+    reach the thread through any ``ThreadAccess`` × ``MailboxAccess``
+    path, regardless of role. Unlike ASSIGN cleanup, no system
+    ThreadEvent is recorded — the ``ThreadEvent IM`` rows carrying the
+    mentions remain as historical truth.
+    """
+
+    def _setup_mentioned_user(self):
+        """Set up a thread with a user mentioned in an IM event.
+
+        Returns (author, mentioned_user, thread, mailbox, mention_event).
+        Both users share one mailbox with any role able to view the thread.
+        """
+        author = factories.UserFactory()
+        mailbox = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=author, role=enums.MailboxRoleChoices.ADMIN
+        )
+        mentioned_user = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=mentioned_user,
+            role=enums.MailboxRoleChoices.EDITOR,
+        )
+        thread = factories.ThreadFactory()
+        factories.ThreadAccessFactory(
+            thread=thread,
+            mailbox=mailbox,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        mention_event = factories.ThreadEventFactory(
+            thread=thread,
+            author=author,
+            data={
+                "content": "Hello @John",
+                "mentions": [{"id": str(mentioned_user.id), "name": "John"}],
+            },
+        )
+        assert models.UserEvent.objects.filter(
+            user=mentioned_user,
+            thread=thread,
+            type=enums.UserEventTypeChoices.MENTION,
+        ).exists()
+        return author, mentioned_user, thread, mailbox, mention_event
+
+    def _assert_mention_cleaned(self, thread, mentioned_user):
+        """Check the UserEvent MENTION is gone and no system event is recorded."""
+        assert not models.UserEvent.objects.filter(
+            user=mentioned_user,
+            thread=thread,
+            type=enums.UserEventTypeChoices.MENTION,
+        ).exists()
+        # No system ThreadEvent is created for mention cleanup — the IM event
+        # carrying the mention stays as historical source of truth.
+        assert not models.ThreadEvent.objects.filter(
+            thread=thread,
+            author__isnull=True,
+        ).exists()
+
+    def test_cleanup_on_thread_access_delete(self):
+        """Deleting the ThreadAccess removes MENTIONs of every user of that mailbox."""
+        _author, mentioned_user, thread, mailbox, _ = self._setup_mentioned_user()
+        models.ThreadAccess.objects.filter(thread=thread, mailbox=mailbox).delete()
+        self._assert_mention_cleaned(thread, mentioned_user)
+
+    def test_cleanup_on_mailbox_access_delete(self):
+        """Removing the user's MailboxAccess removes their MENTIONs."""
+        _author, mentioned_user, thread, mailbox, _ = self._setup_mentioned_user()
+        models.MailboxAccess.objects.filter(
+            user=mentioned_user, mailbox=mailbox
+        ).delete()
+        self._assert_mention_cleaned(thread, mentioned_user)
+
+    def test_no_cleanup_on_thread_access_downgrade(self):
+        """ThreadAccess role EDITOR -> VIEWER keeps MENTIONs (user still reads)."""
+        _author, mentioned_user, thread, mailbox, _ = self._setup_mentioned_user()
+        access = models.ThreadAccess.objects.get(thread=thread, mailbox=mailbox)
+        access.role = enums.ThreadAccessRoleChoices.VIEWER
+        access.save()
+        assert models.UserEvent.objects.filter(
+            user=mentioned_user,
+            thread=thread,
+            type=enums.UserEventTypeChoices.MENTION,
+        ).exists()
+
+    def test_no_cleanup_on_mailbox_access_downgrade(self):
+        """MailboxAccess role change inside the role set keeps MENTIONs."""
+        _author, mentioned_user, thread, mailbox, _ = self._setup_mentioned_user()
+        access = models.MailboxAccess.objects.get(user=mentioned_user, mailbox=mailbox)
+        access.role = enums.MailboxRoleChoices.VIEWER
+        access.save()
+        assert models.UserEvent.objects.filter(
+            user=mentioned_user,
+            thread=thread,
+            type=enums.UserEventTypeChoices.MENTION,
+        ).exists()
+
+    def test_cleanup_skips_user_still_reaching_thread_via_other_mailbox(self):
+        """No cleanup when the user still has any access through another mailbox."""
+        _author, mentioned_user, thread, mailbox, _ = self._setup_mentioned_user()
+        other_mailbox = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=other_mailbox,
+            user=mentioned_user,
+            role=enums.MailboxRoleChoices.VIEWER,
+        )
+        factories.ThreadAccessFactory(
+            thread=thread,
+            mailbox=other_mailbox,
+            role=enums.ThreadAccessRoleChoices.VIEWER,
+        )
+
+        models.MailboxAccess.objects.filter(
+            user=mentioned_user, mailbox=mailbox
+        ).delete()
+
+        assert models.UserEvent.objects.filter(
+            user=mentioned_user,
+            thread=thread,
+            type=enums.UserEventTypeChoices.MENTION,
+        ).exists()
+
+    def test_cleanup_removes_read_and_unread_mentions(self):
+        """Both read and unread MENTION rows are removed on access loss."""
+        author, mentioned_user, thread, mailbox, first_event = (
+            self._setup_mentioned_user()
+        )
+        # Create a second mention and mark the first one as read.
+        factories.ThreadEventFactory(
+            thread=thread,
+            author=author,
+            data={
+                "content": "Ping again @John",
+                "mentions": [{"id": str(mentioned_user.id), "name": "John"}],
+            },
+        )
+        models.UserEvent.objects.filter(
+            user=mentioned_user,
+            thread_event=first_event,
+            type=enums.UserEventTypeChoices.MENTION,
+        ).update(read_at=timezone.now())
+        assert (
+            models.UserEvent.objects.filter(
+                user=mentioned_user,
+                thread=thread,
+                type=enums.UserEventTypeChoices.MENTION,
+            ).count()
+            == 2
+        )
+
+        models.ThreadAccess.objects.filter(thread=thread, mailbox=mailbox).delete()
+
+        assert not models.UserEvent.objects.filter(
+            user=mentioned_user,
+            thread=thread,
+            type=enums.UserEventTypeChoices.MENTION,
+        ).exists()
+
+    def test_cleanup_no_op_when_user_not_mentioned(self):
+        """Deleting a ThreadAccess whose users have no MENTION triggers nothing."""
+        author = factories.UserFactory()
+        mailbox = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=author, role=enums.MailboxRoleChoices.ADMIN
+        )
+        thread = factories.ThreadFactory()
+        factories.ThreadAccessFactory(
+            thread=thread,
+            mailbox=mailbox,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+
+        models.ThreadAccess.objects.filter(thread=thread, mailbox=mailbox).delete()
+
+        assert not models.UserEvent.objects.filter(
+            thread=thread,
+            type=enums.UserEventTypeChoices.MENTION,
         ).exists()

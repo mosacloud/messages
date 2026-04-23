@@ -126,19 +126,21 @@
     margin-left: var(--c--globals--spacings--3xs);
 }
 
-// System events (ASSIGN/UNASSIGN) — compact centered line (D-14)
-.thread-event--system {
+// System events (ASSIGN/UNASSIGN) — single discrete text line, no icon, no
+// background, no centering. Aligned with the rest of the timeline so metadata
+// fades into the margin instead of competing with messages for attention.
+.thread-event--system-line {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--c--globals--spacings--xs);
-    padding: var(--c--globals--spacings--xs) var(--c--globals--spacings--base);
+    align-items: baseline;
+    gap: var(--c--globals--spacings--2xs);
+    padding: var(--c--globals--spacings--3xs) 0;
     color: var(--c--contextuals--content--semantic--neutral--tertiary);
     font-size: var(--c--globals--font--sizes--xs);
+    line-height: 1.4;
 }
 
 .thread-event__system-text {
-    font-style: italic;
+    color: var(--c--contextuals--content--semantic--neutral--secondary);
 }
 
 .thread-event__system-time {
@@ -146,28 +148,48 @@
     color: var(--c--contextuals--content--semantic--neutral--tertiary);
 }
 
-// Grouped assignment summary: +Name / -Name chips shown inline after the
-// system message when consecutive ASSIGN/UNASSIGN events by the same author
-// are collapsed.
-.thread-event__assignment-changes {
-    display: inline-flex;
-    flex-wrap: wrap;
+// Collapsed run of 3+ non-IM events. Rendered as a progressive-disclosure
+// toggle that expands to the inline event lines.
+.thread-event--collapsed {
+    display: flex;
+    flex-direction: column;
     gap: var(--c--globals--spacings--2xs);
-    margin-left: var(--c--globals--spacings--2xs);
-    font-style: normal;
 }
 
-.thread-event__assignment-change {
-    font-weight: 600;
+.thread-event__collapsed-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--c--globals--spacings--2xs);
+    padding: var(--c--globals--spacings--3xs) var(--c--globals--spacings--2xs);
+    margin: 0;
+    background: transparent;
+    border: none;
+    border-radius: var(--c--globals--spacings--3xs);
+    color: var(--c--contextuals--content--semantic--neutral--secondary);
+    font-size: var(--c--globals--font--sizes--xs);
+    font-family: inherit;
+    cursor: pointer;
+    align-self: flex-start;
 
-    &--added {
-        color: var(--c--contextuals--content--semantic--success--primary);
+    &:hover {
+        background-color: var(--c--contextuals--background--semantic--neutral--secondary);
     }
 
-    &--removed {
-        color: var(--c--contextuals--content--semantic--neutral--secondary);
-        text-decoration: line-through;
+    &:focus-visible {
+        outline: 2px solid var(--c--contextuals--border--focus);
+        outline-offset: 2px;
     }
+}
+
+.thread-event__collapsed-bucket {
+    color: var(--c--contextuals--content--semantic--neutral--tertiary);
+}
+
+.thread-event__collapsed-list {
+    display: flex;
+    flex-direction: column;
+    padding-left: var(--c--globals--spacings--base);
+    border-left: 2px solid var(--c--contextuals--border--default);
 }
 
 // Generic event types (non-IM)

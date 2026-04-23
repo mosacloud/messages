@@ -5253,15 +5253,6 @@
                         "description": "Filter thread accesses by mailbox ID."
                     },
                     {
-                        "name": "page",
-                        "required": false,
-                        "in": "query",
-                        "description": "A page number within the paginated result set.",
-                        "schema": {
-                            "type": "integer"
-                        }
-                    },
-                    {
                         "in": "path",
                         "name": "thread_id",
                         "schema": {
@@ -5284,7 +5275,10 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/PaginatedThreadAccessList"
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ThreadAccess"
+                                    }
                                 }
                             }
                         },
@@ -5579,7 +5573,7 @@
             },
             "post": {
                 "operationId": "threads_events_create",
-                "description": "Create a ThreadEvent with idempotence for ASSIGN and UNASSIGN.\n\nFor ASSIGN (per D-08): if all assignees already have a UserEvent ASSIGN\non this thread, return 200 without creating a ThreadEvent. If some are\nnew, filter data.assignees to new ones only and create.\n\nFor UNASSIGN: if no assignee has a UserEvent ASSIGN on this thread,\nreturn 200 without creating a ThreadEvent.",
+                "description": "Create a ThreadEvent\n\nFor ASSIGN: if all assignees already have a UserEvent ASSIGN\non this thread, return 204 without creating a ThreadEvent. If some\nare new, filter data.assignees to new ones only and create.\n\nFor UNASSIGN: if no assignee has a UserEvent ASSIGN on this thread,\nreturn 204 without creating a ThreadEvent.",
                 "parameters": [
                     {
                         "in": "path",
@@ -5905,7 +5899,7 @@
                                 "schema": {
                                     "type": "array",
                                     "items": {
-                                        "$ref": "#/components/schemas/UserWithoutAbilities"
+                                        "$ref": "#/components/schemas/ThreadMentionableUser"
                                     }
                                 }
                             }
@@ -8401,37 +8395,6 @@
                     }
                 }
             },
-            "PaginatedThreadAccessList": {
-                "type": "object",
-                "required": [
-                    "count",
-                    "results"
-                ],
-                "properties": {
-                    "count": {
-                        "type": "integer",
-                        "example": 123
-                    },
-                    "next": {
-                        "type": "string",
-                        "nullable": true,
-                        "format": "uri",
-                        "example": "http://api.example.org/accounts/?page=4"
-                    },
-                    "previous": {
-                        "type": "string",
-                        "nullable": true,
-                        "format": "uri",
-                        "example": "http://api.example.org/accounts/?page=2"
-                    },
-                    "results": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/ThreadAccess"
-                        }
-                    }
-                }
-            },
             "PaginatedThreadList": {
                 "type": "object",
                 "required": [
@@ -9069,6 +9032,13 @@
                             "type": "boolean"
                         },
                         "readOnly": true
+                    },
+                    "assigned_users": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ThreadEventUser"
+                        },
+                        "readOnly": true
                     }
                 },
                 "required": [
@@ -9076,6 +9046,7 @@
                     "accesses",
                     "active_messaged_at",
                     "archived_messaged_at",
+                    "assigned_users",
                     "draft_messaged_at",
                     "events_count",
                     "has_active",
@@ -9142,6 +9113,13 @@
                         "readOnly": true,
                         "title": "Updated on",
                         "description": "date and time at which a record was last updated"
+                    },
+                    "users": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/UserWithoutAbilities"
+                        },
+                        "readOnly": true
                     }
                 },
                 "required": [
@@ -9150,7 +9128,8 @@
                     "mailbox",
                     "role",
                     "thread",
-                    "updated_at"
+                    "updated_at",
+                    "users"
                 ]
             },
             "ThreadAccessDetail": {
@@ -9185,13 +9164,6 @@
                         "format": "date-time",
                         "readOnly": true,
                         "nullable": true
-                    },
-                    "users": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/UserWithoutAbilities"
-                        },
-                        "readOnly": true
                     }
                 },
                 "required": [
@@ -9199,8 +9171,7 @@
                     "mailbox",
                     "read_at",
                     "role",
-                    "starred_at",
-                    "users"
+                    "starred_at"
                 ]
             },
             "ThreadAccessRequest": {
@@ -9315,7 +9286,7 @@
             },
             "ThreadEventAssigneesData": {
                 "type": "object",
-                "description": "OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``ASSIGN`` and ``UNASSIGN`` events.\n\nBoth event types share the exact same payload shape, so a single serializer\n(and thus a single generated TypeScript type) covers them.\n\nNot used for runtime validation (handled by ``ThreadEvent.clean()`` against\n``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component\nin the OpenAPI schema consumed by the generated frontend client.",
+                "description": "OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``ASSIGN`` and ``UNASSIGN`` events.\n\nBoth event types share the exact same payload shape, so a single serializer\n(and thus a single generated TypeScript type) covers them.\n\nNot used for runtime validation (handled by\n``ThreadEvent.validate_data()`` against ``ThreadEvent.DATA_SCHEMAS``);\nexists solely to produce a named component in the OpenAPI schema consumed\nby the generated frontend client.",
                 "properties": {
                     "assignees": {
                         "type": "array",
@@ -9330,7 +9301,7 @@
             },
             "ThreadEventAssigneesDataRequest": {
                 "type": "object",
-                "description": "OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``ASSIGN`` and ``UNASSIGN`` events.\n\nBoth event types share the exact same payload shape, so a single serializer\n(and thus a single generated TypeScript type) covers them.\n\nNot used for runtime validation (handled by ``ThreadEvent.clean()`` against\n``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component\nin the OpenAPI schema consumed by the generated frontend client.",
+                "description": "OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``ASSIGN`` and ``UNASSIGN`` events.\n\nBoth event types share the exact same payload shape, so a single serializer\n(and thus a single generated TypeScript type) covers them.\n\nNot used for runtime validation (handled by\n``ThreadEvent.validate_data()`` against ``ThreadEvent.DATA_SCHEMAS``);\nexists solely to produce a named component in the OpenAPI schema consumed\nby the generated frontend client.",
                 "properties": {
                     "assignees": {
                         "type": "array",
@@ -9365,7 +9336,7 @@
             },
             "ThreadEventIMData": {
                 "type": "object",
-                "description": "OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``IM`` events.\n\nNot used for runtime validation (handled by ``ThreadEvent.clean()`` against\n``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component\nin the OpenAPI schema consumed by the generated frontend client.",
+                "description": "OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``IM`` events.\n\nNot used for runtime validation (handled by\n``ThreadEvent.validate_data()`` against ``ThreadEvent.DATA_SCHEMAS``);\nexists solely to produce a named component in the OpenAPI schema consumed\nby the generated frontend client.",
                 "properties": {
                     "content": {
                         "type": "string"
@@ -9383,7 +9354,7 @@
             },
             "ThreadEventIMDataRequest": {
                 "type": "object",
-                "description": "OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``IM`` events.\n\nNot used for runtime validation (handled by ``ThreadEvent.clean()`` against\n``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component\nin the OpenAPI schema consumed by the generated frontend client.",
+                "description": "OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``IM`` events.\n\nNot used for runtime validation (handled by\n``ThreadEvent.validate_data()`` against ``ThreadEvent.DATA_SCHEMAS``);\nexists solely to produce a named component in the OpenAPI schema consumed\nby the generated frontend client.",
                 "properties": {
                     "content": {
                         "type": "string",
@@ -9433,7 +9404,7 @@
             },
             "ThreadEventUser": {
                 "type": "object",
-                "description": "OpenAPI-only serializer: describes a single user inside\nan ThreadEvent.data payload. (used for ``IM`` and ``ASSIGNEES`` events)\n\nNot used for runtime validation (handled by ``ThreadEvent.clean()`` against\n``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component\nin the OpenAPI schema consumed by the generated frontend client.",
+                "description": "OpenAPI-only serializer: describes a single user inside\nan ThreadEvent.data payload. (used for ``IM`` and ``ASSIGNEES`` events)\n\nNot used for runtime validation (handled by\n``ThreadEvent.validate_data()`` against ``ThreadEvent.DATA_SCHEMAS``);\nexists solely to produce a named component in the OpenAPI schema consumed\nby the generated frontend client.",
                 "properties": {
                     "id": {
                         "type": "string",
@@ -9450,7 +9421,7 @@
             },
             "ThreadEventUserRequest": {
                 "type": "object",
-                "description": "OpenAPI-only serializer: describes a single user inside\nan ThreadEvent.data payload. (used for ``IM`` and ``ASSIGNEES`` events)\n\nNot used for runtime validation (handled by ``ThreadEvent.clean()`` against\n``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component\nin the OpenAPI schema consumed by the generated frontend client.",
+                "description": "OpenAPI-only serializer: describes a single user inside\nan ThreadEvent.data payload. (used for ``IM`` and ``ASSIGNEES`` events)\n\nNot used for runtime validation (handled by\n``ThreadEvent.validate_data()`` against ``ThreadEvent.DATA_SCHEMAS``);\nexists solely to produce a named component in the OpenAPI schema consumed\nby the generated frontend client.",
                 "properties": {
                     "id": {
                         "type": "string",
@@ -9512,6 +9483,47 @@
                     "id",
                     "name",
                     "slug"
+                ]
+            },
+            "ThreadMentionableUser": {
+                "type": "object",
+                "description": "User listed in a thread's mention suggestions, with comment capability flag.",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true,
+                        "description": "primary key for the record as UUID"
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "readOnly": true,
+                        "nullable": true,
+                        "title": "Identity email address"
+                    },
+                    "full_name": {
+                        "type": "string",
+                        "readOnly": true,
+                        "nullable": true
+                    },
+                    "custom_attributes": {
+                        "type": "object",
+                        "additionalProperties": {},
+                        "description": "Get custom attributes for the instance.",
+                        "readOnly": true
+                    },
+                    "can_post_comments": {
+                        "type": "boolean",
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "can_post_comments",
+                    "custom_attributes",
+                    "email",
+                    "full_name",
+                    "id"
                 ]
             },
             "ThreadSplitRequestRequest": {

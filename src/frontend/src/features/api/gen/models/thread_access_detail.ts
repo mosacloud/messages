@@ -7,7 +7,6 @@
  */
 import type { MailboxLight } from "./mailbox_light";
 import type { ThreadAccessRoleChoices } from "./thread_access_role_choices";
-import type { UserWithoutAbilities } from "./user_without_abilities";
 
 /**
  * Serializer for thread access details.
@@ -21,5 +20,4 @@ export interface ThreadAccessDetail {
   readonly read_at: string | null;
   /** @nullable */
   readonly starred_at: string | null;
-  readonly users: readonly UserWithoutAbilities[];
 }

@@ -33,24 +33,26 @@ export const AccessRoleDropdown = ({
     onDelete,
     canDelete = true,
 }: AccessRoleDropdownProps) => {
-    const { t } = useCunningham();
+    // Aliased to `tc` so the i18next-cli parser does not extract Cunningham's
+    // own translation keys (e.g. `components.share.*`) into our locale files.
+    const { t: tc } = useCunningham();
 
     const currentRoleString = roles.find((role) => role.value === selectedRole);
 
     const options: DropdownMenuItem[] = useMemo(() => {
-        if (!onDelete && !canDelete) {
+        if (!onDelete) {
             return roles;
         }
         return [
             ...roles,
             { type: "separator" as const },
             {
-                label: t("components.share.access.delete"),
+                label: tc("components.share.access.delete"),
                 callback: onDelete,
                 isDisabled: !canDelete,
             },
         ];
-    }, [roles, onDelete, t, canDelete]);
+    }, [roles, onDelete, tc, canDelete]);
 
     if (!canUpdate) {
         return (

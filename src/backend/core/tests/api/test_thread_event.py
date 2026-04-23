@@ -133,6 +133,30 @@ class TestThreadEventCreate:
         assert response.data["type"][0].code == "invalid_choice"
         assert str(response.data["type"][0]) == '"notification" is not a valid choice.'
 
+    def test_create_thread_event_assign_rejects_non_uuid_id(self, api_client):
+        """An ASSIGN payload carrying a malformed assignee id must return 400.
+
+        Without the ``FormatChecker`` wired into ``ThreadEvent.validate_data``
+        the schema's ``"format": "uuid"`` would be ignored and the viewset
+        would crash later on ``uuid.UUID(a["id"])``.
+        """
+        user, _mailbox, thread = setup_user_with_thread_access()
+        api_client.force_authenticate(user=user)
+
+        data = {
+            "type": "assign",
+            "data": {
+                "assignees": [
+                    {"id": str(uuid.uuid4()), "name": "Alice"},
+                    {"id": "not-a-uuid", "name": "Broken"},
+                ]
+            },
+        }
+
+        response = api_client.post(get_thread_event_url(thread.id), data, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "data" in response.data
+
     def test_create_thread_event_forbidden(self, api_client):
         """Test creating a thread event without thread access."""
         user = factories.UserFactory()
@@ -615,31 +639,30 @@ class TestThreadEventDataValidation:
         assert "data" in response.data
 
     def test_serializer_validate_dispatches_per_type(self, api_client):
-        """Invalid payloads are rejected at the serializer layer with
-        field-level error keys, proving ``ThreadEventSerializer.validate()``
-        routes ``data`` to the right sub-serializer for each event type
-        before the model's ``full_clean()`` would catch it."""
+        """Invalid payloads are rejected at the serializer layer and cite the
+        offending property, proving ``ThreadEventSerializer.validate()``
+        routes ``data`` through ``ThreadEvent.validate_data`` for each event
+        type before the model's ``full_clean()`` would catch it."""
         user, _mailbox, thread = setup_user_with_thread_access()
         api_client.force_authenticate(user=user)
 
-        # IM without 'content' → ThreadEventIMDataSerializer flags 'content'
+        # IM without 'content' → schema flags 'content'
         response = api_client.post(
             get_thread_event_url(thread.id),
             {"type": "im", "data": {}},
             format="json",
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "content" in response.data["data"]
+        assert "content" in str(response.data["data"])
 
-        # ASSIGN without 'assignees' → ThreadEventAssigneesDataSerializer
-        # flags 'assignees' (same sub-serializer reused for UNASSIGN)
+        # ASSIGN without 'assignees' → same schema path, same wiring as UNASSIGN
         response = api_client.post(
             get_thread_event_url(thread.id),
             {"type": "assign", "data": {}},
             format="json",
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "assignees" in response.data["data"]
+        assert "assignees" in str(response.data["data"])
 
 
 def get_read_mention_url(thread_id, event_id):
@@ -1185,6 +1208,85 @@ class TestThreadEventUnassign:
         response = api_client.post(get_thread_event_url(thread.id), data, format="json")
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
+    def test_unassign_mixed_payload_narrows_to_active_assignees(self, api_client):
+        """UNASSIGN with a mix of assigned and non-assigned users only emits the active ones.
+
+        Regression guard: the previous ``.exists()`` check let a non-assigned
+        user slip into the emitted UNASSIGN event as long as one targeted user
+        was actually assigned.
+        """
+        user, mailbox, thread = setup_user_with_thread_access()
+        assigned = factories.UserFactory()
+        not_assigned = factories.UserFactory()
+        for target in (assigned, not_assigned):
+            factories.MailboxAccessFactory(
+                mailbox=mailbox, user=target, role=enums.MailboxRoleChoices.ADMIN
+            )
+        api_client.force_authenticate(user=user)
+
+        # Only ``assigned`` gets an ASSIGN.
+        api_client.post(
+            get_thread_event_url(thread.id),
+            {
+                "type": "assign",
+                "data": {"assignees": [{"id": str(assigned.id), "name": "A"}]},
+            },
+            format="json",
+        )
+        assign_event = models.ThreadEvent.objects.get(
+            thread=thread, type=enums.ThreadEventTypeChoices.ASSIGN
+        )
+        _force_created_at(assign_event, timezone.now() - timedelta(minutes=10))
+
+        response = api_client.post(
+            get_thread_event_url(thread.id),
+            {
+                "type": "unassign",
+                "data": {
+                    "assignees": [
+                        {"id": str(assigned.id), "name": "A"},
+                        {"id": str(not_assigned.id), "name": "B"},
+                    ]
+                },
+            },
+            format="json",
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+        unassign_events = list(
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.UNASSIGN
+            )
+        )
+        assert len(unassign_events) == 1
+        emitted_ids = {a["id"] for a in unassign_events[0].data["assignees"]}
+        assert emitted_ids == {str(assigned.id)}
+
+    def test_unassign_only_inactive_users_returns_204(self, api_client):
+        """UNASSIGN targeting only users without an active ASSIGN returns 204."""
+        user, mailbox, thread = setup_user_with_thread_access()
+        not_assigned = factories.UserFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox, user=not_assigned, role=enums.MailboxRoleChoices.ADMIN
+        )
+        api_client.force_authenticate(user=user)
+
+        response = api_client.post(
+            get_thread_event_url(thread.id),
+            {
+                "type": "unassign",
+                "data": {"assignees": [{"id": str(not_assigned.id), "name": "B"}]},
+            },
+            format="json",
+        )
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert (
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.UNASSIGN
+            ).count()
+            == 0
+        )
+
 
 class TestThreadEventUnassignUndoWindow:
     """Test the assign/unassign "undo window" that swallows back-to-back events.
@@ -1432,3 +1534,68 @@ class TestThreadEventUnassignUndoWindow:
             ).count()
             == 1
         )
+
+    def test_undo_does_not_rewrite_history_for_inactive_user(self, api_client):
+        """UNASSIGN for a non-assigned user must not alter a recent ASSIGN event.
+
+        Regression guard: the undo-window absorb used to strip any targeted
+        ``assignee_id`` from the recent ``ThreadEvent(ASSIGN).data`` — even
+        when that user no longer had an active ``UserEvent(ASSIGN)``, which
+        silently corrupted the thread's assignment history.
+        """
+        user, mailbox, thread = setup_user_with_thread_access()
+        assignee_a = factories.UserFactory()
+        assignee_b = factories.UserFactory()
+        for target in (assignee_a, assignee_b):
+            factories.MailboxAccessFactory(
+                mailbox=mailbox, user=target, role=enums.MailboxRoleChoices.ADMIN
+            )
+        api_client.force_authenticate(user=user)
+
+        # Assign [A, B] then clear A's active UserEvent out-of-band (simulates
+        # an earlier unassign whose ThreadEvent has since been archived).
+        api_client.post(
+            get_thread_event_url(thread.id),
+            {
+                "type": "assign",
+                "data": {
+                    "assignees": [
+                        {"id": str(assignee_a.id), "name": "A"},
+                        {"id": str(assignee_b.id), "name": "B"},
+                    ]
+                },
+            },
+            format="json",
+        )
+        models.UserEvent.objects.filter(
+            user=assignee_a,
+            thread=thread,
+            type=enums.UserEventTypeChoices.ASSIGN,
+        ).delete()
+
+        # UNASSIGN A within the undo window: A is no longer active, so the
+        # absorb path must be skipped entirely.
+        response = api_client.post(
+            get_thread_event_url(thread.id),
+            {
+                "type": "unassign",
+                "data": {"assignees": [{"id": str(assignee_a.id), "name": "A"}]},
+            },
+            format="json",
+        )
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+
+        assign_events = list(
+            models.ThreadEvent.objects.filter(
+                thread=thread, type=enums.ThreadEventTypeChoices.ASSIGN
+            )
+        )
+        assert len(assign_events) == 1
+        preserved_ids = {a["id"] for a in assign_events[0].data["assignees"]}
+        assert preserved_ids == {str(assignee_a.id), str(assignee_b.id)}
+        # B's UserEvent must survive untouched.
+        assert models.UserEvent.objects.filter(
+            user=assignee_b,
+            thread=thread,
+            type=enums.UserEventTypeChoices.ASSIGN,
+        ).exists()

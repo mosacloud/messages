@@ -5,6 +5,7 @@
     .share-modal-extensions__inline-assign {
         opacity: 0;
         pointer-events: none;
+        margin-right: var(--c--globals--spacings--xs);
     }
     &:hover .share-modal-extensions__inline-assign,
     &:focus-within .share-modal-extensions__inline-assign {

@@ -3,7 +3,7 @@
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, Exists, OuterRef, Q
+from django.db.models import Count, Exists, OuterRef, Prefetch, Q
 from django.db.models.functions import Coalesce
 
 import rest_framework as drf
@@ -144,11 +144,12 @@ class ThreadViewSet(
 
     @staticmethod
     def _annotate_thread_permissions(queryset, user, mailbox_id):
-        """Attach permission/state annotations expected by ThreadSerializer.
+        """Attach permission/state annotations and prefetches expected by ThreadSerializer.
 
         Shared between the regular DB queryset and the OpenSearch fallback so
-        both code paths always expose the same fields (e.g. ``events_count``),
-        avoiding silent divergence in the serialized payload.
+        both code paths always expose the same fields (e.g. ``events_count``,
+        ``assigned_users``), avoiding silent divergence in the serialized
+        payload.
         """
         can_edit_qs = models.ThreadAccess.objects.filter(
             thread=OuterRef("pk"),
@@ -192,6 +193,54 @@ class ThreadViewSet(
             ),
             events_count=Count("events", distinct=True),
             _can_edit=Exists(can_edit_qs),
+        ).prefetch_related(
+            # Feeds ThreadSerializer.get_assigned_users without N+1. UserEvent
+            # rows with type=ASSIGN are the source of truth for "currently
+            # assigned" (created on assign, deleted on unassign).
+            Prefetch(
+                "user_events",
+                queryset=models.UserEvent.objects.filter(
+                    type=enums.UserEventTypeChoices.ASSIGN
+                )
+                .select_related("user")
+                .order_by("created_at"),
+                to_attr="_assigned_user_events",
+            ),
+            # Feeds ThreadSerializer.get_accesses. ``mailbox__domain`` is
+            # needed because ``Mailbox.__str__`` (used by MailboxLightSerializer)
+            # reads ``self.domain.name`` — without it we'd get one query per
+            # thread to resolve the mail domain.
+            Prefetch(
+                "accesses",
+                queryset=models.ThreadAccess.objects.select_related(
+                    "mailbox", "mailbox__domain", "mailbox__contact"
+                ),
+                to_attr="_accesses_with_mailbox",
+            ),
+            # Feeds ThreadSerializer.get_messages. The serializer only emits
+            # message IDs in chronological order, so ordering is baked into
+            # the prefetch to avoid a re-query per thread.
+            Prefetch(
+                "messages",
+                queryset=models.Message.objects.only(
+                    "id", "thread_id", "created_at"
+                ).order_by("created_at"),
+                to_attr="_ordered_messages",
+            ),
+            # Feeds ThreadSerializer.get_labels. Labels are scoped to the
+            # mailbox context when provided; when it is absent the serializer
+            # short-circuits to ``[]`` and no prefetch is needed.
+            *(
+                [
+                    Prefetch(
+                        "labels",
+                        queryset=models.Label.objects.filter(mailbox_id=mailbox_id),
+                        to_attr="_scoped_labels",
+                    )
+                ]
+                if mailbox_id
+                else []
+            ),
         )
 
     @staticmethod
