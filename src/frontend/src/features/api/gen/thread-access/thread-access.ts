@@ -22,6 +22,7 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  PaginatedThreadAccessList,
   PatchedThreadAccessRequest,
   ThreadAccess,
   ThreadAccessRequest,
@@ -41,7 +42,7 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
  * ViewSet for ThreadAccess model.
  */
 export type threadsAccessesListResponse200 = {
-  data: ThreadAccess[];
+  data: PaginatedThreadAccessList;
   status: 200;
 };
 

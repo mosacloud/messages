@@ -95,15 +95,11 @@ class TestThreadAccessList:
         )
         factories.ThreadAccessFactory.create_batch(5, thread=other_thread)
 
-        # Query count is bounded (no N+1): prefetch chain covers mailbox,
-        # domain, contact, mailbox accesses and their users in a fixed
-        # number of queries regardless of the number of thread accesses.
-        with django_assert_num_queries(5):
+        with django_assert_num_queries(3):
             response = api_client.get(get_thread_access_url(thread.id))
         assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) == 11
-        # Assignable serializer must expose the per-mailbox `users` payload.
-        assert "users" in response.data[0]
+        assert response.data["count"] == 11
+        assert response.data["results"][0]["thread"] == thread.id
 
     def test_list_thread_access_filter_by_mailbox(
         self, api_client, thread_with_editor_access, django_assert_num_queries
@@ -124,13 +120,13 @@ class TestThreadAccessList:
             thread=thread,
             role=enums.ThreadAccessRoleChoices.EDITOR,
         )
-        with django_assert_num_queries(5):
+        with django_assert_num_queries(3):
             response = api_client.get(
                 f"{get_thread_access_url(thread.id)}?mailbox_id={mailbox.id}"
             )
         assert response.status_code == status.HTTP_200_OK
-        assert len(response.data) == 1
-        assert response.data[0]["mailbox"] == mailbox.id
+        assert response.data["count"] == 1
+        assert response.data["results"][0]["mailbox"] == mailbox.id
 
     @pytest.mark.parametrize(
         "thread_access_role, mailbox_access_role",
@@ -878,13 +874,13 @@ class TestThreadAccessDetailUsersField:
 
     This field feeds the share/assignment modal: it lists users of each
     mailbox-with-access who can be assigned to the thread, excluding
-    viewers (they cannot be assignees). It is served only by the thread
-    accesses list endpoint so thread list/retrieve payloads stay lean.
+    viewers (they cannot be assignees).
     """
 
-    def _list_thread_accesses(self, api_client, thread_id):
-        """GET /api/v1.0/threads/{thread_id}/accesses/"""
-        return api_client.get(get_thread_access_url(thread_id))
+    def _get_thread_detail(self, api_client, thread_id, mailbox_id):
+        """GET /api/v1.0/threads/{id}/?mailbox_id=..."""
+        url = reverse("threads-detail", kwargs={"pk": thread_id})
+        return api_client.get(f"{url}?mailbox_id={mailbox_id}")
 
     def test_excludes_viewers_includes_higher_roles(self, api_client):
         """Viewers on a mailbox must not appear in `users`; editors/senders/admins must."""
@@ -921,10 +917,10 @@ class TestThreadAccessDetailUsersField:
         )
 
         api_client.force_authenticate(user=requester)
-        response = self._list_thread_accesses(api_client, thread.id)
+        response = self._get_thread_detail(api_client, thread.id, mailbox.id)
         assert response.status_code == status.HTTP_200_OK
 
-        access = response.data[0]
+        access = response.data["accesses"][0]
         returned_ids = {str(u["id"]) for u in access["users"]}
         assert str(viewer_user.id) not in returned_ids
         assert str(editor_user.id) in returned_ids
@@ -960,9 +956,9 @@ class TestThreadAccessDetailUsersField:
         )
 
         api_client.force_authenticate(user=requester)
-        response = self._list_thread_accesses(api_client, thread.id)
+        response = self._get_thread_detail(api_client, thread.id, mailbox.id)
         assert response.status_code == status.HTTP_200_OK
-        returned_names = [u["full_name"] for u in response.data[0]["users"]]
+        returned_names = [u["full_name"] for u in response.data["accesses"][0]["users"]]
         assert returned_names == ["Alice", "Bob", "Charlie", "Zed"]
 
     def test_users_field_respects_mailbox_boundary(self, api_client):
@@ -1002,10 +998,12 @@ class TestThreadAccessDetailUsersField:
         )
 
         api_client.force_authenticate(user=requester)
-        response = self._list_thread_accesses(api_client, thread.id)
+        response = self._get_thread_detail(api_client, thread.id, mailbox_a.id)
         assert response.status_code == status.HTTP_200_OK
 
-        accesses_by_mailbox = {str(a["mailbox"]): a for a in response.data}
+        accesses_by_mailbox = {
+            str(a["mailbox"]["id"]): a for a in response.data["accesses"]
+        }
         a_users = {
             str(u["id"]) for u in accesses_by_mailbox[str(mailbox_a.id)]["users"]
         }
@@ -1016,44 +1014,4 @@ class TestThreadAccessDetailUsersField:
         assert str(a_only.id) in a_users
         assert str(a_only.id) not in b_users
         assert str(b_only.id) in b_users
-
-    def test_thread_endpoints_do_not_expose_users(self, api_client):
-        """`users` is served only by the accesses list endpoint.
-
-        Both `GET /threads/` and `GET /threads/{id}/` embed accesses via
-        `ThreadAccessDetailSerializer`, which intentionally omits `users`
-        so thread payloads stay small and free of per-mailbox user PII.
-        """
-        requester = factories.UserFactory()
-        mailbox = factories.MailboxFactory()
-        factories.MailboxAccessFactory(
-            mailbox=mailbox,
-            user=requester,
-            role=enums.MailboxRoleChoices.ADMIN,
-        )
-        factories.MailboxAccessFactory(
-            mailbox=mailbox,
-            user=factories.UserFactory(),
-            role=enums.MailboxRoleChoices.EDITOR,
-        )
-
-        thread = factories.ThreadFactory()
-        factories.ThreadAccessFactory(
-            mailbox=mailbox,
-            thread=thread,
-            role=enums.ThreadAccessRoleChoices.EDITOR,
-        )
-
-        api_client.force_authenticate(user=requester)
-
-        list_url = reverse("threads-list")
-        list_response = api_client.get(f"{list_url}?mailbox_id={mailbox.id}")
-        assert list_response.status_code == status.HTTP_200_OK
-        list_access = list_response.data["results"][0]["accesses"][0]
-        assert "users" not in list_access
-
-        detail_url = reverse("threads-detail", kwargs={"pk": thread.id})
-        detail_response = api_client.get(f"{detail_url}?mailbox_id={mailbox.id}")
-        assert detail_response.status_code == status.HTTP_200_OK
-        detail_access = detail_response.data["accesses"][0]
-        assert "users" not in detail_access
+        assert str(b_only.id) not in a_users

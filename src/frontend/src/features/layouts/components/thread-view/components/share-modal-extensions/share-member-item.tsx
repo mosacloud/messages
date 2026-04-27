@@ -34,11 +34,9 @@ export const ShareMemberItem = <UserType, AccessType>({
     rightExtras,
 }: ShareMemberItemProps<UserType, AccessType>) => {
     const [isRoleOpen, setIsRoleOpen] = useState(false);
-    const accessFlags = accessData as { is_explicit?: boolean; can_delete?: boolean };
     const canDelete =
-        Boolean(deleteAccess) &&
-        accessFlags.is_explicit !== false &&
-        accessFlags.can_delete !== false;
+        (accessData as { is_explicit?: boolean; can_delete?: boolean }).is_explicit !== false &&
+        (accessData as { is_explicit?: boolean; can_delete?: boolean }).can_delete !== false;
     return (
         <div className="c__share-member-item">
             <QuickSearchItemTemplate

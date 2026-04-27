@@ -70,13 +70,10 @@ export const ThreadActionBar = ({ canUndelete, canUnarchive }: ThreadActionBarPr
         });
     };
 
-  return (
-    <div className="thread-action-bar__container">
-      <div className="thread-action-bar">
-        <AssigneesWidget onClick={() => accessesWidgetRef.current?.open()} />
-      </div>
+    return (
         <div className="thread-action-bar">
-            <Tooltip content={t('Close this thread')} placement="bottom">
+            <AssigneesWidget onClick={() => accessesWidgetRef.current?.open()} />
+            <Tooltip content={t('Close this thread')} placement="left">
                 <Button
                     onClick={unselectThread}
                     variant="tertiary"
@@ -209,7 +206,6 @@ export const ThreadActionBar = ({ canUndelete, canUnarchive }: ThreadActionBarPr
                     />
                 </Tooltip>
             </DropdownMenu>
-      </div>
-      </div>
+        </div>
     )
 }

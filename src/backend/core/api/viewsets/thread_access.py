@@ -44,7 +44,6 @@ class ThreadAccessViewSet(
     lookup_field = "id"
     lookup_url_kwarg = "id"
     queryset = models.ThreadAccess.objects.all()
-    pagination_class = None
 
     def get_queryset(self):
         """Restrict results to thread accesses for the specified thread."""
@@ -55,12 +54,6 @@ class ThreadAccessViewSet(
 
         # Filter by thread_id from URL
         queryset = self.queryset.filter(thread_id=thread_id)
-
-        # The list endpoint serializes the `users` field (non-viewer users
-        # of each mailbox). Prefetching the access/user chain keeps the
-        # query count constant regardless of the number of accesses.
-        if self.action == "list":
-            queryset = queryset.prefetch_related("mailbox__accesses__user")
 
         # Optional mailbox filter
         mailbox_id = self.request.GET.get("mailbox_id")

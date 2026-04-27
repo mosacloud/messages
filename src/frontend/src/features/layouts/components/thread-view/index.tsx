@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { FEATURE_KEYS, useFeatureFlag } from "@/hooks/use-feature";
 import { ThreadActionBar } from "./components/thread-action-bar"
 import { ThreadMessage } from "./components/thread-message"
-import { ThreadEvent, isCondensed, groupSystemEvents, CollapsedEventsGroup } from "./components/thread-event"
+import { ThreadEvent, isCondensed, groupAssignmentEvents, GroupedAssignmentEvent } from "./components/thread-event"
 import { ThreadEventInput } from "./components/thread-event-input"
 import { useMailboxContext, TimelineItem, isThreadEvent } from "@/features/providers/mailbox"
 import useRead from "@/features/message/use-read"
@@ -62,11 +62,12 @@ const ThreadViewComponent = ({ threadItems, mailboxId, thread, showTrashedMessag
     // Refs for thread events with unread mentions
     const mentionRefs = useRef<Record<string, HTMLElement | null>>({});
     const { markMentionsRead } = useMentionRead(thread.id);
-    // Collapse runs of 3+ consecutive non-IM events between messages/IMs
-    // behind a progressive-disclosure toggle. Short runs stay inline so we
-    // don't hide metadata when there's little of it — pattern borrowed from
-    // Linear's collapsed issue history.
-    const renderItems = useMemo(() => groupSystemEvents(threadItems), [threadItems]);
+    // Collapse runs of consecutive ASSIGN/UNASSIGN events from the same author
+    // into a single synthetic "assignment_group" item. The backend undo window
+    // already absorbs fast click-regrets within 2 minutes; this handles the
+    // "changed my mind later" case that still ends up producing multiple
+    // events worth surfacing as one net-change summary.
+    const renderItems = useMemo(() => groupAssignmentEvents(threadItems), [threadItems]);
     // Find all unread message IDs
     const messages = useMemo(() => threadItems.filter(item => item.type === 'message').map(item => item.data as MessageWithDraftChild), [threadItems]);
     const unreadMessageIds = useMemo(() => messages.filter((m) => m.is_unread).map((m) => m.id), [messages]);
@@ -295,10 +296,10 @@ const ThreadViewComponent = ({ threadItems, mailboxId, thread, showTrashedMessag
                     </Banner>
                 )}
                 {renderItems.map((item, index) => {
-                    if (item.kind === 'collapsed_events') {
+                    if (item.kind === 'assignment_group') {
                         return (
-                            <CollapsedEventsGroup
-                                key={`collapsed-events-${item.events[0].id}`}
+                            <GroupedAssignmentEvent
+                                key={`assignment-group-${item.events[0].id}`}
                                 events={item.events}
                             />
                         );

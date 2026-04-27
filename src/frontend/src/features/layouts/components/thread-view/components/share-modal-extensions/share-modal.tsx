@@ -50,9 +50,7 @@ type SearchUserItemProps<UserType> = {
 
 // Reproduced locally because ui-kit does not export it.
 const SearchUserItem = <UserType,>({ user }: SearchUserItemProps<UserType>) => {
-    // Aliased to `tc` so the i18next-cli parser does not extract Cunningham's
-    // own translation keys (e.g. `components.share.*`) into our locale files.
-    const { t: tc } = useCunningham();
+    const { t } = useCunningham();
     return (
         <QuickSearchItemTemplate
             testId="search-user-item"
@@ -60,7 +58,7 @@ const SearchUserItem = <UserType,>({ user }: SearchUserItemProps<UserType>) => {
             alwaysShowRight={false}
             right={
                 <div className="c__search-user-item-right">
-                    <span>{tc("components.share.item.add")}</span>
+                    <span>{t("components.share.item.add")}</span>
                     <span className="material-icons">add</span>
                 </div>
             }
@@ -120,12 +118,6 @@ type ShareModalSearchProps<UserType> = {
     searchPlaceholder?: string;
     onInviteUser?: (users: UserData<UserType>[], role: string) => void;
     loading?: boolean;
-    /**
-     * Fork-only extension: when `false`, typing an email that does not
-     * match any search result will NOT surface an "invite" action. Only
-     * users returned by `onSearchUsers` can be selected. Defaults to `true`.
-     */
-    allowInvitation?: boolean;
 };
 
 export type ShareModalProps<UserType, InvitationType, AccessType> = {
@@ -168,7 +160,6 @@ export const ShareModal = <UserType, InvitationType, AccessType>({
     renderAccessFooter,
     renderAccessRightExtras,
     membersTitle,
-    allowInvitation = true,
     ...props
 }: PropsWithChildren<
     ShareModalProps<UserType, InvitationType, AccessType>
@@ -188,9 +179,7 @@ export const ShareModal = <UserType, InvitationType, AccessType>({
         throw new Error("canView cannot be false if canUpdate is true");
     }
 
-    // Aliased to `tc` so the i18next-cli parser does not extract Cunningham's
-    // own translation keys (e.g. `components.share.*`) into our locale files.
-    const { t: tc } = useCunningham();
+    const { t } = useCunningham();
     const { isMobile } = useResponsive();
     const searchUserTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [listHeight, setListHeight] = useState<string>("400px");
@@ -246,18 +235,13 @@ export const ShareModal = <UserType, InvitationType, AccessType>({
     };
 
     const usersData: QuickSearchData<UserData<UserType>> = useMemo(() => {
-        // TODO(upstream): fix when contributing this fork back to ui-kit.
-        // `.includes(user)` relies on reference equality; after a search refetch
-        // the server returns freshly allocated objects, so already-pending users
-        // reappear in the list and can be picked twice. Filter by `user.id`
-        // instead (e.g. via a Set of pending ids).
         const searchMemberResult = searchUsersResult?.filter(
             (user) => !pendingInvitationUsers.includes(user),
         );
         let emptyString: string | undefined =
             searchQuery !== ""
-                ? tc("components.share.user.no_result")
-                : tc("components.share.user.placeholder");
+                ? t("components.share.user.no_result")
+                : t("components.share.user.placeholder");
 
         const isValidEmail = (email: string) =>
             !!email.match(
@@ -265,7 +249,6 @@ export const ShareModal = <UserType, InvitationType, AccessType>({
             );
 
         const isInvitationMode =
-            allowInvitation &&
             isValidEmail(searchQuery ?? "") &&
             !searchMemberResult?.some((user) => user.email === searchQuery);
 
@@ -280,7 +263,7 @@ export const ShareModal = <UserType, InvitationType, AccessType>({
         }
 
         return {
-            groupName: tc("components.share.search.group_name"),
+            groupName: t("components.share.search.group_name"),
             elements: searchMemberResult ?? [],
             showWhenEmpty: true,
             emptyString,
@@ -293,7 +276,7 @@ export const ShareModal = <UserType, InvitationType, AccessType>({
                   ]
                 : undefined,
         } satisfies QuickSearchData<UserData<UserType>>;
-    }, [searchUsersResult, searchQuery, tc, pendingInvitationUsers, onSelect, allowInvitation]);
+    }, [searchUsersResult, searchQuery, t, pendingInvitationUsers, onSelect]);
 
     const handleRef = (node: HTMLDivElement) => {
         const inputHeight = 70;
@@ -322,10 +305,10 @@ export const ShareModal = <UserType, InvitationType, AccessType>({
 
     return (
         <Modal
-            title={props.modalTitle ?? tc("components.share.modalTitle")}
+            title={props.modalTitle ?? t("components.share.modalTitle")}
             isOpen={props.isOpen}
             onClose={props.onClose}
-            aria-label={tc("components.share.modalAriaLabel")}
+            aria-label={t("components.share.modalAriaLabel")}
             closeOnClickOutside
             size={isMobile ? ModalSize.FULL : ModalSize.LARGE}
         >
@@ -360,7 +343,7 @@ export const ShareModal = <UserType, InvitationType, AccessType>({
                         <div className="c__share-modal__cannot-view__content">
                             <p>
                                 {props.cannotViewMessage ??
-                                    tc("components.share.cannot_view.message")}
+                                    t("components.share.cannot_view.message")}
                             </p>
                         </div>
                         {cannotViewChildren}
@@ -373,7 +356,7 @@ export const ShareModal = <UserType, InvitationType, AccessType>({
                         inputValue={inputValue}
                         showInput={canUpdate}
                         loading={props.loading}
-                        placeholder={tc("components.share.user.placeholder")}
+                        placeholder={t("components.share.user.placeholder")}
                     >
                         <div
                             style={{
@@ -404,7 +387,7 @@ export const ShareModal = <UserType, InvitationType, AccessType>({
                                     data-testid="invitations-list"
                                 >
                                     <span className="c__share-modal__invitations-title">
-                                        {tc("components.share.invitations.title")}
+                                        {t("components.share.invitations.title")}
                                     </span>
                                     {invitations.map((invitation) => (
                                         <ShareInvitationItem
@@ -434,7 +417,7 @@ export const ShareModal = <UserType, InvitationType, AccessType>({
                                     <span className="c__share-modal__members-title">
                                         {membersTitle
                                             ? membersTitle(members)
-                                            : tc(
+                                            : t(
                                                 members.length > 1
                                                     ? "components.share.members.title_plural"
                                                     : "components.share.members.title_singular",
@@ -484,9 +467,7 @@ type ShowMoreButtonProps = {
 };
 
 const ShowMoreButton = ({ show, onShowMore }: ShowMoreButtonProps) => {
-    // Aliased to `tc` so the i18next-cli parser does not extract Cunningham's
-    // own translation keys (e.g. `components.share.*`) into our locale files.
-    const { t: tc } = useCunningham();
+    const { t } = useCunningham();
     if (!show) return null;
     return (
         <div className="c__share-modal__show-more-button">
@@ -496,8 +477,9 @@ const ShowMoreButton = ({ show, onShowMore }: ShowMoreButtonProps) => {
                 icon={<span className="material-icons">arrow_downward</span>}
                 onClick={onShowMore}
             >
-                {tc("components.share.members.load_more")}
+                {t("components.share.members.load_more")}
             </Button>
         </div>
     );
 };
+

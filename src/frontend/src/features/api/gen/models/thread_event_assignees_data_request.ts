@@ -13,10 +13,9 @@ import type { ThreadEventUserRequest } from "./thread_event_user_request";
 Both event types share the exact same payload shape, so a single serializer
 (and thus a single generated TypeScript type) covers them.
 
-Not used for runtime validation (handled by
-``ThreadEvent.validate_data()`` against ``ThreadEvent.DATA_SCHEMAS``);
-exists solely to produce a named component in the OpenAPI schema consumed
-by the generated frontend client.
+Not used for runtime validation (handled by ``ThreadEvent.clean()`` against
+``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component
+in the OpenAPI schema consumed by the generated frontend client.
  */
 export interface ThreadEventAssigneesDataRequest {
   assignees: ThreadEventUserRequest[];

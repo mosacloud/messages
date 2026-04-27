@@ -215,14 +215,14 @@ export function useThreadsEventsList<
 }
 
 /**
- * Create a ThreadEvent
+ * Create a ThreadEvent with idempotence for ASSIGN and UNASSIGN.
 
-For ASSIGN: if all assignees already have a UserEvent ASSIGN
-on this thread, return 204 without creating a ThreadEvent. If some
-are new, filter data.assignees to new ones only and create.
+For ASSIGN (per D-08): if all assignees already have a UserEvent ASSIGN
+on this thread, return 200 without creating a ThreadEvent. If some are
+new, filter data.assignees to new ones only and create.
 
 For UNASSIGN: if no assignee has a UserEvent ASSIGN on this thread,
-return 204 without creating a ThreadEvent.
+return 200 without creating a ThreadEvent.
  */
 export type threadsEventsCreateResponse201 = {
   data: ThreadEvent;

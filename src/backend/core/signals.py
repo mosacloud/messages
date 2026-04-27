@@ -682,27 +682,6 @@ def cleanup_assignments_on_thread_access_delete(sender, instance, **kwargs):
         )
 
 
-@receiver(post_delete, sender=models.ThreadAccess)
-def cleanup_mentions_on_thread_access_delete(sender, instance, **kwargs):
-    """Remove MENTION notifications for users of this mailbox when their
-    ThreadAccess is deleted.
-
-    Only triggers on delete — downgrades between ThreadAccess roles
-    (EDITOR ↔ VIEWER) keep the user able to read the thread, so their
-    mentions stay valid.
-    """
-    try:
-        user_ids = list(instance.mailbox.accesses.values_list("user_id", flat=True))
-        cleanup_invalid_mentions(instance.thread, user_ids)
-    # pylint: disable=broad-exception-caught
-    except Exception as e:
-        logger.exception(
-            "Error cleaning mentions on ThreadAccess delete %s: %s",
-            instance.pk,
-            e,
-        )
-
-
 def _cleanup_threads_for_mailbox_user(mailbox_id, user_id):
     """Cleanup assignments of ``user_id`` across threads of ``mailbox_id``.
 
@@ -717,77 +696,6 @@ def _cleanup_threads_for_mailbox_user(mailbox_id, user_id):
     ).distinct()
     for thread in threads:
         cleanup_invalid_assignments(thread, [user_id])
-
-
-def cleanup_invalid_mentions(thread, user_ids):
-    """Remove UserEvent MENTION rows for users that lost access to ``thread``.
-
-    Called from the access-change signals (ThreadAccess / MailboxAccess
-    delete). Among ``user_ids``, keeps only those currently holding a
-    MENTION notification on the thread *and* no longer reaching it through
-    any ``ThreadAccess`` × ``MailboxAccess`` path, then deletes their
-    MENTION rows.
-
-    Unlike :func:`cleanup_invalid_assignments`, no system ``ThreadEvent`` is
-    recorded: the ``ThreadEvent IM`` rows containing the mentions are the
-    historical source of truth and stay untouched; only the per-user
-    notifications are removed.
-
-    A user reachable through multiple mailboxes keeps their mentions as
-    long as at least one path still grants access, regardless of role —
-    any ``MailboxAccess`` role is sufficient to view a shared thread.
-    """
-    user_ids = set(user_ids)
-    if not user_ids:
-        return
-
-    mentioned_user_ids = set(
-        models.UserEvent.objects.filter(
-            thread=thread,
-            user_id__in=user_ids,
-            type=enums.UserEventTypeChoices.MENTION,
-        )
-        .values_list("user_id", flat=True)
-        .distinct()
-    )
-    if not mentioned_user_ids:
-        return
-
-    still_with_access = set(
-        models.ThreadAccess.objects.viewer_user_ids(
-            thread.id, user_ids=mentioned_user_ids
-        )
-    )
-    to_clean = mentioned_user_ids - still_with_access
-    if not to_clean:
-        return
-
-    deleted, _ = models.UserEvent.objects.filter(
-        thread=thread,
-        user_id__in=to_clean,
-        type=enums.UserEventTypeChoices.MENTION,
-    ).delete()
-    if deleted:
-        logger.info(
-            "Auto-cleaned %d UserEvent MENTION(s) on thread %s after access change",
-            deleted,
-            thread.id,
-        )
-
-
-def _cleanup_mentions_for_mailbox_user(mailbox_id, user_id):
-    """Cleanup MENTION notifications of ``user_id`` across threads of ``mailbox_id``.
-
-    Narrows to threads where the user actually holds a MENTION to avoid
-    iterating over the full set of threads shared with the mailbox.
-    """
-    threads = models.Thread.objects.filter(
-        accesses__mailbox_id=mailbox_id,
-        user_events__user_id=user_id,
-        user_events__type=enums.UserEventTypeChoices.MENTION,
-    ).distinct()
-    for thread in threads:
-        cleanup_invalid_mentions(thread, [user_id])
 
 
 @receiver(post_save, sender=models.MailboxAccess)
@@ -822,26 +730,6 @@ def cleanup_assignments_on_mailbox_access_delete(sender, instance, **kwargs):
     except Exception as e:
         logger.exception(
             "Error cleaning assignments on MailboxAccess delete %s: %s",
-            instance.pk,
-            e,
-        )
-
-
-@receiver(post_delete, sender=models.MailboxAccess)
-def cleanup_mentions_on_mailbox_access_delete(sender, instance, **kwargs):
-    """Remove MENTION notifications for this user across threads of the
-    mailbox they just left.
-
-    Only triggers on delete — role changes between MailboxAccess roles
-    (VIEWER/EDITOR/SENDER/ADMIN) all keep the user able to read threads
-    shared with the mailbox, so their mentions stay valid.
-    """
-    try:
-        _cleanup_mentions_for_mailbox_user(instance.mailbox_id, instance.user_id)
-    # pylint: disable=broad-exception-caught
-    except Exception as e:
-        logger.exception(
-            "Error cleaning mentions on MailboxAccess delete %s: %s",
             instance.pk,
             e,
         )

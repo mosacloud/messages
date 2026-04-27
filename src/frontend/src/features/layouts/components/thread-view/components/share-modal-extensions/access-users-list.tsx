@@ -1,18 +1,13 @@
-import { Spinner, UserAvatar } from "@gouvfr-lasuite/ui-kit";
+import { UserAvatar } from "@gouvfr-lasuite/ui-kit";
 import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { useTranslation } from "react-i18next";
 import type { ThreadAccessDetail, UserWithoutAbilities } from "@/features/api/gen";
 
-type AccessWithUsers = ThreadAccessDetail & {
-    users: readonly UserWithoutAbilities[];
-};
-
 type AccessUsersListProps = {
-    access: AccessWithUsers;
+    access: ThreadAccessDetail;
     assignedUserIds: ReadonlySet<string>;
     canAssign: boolean;
-    assigningUserId: string | null;
-    onAssign: (user: UserWithoutAbilities, access: AccessWithUsers) => void;
+    onAssign: (user: UserWithoutAbilities, access: ThreadAccessDetail) => void;
 };
 
 /**
@@ -27,7 +22,6 @@ export const AccessUsersList = ({
     access,
     assignedUserIds,
     canAssign,
-    assigningUserId,
     onAssign,
 }: AccessUsersListProps) => {
     const { t } = useTranslation();
@@ -39,7 +33,6 @@ export const AccessUsersList = ({
         <ul className="share-modal-extensions__users">
             {access.users.map((user) => {
                 const isAssigned = assignedUserIds.has(user.id);
-                const isAssigning = assigningUserId === user.id;
                 return (
                     <li key={user.id} className="share-modal-extensions__users__item">
                         <UserAvatar fullName={user.full_name || user.email || ""} size="small" />
@@ -57,8 +50,6 @@ export const AccessUsersList = ({
                                 size="small"
                                 variant="secondary"
                                 className="share-modal-extensions__users__cta"
-                                disabled={isAssigning || assigningUserId !== null}
-                                icon={isAssigning ? <Spinner size="sm" /> : undefined}
                             >
                                 {t('Assign')}
                             </Button>

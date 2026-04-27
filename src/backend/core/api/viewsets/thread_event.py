@@ -158,12 +158,21 @@ class ThreadEventViewSet(
             enums.ThreadEventTypeChoices.ASSIGN,
             enums.ThreadEventTypeChoices.UNASSIGN,
         ):
-            # ``ThreadEventSerializer`` has already enforced the JSON Schema
-            # (presence, non-empty list, UUID format) via
-            # ``ThreadEvent.validate_data``, so no defensive parsing is needed
-            # here.
-            assignees_data = serializer.validated_data["data"]["assignees"]
-            assignee_ids = [uuid.UUID(a["id"]) for a in assignees_data]
+            assignees_data = serializer.validated_data.get("data", {}).get(
+                "assignees", []
+            )
+            assignee_ids = []
+            for assignee in assignees_data:
+                try:
+                    assignee_ids.append(uuid.UUID(assignee["id"]))
+                except (ValueError, KeyError):
+                    continue
+
+            if not assignee_ids:
+                return Response(
+                    {"error": f"No valid assignees provided for {event_type} event"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             if event_type == enums.ThreadEventTypeChoices.ASSIGN:
                 already_assigned = set(
@@ -199,29 +208,10 @@ class ThreadEventViewSet(
                         "Assignee must have editor access on the thread"
                     )
 
+                # Update data to only include new assignees
                 serializer.validated_data["data"]["assignees"] = new_assignees
 
             elif event_type == enums.ThreadEventTypeChoices.UNASSIGN:
-                # Narrow the payload to users currently assigned before doing
-                # anything else.
-                active_assignee_ids = set(
-                    models.UserEvent.objects.filter(
-                        thread=thread,
-                        user_id__in=assignee_ids,
-                        type=enums.UserEventTypeChoices.ASSIGN,
-                    ).values_list("user_id", flat=True)
-                )
-                if not active_assignee_ids:
-                    return Response(status=status.HTTP_204_NO_CONTENT)
-
-                assignees_data = [
-                    a
-                    for a in assignees_data
-                    if uuid.UUID(a["id"]) in active_assignee_ids
-                ]
-                assignee_ids = [uuid.UUID(a["id"]) for a in assignees_data]
-                serializer.validated_data["data"]["assignees"] = assignees_data
-
                 absorbed = self._absorb_unassign_in_undo_window(
                     thread=thread,
                     author=request.user,
@@ -238,6 +228,19 @@ class ThreadEventViewSet(
                     # Some assignees fell outside the undo window: narrow the
                     # payload and let the regular UNASSIGN path handle them.
                     serializer.validated_data["data"]["assignees"] = remaining_data
+                    assignees_data = remaining_data
+                    assignee_ids = [uuid.UUID(a["id"]) for a in remaining_data]
+
+                # Try to retrieve ASSIGN UserEvents for the targeted assignees
+                has_active_assignment = models.UserEvent.objects.filter(
+                    thread=thread,
+                    user_id__in=assignee_ids,
+                    type=enums.UserEventTypeChoices.ASSIGN,
+                ).exists()
+
+                if not has_active_assignment:
+                    # No one to unassign - Nothing to do
+                    return Response(status=status.HTTP_204_NO_CONTENT)
 
         serializer.save(thread=thread, author=request.user)
         headers = self.get_success_headers(serializer.data)
@@ -306,7 +309,9 @@ class ThreadEventViewSet(
 
         if absorbed:
             absorbed_data = [
-                a for a in assignees_data if uuid.UUID(a["id"]) in absorbed
+                a
+                for a in assignees_data
+                if a.get("id") and uuid.UUID(a["id"]) in absorbed
             ]
             delete_assign_user_events(None, thread, absorbed_data)
 

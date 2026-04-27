@@ -10,10 +10,9 @@
  * OpenAPI-only serializer: describes a single user inside
 an ThreadEvent.data payload. (used for ``IM`` and ``ASSIGNEES`` events)
 
-Not used for runtime validation (handled by
-``ThreadEvent.validate_data()`` against ``ThreadEvent.DATA_SCHEMAS``);
-exists solely to produce a named component in the OpenAPI schema consumed
-by the generated frontend client.
+Not used for runtime validation (handled by ``ThreadEvent.clean()`` against
+``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component
+in the OpenAPI schema consumed by the generated frontend client.
  */
 export interface ThreadEventUserRequest {
   id: string;
