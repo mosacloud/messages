@@ -7,7 +7,7 @@
  */
 import type { ThreadEventTypeEnum } from "./thread_event_type_enum";
 import type { UserWithoutAbilities } from "./user_without_abilities";
-import type { ThreadEventData } from "./thread_event_data";
+import type { ThreadEventDataOneOf } from "./thread_event_data_one_of";
 
 /**
  * Serialize thread event information.
@@ -29,7 +29,7 @@ export interface ThreadEvent {
    */
   message?: string | null;
   readonly author: UserWithoutAbilities;
-  data: ThreadEventData;
+  data: ThreadEventDataOneOf;
   readonly has_unread_mention: boolean;
   readonly is_editable: boolean;
   /** date and time at which a record was created */

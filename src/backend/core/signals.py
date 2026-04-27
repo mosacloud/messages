@@ -6,7 +6,7 @@ import uuid
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
+from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import receiver
 
 from core import enums, models
@@ -313,16 +313,27 @@ def delete_user_scope_channels_on_user_delete(sender, instance, **kwargs):
     ).delete()
 
 
-def _parse_and_dedupe_user_ids(thread_event, users_data):
-    """Extract unique, well-formed UUIDs from a list of user-shape dicts.
+def _validate_user_ids_with_access(thread_event, thread, users_data):
+    """Validate and deduplicate user IDs, checking ThreadAccess.
 
-    Skips entries with missing or malformed ``id`` fields, logging a warning
-    for UUID parse errors. Order is preserved for the first occurrence of
-    each id so callers that diff against existing state remain stable.
+    Shared validation logic for mentions. Parses UUIDs from
+    the 'id' field of each entry, deduplicates, and batch-validates that each
+    user has access to the thread via the MailboxAccess -> ThreadAccess chain.
+
+    Args:
+        thread_event: The ThreadEvent instance (for logging context).
+        thread: The Thread instance.
+        users_data: List of dicts with 'id' and 'name' keys.
+
+    Returns:
+        Set of valid user UUIDs that have access to the thread.
     """
+    if not users_data:
+        return set()
+
     seen_user_ids = set()
     unique_user_ids = []
-    for entry in users_data or []:
+    for entry in users_data:
         raw_id = entry.get("id")
         if not raw_id:
             continue
@@ -338,20 +349,11 @@ def _parse_and_dedupe_user_ids(thread_event, users_data):
         if user_id not in seen_user_ids:
             seen_user_ids.add(user_id)
             unique_user_ids.append(user_id)
-    return unique_user_ids
 
-
-def _validate_user_ids_with_access(thread_event, thread, users_data):
-    """Validate user IDs have any ThreadAccess on ``thread`` (viewer included).
-
-    Used by MENTION: posting an internal comment on a thread makes sense for
-    any user who can read it, so VIEWER access is enough. Silently drops and
-    logs users that do not match.
-    """
-    unique_user_ids = _parse_and_dedupe_user_ids(thread_event, users_data)
     if not unique_user_ids:
         return set()
 
+    # Batch validate: users who have access to this thread
     # Chain: User -> MailboxAccess.user -> MailboxAccess.mailbox -> ThreadAccess.mailbox
     valid_user_ids = set(
         models.ThreadAccess.objects.filter(
@@ -365,35 +367,6 @@ def _validate_user_ids_with_access(thread_event, thread, users_data):
             logger.warning(
                 "Skipping user %s in ThreadEvent %s: "
                 "user not found or no thread access",
-                user_id,
-                thread_event.id,
-            )
-
-    return valid_user_ids
-
-
-def _validate_user_ids_with_edit_rights(thread_event, thread, users_data):
-    """Validate user IDs have full edit rights on ``thread``.
-
-    Used by ASSIGN: the API layer enforces the same rule upstream, so this
-    is a defence-in-depth filter for events created outside the viewset
-    (admin, batch jobs, data migrations) where the invariant may otherwise
-    be silently violated. Uses :meth:`ThreadAccessQuerySet.editor_user_ids`
-    as the single source of truth for the "editor" rule.
-    """
-    unique_user_ids = _parse_and_dedupe_user_ids(thread_event, users_data)
-    if not unique_user_ids:
-        return set()
-
-    valid_user_ids = set(
-        models.ThreadAccess.objects.editor_user_ids(thread.id, user_ids=unique_user_ids)
-    )
-
-    for user_id in unique_user_ids:
-        if user_id not in valid_user_ids:
-            logger.warning(
-                "Skipping user %s in ThreadEvent %s: "
-                "user does not have edit rights on the thread",
                 user_id,
                 thread_event.id,
             )
@@ -467,282 +440,13 @@ def sync_mention_user_events(thread_event, thread, mentions_data):
         )
 
 
-def create_assign_user_events(thread_event, thread, assignees_data):
-    """Create UserEvent ASSIGN records for valid assignees.
-
-    Each valid assignee gets a UserEvent(type=ASSIGN, read_at=None). Assignees
-    that do not have full edit rights on the thread are silently dropped
-    (defence in depth — the API layer enforces the same rule upstream).
-
-    Args:
-        thread_event: The ThreadEvent instance containing assignment data.
-        thread: The Thread instance.
-        assignees_data: List of assignee dicts with 'id' and 'name' keys.
-
-    Returns:
-        List of created UserEvent instances.
-    """
-    valid_user_ids = _validate_user_ids_with_edit_rights(
-        thread_event, thread, assignees_data
-    )
-    if not valid_user_ids:
-        return []
-
-    user_events = [
-        models.UserEvent(
-            user_id=user_id,
-            thread=thread,
-            thread_event=thread_event,
-            type=enums.UserEventTypeChoices.ASSIGN,
-        )
-        for user_id in valid_user_ids
-    ]
-    # ignore_conflicts=True lets the partial UniqueConstraint on
-    # (user, thread) WHERE type=ASSIGN absorb races between concurrent ASSIGN
-    # requests: the viewset's "already_assigned" check and the bulk_create are
-    # not atomic, so two requests can both decide to create a UserEvent for
-    # the same (user, thread); the DB is the final arbiter.
-    models.UserEvent.objects.bulk_create(user_events, ignore_conflicts=True)
-    return user_events
-
-
-def delete_assign_user_events(thread_event, thread, assignees_data):
-    """Delete UserEvent ASSIGN records for specified assignees.
-
-    Removing the UserEvent is the source of truth for "no longer assigned":
-    the ThreadEvent UNASSIGN entry itself carries the historical trace, so we
-    do not keep a deactivated copy around.
-
-    Args:
-        thread_event: The ThreadEvent instance (for logging context). May be
-            ``None`` when the deletion is triggered by the undo-window absorbing
-            an UNASSIGN before any ThreadEvent is created.
-        thread: The Thread instance.
-        assignees_data: List of assignee dicts with 'id' and 'name' keys.
-
-    Returns:
-        Number of UserEvent records deleted.
-    """
-    if not assignees_data:
-        return 0
-
-    context = thread_event.id if thread_event else "<undo-window>"
-
-    user_ids = set()
-    for assignee in assignees_data:
-        raw_id = assignee.get("id")
-        if not raw_id:
-            continue
-        try:
-            user_ids.add(uuid.UUID(raw_id))
-        except (ValueError, AttributeError):
-            logger.warning(
-                "Skipping unassign with invalid UUID '%s' in context %s",
-                raw_id,
-                context,
-            )
-
-    if not user_ids:
-        return 0
-
-    deleted, _ = models.UserEvent.objects.filter(
-        thread=thread,
-        user_id__in=user_ids,
-        type=enums.UserEventTypeChoices.ASSIGN,
-    ).delete()
-
-    if deleted:
-        logger.info(
-            "Deleted %d UserEvent ASSIGN(s) in context %s",
-            deleted,
-            context,
-        )
-
-    return deleted
-
-
-def cleanup_invalid_assignments(thread, user_ids):
-    """Unassign users that lost full edit rights on ``thread``.
-
-    Called from the access-change signals (ThreadAccess / MailboxAccess
-    delete or downgrade). Among ``user_ids``, keeps only those currently
-    assigned *and* no longer qualifying as editors, then records a single
-    system ``ThreadEvent(type=UNASSIGN, author=None)`` grouping all of them.
-    The existing ``ThreadEvent`` post_save handler takes care of deleting
-    the matching ``UserEvent ASSIGN`` rows.
-
-    Uses :meth:`ThreadAccessQuerySet.editor_user_ids` as the single source
-    of truth for the editor rule — a user reachable through multiple
-    mailboxes keeps their assignment as long as at least one path still
-    grants editor rights.
-    """
-    user_ids = set(user_ids)
-    if not user_ids:
-        return
-
-    assigned_user_ids = set(
-        models.UserEvent.objects.filter(
-            thread=thread,
-            user_id__in=user_ids,
-            type=enums.UserEventTypeChoices.ASSIGN,
-        ).values_list("user_id", flat=True)
-    )
-    if not assigned_user_ids:
-        return
-
-    still_editors = set(
-        models.ThreadAccess.objects.editor_user_ids(
-            thread.id, user_ids=assigned_user_ids
-        )
-    )
-    to_unassign = assigned_user_ids - still_editors
-    if not to_unassign:
-        return
-
-    users = models.User.objects.filter(id__in=to_unassign).values(
-        "id", "full_name", "email"
-    )
-    assignees_data = [
-        {"id": str(u["id"]), "name": u["full_name"] or u["email"] or ""} for u in users
-    ]
-    if not assignees_data:
-        return
-
-    models.ThreadEvent.objects.create(
-        thread=thread,
-        type=enums.ThreadEventTypeChoices.UNASSIGN,
-        author=None,
-        data={"assignees": assignees_data},
-    )
-    logger.info(
-        "Auto-unassigned %d user(s) on thread %s after access change",
-        len(assignees_data),
-        thread.id,
-    )
-
-
-# post_save does not expose the previous field values, so we read them from
-# the DB in pre_save and stash them on the instance for the post_save handler.
-# A DB read rather than ``update_fields`` inspection because callers can omit
-# ``update_fields`` entirely, which would then silently skip cleanup.
-@receiver(pre_save, sender=models.ThreadAccess)
-@receiver(pre_save, sender=models.MailboxAccess)
-def stash_previous_role(sender, instance, **kwargs):
-    """Stash the pre-save ``role`` value so post_save can detect downgrades."""
-    if not instance.pk:
-        instance._previous_role = None  # noqa: SLF001 pylint: disable=protected-access
-        return
-    try:
-        previous = sender.objects.only("role").get(pk=instance.pk)
-    except sender.DoesNotExist:
-        instance._previous_role = None  # noqa: SLF001 pylint: disable=protected-access
-        return
-    instance._previous_role = previous.role  # noqa: SLF001 pylint: disable=protected-access
-
-
-@receiver(post_save, sender=models.ThreadAccess)
-def cleanup_assignments_on_thread_access_downgrade(sender, instance, created, **kwargs):
-    """Unassign users of this mailbox when ThreadAccess loses EDITOR role."""
-    if created:
-        return
-    previous_role = getattr(instance, "_previous_role", None)
-    if previous_role != enums.ThreadAccessRoleChoices.EDITOR:
-        return
-    if instance.role == enums.ThreadAccessRoleChoices.EDITOR:
-        return
-    user_ids = list(instance.mailbox.accesses.values_list("user_id", flat=True))
-    try:
-        cleanup_invalid_assignments(instance.thread, user_ids)
-    # pylint: disable=broad-exception-caught
-    except Exception as e:
-        logger.exception(
-            "Error cleaning assignments on ThreadAccess downgrade %s: %s",
-            instance.pk,
-            e,
-        )
-
-
-@receiver(post_delete, sender=models.ThreadAccess)
-def cleanup_assignments_on_thread_access_delete(sender, instance, **kwargs):
-    """Unassign users of this mailbox when their ThreadAccess is deleted.
-
-    The row is gone by the time the signal fires, but ``instance.mailbox`` and
-    ``instance.thread`` remain accessible on the in-memory instance so we can
-    still enumerate the impacted users.
-    """
-    try:
-        user_ids = list(instance.mailbox.accesses.values_list("user_id", flat=True))
-        cleanup_invalid_assignments(instance.thread, user_ids)
-    # pylint: disable=broad-exception-caught
-    except Exception as e:
-        logger.exception(
-            "Error cleaning assignments on ThreadAccess delete %s: %s",
-            instance.pk,
-            e,
-        )
-
-
-def _cleanup_threads_for_mailbox_user(mailbox_id, user_id):
-    """Cleanup assignments of ``user_id`` across threads of ``mailbox_id``.
-
-    Narrows to threads where the user has an active ASSIGN to avoid iterating
-    over the full set of threads shared with the mailbox — a user may be
-    assigned only on a small subset.
-    """
-    threads = models.Thread.objects.filter(
-        accesses__mailbox_id=mailbox_id,
-        user_events__user_id=user_id,
-        user_events__type=enums.UserEventTypeChoices.ASSIGN,
-    ).distinct()
-    for thread in threads:
-        cleanup_invalid_assignments(thread, [user_id])
-
-
-@receiver(post_save, sender=models.MailboxAccess)
-def cleanup_assignments_on_mailbox_access_downgrade(
-    sender, instance, created, **kwargs
-):
-    """Unassign this user when their MailboxAccess leaves MAILBOX_ROLES_CAN_EDIT."""
-    if created:
-        return
-    previous_role = getattr(instance, "_previous_role", None)
-    was_editor = previous_role in enums.MAILBOX_ROLES_CAN_EDIT
-    is_editor = instance.role in enums.MAILBOX_ROLES_CAN_EDIT
-    if not was_editor or is_editor:
-        return
-    try:
-        _cleanup_threads_for_mailbox_user(instance.mailbox_id, instance.user_id)
-    # pylint: disable=broad-exception-caught
-    except Exception as e:
-        logger.exception(
-            "Error cleaning assignments on MailboxAccess downgrade %s: %s",
-            instance.pk,
-            e,
-        )
-
-
-@receiver(post_delete, sender=models.MailboxAccess)
-def cleanup_assignments_on_mailbox_access_delete(sender, instance, **kwargs):
-    """Unassign this user across threads of the mailbox they just left."""
-    try:
-        _cleanup_threads_for_mailbox_user(instance.mailbox_id, instance.user_id)
-    # pylint: disable=broad-exception-caught
-    except Exception as e:
-        logger.exception(
-            "Error cleaning assignments on MailboxAccess delete %s: %s",
-            instance.pk,
-            e,
-        )
-
-
 @receiver(post_save, sender=models.ThreadEvent)
 def handle_thread_event_post_save(sender, instance, created, **kwargs):
     """Handle post-save signal for ThreadEvent to sync UserEvent records.
 
     Dispatches by ThreadEvent type:
-    - IM: Creates UserEvent MENTION for mentioned users
-    - ASSIGN: Creates UserEvent ASSIGN for assignees
-    - UNASSIGN: Deactivates existing UserEvent ASSIGN for assignees
+    - IM: Syncs UserEvent MENTION records on both create and update so that
+      edits to the mentions list add/remove notifications accordingly.
     """
     try:
         if instance.type == enums.ThreadEventTypeChoices.IM:
@@ -751,30 +455,6 @@ def handle_thread_event_post_save(sender, instance, created, **kwargs):
                 thread=instance.thread,
                 mentions_data=(instance.data or {}).get("mentions", []),
             )
-
-        elif instance.type == enums.ThreadEventTypeChoices.ASSIGN:
-            assignees_data = (instance.data or {}).get("assignees", [])
-            if assignees_data:
-                created_events = create_assign_user_events(
-                    thread_event=instance,
-                    thread=instance.thread,
-                    assignees_data=assignees_data,
-                )
-                if created_events:
-                    logger.info(
-                        "Created %d UserEvent ASSIGN(s) for ThreadEvent %s",
-                        len(created_events),
-                        instance.id,
-                    )
-
-        elif instance.type == enums.ThreadEventTypeChoices.UNASSIGN:
-            assignees_data = (instance.data or {}).get("assignees", [])
-            if assignees_data:
-                delete_assign_user_events(
-                    thread_event=instance,
-                    thread=instance.thread,
-                    assignees_data=assignees_data,
-                )
 
     # pylint: disable=broad-exception-caught
     except Exception as e:

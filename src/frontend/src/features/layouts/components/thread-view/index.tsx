@@ -2,13 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { FEATURE_KEYS, useFeatureFlag } from "@/hooks/use-feature";
 import { ThreadActionBar } from "./components/thread-action-bar"
 import { ThreadMessage } from "./components/thread-message"
-import { ThreadEvent, isCondensed, groupAssignmentEvents, GroupedAssignmentEvent } from "./components/thread-event"
+import { ThreadEvent, isCondensed } from "./components/thread-event"
 import { ThreadEventInput } from "./components/thread-event-input"
 import { useMailboxContext, TimelineItem, isThreadEvent } from "@/features/providers/mailbox"
 import useRead from "@/features/message/use-read"
 import useMentionRead from "@/features/message/use-mention-read"
 import { useDebounceCallback } from "@/hooks/use-debounce-callback"
-import { useIsSharedContext } from "@/hooks/use-is-shared-context"
 import { useVisibilityObserver } from "@/hooks/use-visibility-observer"
 import { MailboxRoleChoices, Message, Thread, ThreadEvent as ThreadEventModel } from "@/features/api/gen/models"
 import { Icon, IconType, Spinner } from "@gouvfr-lasuite/ui-kit"
@@ -62,12 +61,6 @@ const ThreadViewComponent = ({ threadItems, mailboxId, thread, showTrashedMessag
     // Refs for thread events with unread mentions
     const mentionRefs = useRef<Record<string, HTMLElement | null>>({});
     const { markMentionsRead } = useMentionRead(thread.id);
-    // Collapse runs of consecutive ASSIGN/UNASSIGN events from the same author
-    // into a single synthetic "assignment_group" item. The backend undo window
-    // already absorbs fast click-regrets within 2 minutes; this handles the
-    // "changed my mind later" case that still ends up producing multiple
-    // events worth surfacing as one net-change summary.
-    const renderItems = useMemo(() => groupAssignmentEvents(threadItems), [threadItems]);
     // Find all unread message IDs
     const messages = useMemo(() => threadItems.filter(item => item.type === 'message').map(item => item.data as MessageWithDraftChild), [threadItems]);
     const unreadMessageIds = useMemo(() => messages.filter((m) => m.is_unread).map((m) => m.id), [messages]);
@@ -295,19 +288,11 @@ const ThreadViewComponent = ({ threadItems, mailboxId, thread, showTrashedMessag
                         )}
                     </Banner>
                 )}
-                {renderItems.map((item, index) => {
-                    if (item.kind === 'assignment_group') {
-                        return (
-                            <GroupedAssignmentEvent
-                                key={`assignment-group-${item.events[0].id}`}
-                                events={item.events}
-                            />
-                        );
-                    }
-                    if (item.kind === 'event') {
-                        const prevItem = index > 0 ? renderItems[index - 1] : null;
-                        const prevEvent = prevItem?.kind === 'event' ? prevItem.data : null;
-                        const eventData = item.data;
+                {threadItems.map((item, index) => {
+                    if (isThreadEvent(item)) {
+                        const prevItem = index > 0 ? threadItems[index - 1] : null;
+                        const prevEvent = isThreadEvent(prevItem) ? prevItem.data : null;
+                        const eventData = item.data as ThreadEventModel;
                         return (
                             <ThreadEvent
                                 key={`event-${item.data.id}`}
@@ -381,14 +366,16 @@ export const ThreadView = () => {
     }), [messagesWithDraftChildren]);
     // Show IM input when the user has at least edit rights on the mailbox
     // (editor/sender/admin), regardless of the thread-level role.
-    // Still gated to shared contexts (see useIsSharedContext).
+    // Still gated to shared contexts: either a shared mailbox or a thread
+    // shared across multiple mailboxes.
     const hasMailboxEditAccess = !!selectedMailbox && (
         selectedMailbox.role === MailboxRoleChoices.editor
         || selectedMailbox.role === MailboxRoleChoices.sender
         || selectedMailbox.role === MailboxRoleChoices.admin
     );
-    const isSharedContext = useIsSharedContext();
-    const showIMInput = Boolean(isSharedContext && hasMailboxEditAccess);
+    const hasMultipleAccesses = (selectedThread?.accesses?.length ?? 0) > 1;
+    const isSharedMailbox = selectedMailbox?.is_identity === false;
+    const showIMInput = Boolean((isSharedMailbox || hasMultipleAccesses) && hasMailboxEditAccess);
 
     // Build filtered timeline items: enrich messages with draft children,
     // apply trash filtering, and keep all events.

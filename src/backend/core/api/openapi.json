@@ -4830,14 +4830,6 @@
                     },
                     {
                         "in": "query",
-                        "name": "has_assigned_to_me",
-                        "schema": {
-                            "type": "integer"
-                        },
-                        "description": "Filter threads assigned to the current user (1=true, 0=false)."
-                    },
-                    {
-                        "in": "query",
                         "name": "has_attachments",
                         "schema": {
                             "type": "integer"
@@ -4899,14 +4891,6 @@
                             "type": "integer"
                         },
                         "description": "Filter threads that have trashed messages (1=true, 0=false)."
-                    },
-                    {
-                        "in": "query",
-                        "name": "has_unassigned",
-                        "schema": {
-                            "type": "integer"
-                        },
-                        "description": "Filter threads with no active assignment from any user (1=true, 0=false)."
                     },
                     {
                         "in": "query",
@@ -5579,7 +5563,7 @@
             },
             "post": {
                 "operationId": "threads_events_create",
-                "description": "Create a ThreadEvent with idempotence for ASSIGN and UNASSIGN.\n\nFor ASSIGN (per D-08): if all assignees already have a UserEvent ASSIGN\non this thread, return 200 without creating a ThreadEvent. If some are\nnew, filter data.assignees to new ones only and create.\n\nFor UNASSIGN: if no assignee has a UserEvent ASSIGN on this thread,\nreturn 200 without creating a ThreadEvent.",
+                "description": "ViewSet for ThreadEvent model.",
                 "parameters": [
                     {
                         "in": "path",
@@ -5930,14 +5914,6 @@
                     },
                     {
                         "in": "query",
-                        "name": "has_assigned_to_me",
-                        "schema": {
-                            "type": "integer"
-                        },
-                        "description": "Filter threads assigned to the current user (1=true, 0=false)."
-                    },
-                    {
-                        "in": "query",
                         "name": "has_attachments",
                         "schema": {
                             "type": "integer"
@@ -5994,14 +5970,6 @@
                     },
                     {
                         "in": "query",
-                        "name": "has_unassigned",
-                        "schema": {
-                            "type": "integer"
-                        },
-                        "description": "Filter threads with no active assignment from any user (1=true, 0=false)."
-                    },
-                    {
-                        "in": "query",
                         "name": "has_unread_mention",
                         "schema": {
                             "type": "integer"
@@ -6041,15 +6009,13 @@
                             "enum": [
                                 "all",
                                 "all_unread",
-                                "has_assigned_to_me",
                                 "has_delivery_failed",
                                 "has_delivery_pending",
                                 "has_mention",
-                                "has_unassigned",
                                 "has_unread_mention"
                             ]
                         },
-                        "description": "Comma-separated list of fields to aggregate.\n                Special values: 'all' (count all threads), 'all_unread' (count all unread threads).\n                Boolean fields: has_trashed, has_draft, has_starred, has_attachments, has_archived,\n                has_sender, has_active, has_delivery_pending, has_delivery_failed, is_spam, has_messages, has_unread_mention, has_mention, has_assigned_to_me, has_unassigned.\n                Unread variants ('_unread' suffix): count threads where the condition is true AND the thread is unread.\n                Examples: 'all,all_unread', 'has_starred,has_starred_unread', 'is_spam,is_spam_unread'",
+                        "description": "Comma-separated list of fields to aggregate.\n                Special values: 'all' (count all threads), 'all_unread' (count all unread threads).\n                Boolean fields: has_trashed, has_draft, has_starred, has_attachments, has_archived,\n                has_sender, has_active, has_delivery_pending, has_delivery_failed, is_spam, has_messages, has_unread_mention, has_mention.\n                Unread variants ('_unread' suffix): count threads where the condition is true AND the thread is unread.\n                Examples: 'all,all_unread', 'has_starred,has_starred_unread', 'is_spam,is_spam_unread'",
                         "required": true,
                         "explode": false,
                         "style": "form"
@@ -7717,17 +7683,11 @@
                     "name": {
                         "type": "string",
                         "readOnly": true
-                    },
-                    "is_identity": {
-                        "type": "boolean",
-                        "readOnly": true,
-                        "description": "Whether this mailbox identifies a person (i.e. is not an alias or a group)"
                     }
                 },
                 "required": [
                     "email",
                     "id",
-                    "is_identity",
                     "name"
                 ]
             },
@@ -8655,7 +8615,40 @@
                         "nullable": true
                     },
                     "data": {
-                        "$ref": "#/components/schemas/ThreadEventDataRequest"
+                        "oneOf": [
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "content": {
+                                        "type": "string"
+                                    },
+                                    "mentions": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": {
+                                                    "type": "string",
+                                                    "format": "uuid"
+                                                },
+                                                "name": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "required": [
+                                                "id",
+                                                "name"
+                                            ],
+                                            "additionalProperties": false
+                                        }
+                                    }
+                                },
+                                "required": [
+                                    "content"
+                                ],
+                                "additionalProperties": false
+                            }
+                        ]
                     }
                 }
             },
@@ -9185,13 +9178,6 @@
                         "format": "date-time",
                         "readOnly": true,
                         "nullable": true
-                    },
-                    "users": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/UserWithoutAbilities"
-                        },
-                        "readOnly": true
                     }
                 },
                 "required": [
@@ -9199,8 +9185,7 @@
                     "mailbox",
                     "read_at",
                     "role",
-                    "starred_at",
-                    "users"
+                    "starred_at"
                 ]
             },
             "ThreadAccessRequest": {
@@ -9275,7 +9260,40 @@
                         "readOnly": true
                     },
                     "data": {
-                        "$ref": "#/components/schemas/ThreadEventData"
+                        "oneOf": [
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "content": {
+                                        "type": "string"
+                                    },
+                                    "mentions": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": {
+                                                    "type": "string",
+                                                    "format": "uuid"
+                                                },
+                                                "name": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "required": [
+                                                "id",
+                                                "name"
+                                            ],
+                                            "additionalProperties": false
+                                        }
+                                    }
+                                },
+                                "required": [
+                                    "content"
+                                ],
+                                "additionalProperties": false
+                            }
+                        ]
                     },
                     "has_unread_mention": {
                         "type": "boolean",
@@ -9313,93 +9331,6 @@
                     "updated_at"
                 ]
             },
-            "ThreadEventAssigneesData": {
-                "type": "object",
-                "description": "OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``ASSIGN`` and ``UNASSIGN`` events.\n\nBoth event types share the exact same payload shape, so a single serializer\n(and thus a single generated TypeScript type) covers them.\n\nNot used for runtime validation (handled by ``ThreadEvent.clean()`` against\n``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component\nin the OpenAPI schema consumed by the generated frontend client.",
-                "properties": {
-                    "assignees": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/ThreadEventUser"
-                        }
-                    }
-                },
-                "required": [
-                    "assignees"
-                ]
-            },
-            "ThreadEventAssigneesDataRequest": {
-                "type": "object",
-                "description": "OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``ASSIGN`` and ``UNASSIGN`` events.\n\nBoth event types share the exact same payload shape, so a single serializer\n(and thus a single generated TypeScript type) covers them.\n\nNot used for runtime validation (handled by ``ThreadEvent.clean()`` against\n``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component\nin the OpenAPI schema consumed by the generated frontend client.",
-                "properties": {
-                    "assignees": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/ThreadEventUserRequest"
-                        }
-                    }
-                },
-                "required": [
-                    "assignees"
-                ]
-            },
-            "ThreadEventData": {
-                "oneOf": [
-                    {
-                        "$ref": "#/components/schemas/ThreadEventIMData"
-                    },
-                    {
-                        "$ref": "#/components/schemas/ThreadEventAssigneesData"
-                    }
-                ]
-            },
-            "ThreadEventDataRequest": {
-                "oneOf": [
-                    {
-                        "$ref": "#/components/schemas/ThreadEventIMDataRequest"
-                    },
-                    {
-                        "$ref": "#/components/schemas/ThreadEventAssigneesDataRequest"
-                    }
-                ]
-            },
-            "ThreadEventIMData": {
-                "type": "object",
-                "description": "OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``IM`` events.\n\nNot used for runtime validation (handled by ``ThreadEvent.clean()`` against\n``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component\nin the OpenAPI schema consumed by the generated frontend client.",
-                "properties": {
-                    "content": {
-                        "type": "string"
-                    },
-                    "mentions": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/ThreadEventUser"
-                        }
-                    }
-                },
-                "required": [
-                    "content"
-                ]
-            },
-            "ThreadEventIMDataRequest": {
-                "type": "object",
-                "description": "OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``IM`` events.\n\nNot used for runtime validation (handled by ``ThreadEvent.clean()`` against\n``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component\nin the OpenAPI schema consumed by the generated frontend client.",
-                "properties": {
-                    "content": {
-                        "type": "string",
-                        "minLength": 1
-                    },
-                    "mentions": {
-                        "type": "array",
-                        "items": {
-                            "$ref": "#/components/schemas/ThreadEventUserRequest"
-                        }
-                    }
-                },
-                "required": [
-                    "content"
-                ]
-            },
             "ThreadEventRequest": {
                 "type": "object",
                 "description": "Serialize thread event information.",
@@ -9414,7 +9345,40 @@
                         "nullable": true
                     },
                     "data": {
-                        "$ref": "#/components/schemas/ThreadEventDataRequest"
+                        "oneOf": [
+                            {
+                                "type": "object",
+                                "properties": {
+                                    "content": {
+                                        "type": "string"
+                                    },
+                                    "mentions": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "id": {
+                                                    "type": "string",
+                                                    "format": "uuid"
+                                                },
+                                                "name": {
+                                                    "type": "string"
+                                                }
+                                            },
+                                            "required": [
+                                                "id",
+                                                "name"
+                                            ],
+                                            "additionalProperties": false
+                                        }
+                                    }
+                                },
+                                "required": [
+                                    "content"
+                                ],
+                                "additionalProperties": false
+                            }
+                        ]
                     }
                 },
                 "required": [
@@ -9424,47 +9388,10 @@
             },
             "ThreadEventTypeEnum": {
                 "enum": [
-                    "im",
-                    "assign",
-                    "unassign"
+                    "im"
                 ],
                 "type": "string",
-                "description": "* `im` - Instant message\n* `assign` - Assign\n* `unassign` - Unassign"
-            },
-            "ThreadEventUser": {
-                "type": "object",
-                "description": "OpenAPI-only serializer: describes a single user inside\nan ThreadEvent.data payload. (used for ``IM`` and ``ASSIGNEES`` events)\n\nNot used for runtime validation (handled by ``ThreadEvent.clean()`` against\n``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component\nin the OpenAPI schema consumed by the generated frontend client.",
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "format": "uuid"
-                    },
-                    "name": {
-                        "type": "string"
-                    }
-                },
-                "required": [
-                    "id",
-                    "name"
-                ]
-            },
-            "ThreadEventUserRequest": {
-                "type": "object",
-                "description": "OpenAPI-only serializer: describes a single user inside\nan ThreadEvent.data payload. (used for ``IM`` and ``ASSIGNEES`` events)\n\nNot used for runtime validation (handled by ``ThreadEvent.clean()`` against\n``ThreadEvent.DATA_SCHEMAS``); exists solely to produce a named component\nin the OpenAPI schema consumed by the generated frontend client.",
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "format": "uuid"
-                    },
-                    "name": {
-                        "type": "string",
-                        "minLength": 1
-                    }
-                },
-                "required": [
-                    "id",
-                    "name"
-                ]
+                "description": "* `im` - Instant message"
             },
             "ThreadLabel": {
                 "type": "object",

@@ -8,8 +8,6 @@
 
 /**
  * * `im` - Instant message
- * `assign` - Assign
- * `unassign` - Unassign
  */
 export type ThreadEventTypeEnum =
   (typeof ThreadEventTypeEnum)[keyof typeof ThreadEventTypeEnum];
@@ -17,6 +15,4 @@ export type ThreadEventTypeEnum =
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const ThreadEventTypeEnum = {
   im: "im",
-  assign: "assign",
-  unassign: "unassign",
 } as const;

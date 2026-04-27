@@ -1,12 +1,10 @@
 import { RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon, IconSize, IconType, UserRow } from "@gouvfr-lasuite/ui-kit";
-import { useThreadsEventsCreate, useThreadsEventsPartialUpdate, useThreadsUsersList, UserWithoutAbilities, ThreadEventTypeEnum, ThreadEvent, ThreadEventIMData } from "@/features/api/gen";
+import { useThreadsEventsCreate, useThreadsEventsPartialUpdate, useThreadsUsersList, UserWithoutAbilities, ThreadEventTypeEnum, ThreadEvent } from "@/features/api/gen";
 import { StringHelper } from "@/features/utils/string-helper";
 import { TextHelper } from "@/features/utils/text-helper";
 import { Button } from "@gouvfr-lasuite/cunningham-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { DropdownButton } from "@/features/ui/components/dropdown-button";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { useAuth } from "@/features/auth";
 import { SuggestionInput } from "@/features/ui/components/suggestion-input";
@@ -28,8 +26,7 @@ type ThreadEventInputProps = {
  */
 export const ThreadEventInput = ({ threadId, editingEvent, onCancelEdit, onEventCreated, containerRef }: ThreadEventInputProps) => {
     const { t } = useTranslation();
-    const { invalidateThreadEvents, invalidateThreadsStats } = useMailboxContext();
-    const queryClient = useQueryClient();
+    const { invalidateThreadEvents } = useMailboxContext();
     const { user: currentUser } = useAuth();
     const { isMessageFormFocused } = useThreadViewContext();
 
@@ -48,7 +45,6 @@ export const ThreadEventInput = ({ threadId, editingEvent, onCancelEdit, onEvent
     const [mentionFilter, setMentionFilter] = useState("");
 
     const createEvent = useThreadsEventsCreate();
-    const createAssignEvent = useThreadsEventsCreate();
     const updateEvent = useThreadsEventsPartialUpdate();
     const isPending = isEditing ? updateEvent.isPending : createEvent.isPending;
 
@@ -144,64 +140,6 @@ export const ThreadEventInput = ({ threadId, editingEvent, onCancelEdit, onEvent
         }
     }, [content, mentions, threadId, editingEvent, isEditing, createEvent, updateEvent, invalidateThreadEvents, onEventCreated, onCancelEdit, processContent, buildEventData, resetInput]);
 
-    /**
-     * Post the IM event first, then assign each mentioned user sequentially.
-     * Backend idempotence (D-20) handles already-assigned users gracefully.
-     */
-    const handleSubmitAndAssign = useCallback(() => {
-        const trimmed = content.trim();
-        if (!trimmed) return;
-        if (createEvent.isPending) return;
-
-        const processedContent = processContent(trimmed);
-        const eventData = buildEventData(processedContent);
-
-        createEvent.mutate(
-            {
-                threadId,
-                data: {
-                    type: ThreadEventTypeEnum.im,
-                    data: eventData,
-                },
-            },
-            {
-                onSuccess: async () => {
-                    const activeMentions = mentions.filter((m) =>
-                        processedContent.includes(`@[${m.name}]`)
-                    );
-
-                    if (activeMentions.length > 0) {
-                        try {
-                            await Promise.all(
-                                activeMentions.map((mention) =>
-                                    createAssignEvent.mutateAsync({
-                                        threadId,
-                                        data: {
-                                            type: ThreadEventTypeEnum.assign,
-                                            data: {
-                                                assignees: [
-                                                    { id: mention.id, name: mention.name },
-                                                ],
-                                            },
-                                        },
-                                    })
-                                )
-                            );
-                        } catch {
-                            // Assignment failures are non-critical -- the IM was already posted
-                        }
-                    }
-
-                    resetInput();
-                    await invalidateThreadEvents();
-                    await invalidateThreadsStats();
-                    await queryClient.invalidateQueries({ queryKey: ["threads"] });
-                    onEventCreated?.();
-                },
-            },
-        );
-    }, [content, mentions, threadId, createEvent, createAssignEvent, invalidateThreadEvents, invalidateThreadsStats, queryClient, onEventCreated, processContent, buildEventData, resetInput]);
-
     const handleCancelEdit = useCallback(() => {
         resetInput();
         onCancelEdit?.();
@@ -278,10 +216,9 @@ export const ThreadEventInput = ({ threadId, editingEvent, onCancelEdit, onEvent
     // Populate input when entering edit mode, reset when leaving
     useEffect(() => {
         if (editingEvent) {
-            const eventData = editingEvent?.data as ThreadEventIMData | null;
-            const eventContent = eventData?.content ?? "";
+            const eventContent = editingEvent?.data?.content ?? "";
             // Restore mentions from persisted data.mentions (contains real user IDs)
-            const persistedMentions = eventData?.mentions ?? [];
+            const persistedMentions = editingEvent?.data?.mentions ?? [];
             // Build a lookup to map name → id from persisted mentions
             const mentionsByName = new Map(persistedMentions.map((m) => [m.name, m.id]));
             // Convert @[Name] to @Name for display, rebuild mentions list with real IDs
@@ -361,7 +298,7 @@ export const ThreadEventInput = ({ threadId, editingEvent, onCancelEdit, onEvent
                         />
                     )}
                 />
-                <DropdownButton
+                <Button
                     className="thread-event-input__submit-button"
                     size="small"
                     variant="tertiary"
@@ -370,14 +307,6 @@ export const ThreadEventInput = ({ threadId, editingEvent, onCancelEdit, onEvent
                     disabled={!content.trim() || isPending}
                     title={isEditing ? t("Save") : t("Send")}
                     aria-label={isEditing ? t("Save") : t("Send")}
-                    showDropdown={!isEditing && mentions.length > 0}
-                    dropdownOptions={[
-                        {
-                            label: t("Post and assign mentioned"),
-                            icon: <Icon name="person_add" type={IconType.OUTLINED} />,
-                            callback: handleSubmitAndAssign,
-                        },
-                    ]}
                 />
             </div>
         </div>
