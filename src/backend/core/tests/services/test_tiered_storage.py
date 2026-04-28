@@ -222,16 +222,6 @@ class TestTieredStorageDB:
         with pytest.raises(ValueError, match="has no content in PostgreSQL"):
             blob.get_content()
 
-    def test_blob_storage_key_property(self):
-        """Test that blob.get_storage_key() returns correct key."""
-        mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test", content_type="text/plain")
-
-        key = blob.get_storage_key()
-        sha_hex = blob.sha256.hex()
-
-        assert key == f"blobs/{sha_hex[:3]}/{sha_hex}"
-
     def test_same_content_same_sha256(self):
         """Test that identical content produces identical SHA256."""
         mailbox1 = factories.MailboxFactory()
@@ -243,7 +233,6 @@ class TestTieredStorageDB:
 
         assert blob1.sha256 == blob2.sha256
         assert blob1.id != blob2.id
-        assert blob1.get_storage_key() == blob2.get_storage_key()
 
     def test_check_already_uploaded(self):
         """Test that check_already_uploaded correctly identifies existing blobs."""
@@ -275,7 +264,7 @@ class TestTieredStorageE2E:
         content = b"Hello, this is e2e test content for tiered storage!" * 10
 
         blob = mailbox.create_blob(content=content, content_type="text/plain")
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             service.upload_blob(blob)
@@ -302,7 +291,7 @@ class TestTieredStorageE2E:
         # create_blob() should automatically encrypt when keys are configured
         blob = mailbox.create_blob(content=content, content_type="text/plain")
         assert blob.encryption_key_id > 0  # Should be encrypted
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             service.upload_blob(blob)
@@ -327,7 +316,7 @@ class TestTieredStorageE2E:
         blob2 = mailbox2.create_blob(content=content, content_type="text/plain")
 
         assert blob1.sha256 == blob2.sha256
-        storage_key = blob1.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob1.sha256))
 
         try:
             # Upload first blob
@@ -432,7 +421,7 @@ class TestTieredStorageE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = mailbox.create_blob(content=b"test content", content_type="text/plain")
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             # Upload and mark as in object storage
@@ -462,7 +451,7 @@ class TestTieredStorageE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = mailbox.create_blob(content=b"test", content_type="text/plain")
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         # Should not exist yet
         assert not service.exists(bytes(blob.sha256))
@@ -534,7 +523,7 @@ class TestTieredStorageE2E:
 
             # Same SHA256 (computed on original content)
             assert blob1.sha256 == blob2.sha256
-            storage_key = blob1.get_storage_key()
+            storage_key = TieredStorageService.compute_storage_key(bytes(blob1.sha256))
 
             try:
                 service = TieredStorageService()
@@ -580,7 +569,7 @@ class TestTieredStorageCascadeDelete:
         mailbox = factories.MailboxFactory()
         blob = mailbox.create_blob(content=b"cascade test", content_type="text/plain")
 
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             service.upload_blob(blob)
@@ -609,7 +598,7 @@ class TestTieredStorageCascadeDelete:
             content=b"queryset delete test", content_type="text/plain"
         )
 
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             service.upload_blob(blob)
@@ -698,7 +687,7 @@ class TestTieredStorageKeyRotation:
         blob.encryption_key_id = old_key_id
         blob.save()
 
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             # Upload to storage

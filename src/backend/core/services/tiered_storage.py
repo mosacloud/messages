@@ -8,12 +8,14 @@ This service handles:
 - Deduplication via SHA256-based storage keys
 """
 
+from contextlib import contextmanager
 from logging import getLogger
 from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import storages
+from django.db import connection
 
 from cryptography.fernet import Fernet
 
@@ -23,6 +25,31 @@ if TYPE_CHECKING:
     from core.models import Blob
 
 logger = getLogger(__name__)
+
+
+@contextmanager
+def sha256_advisory_lock(sha256_bytes: bytes, *, blocking: bool = True):
+    """Hold a Postgres advisory lock keyed on a blob's sha256 cohort.
+
+    Must be called inside ``transaction.atomic()`` — the lock is bound to
+    the current transaction and released on commit/rollback. Acts as a
+    cluster-wide mutex for all offload, dedup, cleanup, and re-encrypt
+    work that touches blobs sharing this content.
+
+    With ``blocking=True`` waits until the lock is granted.
+    With ``blocking=False`` yields ``True`` if acquired, ``False`` if held
+    elsewhere — caller is expected to retry.
+    """
+    # First 8 bytes of sha256 as a signed 64-bit int — pg_advisory_lock
+    # takes a bigint. Collisions are 2^-64, irrelevant in practice.
+    key = int.from_bytes(sha256_bytes[:8], byteorder="big", signed=True)
+    with connection.cursor() as cursor:
+        if blocking:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s)", [key])
+            yield True
+        else:
+            cursor.execute("SELECT pg_try_advisory_xact_lock(%s)", [key])
+            yield cursor.fetchone()[0]
 
 
 class TieredStorageService:

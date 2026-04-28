@@ -20,7 +20,6 @@ from core.services.search.coalescer import (
     enqueue_thread_delete,
     enqueue_thread_reindex,
 )
-from core.services.tiered_storage import TieredStorageService
 from core.utils import ThreadReindexDeferrer, ThreadStatsUpdateDeferrer
 
 logger = logging.getLogger(__name__)
@@ -144,24 +143,22 @@ def index_thread_post_save(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=models.Blob)
 def cleanup_blob_storage(sender, instance, **kwargs):
-    """Clean up object storage when a blob is deleted.
+    """Schedule object-storage cleanup after a blob row is deleted.
 
-    Uses a post_delete signal instead of a model delete() override to ensure
-    cleanup also runs during CASCADE and QuerySet bulk deletes.
-
-    Defers the actual storage deletion to transaction.on_commit so that an
-    enclosing transaction rollback does not leave us with an object deleted
-    from S3 while the blob row is still in the DB.
+    Uses ``post_delete`` so cleanup also runs during CASCADE and
+    ``QuerySet.delete()`` bulk deletes. Cleanup is queued through Celery
+    after the surrounding transaction commits — the task takes the same
+    per-sha256 advisory lock used by offload/re-encrypt, so storage
+    deletes never race with concurrent dedup.
     """
     if instance.storage_location != BlobStorageLocationChoices.OBJECT_STORAGE:
         return
 
-    service = TieredStorageService()
-    if not service.enabled:
-        return
+    # pylint: disable-next=import-outside-toplevel
+    from core.services.tiered_storage_tasks import cleanup_orphaned_blob_task
 
-    sha256 = bytes(instance.sha256)
-    transaction.on_commit(lambda: service.delete_if_orphaned(sha256))
+    sha_hex = bytes(instance.sha256).hex()
+    transaction.on_commit(lambda: cleanup_orphaned_blob_task.delay(sha_hex))
 
 
 @receiver(pre_delete, sender=models.Message)

@@ -100,7 +100,7 @@ bootstrap: ## Prepare the project for local development
 update:  ## Update the project with latest changes
 	@$(MAKE) data/media
 	@$(MAKE) data/static
-	@$(MAKE) import-bucket
+	@$(MAKE) create-buckets
 	@$(MAKE) create-env-files
 	@$(MAKE) build
 	@$(MAKE) collectstatic
@@ -161,11 +161,11 @@ restart-minimal: \
 	start-minimal
 .PHONY: restart-minimal
 
-import-bucket: ## create the message imports & blobs buckets in objectstorage
+create-buckets: ## create the message imports & blobs buckets in objectstorage
 	@$(COMPOSE) up -d objectstorage --wait
 	@$(MANAGE_DB) create_bucket --storage message-imports --expire-days 1
 	@$(MANAGE_DB) create_bucket --storage message-blobs
-.PHONY: import-bucket
+.PHONY: create-buckets
 
 shell-objectstorage: ## open a shell in the objectstorage container
 	@$(COMPOSE) run --rm --build objectstorage bash

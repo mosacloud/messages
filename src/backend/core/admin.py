@@ -1070,10 +1070,19 @@ class BlobAdmin(admin.ModelAdmin):
         "size",
         "size_compressed",
         "compression",
+        "storage_location",
+        "encryption_key_id",
         "created_at",
     )
     search_fields = ("mailbox__local_part", "mailbox__domain__name", "content_type")
-    list_filter = ("content_type", "compression", "created_at", "updated_at")
+    list_filter = (
+        "content_type",
+        "compression",
+        "storage_location",
+        "encryption_key_id",
+        "created_at",
+        "updated_at",
+    )
     autocomplete_fields = ("mailbox",)
 
     def get_queryset(self, request):

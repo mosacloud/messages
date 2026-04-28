@@ -136,7 +136,7 @@ class TestOffloadBlobsTaskE2E:
         mailbox = factories.MailboxFactory()
         content = b"immediate offload test content" * 20
         blob = mailbox.create_blob(content=content, content_type="text/plain")
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             # No age manipulation - blob was just created
@@ -162,7 +162,7 @@ class TestOffloadBlobsTaskE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = mailbox.create_blob(content=b"test", content_type="text/plain")
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             # Offload the blob
@@ -228,7 +228,7 @@ class TestOffloadSingleBlobTaskE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = mailbox.create_blob(content=b"test", content_type="text/plain")
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             # Manually offload
@@ -250,7 +250,7 @@ class TestOffloadSingleBlobTaskE2E:
         mailbox = factories.MailboxFactory()
         original_content = b"test content for offload" * 20
         blob = mailbox.create_blob(content=original_content, content_type="text/plain")
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             result = offload_single_blob_task(str(blob.id))
@@ -318,7 +318,7 @@ class TestOffloadSingleBlobTaskE2E:
         blob2 = mailbox2.create_blob(content=content, content_type="text/plain")
 
         assert blob1.sha256 == blob2.sha256
-        storage_key = blob1.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob1.sha256))
 
         try:
             # Offload first blob
@@ -358,7 +358,7 @@ class TestOffloadSingleBlobTaskE2E:
         # create_blob() should automatically encrypt when keys are configured
         blob = mailbox.create_blob(content=original_content, content_type="text/plain")
         assert blob.encryption_key_id > 0  # Should be encrypted
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             result = offload_single_blob_task(str(blob.id))
@@ -381,7 +381,7 @@ class TestOffloadSingleBlobTaskE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = mailbox.create_blob(content=b"test content", content_type="text/plain")
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             # First offload succeeds

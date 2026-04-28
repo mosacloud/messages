@@ -52,7 +52,7 @@ class TestVerifyDbToStorageE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = factories.BlobFactory(mailbox=mailbox)
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             # Upload blob to storage
@@ -117,7 +117,9 @@ class TestVerifyDbToStorageE2E:
             blob.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
             blob.save()
             blobs.append(blob)
-            storage_keys.append(blob.get_storage_key())
+            storage_keys.append(
+                TieredStorageService.compute_storage_key(bytes(blob.sha256))
+            )
 
         try:
             stdout = StringIO()
@@ -148,7 +150,7 @@ class TestVerifyStorageToDbE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = factories.BlobFactory(mailbox=mailbox)
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             service.upload_blob(blob)
@@ -201,44 +203,13 @@ class TestVerifyStorageToDbE2E:
             if service.storage.exists(orphan_key):
                 service.storage.delete(orphan_key)
 
-    def test_fix_deletes_orphan(self):
-        """Test that --fix deletes orphans from storage."""
-        from django.core.files.base import ContentFile
-
-        service = TieredStorageService()
-        orphan_sha = "b" * 64
-        orphan_key = f"blobs/{orphan_sha[:3]}/{orphan_sha}"
-        service.storage.save(orphan_key, ContentFile(b"orphan content"))
-
-        try:
-            assert service.storage.exists(orphan_key)
-
-            stdout = StringIO()
-            stderr = StringIO()
-
-            call_command(
-                "verify_tiered_storage",
-                mode="storage-to-db",
-                fix=True,
-                stdout=stdout,
-                stderr=stderr,
-            )
-
-            output = stdout.getvalue()
-            assert "ORPHAN" in output
-            assert "Deleted orphan" in output
-            assert not service.storage.exists(orphan_key)
-        finally:
-            if service.storage.exists(orphan_key):
-                service.storage.delete(orphan_key)
-
     def test_verify_hashes(self):
         """Test --verify-hashes downloads and verifies blob content."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         content = b"Content for hash verification test" * 10
         blob = mailbox.create_blob(content=content, content_type="text/plain")
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             service.upload_blob(blob)
@@ -276,7 +247,7 @@ class TestVerifyHashesE2E:
         mailbox = factories.MailboxFactory()
         content = b"Content that will be corrupted" * 10
         blob = mailbox.create_blob(content=content, content_type="text/plain")
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             # Upload blob normally
@@ -320,7 +291,7 @@ class TestVerifyHashesE2E:
         # create_blob() should automatically encrypt when keys are configured
         blob = mailbox.create_blob(content=content, content_type="text/plain")
         assert blob.encryption_key_id > 0  # Should be encrypted
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             service.upload_blob(blob)
@@ -486,7 +457,7 @@ class TestReEncryptE2E:
         blob.encryption_key_id = key_id
         blob.save()
 
-        storage_key = blob.get_storage_key()
+        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
 
         try:
             # Upload to storage

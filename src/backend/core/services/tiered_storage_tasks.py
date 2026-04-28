@@ -9,7 +9,7 @@ from datetime import timedelta
 from typing import Any, Dict
 
 from django.conf import settings
-from django.db import OperationalError, transaction
+from django.db import transaction
 from django.utils.timezone import now
 
 from botocore.exceptions import BotoCoreError
@@ -17,7 +17,7 @@ from celery.utils.log import get_task_logger
 
 from core.enums import BlobStorageLocationChoices
 from core.models import Blob
-from core.services.tiered_storage import TieredStorageService
+from core.services.tiered_storage import TieredStorageService, sha256_advisory_lock
 
 from messages.celery_app import app as celery_app
 
@@ -25,49 +25,28 @@ logger = get_task_logger(__name__)
 
 # Transient exceptions that should trigger a Celery retry.
 # BotoCoreError covers connection-level errors (timeouts, DNS, etc.).
-# ClientError is intentionally excluded - it covers HTTP API errors
-# (403, 404, etc.) which are usually permanent and shouldn't be retried.
-_TRANSIENT_EXCEPTIONS = (
-    OSError,
-    BotoCoreError,
-)
+# ClientError covers HTTP API errors (403, 404, etc.) which are usually
+# permanent and intentionally not retried.
+_TRANSIENT_EXCEPTIONS = (OSError, BotoCoreError)
 
 
 @celery_app.task(bind=True)
 def offload_blobs_task(self) -> Dict[str, Any]:
-    """
-    Periodic task to find and queue blobs for offloading to object storage.
-
-    This task finds blobs that:
-    - Are currently stored in PostgreSQL
-    - Are older than TIERED_STORAGE_OFFLOAD_AFTER_DAYS
-    - Meet the minimum size threshold
-
-    Returns:
-        Dict with status and number of blobs queued
-    """
+    """Periodic task: queue eligible blobs for offload to object storage."""
     if not settings.TIERED_STORAGE_OFFLOAD_ENABLED:
-        logger.debug("Tiered storage offload disabled, skipping")
         return {"status": "disabled", "queued": 0}
 
     service = TieredStorageService()
     if not service.enabled:
-        logger.debug("Object storage not configured, skipping offload task")
         return {"status": "disabled", "queued": 0}
 
-    offload_after_days = settings.TIERED_STORAGE_OFFLOAD_AFTER_DAYS
-    offload_min_size = settings.TIERED_STORAGE_OFFLOAD_MIN_SIZE
-
-    cutoff_date = now() - timedelta(days=offload_after_days)
-
-    # Stream eligible blob IDs to avoid loading all into memory
+    cutoff_date = now() - timedelta(days=settings.TIERED_STORAGE_OFFLOAD_AFTER_DAYS)
     queryset = Blob.objects.filter(
         storage_location=BlobStorageLocationChoices.POSTGRES,
         created_at__lt=cutoff_date,
-        size__gte=offload_min_size,
+        size__gte=settings.TIERED_STORAGE_OFFLOAD_MIN_SIZE,
     ).values_list("id", flat=True)
 
-    # Queue individual offload tasks - they run in parallel via Celery workers
     queued_count = 0
     for blob_id in queryset.iterator(chunk_size=1000):
         offload_single_blob_task.delay(str(blob_id))
@@ -79,25 +58,15 @@ def offload_blobs_task(self) -> Dict[str, Any]:
     return {"status": "success", "queued": queued_count}
 
 
-@celery_app.task(bind=True, max_retries=3)
+@celery_app.task(bind=True, max_retries=30)
 def offload_single_blob_task(self, blob_id: str) -> Dict[str, Any]:
-    """
-    Offload a single blob to object storage atomically.
+    """Offload a single blob to object storage atomically.
 
-    This task:
-    1. Acquires a lock on the blob row
-    2. Uploads content to object storage (with deduplication)
-    3. Updates the blob record and clears raw_content
-    4. All within a transaction for atomicity
+    Acquires a per-sha256 advisory lock so that concurrent offload,
+    cleanup, or re-encrypt of the same content cohort cannot interleave.
+    If the lock is held elsewhere, the task is re-queued with backoff.
 
-    Transient S3/network errors are automatically retried with exponential
-    backoff (up to 3 retries).
-
-    Args:
-        blob_id: UUID of the blob to offload
-
-    Returns:
-        Dict with status and blob_id
+    Transient S3/network errors are retried with exponential backoff.
     """
     if not settings.TIERED_STORAGE_OFFLOAD_ENABLED:
         return {"status": "disabled", "blob_id": blob_id}
@@ -106,57 +75,74 @@ def offload_single_blob_task(self, blob_id: str) -> Dict[str, Any]:
     if not service.enabled:
         return {"status": "disabled", "blob_id": blob_id}
 
+    # sha256 is immutable, so we can safely look it up before taking the lock.
+    try:
+        sha256 = bytes(Blob.objects.values_list("sha256", flat=True).get(id=blob_id))
+    except Blob.DoesNotExist:
+        logger.warning("Blob %s not found for offloading", blob_id)
+        return {"status": "not_found", "blob_id": blob_id}
+
     try:
         with transaction.atomic():
-            # Lock the blob row (skip if already locked by another worker)
-            try:
-                blob = Blob.objects.select_for_update(nowait=True).get(id=blob_id)
-            except Blob.DoesNotExist:
-                logger.warning("Blob %s not found for offloading", blob_id)
-                return {"status": "not_found", "blob_id": blob_id}
-            except OperationalError:
-                # Another worker is processing this blob
-                logger.debug("Blob %s is locked by another worker, skipping", blob_id)
-                return {"status": "locked", "blob_id": blob_id}
+            with sha256_advisory_lock(sha256, blocking=False) as got:
+                if not got:
+                    raise self.retry(countdown=5)
 
-            # Skip if already offloaded
-            if blob.storage_location != BlobStorageLocationChoices.POSTGRES:
-                logger.debug("Blob %s already offloaded, skipping", blob_id)
-                return {"status": "already_offloaded", "blob_id": blob_id}
+                blob = Blob.objects.select_for_update().get(id=blob_id)
 
-            # Skip if no content
-            if blob.raw_content is None:
-                logger.warning("Blob %s has no raw_content to offload", blob_id)
-                return {"status": "no_content", "blob_id": blob_id}
+                if blob.storage_location != BlobStorageLocationChoices.POSTGRES:
+                    return {"status": "already_offloaded", "blob_id": blob_id}
 
-            # Upload to object storage
-            key_id = service.upload_blob(blob)
+                if blob.raw_content is None:
+                    logger.warning("Blob %s has no raw_content to offload", blob_id)
+                    return {"status": "no_content", "blob_id": blob_id}
 
-            # Update blob record
-            blob.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
-            blob.encryption_key_id = key_id
-            blob.raw_content = None  # Clear DB storage
-            blob.save(
-                update_fields=["storage_location", "encryption_key_id", "raw_content"]
-            )
+                key_id = service.upload_blob(blob)
 
-            logger.info(
-                "Successfully offloaded blob %s to object storage (key_id=%d)",
-                blob_id,
-                key_id,
-            )
+                blob.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
+                blob.encryption_key_id = key_id
+                blob.raw_content = None
+                blob.save(
+                    update_fields=[
+                        "storage_location",
+                        "encryption_key_id",
+                        "raw_content",
+                    ]
+                )
 
-            return {"status": "success", "blob_id": blob_id, "key_id": key_id}
+                logger.info(
+                    "Offloaded blob %s to object storage (key_id=%d)", blob_id, key_id
+                )
+                return {"status": "success", "blob_id": blob_id, "key_id": key_id}
 
     except _TRANSIENT_EXCEPTIONS as e:
-        logger.warning(
-            "Transient error offloading blob %s (attempt %d/%d): %s",
-            blob_id,
-            self.request.retries + 1,
-            self.max_retries + 1,
-            e,
-        )
+        logger.warning("Transient error offloading blob %s: %s", blob_id, e)
         raise self.retry(exc=e, countdown=60 * (2**self.request.retries)) from e
     except Exception as e:  # pylint: disable=broad-except
         logger.exception("Failed to offload blob %s: %s", blob_id, e)
         return {"status": "error", "blob_id": blob_id, "error": str(e)}
+
+
+@celery_app.task(bind=True, max_retries=30)
+def cleanup_orphaned_blob_task(self, sha256_hex: str) -> Dict[str, Any]:
+    """Delete a storage object if no blob references its sha256 anymore.
+
+    Queued by the ``post_delete`` signal on ``Blob``. Acquires the
+    per-sha256 advisory lock so it serializes with concurrent offload
+    and re-encrypt of the same content.
+    """
+    service = TieredStorageService()
+    if not service.enabled:
+        return {"status": "disabled"}
+
+    sha256 = bytes.fromhex(sha256_hex)
+
+    try:
+        with transaction.atomic():
+            with sha256_advisory_lock(sha256, blocking=False) as got:
+                if not got:
+                    raise self.retry(countdown=5)
+                deleted = service.delete_if_orphaned(sha256)
+                return {"status": "deleted" if deleted else "still_referenced"}
+    except _TRANSIENT_EXCEPTIONS as e:
+        raise self.retry(exc=e, countdown=60 * (2**self.request.retries)) from e

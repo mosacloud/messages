@@ -17,7 +17,7 @@ import pyzstd
 
 from core.enums import BlobStorageLocationChoices, CompressionTypeChoices
 from core.models import Blob
-from core.services.tiered_storage import TieredStorageService
+from core.services.tiered_storage import TieredStorageService, sha256_advisory_lock
 
 
 class Command(BaseCommand):
@@ -30,11 +30,6 @@ class Command(BaseCommand):
             default="full",
             help="Verification mode: db-to-storage (check DB records have storage backing), "
             "storage-to-db (find orphans in storage), or full (both)",
-        )
-        parser.add_argument(
-            "--fix",
-            action="store_true",
-            help="Fix issues: delete orphans from storage (missing blobs are only reported)",
         )
         parser.add_argument(
             "--verify-hashes",
@@ -61,7 +56,6 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.service = TieredStorageService()
-        self.fix = options["fix"]
         self.verify_hashes = options["verify_hashes"]
         self.limit = options["limit"]
         self.dry_run = options["dry_run"]
@@ -184,16 +178,6 @@ class Command(BaseCommand):
             if not refs_exist:
                 orphan_count += 1
                 self.stdout.write(self.style.WARNING(f"ORPHAN: {obj_name}"))
-                if self.fix:
-                    try:
-                        self.service.storage.delete(obj_name)
-                        self.stdout.write(
-                            self.style.SUCCESS(f"  -> Deleted orphan {obj_name}")
-                        )
-                    except Exception as e:  # pylint: disable=broad-except
-                        self.stdout.write(
-                            self.style.ERROR(f"  -> Failed to delete: {e}")
-                        )
 
             # Optionally verify hash
             if self.verify_hashes and refs_exist:
@@ -400,183 +384,145 @@ class Command(BaseCommand):
             )
 
     def _re_encrypt_single_blob(self, blob: Blob, target_key_id: int) -> str:
+        """Re-encrypt a single blob (and its dedup cohort) with the target key.
+
+        Holds the per-sha256 advisory lock for the duration so concurrent
+        offload, cleanup, or another re-encrypt of the same content cannot
+        interleave.
+
+        Returns "success", "skipped", or "error".
         """
-        Re-encrypt a single blob with the target key.
-
-        Uses select_for_update to prevent concurrent modifications.
-        For object storage blobs, keeps old content in memory so S3 can
-        be restored if the DB update fails.
-
-        Args:
-            blob: The blob to re-encrypt
-            target_key_id: The encryption key ID to use for re-encryption
-
-        Returns:
-            "success", "skipped", or "error"
-        """
-        old_key_id = blob.encryption_key_id
-
         if self.dry_run:
-            location = (
-                "POSTGRES"
-                if blob.storage_location == BlobStorageLocationChoices.POSTGRES
-                else "OBJECT_STORAGE"
-            )
+            location = blob.get_storage_location_display()
             self.stdout.write(
                 f"  Would re-encrypt blob {blob.id} ({location}): "
-                f"key_id {old_key_id} -> {target_key_id}"
+                f"key_id {blob.encryption_key_id} -> {target_key_id}"
             )
             return "success"
 
+        sha256 = bytes(blob.sha256)
+
         if blob.storage_location == BlobStorageLocationChoices.POSTGRES:
-            with transaction.atomic():
-                blob = Blob.objects.select_for_update().get(id=blob.id)
-                if blob.encryption_key_id == target_key_id:
-                    return "skipped"
+            return self._re_encrypt_postgres_blob(blob, sha256, target_key_id)
+        return self._re_encrypt_object_storage_blob(blob, sha256, target_key_id)
 
-                old_key_id = blob.encryption_key_id
-
-                if blob.raw_content is None:
-                    self.stdout.write(
-                        self.style.WARNING(
-                            f"  SKIP blob {blob.id}: no content in PostgreSQL"
-                        )
-                    )
-                    return "skipped"
-
-                decrypted = self.service.decrypt(bytes(blob.raw_content), old_key_id)
-                encrypted, new_key_id = self.service.encrypt(decrypted)
-
-                blob.raw_content = encrypted
-                blob.encryption_key_id = new_key_id
-                blob.save(
-                    update_fields=[
-                        "raw_content",
-                        "encryption_key_id",
-                        "size_compressed",
-                    ]
-                )
-
-            self.stdout.write(
-                f"  Re-encrypted blob {blob.id} (POSTGRES): "
-                f"key_id {old_key_id} -> {new_key_id}"
-            )
-
-        else:
-            # Object storage blob
-            if not self.service.enabled:
+    def _re_encrypt_postgres_blob(
+        self, blob: Blob, sha256: bytes, target_key_id: int
+    ) -> str:
+        """Re-encrypt a single PostgreSQL-backed blob row in place."""
+        with transaction.atomic(), sha256_advisory_lock(sha256):
+            blob = Blob.objects.select_for_update().get(id=blob.id)
+            if blob.encryption_key_id == target_key_id:
+                return "skipped"
+            if blob.raw_content is None:
                 self.stdout.write(
                     self.style.WARNING(
-                        f"  SKIP blob {blob.id}: object storage not configured"
+                        f"  SKIP blob {blob.id}: no content in PostgreSQL"
                     )
                 )
                 return "skipped"
 
-            storage_key = self.service.compute_storage_key(bytes(blob.sha256))
-
-            # Read & re-encrypt outside the DB transaction.
-            try:
-                with self.service.storage.open(storage_key, "rb") as f:
-                    old_encrypted = f.read()
-            except FileNotFoundError:
-                self.stderr.write(
-                    self.style.ERROR(
-                        f"  ERROR blob {blob.id}: not found in storage at {storage_key}"
-                    )
-                )
-                return "error"
-
-            decrypted = self.service.decrypt(old_encrypted, blob.encryption_key_id)
+            old_key_id = blob.encryption_key_id
+            decrypted = self.service.decrypt(bytes(blob.raw_content), old_key_id)
             encrypted, new_key_id = self.service.encrypt(decrypted)
 
-            # Stage the new ciphertext at a temp key so the canonical object
-            # is not touched until the DB transaction commits. If the DB
-            # update fails, we drop the temp object and storage stays
-            # consistent with the DB.
-            temp_key = f"{storage_key}.tmp.{new_key_id}"
-            self.service.storage.save(temp_key, ContentFile(encrypted))
-
-            promote_done = {"value": False}
-
-            def _promote_temp():
-                try:
-                    self.service.storage.save(storage_key, ContentFile(encrypted))
-                finally:
-                    try:
-                        self.service.storage.delete(temp_key)
-                    except Exception as cleanup_err:  # pylint: disable=broad-except
-                        self.stderr.write(
-                            self.style.ERROR(
-                                f"  WARN blob {blob.id}: failed to delete temp "
-                                f"{temp_key}: {cleanup_err}"
-                            )
-                        )
-                promote_done["value"] = True
-
-            try:
-                with transaction.atomic():
-                    # The storage object is shared by every Blob row that has
-                    # the same sha256 and is in OBJECT_STORAGE (deduplication
-                    # in upload_blob). Lock the entire cohort so we can flip
-                    # all of them to new_key_id atomically — otherwise the
-                    # promote rewrites the object with new ciphertext while
-                    # un-rotated siblings still hold the old key_id.
-                    siblings = list(
-                        Blob.objects.select_for_update().filter(
-                            sha256=blob.sha256,
-                            storage_location=BlobStorageLocationChoices.OBJECT_STORAGE,
-                        )
-                    )
-                    if not siblings:
-                        # Row was deleted between iteration and lock.
-                        try:
-                            self.service.storage.delete(temp_key)
-                        except Exception as cleanup_err:  # pylint: disable=broad-except
-                            self.stderr.write(
-                                self.style.ERROR(
-                                    f"  WARN blob {blob.id}: failed to delete "
-                                    f"temp {temp_key}: {cleanup_err}"
-                                )
-                            )
-                        return "skipped"
-
-                    pending = [
-                        s for s in siblings if s.encryption_key_id != target_key_id
-                    ]
-                    if not pending:
-                        # Another worker rotated this cohort already.
-                        try:
-                            self.service.storage.delete(temp_key)
-                        except Exception as cleanup_err:  # pylint: disable=broad-except
-                            self.stderr.write(
-                                self.style.ERROR(
-                                    f"  WARN blob {blob.id}: failed to delete "
-                                    f"temp {temp_key}: {cleanup_err}"
-                                )
-                            )
-                        return "skipped"
-
-                    old_key_id = pending[0].encryption_key_id
-                    Blob.objects.filter(id__in=[s.id for s in pending]).update(
-                        encryption_key_id=new_key_id
-                    )
-                    transaction.on_commit(_promote_temp)
-            except Exception:
-                if not promote_done["value"]:
-                    try:
-                        self.service.storage.delete(temp_key)
-                    except Exception as cleanup_err:  # pylint: disable=broad-except
-                        self.stderr.write(
-                            self.style.ERROR(
-                                f"  WARN blob {blob.id}: failed to delete temp "
-                                f"{temp_key}: {cleanup_err}"
-                            )
-                        )
-                raise
-
-            self.stdout.write(
-                f"  Re-encrypted blob {blob.id} (OBJECT_STORAGE): "
-                f"key_id {old_key_id} -> {new_key_id}"
+            blob.raw_content = encrypted
+            blob.encryption_key_id = new_key_id
+            blob.save(
+                update_fields=["raw_content", "encryption_key_id", "size_compressed"]
             )
 
+        self.stdout.write(
+            f"  Re-encrypted blob {blob.id} (POSTGRES): "
+            f"key_id {old_key_id} -> {new_key_id}"
+        )
+        return "success"
+
+    def _re_encrypt_object_storage_blob(
+        self, blob: Blob, sha256: bytes, target_key_id: int
+    ) -> str:
+        """Re-encrypt the storage object backing an OBJECT_STORAGE cohort.
+
+        Stages the new ciphertext at a temp key so a crash between DB
+        commit and storage promote leaves storage and DB consistent.
+        Concurrency is handled by the per-sha256 advisory lock; the
+        bulk-update flips every sibling to the new key in one round trip.
+        """
+        if not self.service.enabled:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"  SKIP blob {blob.id}: object storage not configured"
+                )
+            )
+            return "skipped"
+
+        storage_key = self.service.compute_storage_key(sha256)
+        temp_key = None
+
+        try:
+            with transaction.atomic(), sha256_advisory_lock(sha256):
+                cohort = Blob.objects.filter(
+                    sha256=sha256,
+                    storage_location=BlobStorageLocationChoices.OBJECT_STORAGE,
+                ).exclude(encryption_key_id=target_key_id)
+                old_blob = cohort.first()
+                if old_blob is None:
+                    return "skipped"
+                old_key_id = old_blob.encryption_key_id
+
+                try:
+                    with self.service.storage.open(storage_key, "rb") as f:
+                        old_encrypted = f.read()
+                except FileNotFoundError:
+                    self.stderr.write(
+                        self.style.ERROR(
+                            f"  ERROR blob {blob.id}: not found in storage at "
+                            f"{storage_key}"
+                        )
+                    )
+                    return "error"
+
+                decrypted = self.service.decrypt(old_encrypted, old_key_id)
+                encrypted, new_key_id = self.service.encrypt(decrypted)
+
+                temp_key = f"{storage_key}.tmp.{new_key_id}"
+                self.service.storage.save(temp_key, ContentFile(encrypted))
+
+                cohort.update(encryption_key_id=new_key_id)
+
+                staged_temp = temp_key
+
+                def _promote_temp():
+                    try:
+                        self.service.storage.save(storage_key, ContentFile(encrypted))
+                    finally:
+                        try:
+                            self.service.storage.delete(staged_temp)
+                        except Exception as cleanup_err:  # pylint: disable=broad-except
+                            self.stderr.write(
+                                self.style.ERROR(
+                                    f"  WARN blob {blob.id}: failed to delete "
+                                    f"temp {staged_temp}: {cleanup_err}"
+                                )
+                            )
+
+                transaction.on_commit(_promote_temp)
+                # Promotion now owns temp_key; don't double-delete on rollback.
+                temp_key = None
+        finally:
+            if temp_key is not None:
+                try:
+                    self.service.storage.delete(temp_key)
+                except Exception as cleanup_err:  # pylint: disable=broad-except
+                    self.stderr.write(
+                        self.style.ERROR(
+                            f"  WARN blob {blob.id}: failed to delete temp "
+                            f"{temp_key}: {cleanup_err}"
+                        )
+                    )
+
+        self.stdout.write(
+            f"  Re-encrypted blob {blob.id} (OBJECT_STORAGE): "
+            f"key_id {old_key_id} -> {new_key_id}"
+        )
         return "success"

@@ -2250,16 +2250,6 @@ class Blob(BaseModel):
             self.size_compressed = len(self.raw_content)
         super().save(*args, **kwargs)
 
-    @staticmethod
-    def compute_storage_key(sha256_bytes: bytes) -> str:
-        """Compute object storage key from SHA256 hash: blobs/{sha[:3]}/{sha}"""
-        sha_hex = sha256_bytes.hex()
-        return f"blobs/{sha_hex[:3]}/{sha_hex}"
-
-    def get_storage_key(self) -> str:
-        """Get the object storage key for this blob."""
-        return self.compute_storage_key(bytes(self.sha256))
-
     def get_content(self) -> bytes:
         """
         Get the decompressed content of this blob.
