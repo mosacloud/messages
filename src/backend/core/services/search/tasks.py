@@ -6,6 +6,7 @@ from django.conf import settings
 
 from celery.utils.log import get_task_logger
 from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError
+from opensearchpy.exceptions import TransportError
 
 from core import models
 from core.services.search import (
@@ -33,10 +34,12 @@ from messages.celery_app import app as celery_app
 logger = get_task_logger(__name__)
 
 # Retry only on transient OpenSearch connectivity failures.
-# ``ConnectionError`` is the common parent of ``ConnectionTimeout`` and every
-# socket-level failure (``TransportError`` children like 4xx are excluded on
-# purpose — retrying a 400/401/403 is pointless and just burns worker time).
-_RETRYABLE_EXCEPTIONS = (OpenSearchConnectionError,)
+# ``ConnectionError`` covers socket-level failures and timeouts.
+# ``TransportError`` covers HTTP-level failures: ``index.py`` filters and
+# only re-raises retryable status codes (5xx, 429), so any TransportError
+# that reaches Celery is by construction safe to retry. 4xx errors stay
+# swallowed inside the index module and never bubble up here.
+_RETRYABLE_EXCEPTIONS = (OpenSearchConnectionError, TransportError)
 
 
 def _reindex_all_base(update_progress=None):

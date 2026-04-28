@@ -19,15 +19,33 @@ logger = logging.getLogger(__name__)
 
 BULK_CHUNK_SIZE = 100
 
+# Transport status codes that warrant a Celery-level retry: the cluster is
+# alive enough to respond, but the request itself could not be served right
+# now (rolling restart, throttling, gateway hiccup). 4xx responses are caller
+# bugs (bad mapping, malformed query) — retrying them only burns worker time.
+_RETRYABLE_TRANSPORT_STATUS = frozenset({429, 502, 503, 504})
+
+
+def _is_retryable_transport_error(exc: TransportError) -> bool:
+    """Return True when ``exc`` is a transient OpenSearch transport failure.
+
+    ``opensearchpy.helpers.bulk`` already retries each request internally
+    (``max_retries=3``), so reaching this point means the cluster stayed
+    unavailable across those attempts — re-raise so the Celery task retries
+    the whole batch with its own exponential backoff.
+    """
+    return getattr(exc, "status_code", None) in _RETRYABLE_TRANSPORT_STATUS
+
 
 def _flush_bulk_actions(es, actions):
     """Send bulk actions to OpenSearch and return the failure count.
 
-    Wraps ``opensearchpy.helpers.bulk`` so that transport-level failures
-    (timeout, connection dropped after retries) do not abort the outer
-    reindex loop and drain the coalescer buffer silently. Per-document
-    errors are logged and counted, and a transport failure counts every
-    action in the batch as failed so callers can track partial progress.
+    Wraps ``opensearchpy.helpers.bulk``. Per-document errors (4xx) are
+    logged and counted so the outer reindex loop can keep draining the
+    coalescer buffer. Transient cluster failures (5xx, 429) are re-raised
+    so the surrounding Celery task can retry the whole batch instead of
+    silently dropping documents and flooding Sentry with one event per
+    chunk during an OpenSearch outage.
     """
     try:
         _, errors = bulk(
@@ -39,7 +57,9 @@ def _flush_bulk_actions(es, actions):
             max_retries=3,
             initial_backoff=2,
         )
-    except TransportError:
+    except TransportError as exc:
+        if _is_retryable_transport_error(exc):
+            raise
         logger.exception("Bulk indexing request failed (%d actions)", len(actions))
         return len(actions)
 
@@ -311,9 +331,11 @@ def _purge_orphan_docs(es, batch_thread_ids, batch_indexed_ids):
     pending). A single ``delete_by_query`` per chunk sweeps them; on a clean
     reindex it matches zero docs and returns within a few ms.
 
-    Transport failures are logged but swallowed: the bulk upsert itself has
-    already succeeded, so we prefer a few stale docs to aborting the whole
-    reindex loop.
+    Transient transport failures (5xx, 429) are re-raised so the Celery
+    task retries the whole batch — the bulk upsert is idempotent, so a
+    re-run is safer than letting orphan docs accumulate after each
+    incident. Definitive transport errors (4xx) are logged and swallowed
+    to avoid blocking the reindex loop on a malformed query.
     """
     if not batch_thread_ids:
         return
@@ -332,7 +354,9 @@ def _purge_orphan_docs(es, batch_thread_ids, batch_indexed_ids):
             ignore=[404, 409],
             conflicts="proceed",
         )
-    except TransportError:
+    except TransportError as exc:
+        if _is_retryable_transport_error(exc):
+            raise
         logger.exception(
             "Orphan purge failed for %d threads (stale docs may remain)",
             len(batch_thread_ids),

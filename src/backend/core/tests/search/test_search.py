@@ -558,10 +558,15 @@ class TestSearchReindexAllBulk:
         assert result["status"] == "success"
         mock_logger.error.assert_called_with("Bulk indexing error: %s", bulk_errors[0])
 
-    def test_bulk_transport_error_is_caught_and_counted_as_failure(
+    def test_bulk_4xx_transport_error_is_caught_and_counted_as_failure(
         self, mock_es_client_index
     ):
-        """A TransportError from bulk() must not abort the reindex loop."""
+        """A 4xx TransportError must not abort the reindex loop.
+
+        4xx errors are caller bugs (bad mapping, malformed query). Retrying
+        them only burns worker time, so we swallow and count them as
+        failures so the outer loop can keep draining the coalescer buffer.
+        """
         thread = ThreadFactory()
         mailbox = MailboxFactory()
         ThreadAccessFactory(mailbox=mailbox, thread=thread)
@@ -572,14 +577,65 @@ class TestSearchReindexAllBulk:
         with (
             mock.patch(
                 "core.services.search.index.bulk",
-                side_effect=TransportError(504, "timeout", {}),
+                side_effect=TransportError(400, "bad_request", {}),
             ),
             mock.patch("core.services.search.index.logger") as mock_logger,
         ):
             result = reindex_all()
 
-        # The call must return normally with a non-zero failure_count rather
-        # than propagating the TransportError and losing coalescer IDs.
         assert result["status"] == "success"
         assert result["failure_count"] == 2  # 1 thread doc + 1 message doc
         mock_logger.exception.assert_called_once()
+
+    @pytest.mark.parametrize("status_code", [429, 502, 503, 504])
+    def test_bulk_retryable_transport_error_is_reraised(
+        self, mock_es_client_index, status_code
+    ):
+        """5xx / 429 TransportError must propagate so Celery can retry.
+
+        Swallowing these would silently drop the chunk and emit one Sentry
+        event per chunk during an OpenSearch outage. Re-raising lets the
+        ``bulk_reindex_threads_task`` autoretry kick in with exponential
+        backoff and a single Sentry event per task.
+        """
+        thread = ThreadFactory()
+        mailbox = MailboxFactory()
+        ThreadAccessFactory(mailbox=mailbox, thread=thread)
+        MessageFactory(thread=thread)
+
+        mock_es_client_index.indices.exists.return_value = False
+
+        with (
+            mock.patch(
+                "core.services.search.index.bulk",
+                side_effect=TransportError(status_code, "unavailable", {}),
+            ),
+            pytest.raises(TransportError),
+        ):
+            reindex_all()
+
+    @pytest.mark.parametrize("status_code", [429, 502, 503, 504])
+    def test_purge_orphan_docs_retryable_transport_error_is_reraised(
+        self, mock_es_client_index, status_code
+    ):
+        """A retryable failure during the orphan purge must propagate too.
+
+        The bulk upsert is idempotent, so re-running the whole batch is
+        safer than letting orphan documents accumulate after each
+        OpenSearch incident.
+        """
+        thread = ThreadFactory()
+        mailbox = MailboxFactory()
+        ThreadAccessFactory(mailbox=mailbox, thread=thread)
+        MessageFactory(thread=thread)
+
+        mock_es_client_index.indices.exists.return_value = False
+        mock_es_client_index.delete_by_query.side_effect = TransportError(
+            status_code, "unavailable", {}
+        )
+
+        with (
+            mock.patch("core.services.search.index.bulk", return_value=(2, [])),
+            pytest.raises(TransportError),
+        ):
+            reindex_all()
