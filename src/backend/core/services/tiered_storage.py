@@ -175,9 +175,14 @@ class TieredStorageService:
             raise ValueError(f"Blob {blob.id} has no raw_content to upload")
 
         sha256_bytes = bytes(blob.sha256)
+        key = self.compute_storage_key(sha256_bytes)
 
-        # Check if already uploaded (deduplication via DB lookup)
-        if self.check_already_uploaded(sha256_bytes):
+        # Check if already uploaded (DB lookup) AND verify the storage object
+        # is actually present. Without the storage check, a missing object
+        # (manual deletion, storage incident, expired lifecycle rule) would
+        # cause the caller to mark this blob as OBJECT_STORAGE pointing at
+        # nothing and drop its raw_content — losing data.
+        if self.check_already_uploaded(sha256_bytes) and self.storage.exists(key):
             logger.debug(
                 "Blob %s already exists in object storage (dedup), skipping upload",
                 blob.id,
@@ -186,7 +191,6 @@ class TieredStorageService:
 
         # Upload raw_content as-is (already encrypted from create_blob)
         content = bytes(blob.raw_content)
-        key = self.compute_storage_key(sha256_bytes)
         self.storage.save(key, ContentFile(content))
 
         logger.info(

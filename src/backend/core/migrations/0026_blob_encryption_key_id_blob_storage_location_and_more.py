@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0013_thread_is_trashed'),
+        ('core', '0025_alter_threadevent_type_userevent'),
     ]
 
     operations = [

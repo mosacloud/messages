@@ -515,23 +515,51 @@ class Command(BaseCommand):
 
             try:
                 with transaction.atomic():
-                    blob = Blob.objects.select_for_update().get(id=blob.id)
-                    if blob.encryption_key_id == target_key_id:
-                        # Another worker beat us to it; clean up our temp.
+                    # The storage object is shared by every Blob row that has
+                    # the same sha256 and is in OBJECT_STORAGE (deduplication
+                    # in upload_blob). Lock the entire cohort so we can flip
+                    # all of them to new_key_id atomically — otherwise the
+                    # promote rewrites the object with new ciphertext while
+                    # un-rotated siblings still hold the old key_id.
+                    siblings = list(
+                        Blob.objects.select_for_update().filter(
+                            sha256=blob.sha256,
+                            storage_location=BlobStorageLocationChoices.OBJECT_STORAGE,
+                        )
+                    )
+                    if not siblings:
+                        # Row was deleted between iteration and lock.
                         try:
                             self.service.storage.delete(temp_key)
                         except Exception as cleanup_err:  # pylint: disable=broad-except
                             self.stderr.write(
                                 self.style.ERROR(
-                                    f"  WARN blob {blob.id}: failed to delete temp "
-                                    f"{temp_key}: {cleanup_err}"
+                                    f"  WARN blob {blob.id}: failed to delete "
+                                    f"temp {temp_key}: {cleanup_err}"
                                 )
                             )
                         return "skipped"
 
-                    old_key_id = blob.encryption_key_id
-                    blob.encryption_key_id = new_key_id
-                    blob.save(update_fields=["encryption_key_id"])
+                    pending = [
+                        s for s in siblings if s.encryption_key_id != target_key_id
+                    ]
+                    if not pending:
+                        # Another worker rotated this cohort already.
+                        try:
+                            self.service.storage.delete(temp_key)
+                        except Exception as cleanup_err:  # pylint: disable=broad-except
+                            self.stderr.write(
+                                self.style.ERROR(
+                                    f"  WARN blob {blob.id}: failed to delete "
+                                    f"temp {temp_key}: {cleanup_err}"
+                                )
+                            )
+                        return "skipped"
+
+                    old_key_id = pending[0].encryption_key_id
+                    Blob.objects.filter(id__in=[s.id for s in pending]).update(
+                        encryption_key_id=new_key_id
+                    )
                     transaction.on_commit(_promote_temp)
             except Exception:
                 if not promote_done["value"]:
