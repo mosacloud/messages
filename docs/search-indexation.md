@@ -54,8 +54,8 @@ Located in `src/backend/core/signals.py`, all handlers bail out when
 | `post_save` | `MessageRecipient` | Reindex parent thread (on update only — create is already covered by the `Message` save) |
 | `post_save` | `Thread` | Reindex thread |
 | `post_save` | `ThreadAccess` | Reindex thread if `read_at` or `starred_at` changed |
-| `post_delete` | `Message` | Reindex parent thread (the bulk reindex purges the orphan message document) |
-| `post_delete` | `Thread` | Enqueue the thread ID into the delete coalescing buffer |
+| `post_delete` | `Message` | Enqueue `(thread_id, message_id)` into the message-delete coalescing buffer |
+| `post_delete` | `Thread` | Enqueue the thread ID into the thread-delete coalescing buffer |
 | `post_delete` | `ThreadAccess` | Reindex thread |
 
 Every enqueue is wrapped in `transaction.on_commit(...)`. A rolled-back
@@ -65,14 +65,26 @@ a delete enqueue for a row that still exists.
 ### Coalescing buffers (default path)
 
 Outside a `ThreadReindexDeferrer.defer()` scope, signal handlers call
-`enqueue_thread_reindex(thread_id)` or `enqueue_thread_delete(thread_id)`
-(see `src/backend/core/services/search/coalescer.py`). Two pending sets
+`enqueue_thread_reindex(thread_id)`, `enqueue_thread_delete(thread_id)`,
+or `enqueue_message_delete(thread_id, message_id)`
+(see `src/backend/core/services/search/coalescer.py`). Three pending sets
 are tracked:
 
 - `search:pending_reindex_threads` — thread IDs that need their
-  documents rebuilt from the DB.
-- `search:pending_delete_threads` — thread IDs whose documents (parent +
-  child messages) must be removed from the index.
+  documents rebuilt (upsert) from the DB.
+- `search:pending_delete_threads` — thread IDs whose **parent**
+  documents must be removed from the index.
+- `search:pending_delete_messages` — `thread_id:message_id` pairs whose
+  **child** documents must be removed from the index. Encoded as
+  strings so the Redis SET dedup absorbs duplicate enqueues across the
+  message `post_delete` and any cascade fan-out.
+
+The two delete sets are split because deleting a parent thread doc does
+**not** remove its message children in OpenSearch (parent/child join docs
+are independent), and because using two cheap `bulk delete by _id` calls
+is far lighter than the single `delete_by_query` the previous design
+relied on — that call held a scroll context, scanned the index and
+refreshed per call, which under load triggered 503/429 responses.
 
 Storage is chosen at runtime from `CACHES['default']['BACKEND']`:
 
@@ -93,25 +105,26 @@ Common to both paths:
 
 - Drained by `process_pending_reindex_task`, scheduled every
   `SEARCH_REINDEX_TASKS_INTERVAL` seconds by Celery Beat.
-- The task drains the delete set first and hands IDs to
-  `bulk_delete_threads_task`. It then drains the reindex set, filters out
-  any ID already picked up by the delete pass (the delete wins), and
-  hands the rest to `bulk_reindex_threads_task`. Filtering the reindex
-  batch is what absorbs the cascade on thread deletes: a child `Message`
-  `post_delete` still schedules a reindex of its parent, but when the
-  parent is also being removed that reindex is dropped before enqueuing.
+- Each cycle drains the three sets in order — thread deletes, message
+  deletes, then reindex — and hands each batch to its dedicated task
+  (`bulk_delete_threads_task`, `bulk_delete_messages_task`,
+  `bulk_reindex_threads_task`). Before enqueuing a reindex batch any ID
+  already picked up by the thread-delete pass is filtered out (the
+  delete wins): a thread that is about to be removed from the index is
+  never reindexed in the same cycle.
 - Drained IDs are pushed back to their pending set if the Celery broker
-  rejects either bulk task, so a transient broker outage cannot silently
+  rejects any bulk task, so a transient broker outage cannot silently
   desync the index.
 
-Each drain pulls up to `DEFAULT_FLUSH_BATCH_SIZE` (`10_000`) IDs and
-enqueues one bulk task per chunk, so a single beat tick clears the whole
-backlog instead of spreading it across several
-`SEARCH_REINDEX_TASKS_INTERVAL` cycles. A safety cap
-(`DEFAULT_FLUSH_MAX_BATCHES`, `10`) bounds how many bulk tasks a single
-cycle can enqueue in total (shared across delete and reindex handoffs) so
-beat never spends too long on one tick if the backlog ballooned (e.g. a
-long broker outage); any overflow drains on the next tick.
+Each drain pulls up to `SEARCH_FLUSH_BATCH_SIZE` (default `1000`) IDs
+and enqueues one bulk task per chunk, sized to keep each Celery task
+short enough to retry cheaply and parallelize across workers. A safety
+cap (`SEARCH_FLUSH_MAX_BATCHES`, default `10`) bounds how many bulk
+tasks a single cycle can enqueue in total (shared across delete and
+reindex handoffs) so beat never spends too long on one tick if the
+backlog ballooned (e.g. a long broker outage); any overflow drains on
+the next tick. Effective per-tick capacity is roughly
+`SEARCH_FLUSH_BATCH_SIZE × SEARCH_FLUSH_MAX_BATCHES` IDs.
 
 ### Scoped deferrer (bulk flows)
 
@@ -135,24 +148,35 @@ the same principle.
 ### Deletes
 
 Deletes reuse the coalescing/beat cycle rather than scheduling a task per
-row:
+row, and use targeted `bulk delete by _id` requests instead of
+`delete_by_query` on the hot path:
 
 - `post_delete` on `Thread` calls `enqueue_thread_delete(thread_id)`,
-  which `SADD`s into `search:pending_delete_threads`.
-- `post_delete` on `Message` calls `_schedule_thread_reindex(thread_id)`.
-  A reindex pass upserts every message still in the DB and a
-  `delete_by_query` with `must_not.ids` sweeps the orphans left behind
-  (see `_purge_orphan_docs` in `index.py`).
-- `process_pending_reindex_task` drains the delete set first, hands the
-  IDs to `bulk_delete_threads_task` (which issues a single
-  `delete_by_query` on `terms: {thread_id: [...]}` to sweep the thread
-  parent and its message children in one request), then drains the
-  reindex set while skipping any ID already queued for deletion in the
-  same cycle.
+  which `SADD`s into `search:pending_delete_threads`. Cascaded deletes
+  of child rows still fire `post_delete` for each `Message`, so the
+  message handler covers the children automatically.
+- `post_delete` on `Message` calls
+  `enqueue_message_delete(thread_id, message_id)`, which `SADD`s the
+  encoded pair into `search:pending_delete_messages`.
+- `process_pending_reindex_task` drains the three sets in order. Thread
+  IDs go to `bulk_delete_threads_task` (one `delete` action per parent
+  doc); message pairs go to `bulk_delete_messages_task` (one `delete`
+  action per child doc with the parent `thread_id` set as `_routing` so
+  the request hits the correct shard). Both rely on
+  `opensearchpy.helpers.bulk` — no `delete_by_query` is involved on the
+  hot path.
 
-Both bulk tasks retry transient OpenSearch connection failures with
-exponential backoff (`retry_backoff`, `retry_backoff_max=600`,
-`max_retries=5`).
+All three bulk tasks retry transient OpenSearch connection failures and
+retryable transport responses (HTTP 429, 502, 503, 504) with exponential
+backoff (`retry_backoff`, `retry_backoff_max=600`, `max_retries=5`).
+
+### Residual orphans
+
+A document can outlive its DB row only when a row is removed without
+firing a `post_delete` signal — typically raw SQL, `_raw_delete`, or a
+restore-from-backup that re-creates a row with the same UUID a deleted
+doc still occupies. These cases are rare and self-correct on the next
+full reindex (`search_reindex --all`).
 
 ## Bulk Indexation
 
@@ -162,19 +186,24 @@ by the scheduled drains, the management command, and the deferrer:
 
 - Prefetches `accesses`, `messages → sender`, and `messages → recipients →
   contact` in one pass to avoid N+1 queries.
-- Iterates threads with `iterator(chunk_size=BULK_CHUNK_SIZE)`
-  (`BULK_CHUNK_SIZE = 100`) to cap memory usage on large result sets.
+- Iterates threads with `iterator(chunk_size=OPENSEARCH_BULK_CHUNK_SIZE)`
+  (default `50`) to cap memory usage on large result sets and bound the
+  per-request payload sent to the cluster.
 - Hands actions to `opensearchpy.helpers.bulk` with
   `request_timeout=OPENSEARCH_BULK_TIMEOUT`,
-  `max_chunk_bytes=OPENSEARCH_BULK_MAX_BYTES`, `max_retries=3`,
-  `initial_backoff=2`, and `raise_on_error=False` (errors are collected and
-  logged but do not abort the whole reindex).
-- After each bulk chunk, `_purge_orphan_docs` runs one `delete_by_query`
-  scoped to `terms: {thread_id: [batch]}` + `must_not.ids: [indexed]` to
-  sweep any message document still in the index whose DB row is gone.
-  On a clean reindex the query matches zero docs and returns in a few ms.
-  This is what lets message deletes skip a dedicated delete task: the
-  next reindex of the parent thread tidies up.
+  `max_chunk_bytes=OPENSEARCH_BULK_MAX_BYTES`, and `raise_on_error=False`
+  (errors are collected and logged but do not abort the whole reindex).
+  Transient transport errors (502/503/504) are retried at the transport
+  layer of the OpenSearch client (`OPENSEARCH_MAX_RETRIES`, default 3,
+  honoring opensearch-py's `DEFAULT_RETRY_ON_STATUS`). Anything that
+  exhausts that budget bubbles up as `TransientTransportError` and is
+  picked up by Celery autoretry (5 attempts with exponential backoff
+  capped at 600s) — no third local layer.
+- Pure upsert: the loop never deletes. Stale documents are removed by
+  the dedicated `bulk_delete_threads_task` / `bulk_delete_messages_task`
+  queues fed by `post_delete` signals. Splitting the two paths replaces
+  the previous per-chunk `delete_by_query` orphan purge that triggered
+  cluster 503s under load.
 
 The `max_chunk_bytes` threshold is a **batching** threshold, not a per-document
 cap: `opensearch-py` flushes the accumulated payload once it exceeds the
@@ -226,7 +255,8 @@ competes with inbound/outbound email processing.
 |------|---------|-------|
 | `process_pending_reindex_task` | Celery Beat every `SEARCH_REINDEX_TASKS_INTERVAL` seconds | `reindex` (scheduled) |
 | `bulk_reindex_threads_task` | Deferrer scope exit or beat drain | `reindex` |
-| `bulk_delete_threads_task` | Beat drain of the delete set | `reindex` |
+| `bulk_delete_threads_task` | Beat drain of the thread-delete set | `reindex` |
+| `bulk_delete_messages_task` | Beat drain of the message-delete set | `reindex` |
 | `index_message_task`, `reindex_thread_task`, `reindex_mailbox_task`, `reindex_all` | Management command (`--async`) | `reindex` |
 | `update_threads_mailbox_flags_task` | Legacy callers (see note below) | `reindex` |
 | `reset_search_index` | Manual invocation | `reindex` |
@@ -239,11 +269,12 @@ The coalescing buffer and the Celery broker both rely on Redis (typically
 the same instance). A Redis outage has the following effects:
 
 - **Signal-driven enqueues** — `enqueue_thread_reindex` /
-  `enqueue_thread_delete` catch `redis.exceptions.RedisError` and log
-  `Redis unavailable while enqueuing thread …` at `ERROR`, then drop the
-  ID. The originating DB write still commits: the enqueue runs in a
-  `transaction.on_commit` hook with broad error handling so it never
-  fails the request. **The dropped ID is not retried automatically.**
+  `enqueue_thread_delete` / `enqueue_message_delete` catch
+  `redis.exceptions.RedisError` and log `Redis unavailable while
+  enqueuing …` at `ERROR`, then drop the ID. The originating DB write
+  still commits: the enqueue runs in a `transaction.on_commit` hook
+  with broad error handling so it never fails the request. **The
+  dropped ID is not retried automatically.**
 - **Beat drain** — `process_pending_reindex_task` cannot fire while the
   broker is unavailable. When Beat resumes, IDs already present in the
   Redis sets before the outage drain normally — provided Redis was
@@ -319,19 +350,22 @@ Tuning guidance:
    transaction.on_commit                bulk_reindex_threads_task
               │                                  │
               ▼                                  ▼
-  enqueue_thread_reindex / _delete      ┌───────────────────────┐
-    (SADD on Redis, or                  │ reindex_bulk_threads │
-     cache.set on fallback)             │  upsert + purge       │
-              │                         │  orphan docs          │
-              │ every N seconds         └───────────┬───────────┘
-              ▼                                     │
-   process_pending_reindex_task                     ▼
-      (Celery Beat)                            OpenSearch index
-              │                                (messages)
-              ▼                                     ▲
-      drain delete set → bulk_delete_threads_task   │
-      drain reindex set (minus delete IDs)          │
-        → bulk_reindex_threads_task ────────────────┘
+  enqueue_thread_reindex                ┌───────────────────────┐
+  enqueue_thread_delete                 │ reindex_bulk_threads │
+  enqueue_message_delete                │  pure upsert          │
+   (SADD on Redis, or                   │  (no delete_by_query) │
+    cache.set on fallback)              └───────────┬───────────┘
+              │                                     │
+              │ every N seconds                     ▼
+              ▼                                OpenSearch index
+   process_pending_reindex_task               (messages)
+      (Celery Beat)                                ▲
+              │                                    │
+              ▼                                    │
+   drain delete-threads → bulk_delete_threads_task ┤
+   drain delete-msgs    → bulk_delete_messages_task┤
+   drain reindex (minus delete IDs)                │
+        → bulk_reindex_threads_task ───────────────┘
 ```
 
 ## Related Files

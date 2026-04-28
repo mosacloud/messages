@@ -82,8 +82,27 @@ class Base(Configuration):
         60, environ_name="OPENSEARCH_BULK_TIMEOUT", environ_prefix=None
     )
     OPENSEARCH_BULK_MAX_BYTES = values.PositiveIntegerValue(
-        50 * 1024 * 1024,
+        25 * 1024 * 1024,
         environ_name="OPENSEARCH_BULK_MAX_BYTES",
+        environ_prefix=None,
+    )
+    # Number of thread documents (and their child message documents)
+    # accumulated before a bulk flush. Lower values reduce per-request
+    # cluster pressure (heap, queue depth) at the cost of more round-trips.
+    OPENSEARCH_BULK_CHUNK_SIZE = values.PositiveIntegerValue(
+        50,
+        environ_name="OPENSEARCH_BULK_CHUNK_SIZE",
+        environ_prefix=None,
+    )
+    # Transport-level retry budget for the OpenSearch client. The
+    # opensearch-py transport already retries on 502/503/504 (its
+    # ``DEFAULT_RETRY_ON_STATUS``) — this just exposes the count so we
+    # can lift it above the library default of 3 if needed. Whatever
+    # bubbles up through this budget is wrapped as
+    # ``TransientTransportError`` and handed to Celery autoretry.
+    OPENSEARCH_MAX_RETRIES = values.PositiveIntegerValue(
+        3,
+        environ_name="OPENSEARCH_MAX_RETRIES",
         environ_prefix=None,
     )
     OPENSEARCH_INDEX_THREADS = values.BooleanValue(
@@ -99,6 +118,28 @@ class Base(Configuration):
     SEARCH_REINDEX_TASKS_INTERVAL = values.PositiveIntegerValue(
         30,
         environ_name="SEARCH_REINDEX_TASKS_INTERVAL",
+        environ_prefix=None,
+    )
+    # Maximum number of thread / message IDs handed to a single
+    # ``bulk_*_task`` call. Each batch becomes one Celery task, so the
+    # value is the unit of parallelism, retry granularity and worker
+    # occupation for catch-up flows. Lower means more, shorter tasks
+    # (better parallelism, cheaper retries); higher means fewer, longer
+    # tasks (less broker chatter but worse failure isolation).
+    SEARCH_FLUSH_BATCH_SIZE = values.PositiveIntegerValue(
+        1000,
+        environ_name="SEARCH_FLUSH_BATCH_SIZE",
+        environ_prefix=None,
+    )
+    # Maximum number of ``bulk_*_task`` calls a single Beat tick is
+    # allowed to enqueue, shared across the three handoffs (reindex /
+    # thread-delete / message-delete). Bounds catch-up bursts so a huge
+    # backlog is spread across several ticks rather than flooding the
+    # broker in one go. Effective per-tick capacity is roughly
+    # ``SEARCH_FLUSH_BATCH_SIZE * SEARCH_FLUSH_MAX_BATCHES`` IDs.
+    SEARCH_FLUSH_MAX_BATCHES = values.PositiveIntegerValue(
+        10,
+        environ_name="SEARCH_FLUSH_MAX_BATCHES",
         environ_prefix=None,
     )
 

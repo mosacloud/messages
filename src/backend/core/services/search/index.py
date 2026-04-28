@@ -13,39 +13,58 @@ from opensearchpy.helpers import bulk
 
 from core import enums, models
 from core.mda.rfc5322 import parse_email_message
+from core.services.search.exceptions import (
+    RETRYABLE_EXCEPTIONS,
+    RETRYABLE_TRANSPORT_STATUS,
+    TransientTransportError,
+)
 from core.services.search.mapping import MESSAGE_INDEX, MESSAGE_MAPPING
 
 logger = logging.getLogger(__name__)
 
-BULK_CHUNK_SIZE = 100
 
-# Transport status codes that warrant a Celery-level retry: the cluster is
-# alive enough to respond, but the request itself could not be served right
-# now (rolling restart, throttling, gateway hiccup). 4xx responses are caller
-# bugs (bad mapping, malformed query) — retrying them only burns worker time.
-_RETRYABLE_TRANSPORT_STATUS = frozenset({429, 502, 503, 504})
+def _run_request(fn, *args, **kwargs):
+    """Wrap a single OpenSearch call with the shared retry contract.
 
-
-def _is_retryable_transport_error(exc: TransportError) -> bool:
-    """Return True when ``exc`` is a transient OpenSearch transport failure.
-
-    ``opensearchpy.helpers.bulk`` already retries each request internally
-    (``max_retries=3``), so reaching this point means the cluster stayed
-    unavailable across those attempts — re-raise so the Celery task retries
-    the whole batch with its own exponential backoff.
+    Translates retryable HTTP statuses to ``TransientTransportError`` so the
+    Celery ``autoretry_for`` list catches them. ``ConnectionError`` falls
+    through (its ``status_code`` is ``"N/A"``) and is matched directly by
+    ``RETRYABLE_EXCEPTIONS`` upstream. Everything else propagates so caller
+    bugs surface in Sentry and bare ``NotFoundError`` catches in
+    ``delete_index`` / ``_build_message_doc`` keep working.
     """
-    return getattr(exc, "status_code", None) in _RETRYABLE_TRANSPORT_STATUS
+    try:
+        return fn(*args, **kwargs)
+    except TransportError as exc:
+        if getattr(exc, "status_code", None) in RETRYABLE_TRANSPORT_STATUS:
+            raise TransientTransportError(
+                exc.status_code,
+                f"OpenSearch returned {exc.status_code} for "
+                f"{getattr(fn, '__qualname__', fn)}",
+                getattr(exc, "info", None),
+            ) from exc
+        raise
 
 
-def _flush_bulk_actions(es, actions):
-    """Send bulk actions to OpenSearch and return the failure count.
+def _run_bulk(es, actions, *, swallow_4xx_as_failure, ignored_statuses=()):
+    """Run an opensearchpy bulk request with our standard knobs.
 
-    Wraps ``opensearchpy.helpers.bulk``. Per-document errors (4xx) are
-    logged and counted so the outer reindex loop can keep draining the
-    coalescer buffer. Transient cluster failures (5xx, 429) are re-raised
-    so the surrounding Celery task can retry the whole batch instead of
-    silently dropping documents and flooding Sentry with one event per
-    chunk during an OpenSearch outage.
+    Same retry contract as ``_run_request``. Transient transport errors
+    (502/503/504) are retried at the transport layer by the OpenSearch
+    client (see ``get_opensearch_client``); whatever still bubbles up
+    here is re-raised as ``TransientTransportError`` so Celery
+    autoretry takes over with its own exponential backoff. Stacking a
+    third local retry would just block the worker on ``time.sleep``
+    without adding resilience.
+
+    ``ignored_statuses`` drops matching per-document errors before
+    logging — delete callers pass ``(404,)`` because hitting an
+    already-removed document is benign and would otherwise flood
+    Sentry once per cascaded message delete. When
+    ``swallow_4xx_as_failure`` is True the reindex loop turns
+    request-level 4xx into a failure count so it can keep draining the
+    coalescer buffer; delete callers leave it False so caller bugs
+    surface in Sentry instead of silently disappearing.
     """
     try:
         _, errors = bulk(
@@ -54,31 +73,75 @@ def _flush_bulk_actions(es, actions):
             raise_on_error=False,
             request_timeout=settings.OPENSEARCH_BULK_TIMEOUT,
             max_chunk_bytes=settings.OPENSEARCH_BULK_MAX_BYTES,
-            max_retries=3,
-            initial_backoff=2,
         )
     except TransportError as exc:
-        if _is_retryable_transport_error(exc):
-            raise
-        logger.exception("Bulk indexing request failed (%d actions)", len(actions))
-        return len(actions)
+        if getattr(exc, "status_code", None) in RETRYABLE_TRANSPORT_STATUS:
+            raise TransientTransportError(
+                exc.status_code,
+                f"OpenSearch returned {exc.status_code} for bulk request "
+                f"({len(actions)} actions)",
+                getattr(exc, "info", None),
+            ) from exc
+        if swallow_4xx_as_failure:
+            logger.exception("Bulk indexing request failed (%d actions)", len(actions))
+            return len(actions)
+        raise
 
-    if errors:
-        for error in errors:  # pylint: disable=not-an-iterable
+    real_errors = [
+        error
+        for error in errors  # pylint: disable=not-an-iterable
+        if next(iter(error.values())).get("status") not in ignored_statuses
+    ]
+    if real_errors:
+        for error in real_errors:
             logger.error("Bulk indexing error: %s", error)
-        return len(errors)
+        return len(real_errors)
 
     return 0
 
 
+def _flush_bulk_actions(es, actions):
+    """Send reindex bulk actions to OpenSearch and return the failure count.
+
+    Per-document errors (4xx) are logged and counted so the outer reindex
+    loop can keep draining the coalescer buffer rather than aborting on the
+    first malformed doc.
+    """
+    return _run_bulk(es, actions, swallow_4xx_as_failure=True)
+
+
+def bulk_delete_documents(actions):
+    """Send bulk delete actions to OpenSearch.
+
+    ``ignored_statuses=(404,)`` drops per-doc "already gone" errors that
+    routinely happen for cascaded message deletes whose parent thread doc
+    was never indexed or has already been purged — logging them flooded
+    Sentry. Caller bugs (other 4xx) propagate so they remain visible.
+    """
+    _run_bulk(
+        get_opensearch_client(),
+        actions,
+        swallow_4xx_as_failure=False,
+        ignored_statuses=(404,),
+    )
+
+
 # OpenSearch client instantiation
 def get_opensearch_client():
-    """Get OpenSearch client instance."""
+    """Get OpenSearch client instance.
+
+    ``max_retries`` is forwarded to the transport layer, which already
+    retries on its ``DEFAULT_RETRY_ON_STATUS`` set (502/503/504). This
+    is the single source of truth for transport-level retries — Celery
+    autoretry handles the longer outage with exponential backoff if
+    the transport budget is exhausted.
+    """
     if not hasattr(get_opensearch_client, "cached_client"):
         kwargs = {
             "hosts": settings.OPENSEARCH_HOSTS,
             "timeout": settings.OPENSEARCH_TIMEOUT,
             "retry_on_timeout": True,
+            "max_retries": settings.OPENSEARCH_MAX_RETRIES,
         }
         if settings.OPENSEARCH_CA_CERTS:
             kwargs["ca_certs"] = settings.OPENSEARCH_CA_CERTS
@@ -87,22 +150,45 @@ def get_opensearch_client():
 
 
 def create_index_if_not_exists():
-    """Create ES indices if they don't exist."""
+    """Create the messages index if it does not yet exist.
+
+    Called from setup paths (``reindex_all`` / ``reindex_mailbox`` /
+    ``reset_search_index`` / the ``search_reindex`` / ``search_index_create``
+    management commands) and once per worker process from
+    ``ensure_index_exists``. The wrapping ``_run_request`` makes the existence
+    check participate in the shared retry contract.
+    """
     es = get_opensearch_client()
 
-    # Check if the index exists
-    if not es.indices.exists(index=MESSAGE_INDEX):
-        # Create the index with our mapping
-        es.indices.create(index=MESSAGE_INDEX, body=MESSAGE_MAPPING)
+    if not _run_request(es.indices.exists, index=MESSAGE_INDEX):
+        _run_request(es.indices.create, index=MESSAGE_INDEX, body=MESSAGE_MAPPING)
         logger.info("Created OpenSearch index: %s", MESSAGE_INDEX)
     return True
+
+
+def ensure_index_exists():
+    """One-shot wrapper around ``create_index_if_not_exists`` for hot paths.
+
+    Pays one HEAD per worker process on the first task; subsequent tasks
+    short-circuit. Restores the safety net of the previous "create on first
+    call" behavior so a fresh deploy where the operator forgot to run
+    ``search_index_create`` still bootstraps the index with our parent-child
+    mapping instead of letting OpenSearch auto-create with its default
+    mapping (which would silently break search). The flag is set *after* a
+    successful call — if the check raises, the attribute stays unset and
+    the next task retries.
+    """
+    if getattr(ensure_index_exists, "done", False):
+        return
+    create_index_if_not_exists()
+    ensure_index_exists.done = True
 
 
 def delete_index():
     """Delete the messages index."""
     es = get_opensearch_client()
     try:
-        es.indices.delete(index=MESSAGE_INDEX)
+        _run_request(es.indices.delete, index=MESSAGE_INDEX)
         logger.info("Deleted OpenSearch index: %s", MESSAGE_INDEX)
         return True
     except NotFoundError:
@@ -254,7 +340,8 @@ def index_message(message: models.Message, mailbox_ids=None) -> bool:
 
     try:
         # pylint: disable=no-value-for-parameter
-        es.index(
+        _run_request(
+            es.index,
             index=MESSAGE_INDEX,
             id=str(message.id),
             routing=str(message.thread_id),  # Ensure parent-child routing
@@ -262,6 +349,10 @@ def index_message(message: models.Message, mailbox_ids=None) -> bool:
         )
         logger.debug("Indexed message %s", message.id)
         return True
+    except RETRYABLE_EXCEPTIONS:
+        # Bare-raise so Celery autoretry fires; the broad catch below would
+        # otherwise swallow the transient and silently desync the index.
+        raise
     # pylint: disable=broad-exception-caught
     except Exception as e:
         logger.error("Error indexing message %s: %s", message.id, e)
@@ -283,8 +374,10 @@ def update_thread_mailbox_flags(thread: models.Thread) -> bool:
     thread_doc = _build_thread_doc(thread, mailbox_ids, unread_ids, starred_ids)
     try:
         # pylint: disable=no-value-for-parameter
-        es.index(index=MESSAGE_INDEX, id=str(thread.id), body=thread_doc)
+        _run_request(es.index, index=MESSAGE_INDEX, id=str(thread.id), body=thread_doc)
         return True
+    except RETRYABLE_EXCEPTIONS:
+        raise
     # pylint: disable=broad-exception-caught
     except Exception as e:
         logger.error("Error updating mailbox flags for thread %s: %s", thread.id, e)
@@ -306,7 +399,7 @@ def index_thread(thread: models.Thread) -> bool:
     try:
         # Index thread as parent document
         # pylint: disable=no-value-for-parameter
-        es.index(index=MESSAGE_INDEX, id=str(thread.id), body=thread_doc)
+        _run_request(es.index, index=MESSAGE_INDEX, id=str(thread.id), body=thread_doc)
 
         # Index all messages in the thread
         success = True
@@ -315,62 +408,31 @@ def index_thread(thread: models.Thread) -> bool:
                 success = False
 
         return success
+    except RETRYABLE_EXCEPTIONS:
+        raise
     # pylint: disable=broad-exception-caught
     except Exception as e:
         logger.error("Error indexing thread %s: %s", thread.id, e)
         return False
 
 
-def _purge_orphan_docs(es, batch_thread_ids, batch_indexed_ids):
-    """Purge index docs under these threads whose ``_id`` was not re-indexed.
-
-    Runs after each bulk chunk in ``reindex_bulk_threads``: the bulk upsert
-    covers every document the DB still holds, so anything left in the index
-    under one of the ``batch_thread_ids`` but *outside* ``batch_indexed_ids``
-    is an orphan (typically a message deleted while the reindex was
-    pending). A single ``delete_by_query`` per chunk sweeps them; on a clean
-    reindex it matches zero docs and returns within a few ms.
-
-    Transient transport failures (5xx, 429) are re-raised so the Celery
-    task retries the whole batch — the bulk upsert is idempotent, so a
-    re-run is safer than letting orphan docs accumulate after each
-    incident. Definitive transport errors (4xx) are logged and swallowed
-    to avoid blocking the reindex loop on a malformed query.
-    """
-    if not batch_thread_ids:
-        return
-
-    try:
-        es.delete_by_query(
-            index=MESSAGE_INDEX,
-            body={
-                "query": {
-                    "bool": {
-                        "must": [{"terms": {"thread_id": batch_thread_ids}}],
-                        "must_not": [{"ids": {"values": batch_indexed_ids}}],
-                    }
-                }
-            },
-            ignore=[404, 409],
-            conflicts="proceed",
-        )
-    except TransportError as exc:
-        if _is_retryable_transport_error(exc):
-            raise
-        logger.exception(
-            "Orphan purge failed for %d threads (stale docs may remain)",
-            len(batch_thread_ids),
-        )
-
-
 def reindex_bulk_threads(threads_qs, progress_callback=None):
     """Reindex a queryset of threads using the bulk API for performance.
 
-    Uses chunked prefetching and ``opensearchpy.helpers.bulk`` to minimize
-    both DB queries and HTTP calls to OpenSearch. After each chunk, a
-    ``delete_by_query`` purges orphan documents (messages removed from the
-    DB while their parent thread was still pending reindex), keeping the
-    index a faithful mirror of the DB without a dedicated delete path.
+    Pure upsert: every document still in the DB is rewritten in place via
+    ``opensearchpy.helpers.bulk``. Orphan documents (messages or threads
+    that no longer exist in the DB) are *not* swept here — that work is
+    handled by the dedicated ``bulk_delete_threads_task`` /
+    ``bulk_delete_messages_task`` queues fed by ``post_delete`` signals.
+    Splitting the two paths avoids the costly per-chunk ``delete_by_query``
+    that this loop used to issue, which under load triggered 503s on the
+    OpenSearch cluster. Residual orphans (rows removed without firing
+    ``post_delete`` — raw SQL, ``_raw_delete``…) are not swept anywhere
+    yet; a manual sweeper would need to be wired up if drift becomes a
+    concern.
+
+    Uses chunked prefetching to minimize both DB queries and HTTP calls
+    to OpenSearch.
 
     Args:
         threads_qs: A ``Thread`` queryset (unordered is fine).
@@ -382,8 +444,6 @@ def reindex_bulk_threads(threads_qs, progress_callback=None):
         ``failure_count``.
     """
     es = get_opensearch_client()
-
-    create_index_if_not_exists()
 
     indexed_threads = 0
     indexed_messages = 0
@@ -408,10 +468,9 @@ def reindex_bulk_threads(threads_qs, progress_callback=None):
     )
 
     actions = []
-    batch_thread_ids = []
-    batch_indexed_ids = []
+    chunk_size = settings.OPENSEARCH_BULK_CHUNK_SIZE
 
-    for thread in threads_qs.iterator(chunk_size=BULK_CHUNK_SIZE):
+    for thread in threads_qs.iterator(chunk_size=chunk_size):
         mailbox_ids = [str(access.mailbox_id) for access in thread.accesses.all()]
         unread_ids, starred_ids = _compute_unread_starred_from_accesses(thread)
 
@@ -425,26 +484,16 @@ def reindex_bulk_threads(threads_qs, progress_callback=None):
                 "_source": thread_doc,
             }
         )
-        batch_thread_ids.append(thread_id_str)
-        batch_indexed_ids.append(thread_id_str)
 
         # Message actions
         for message in thread.messages.all():
-            message_id_str = str(message.id)
-            # The DB row is the source of truth — record the ID in the
-            # "do not purge" set even when we cannot rebuild its doc
-            # (parse error, missing blob, …). Removing the existing index
-            # entry would silently drop the message from search until the
-            # blob becomes parsable again on a future reindex.
-            batch_indexed_ids.append(message_id_str)
-
             recipients = list(message.recipients.all())
             doc = _build_message_doc(message, mailbox_ids, recipients=recipients)
             if doc is not None:
                 actions.append(
                     {
                         "_index": MESSAGE_INDEX,
-                        "_id": message_id_str,
+                        "_id": str(message.id),
                         "_routing": thread_id_str,
                         "_source": doc,
                     }
@@ -453,20 +502,16 @@ def reindex_bulk_threads(threads_qs, progress_callback=None):
 
         indexed_threads += 1
 
-        if len(actions) >= BULK_CHUNK_SIZE:
+        if len(actions) >= chunk_size:
             failure_count += _flush_bulk_actions(es, actions)
-            _purge_orphan_docs(es, batch_thread_ids, batch_indexed_ids)
             actions = []
-            batch_thread_ids = []
-            batch_indexed_ids = []
 
-        if progress_callback and indexed_threads % BULK_CHUNK_SIZE == 0:
+        if progress_callback and indexed_threads % chunk_size == 0:
             progress_callback(indexed_threads, total, indexed_threads, failure_count)
 
     # Flush remaining actions
     if actions:
         failure_count += _flush_bulk_actions(es, actions)
-        _purge_orphan_docs(es, batch_thread_ids, batch_indexed_ids)
 
     return {
         "status": "success",

@@ -14,7 +14,11 @@ from core.services.identity.keycloak import (
     sync_mailbox_to_keycloak_user,
     sync_maildomain_to_keycloak_group,
 )
-from core.services.search.coalescer import enqueue_thread_delete, enqueue_thread_reindex
+from core.services.search.coalescer import (
+    enqueue_message_delete,
+    enqueue_thread_delete,
+    enqueue_thread_reindex,
+)
 from core.utils import ThreadReindexDeferrer, ThreadStatsUpdateDeferrer
 
 logger = logging.getLogger(__name__)
@@ -153,27 +157,36 @@ def delete_message_blobs(sender, instance, **kwargs):
 
 
 @receiver(post_delete, sender=models.Message)
-def reindex_thread_on_message_delete(sender, instance, **kwargs):
-    """Schedule a thread reindex after a message is deleted.
+def delete_message_from_index(sender, instance, **kwargs):
+    """Enqueue a targeted OpenSearch delete for the message child document.
 
-    The reindex path purges orphan message documents in OpenSearch (via
-    ``reindex_bulk_threads`` + ``_purge_orphan_docs``), so there is no
-    dedicated per-message delete task. When the parent thread is itself
-    being deleted in the same transaction (Django CASCADE),
-    ``process_pending_reindex_task`` deduplicates the thread ID from the
-    reindex set against the delete set before handing off.
+    Pushes ``(thread_id, message_id)`` to the dedicated delete-message set
+    so ``bulk_delete_messages_task`` can later issue a ``bulk delete by
+    _id`` (with the parent ``thread_id`` as routing). Replaces the
+    previous behaviour of scheduling a thread reindex and relying on a
+    ``delete_by_query`` orphan purge — far cheaper for the cluster, and
+    correct because Django fires ``post_delete`` for both direct and
+    cascaded message deletions.
     """
-    _schedule_thread_reindex(instance.thread_id)
+    if not settings.OPENSEARCH_INDEX_THREADS:
+        return
+
+    thread_id = str(instance.thread_id)
+    message_id = str(instance.id)
+    transaction.on_commit(
+        lambda tid=thread_id, mid=message_id: enqueue_message_delete(tid, mid)
+    )
 
 
 @receiver(post_delete, sender=models.Thread)
 def delete_thread_from_index(sender, instance, **kwargs):
-    """Enqueue an async OpenSearch delete (thread + child messages) on commit.
+    """Enqueue an async OpenSearch delete for the thread parent document.
 
-    The ID is coalesced in the Redis delete set and handed off to
-    ``bulk_delete_threads_task`` by ``process_pending_reindex_task``, which
-    purges the thread document and every child message via a single
-    ``delete_by_query`` on ``thread_id``.
+    Only the parent doc is queued here — child message docs are picked up
+    by ``delete_message_from_index`` via the cascaded ``post_delete``
+    signal Django fires for each child. Splitting the two paths replaces
+    the previous all-in-one ``delete_by_query`` on ``thread_id`` with two
+    cheap ``bulk delete by _id`` requests.
     """
     if not settings.OPENSEARCH_INDEX_THREADS:
         return

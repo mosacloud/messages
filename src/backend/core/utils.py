@@ -145,7 +145,7 @@ class ThreadReindexDeferrer(AbstractBatchingDeferrer):
 
     When active, signal handlers collect thread IDs instead of enqueuing one
     Celery task per row. On outermost scope exit, collected IDs are sliced
-    into chunks of ``DEFAULT_FLUSH_BATCH_SIZE`` and one
+    into chunks of ``settings.SEARCH_FLUSH_BATCH_SIZE`` and one
     ``bulk_reindex_threads_task`` is enqueued per chunk — avoiding broker
     saturation and worker churn during bulk delivery flows (imports,
     migrations, …) while bounding each task's payload to match the cap
@@ -156,7 +156,7 @@ class ThreadReindexDeferrer(AbstractBatchingDeferrer):
             for email in large_mailbox:
                 deliver_inbound_message(...)
         # One or more bulk_reindex_threads_task.delay(chunk) at scope exit,
-        # each chunk capped at DEFAULT_FLUSH_BATCH_SIZE thread IDs.
+        # each chunk capped at SEARCH_FLUSH_BATCH_SIZE thread IDs.
     """
 
     _context_var_name = "deferred_reindex_thread_ids"
@@ -167,17 +167,18 @@ class ThreadReindexDeferrer(AbstractBatchingDeferrer):
         # ThrottleRateValue), and the search modules pull in Django models
         # and the Celery app — both would fail at top-level import time.
         # pylint: disable-next=import-outside-toplevel
-        from core.services.search.coalescer import (
-            DEFAULT_FLUSH_BATCH_SIZE,
-            enqueue_thread_reindex,
-        )
+        from django.conf import settings
+
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.coalescer import enqueue_thread_reindex
 
         # pylint: disable-next=import-outside-toplevel
         from core.services.search.tasks import bulk_reindex_threads_task
 
+        batch_size = settings.SEARCH_FLUSH_BATCH_SIZE
         thread_ids = [str(tid) for tid in items]
-        for start in range(0, len(thread_ids), DEFAULT_FLUSH_BATCH_SIZE):
-            chunk = thread_ids[start : start + DEFAULT_FLUSH_BATCH_SIZE]
+        for start in range(0, len(thread_ids), batch_size):
+            chunk = thread_ids[start : start + batch_size]
             try:
                 bulk_reindex_threads_task.delay(chunk)
             # pylint: disable=broad-exception-caught

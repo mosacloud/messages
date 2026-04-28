@@ -1,35 +1,44 @@
-"""Coalescing buffers for OpenSearch thread reindex and delete enqueues.
+"""Coalescing buffers for OpenSearch reindex and delete enqueues.
 
-Signal handlers push thread IDs into Redis sets instead of scheduling a
-Celery task per ``save()`` / ``delete()``. A periodic task
-(``process_pending_reindex_task``) drains the buffers every
-``SEARCH_REINDEX_TASKS_INTERVAL`` seconds, deduplicates IDs that appear in
-both the reindex and the delete set (the delete wins), chunks each set by
-``DEFAULT_FLUSH_BATCH_SIZE`` to keep each Celery payload bounded, and
-enqueues ``bulk_delete_threads_task`` / ``bulk_reindex_threads_task`` per
-chunk so the whole backlog clears in a single flush cycle.
+Signal handlers push thread IDs (and ``thread_id:message_id`` pairs for
+deletes) into Redis sets instead of scheduling a Celery task per
+``save()`` / ``delete()``. A periodic task (``process_pending_reindex_task``)
+drains the buffers every ``SEARCH_REINDEX_TASKS_INTERVAL`` seconds, chunks
+each set by ``SEARCH_FLUSH_BATCH_SIZE`` to keep each Celery payload
+bounded, and enqueues ``bulk_delete_threads_task`` /
+``bulk_delete_messages_task`` / ``bulk_reindex_threads_task`` per chunk —
+up to ``SEARCH_FLUSH_MAX_BATCHES`` tasks per cycle, shared across the
+three handoffs.
 
-Two sets are tracked:
+Three sets are tracked:
 
 * ``search:pending_reindex_threads`` — thread IDs that need their
-  OpenSearch documents rebuilt from the DB. ``reindex_bulk_threads`` also
-  purges orphan message documents for each batched thread, so a message
-  ``post_delete`` schedules a thread reindex rather than a dedicated
-  per-message delete.
-* ``search:pending_delete_threads`` — thread IDs whose documents (thread +
-  children) must be removed from the index.
+  OpenSearch documents rebuilt (upsert) from the DB.
+* ``search:pending_delete_threads`` — thread IDs whose parent documents
+  must be removed from the index.
+* ``search:pending_delete_messages`` — ``thread_id:message_id`` pairs
+  whose child documents must be removed from the index. Encoded as
+  strings so the Redis SET dedup absorbs duplicate enqueues across the
+  message ``post_delete`` and any cascade fan-out.
+
+The two delete sets are deliberately split: deleting a parent thread doc
+does **not** remove its message children in OpenSearch (parent/child join
+docs are independent), so every cascaded ``Message.post_delete`` enqueues
+its own pair. The bulk delete tasks then issue ``bulk delete by _id``
+calls — much lighter than ``delete_by_query``, which holds a scroll
+context and refreshes per call.
 
 The buffer picks its storage based on ``CACHES['default']['BACKEND']``:
 
-* **Redis** (``django_redis``): uses a native Redis set via ``SADD`` and
-  drains with ``SPOP count=N`` (atomic since Redis 3.2). Dedup and drain are
-  race-free across workers and hosts. This is the production path.
+* **Redis** (``django_redis``): uses native Redis sets via ``SADD`` and
+  drains with ``SPOP count=N`` (atomic since Redis 3.2). Dedup and drain
+  are race-free across workers and hosts. This is the production path.
 * **Fallback** (LocMem, FileBasedCache, …): stores a serialized Python
-  ``set`` under a single Django cache key. Read-modify-write is not atomic,
-  so concurrent writers may drop IDs. Reindex is idempotent and fires on
-  every save, so the index stays eventually consistent. This path is meant
-  for tests (LocMem) and single-process dev deployments — multi-worker prod
-  should use Redis.
+  ``set`` under a single Django cache key. Read-modify-write is not
+  atomic, so concurrent writers may drop IDs. Reindex is idempotent and
+  fires on every save, so the index stays eventually consistent. This
+  path is meant for tests (LocMem) and single-process dev deployments —
+  multi-worker prod should use Redis.
 """
 
 import logging
@@ -43,13 +52,11 @@ logger = logging.getLogger(__name__)
 
 PENDING_REINDEX_KEY = "search:pending_reindex_threads"
 PENDING_DELETE_KEY = "search:pending_delete_threads"
+PENDING_DELETE_MESSAGES_KEY = "search:pending_delete_messages"
 
-# Max flush batch size to limit the celery payloads
-DEFAULT_FLUSH_BATCH_SIZE = 10_000
-
-# Max number of bulk tasks a single flush cycle can enqueue, shared across
-# delete and reindex handoffs.
-DEFAULT_FLUSH_MAX_BATCHES = 10
+# Separator used to encode ``(thread_id, message_id)`` pairs as a single
+# string in Redis. UUIDs never contain a colon, so the split is unambiguous.
+MESSAGE_PAIR_SEPARATOR = ":"
 
 
 def _is_redis_backend() -> bool:
@@ -83,7 +90,7 @@ def _enqueue(key: str, value) -> None:
             if _is_dummy_backend():
                 logger.warning(
                     "OpenSearch reindex coalescer is using DummyCache: "
-                    "enqueued thread IDs are dropped. Use Redis or LocMemCache, "
+                    "enqueued IDs are dropped. Use Redis or LocMemCache, "
                     "or disable OPENSEARCH_INDEX_THREADS."
                 )
                 return
@@ -92,7 +99,7 @@ def _enqueue(key: str, value) -> None:
             cache.set(key, ids, timeout=None)
     except RedisError as exc:
         logger.error(
-            "Redis unavailable while enqueuing thread %s into %s (%s: %s); "
+            "Redis unavailable while enqueuing %s into %s (%s: %s); "
             "ID dropped — index will diverge until another signal fires "
             "on this thread",
             value,
@@ -111,8 +118,24 @@ def enqueue_thread_reindex(thread_id) -> None:
 
 
 def enqueue_thread_delete(thread_id) -> None:
-    """Add ``thread_id`` to the pending delete set."""
+    """Add ``thread_id`` to the pending thread delete set."""
     _enqueue(PENDING_DELETE_KEY, thread_id)
+
+
+def enqueue_message_delete(thread_id, message_id) -> None:
+    """Add a ``(thread_id, message_id)`` pair to the pending message delete set.
+
+    The pair is encoded as ``f"{thread_id}:{message_id}"`` so it can ride
+    the same Redis SET dedup as the thread sets. The receiving task splits
+    on the colon to recover the routing (thread_id) it needs to delete the
+    child document by ``_id``.
+    """
+    if thread_id is None or message_id is None:
+        return
+    _enqueue(
+        PENDING_DELETE_MESSAGES_KEY,
+        f"{thread_id}{MESSAGE_PAIR_SEPARATOR}{message_id}",
+    )
 
 
 def _drain_batch(key: str, is_redis_cache: bool, batch_size: int) -> list | None:
@@ -181,86 +204,149 @@ def _restore_batch(key: str, is_redis_cache: bool, thread_ids: list) -> None:
         )
 
 
+def _drain_and_dispatch(
+    key: str,
+    is_redis_cache: bool,
+    batch_size: int,
+    remaining_budget: int,
+    task,
+    task_label: str,
+) -> tuple[int, int, set[str]]:
+    """Drain ``key`` and hand off batches to ``task.delay``.
+
+    Returns ``(handed_off, budget_left, drained_ids)`` where ``handed_off`` is
+    the count of IDs accepted by the broker, ``budget_left`` the remaining
+    handoff budget after this drain, and ``drained_ids`` the IDs from batches
+    successfully handed off before any broker failure (a rolled-back batch is
+    not included since its IDs have been restored to the source set).
+
+    On a broker failure the failing batch is restored to its set and the
+    drain stops to avoid hammering a degraded broker; ``budget_left`` is
+    returned as ``0`` so the calling loop exits as well.
+    """
+    handed_off = 0
+    drained_ids: set[str] = set()
+
+    while remaining_budget > 0:
+        ids = _drain_batch(key, is_redis_cache, batch_size)
+        if ids is None or not ids:
+            break
+
+        try:
+            task.delay(ids)
+        # pylint: disable=broad-exception-caught
+        except Exception:
+            logger.exception(
+                "Failed to enqueue %s for %d drained IDs; "
+                "returning IDs to the pending set for retry",
+                task_label,
+                len(ids),
+            )
+            _restore_batch(key, is_redis_cache, ids)
+            return handed_off, 0, drained_ids
+
+        handed_off += len(ids)
+        drained_ids.update(ids)
+        remaining_budget -= 1
+
+    return handed_off, remaining_budget, drained_ids
+
+
 def process_pending_reindex(
-    batch_size: int = DEFAULT_FLUSH_BATCH_SIZE,
-    max_batches: int = DEFAULT_FLUSH_MAX_BATCHES,
+    batch_size: int | None = None,
+    max_batches: int | None = None,
 ) -> dict:
-    """Drain both pending sets and enqueue bulk delete/reindex tasks.
+    """Drain the three pending sets and hand off batches to bulk tasks.
 
-    Each iteration atomically drains up to ``batch_size`` IDs from one of the
-    pending sets. Delete IDs are drained first and handed to
-    ``bulk_delete_threads_task``; reindex IDs are handed to
-    ``bulk_reindex_threads_task``. Before enqueuing a reindex batch, any ID
-    also present in the drained delete set is filtered out so a thread that
-    is about to be removed from the index is never reindexed.
+    ``batch_size`` and ``max_batches`` default to
+    ``settings.SEARCH_FLUSH_BATCH_SIZE`` and
+    ``settings.SEARCH_FLUSH_MAX_BATCHES`` when omitted. Sentinel-based
+    rather than ``= settings.X`` because the latter would freeze the
+    value at module import time and break ``override_settings`` in tests.
 
-    The loop stops when both sets are empty, a drain or handoff fails, or
-    ``max_batches`` tasks have been enqueued in total (shared across delete
-    and reindex so a long backlog of one type does not starve the other).
-    Leftover IDs stay in their set and drain on the next beat tick.
+    Each iteration atomically drains up to ``batch_size`` entries from one
+    of the pending sets and enqueues the matching bulk task:
+
+    1. ``pending_delete_threads``  → ``bulk_delete_threads_task``
+    2. ``pending_delete_messages`` → ``bulk_delete_messages_task``
+    3. ``pending_reindex_threads`` → ``bulk_reindex_threads_task``
+
+    Drain order is strictly sequential — each set is fully drained (within
+    the budget) before moving to the next. This guarantees that within a
+    single cycle, a thread/message about to be removed is never reindexed:
+    the reindex pass filters out IDs already drained from the thread-delete
+    set during this cycle.
+
+    The loop stops when every set is empty, a drain or handoff fails, or
+    ``max_batches`` tasks have been enqueued in total (shared across the
+    three handoffs). Because the order is sequential, a massive backlog of
+    thread-deletes can consume the whole cycle's budget and defer message
+    deletes and reindexes to subsequent beat ticks. Leftover IDs stay in
+    their set (Redis SET dedup) so no work is lost — only deferred.
 
     The drain removes IDs from each buffer *before* we know whether the
-    broker accepted the task. If ``delay()`` raises (broker down,
-    serialization error, …), the failing batch is pushed back into its own
-    set and the loop stops so we don't hammer a degraded broker. Batches
-    already accepted stay accepted. Without this rollback, a transient
-    broker outage would silently desync the index from the database until
-    another signal fired on those threads.
+    broker accepted the task. If ``delay()`` raises, the failing batch is
+    pushed back into its own set and the loop stops so we don't hammer a
+    degraded broker. Batches already accepted stay accepted. Without this
+    rollback, a transient broker outage would silently desync the index
+    from the database until another signal fired on those threads.
 
-    Returns a dict ``{"deleted": int, "reindexed": int}`` with the count of
-    IDs successfully handed off to each task type.
+    Returns a dict ``{"deleted_threads": int, "deleted_messages": int,
+    "reindexed": int}`` with the count of IDs successfully handed off to
+    each task type.
     """
+    if batch_size is None:
+        batch_size = settings.SEARCH_FLUSH_BATCH_SIZE
+    if max_batches is None:
+        max_batches = settings.SEARCH_FLUSH_MAX_BATCHES
+
     is_redis_cache = _is_redis_backend()
 
     # pylint: disable-next=import-outside-toplevel
     from core.services.search.tasks import (
+        bulk_delete_messages_task,
         bulk_delete_threads_task,
         bulk_reindex_threads_task,
     )
 
-    deleted_total = 0
-    reindexed_total = 0
-    drained_delete_ids: set[str] = set()
     remaining_budget = max_batches
 
-    # Drain and handoff delete IDs first so reindex dedup below is accurate.
-    while remaining_budget > 0:
-        thread_ids = _drain_batch(PENDING_DELETE_KEY, is_redis_cache, batch_size)
-        if not thread_ids:
-            break
+    deleted_threads, remaining_budget, drained_delete_thread_ids = _drain_and_dispatch(
+        PENDING_DELETE_KEY,
+        is_redis_cache,
+        batch_size,
+        remaining_budget,
+        bulk_delete_threads_task,
+        "bulk_delete_threads_task",
+    )
 
-        try:
-            bulk_delete_threads_task.delay(thread_ids)
-        # pylint: disable=broad-exception-caught
-        except Exception:
-            logger.exception(
-                "Failed to enqueue bulk_delete_threads_task for %d drained threads; "
-                "returning IDs to the pending set for retry",
-                len(thread_ids),
-            )
-            _restore_batch(PENDING_DELETE_KEY, is_redis_cache, thread_ids)
-            return {"deleted": deleted_total, "reindexed": reindexed_total}
+    deleted_messages, remaining_budget, _ = _drain_and_dispatch(
+        PENDING_DELETE_MESSAGES_KEY,
+        is_redis_cache,
+        batch_size,
+        remaining_budget,
+        bulk_delete_messages_task,
+        "bulk_delete_messages_task",
+    )
 
-        deleted_total += len(thread_ids)
-        drained_delete_ids.update(thread_ids)
-        remaining_budget -= 1
-
+    reindexed_total = 0
     while remaining_budget > 0:
         thread_ids = _drain_batch(PENDING_REINDEX_KEY, is_redis_cache, batch_size)
-        if not thread_ids:
+        if thread_ids is None or not thread_ids:
             break
 
         # Drop IDs already scheduled for deletion in this cycle. The delete
         # task will remove those documents; reindexing them would be wasted
         # work and, if the delete runs first, recreate documents we just
         # dropped.
-        if drained_delete_ids:
-            filtered = [tid for tid in thread_ids if tid not in drained_delete_ids]
+        if drained_delete_thread_ids:
+            filtered = [
+                tid for tid in thread_ids if tid not in drained_delete_thread_ids
+            ]
         else:
             filtered = thread_ids
 
         if not filtered:
-            remaining_budget -= 1
             continue
 
         try:
@@ -273,9 +359,17 @@ def process_pending_reindex(
                 len(filtered),
             )
             _restore_batch(PENDING_REINDEX_KEY, is_redis_cache, filtered)
-            return {"deleted": deleted_total, "reindexed": reindexed_total}
+            return {
+                "deleted_threads": deleted_threads,
+                "deleted_messages": deleted_messages,
+                "reindexed": reindexed_total,
+            }
 
         reindexed_total += len(filtered)
         remaining_budget -= 1
 
-    return {"deleted": deleted_total, "reindexed": reindexed_total}
+    return {
+        "deleted_threads": deleted_threads,
+        "deleted_messages": deleted_messages,
+        "reindexed": reindexed_total,
+    }

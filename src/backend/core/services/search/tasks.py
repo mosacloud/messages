@@ -5,13 +5,12 @@
 from django.conf import settings
 
 from celery.utils.log import get_task_logger
-from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError
-from opensearchpy.exceptions import TransportError
 
 from core import models
 from core.services.search import (
     create_index_if_not_exists,
     delete_index,
+    ensure_index_exists,
     index_message,
     index_thread,
     update_thread_mailbox_flags,
@@ -22,9 +21,13 @@ from core.services.search import (
 from core.services.search import (
     reindex_mailbox as _reindex_mailbox_impl,
 )
-from core.services.search.coalescer import process_pending_reindex
+from core.services.search.coalescer import (
+    MESSAGE_PAIR_SEPARATOR,
+    process_pending_reindex,
+)
+from core.services.search.exceptions import RETRYABLE_EXCEPTIONS
 from core.services.search.index import (
-    get_opensearch_client,
+    bulk_delete_documents,
     reindex_bulk_threads,
 )
 from core.services.search.mapping import MESSAGE_INDEX
@@ -32,14 +35,6 @@ from core.services.search.mapping import MESSAGE_INDEX
 from messages.celery_app import app as celery_app
 
 logger = get_task_logger(__name__)
-
-# Retry only on transient OpenSearch connectivity failures.
-# ``ConnectionError`` covers socket-level failures and timeouts.
-# ``TransportError`` covers HTTP-level failures: ``index.py`` filters and
-# only re-raises retryable status codes (5xx, 429), so any TransportError
-# that reaches Celery is by construction safe to retry. 4xx errors stay
-# swallowed inside the index module and never bubble up here.
-_RETRYABLE_EXCEPTIONS = (OpenSearchConnectionError, TransportError)
 
 
 def _reindex_all_base(update_progress=None):
@@ -91,10 +86,9 @@ def reindex_thread_task(self, thread_id):
         logger.info("OpenSearch thread indexing is disabled.")
         return {"success": False, "reason": "disabled"}
 
-    try:
-        # Ensure index exists first
-        create_index_if_not_exists()
+    ensure_index_exists()
 
+    try:
         # Get the thread
         thread = models.Thread.objects.get(id=thread_id)
 
@@ -119,7 +113,7 @@ def reindex_thread_task(self, thread_id):
 
 @celery_app.task(
     bind=True,
-    autoretry_for=_RETRYABLE_EXCEPTIONS,
+    autoretry_for=RETRYABLE_EXCEPTIONS,
     retry_backoff=True,
     retry_backoff_max=600,
     max_retries=5,
@@ -130,7 +124,7 @@ def update_threads_mailbox_flags_task(self, thread_ids):
         logger.info("OpenSearch thread indexing is disabled.")
         return {"success": False, "reason": "disabled"}
 
-    create_index_if_not_exists()
+    ensure_index_exists()
 
     results = []
     for thread_id in thread_ids:
@@ -199,10 +193,9 @@ def index_message_task(self, message_id):
         logger.info("OpenSearch message indexing is disabled.")
         return {"success": False, "reason": "disabled"}
 
-    try:
-        # Ensure index exists first
-        create_index_if_not_exists()
+    ensure_index_exists()
 
+    try:
         # Get the message
         message = (
             models.Message.objects.select_related("thread", "sender")
@@ -234,7 +227,7 @@ def index_message_task(self, message_id):
 
 @celery_app.task(
     bind=True,
-    autoretry_for=_RETRYABLE_EXCEPTIONS,
+    autoretry_for=RETRYABLE_EXCEPTIONS,
     retry_backoff=True,
     retry_backoff_max=600,
     max_retries=5,
@@ -256,7 +249,7 @@ def bulk_reindex_threads_task(self, thread_ids):
     if not thread_ids:
         return {"success": True, "total": 0, "success_count": 0, "failure_count": 0}
 
-    create_index_if_not_exists()
+    ensure_index_exists()
 
     result = reindex_bulk_threads(models.Thread.objects.filter(id__in=thread_ids))
 
@@ -270,18 +263,21 @@ def bulk_reindex_threads_task(self, thread_ids):
 
 @celery_app.task(
     bind=True,
-    autoretry_for=_RETRYABLE_EXCEPTIONS,
+    autoretry_for=RETRYABLE_EXCEPTIONS,
     retry_backoff=True,
     retry_backoff_max=600,
     max_retries=5,
 )
 def bulk_delete_threads_task(self, thread_ids):
-    """Remove thread documents (and their child messages) from OpenSearch.
+    """Remove thread parent documents from OpenSearch via bulk delete by ``_id``.
 
-    A single ``delete_by_query`` with ``terms: {thread_id: [...]}`` sweeps
-    both the thread parent documents and all their message children in one
-    request. Enqueued by ``process_pending_reindex_task`` after draining the
-    ``search:pending_delete_threads`` set.
+    Child message documents are removed by ``bulk_delete_messages_task``
+    (cascaded ``Message.post_delete`` signals enqueue them in their own
+    pending set). Splitting the two avoids the previous per-task
+    ``delete_by_query`` on ``terms: {thread_id: [...]}`` — that call holds
+    a scroll context, scans the index and refreshes per call, which under
+    load triggered 503 / 429 responses on the cluster. ``bulk delete by
+    _id`` is comparatively free.
     """
     if not settings.OPENSEARCH_INDEX_THREADS:
         return {"success": False, "reason": "disabled"}
@@ -289,19 +285,67 @@ def bulk_delete_threads_task(self, thread_ids):
     if not thread_ids:
         return {"success": True, "deleted_threads": 0}
 
-    es = get_opensearch_client()
+    ensure_index_exists()
 
-    str_ids = [str(tid) for tid in thread_ids]
+    actions = [
+        {"_op_type": "delete", "_index": MESSAGE_INDEX, "_id": str(tid)}
+        for tid in thread_ids
+    ]
+    bulk_delete_documents(actions)
 
-    # pylint: disable=unexpected-keyword-arg
-    es.delete_by_query(
-        index=MESSAGE_INDEX,
-        body={"query": {"terms": {"thread_id": str_ids}}},
-        ignore=[404, 409],
-        conflicts="proceed",
-    )
+    return {"success": True, "deleted_threads": len(actions)}
 
-    return {"success": True, "deleted_threads": len(str_ids)}
+
+@celery_app.task(
+    bind=True,
+    autoretry_for=RETRYABLE_EXCEPTIONS,
+    retry_backoff=True,
+    retry_backoff_max=600,
+    max_retries=5,
+)
+def bulk_delete_messages_task(self, pairs):
+    """Remove message child documents from OpenSearch via bulk delete by ``_id``.
+
+    ``pairs`` is a list of ``"thread_id:message_id"`` strings as produced
+    by ``enqueue_message_delete``. Child docs use ``thread_id`` as their
+    routing key; passing it explicitly keeps the request hitting the right
+    shard without OpenSearch having to broadcast.
+
+    Replaces the per-chunk ``_purge_orphan_docs`` call that used
+    ``delete_by_query`` with ``must_not.ids`` to sweep stale message docs
+    after a thread reindex. We now know exactly which messages were
+    deleted (the ``post_delete`` signal fires for direct *and* cascaded
+    deletes), so a targeted bulk delete is both correct and far cheaper.
+    """
+    if not settings.OPENSEARCH_INDEX_THREADS:
+        return {"success": False, "reason": "disabled"}
+
+    if not pairs:
+        return {"success": True, "deleted_messages": 0}
+
+    ensure_index_exists()
+
+    actions = []
+    for pair in pairs:
+        thread_id, _, message_id = pair.partition(MESSAGE_PAIR_SEPARATOR)
+        if not thread_id or not message_id:
+            logger.warning("Skipping malformed delete pair %r", pair)
+            continue
+        actions.append(
+            {
+                "_op_type": "delete",
+                "_index": MESSAGE_INDEX,
+                "_id": message_id,
+                "_routing": thread_id,
+            }
+        )
+
+    if not actions:
+        return {"success": True, "deleted_messages": 0}
+
+    bulk_delete_documents(actions)
+
+    return {"success": True, "deleted_messages": len(actions)}
 
 
 @celery_app.task(bind=True)
@@ -318,13 +362,20 @@ def process_pending_reindex_task(self):
     """Drain the coalescing buffers and enqueue bulk delete/reindex tasks.
 
     Scheduled every ``SEARCH_REINDEX_TASKS_INTERVAL`` seconds by Celery Beat.
-    Consumes thread IDs accumulated by ``enqueue_thread_reindex`` /
-    ``enqueue_thread_delete`` from signal handlers firing outside any
-    ``ThreadReindexDeferrer.defer()`` scope and hands them off to
-    ``bulk_reindex_threads_task`` / ``bulk_delete_threads_task``.
+    Consumes IDs accumulated by ``enqueue_thread_reindex`` /
+    ``enqueue_thread_delete`` / ``enqueue_message_delete`` from signal
+    handlers firing outside any ``ThreadReindexDeferrer.defer()`` scope and
+    hands them off to ``bulk_reindex_threads_task`` /
+    ``bulk_delete_threads_task`` / ``bulk_delete_messages_task``.
     """
     if not settings.OPENSEARCH_INDEX_THREADS:
-        return {"success": False, "reason": "disabled", "deleted": 0, "reindexed": 0}
+        return {
+            "success": False,
+            "reason": "disabled",
+            "deleted_threads": 0,
+            "deleted_messages": 0,
+            "reindexed": 0,
+        }
 
     result = process_pending_reindex()
     return {"success": True, **result}

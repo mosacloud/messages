@@ -1,4 +1,5 @@
 """Tests for the core.services.search module."""
+# pylint: disable=too-many-lines
 
 from unittest import mock
 
@@ -7,6 +8,7 @@ from django.test import override_settings
 from django.utils import timezone
 
 import pytest
+from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError
 from opensearchpy.exceptions import TransportError
 
 from core.factories import (
@@ -26,11 +28,16 @@ from core.services.search import (
     search_threads,
     update_thread_mailbox_flags,
 )
+from core.services.search.exceptions import (
+    RETRYABLE_TRANSPORT_STATUS,
+    TransientTransportError,
+)
 from core.services.search.index import (
     _build_message_doc,
     _build_thread_doc,
     _compute_unread_starred_from_accesses,
 )
+from core.services.search.mapping import MESSAGE_INDEX
 
 
 @pytest.fixture(name="mock_es_client_search")
@@ -55,7 +62,16 @@ def fixture_mock_es_client_search():
 
 @pytest.fixture(name="mock_es_client_index")
 def fixture_mock_es_client_index():
-    """Mock the OpenSearch client."""
+    """Mock the OpenSearch client.
+
+    Also resets the per-process ``ensure_index_exists.done`` flag so each
+    test starts with a clean slate — otherwise the first test to run a
+    hot-path task would set the flag for the whole pytest session and
+    subsequent tests would observe a stale "index already ensured" state.
+    """
+    # pylint: disable-next=import-outside-toplevel
+    from core.services.search.index import ensure_index_exists
+
     with mock.patch(
         "core.services.search.index.get_opensearch_client"
     ) as mock_get_opensearch_client:
@@ -70,7 +86,11 @@ def fixture_mock_es_client_index():
 
         mock_get_opensearch_client.return_value = mock_es
         mock_es.reset_mock()
+        if hasattr(ensure_index_exists, "done"):
+            del ensure_index_exists.done
         yield mock_es
+        if hasattr(ensure_index_exists, "done"):
+            del ensure_index_exists.done
 
 
 @pytest.fixture(name="test_thread")
@@ -88,6 +108,37 @@ def fixture_test_mailbox():
     return MailboxFactory()
 
 
+def test_get_opensearch_client_forwards_max_retries():
+    """The OpenSearch client must carry the configured ``max_retries``.
+
+    This is the single source of truth for transport-level retries on
+    transient statuses (502/503/504, opensearch-py's
+    ``DEFAULT_RETRY_ON_STATUS``). Without it we silently fall back to
+    the library default of 3, and a brief cluster overload bypasses
+    our outer Celery autoretry without anyone noticing.
+    """
+    # pylint: disable-next=import-outside-toplevel
+    from core.services.search.index import get_opensearch_client
+
+    if hasattr(get_opensearch_client, "cached_client"):
+        del get_opensearch_client.cached_client
+
+    with (
+        override_settings(OPENSEARCH_MAX_RETRIES=7),
+        mock.patch("core.services.search.index.OpenSearch") as mock_opensearch,
+    ):
+        get_opensearch_client()
+
+    _, kwargs = mock_opensearch.call_args
+    assert kwargs["max_retries"] == 7
+    assert kwargs["retry_on_timeout"] is True
+
+    # Reset the cached client so the next test re-instantiates against
+    # the (mocked) module-level fixture.
+    if hasattr(get_opensearch_client, "cached_client"):
+        del get_opensearch_client.cached_client
+
+
 def test_create_index_if_not_exists(mock_es_client_index):
     """Test creating the OpenSearch index."""
     # Reset mock and configure
@@ -99,6 +150,11 @@ def test_create_index_if_not_exists(mock_es_client_index):
     # Verify the appropriate ES client calls were made
     mock_es_client_index.indices.exists.assert_called_once()
     mock_es_client_index.indices.create.assert_called_once()
+    # ``refresh_interval`` is hardcoded in MESSAGE_MAPPING — pinning it
+    # here surfaces accidental drift to OpenSearch's 1s default, which
+    # would silently triple the refresh load on the cluster.
+    create_kwargs = mock_es_client_index.indices.create.call_args.kwargs
+    assert create_kwargs["body"]["settings"]["refresh_interval"] == "5s"
 
 
 def test_delete_index(mock_es_client_index):
@@ -447,13 +503,15 @@ class TestSearchReindexAllBulk:
         actions = mock_bulk.call_args[0][1]
         assert len(actions) == 2  # 1 thread doc + 1 message doc
         assert kwargs["raise_on_error"] is False
-        # Timeout, payload-size cap and retry policy must be forwarded so that
-        # large reindex runs don't hit opensearch-py defaults (10s timeout,
-        # no bulk-level retry on 429).
+        # Timeout and payload-size cap must be forwarded so that large
+        # reindex runs don't hit opensearch-py defaults (10s timeout).
+        # Transient-status retries (502/503/504) are handled by the
+        # transport layer of the OpenSearch client, not by the bulk
+        # helper — passing ``max_retries`` here would only cover 429.
         assert kwargs["request_timeout"] == settings.OPENSEARCH_BULK_TIMEOUT
         assert kwargs["max_chunk_bytes"] == settings.OPENSEARCH_BULK_MAX_BYTES
-        assert kwargs["max_retries"] == 3
-        assert kwargs["initial_backoff"] == 2
+        assert "max_retries" not in kwargs
+        assert "initial_backoff" not in kwargs
 
     def test_search_reindex_all_progress_callback(self, mock_es_client_index):
         """Test that the progress callback is called."""
@@ -469,7 +527,7 @@ class TestSearchReindexAllBulk:
             progress_calls.append((current, total, success_count, failure_count))
 
         with (
-            mock.patch("core.services.search.index.BULK_CHUNK_SIZE", 1),
+            override_settings(OPENSEARCH_BULK_CHUNK_SIZE=1),
             mock.patch("core.services.search.index.bulk", return_value=(2, [])),
         ):
             reindex_all(progress_callback=on_progress)
@@ -507,9 +565,9 @@ class TestSearchReindexAllBulk:
             },
         ]
 
-        # Use BULK_CHUNK_SIZE=1 to trigger the mid-loop flush path
+        # OPENSEARCH_BULK_CHUNK_SIZE=1 forces the mid-loop flush path
         with (
-            mock.patch("core.services.search.index.BULK_CHUNK_SIZE", 1),
+            override_settings(OPENSEARCH_BULK_CHUNK_SIZE=1),
             mock.patch(
                 "core.services.search.index.bulk", return_value=(1, bulk_errors)
             ),
@@ -546,7 +604,7 @@ class TestSearchReindexAllBulk:
             },
         ]
 
-        # Default BULK_CHUNK_SIZE (100) > 2 actions, so all go to final flush
+        # Default OPENSEARCH_BULK_CHUNK_SIZE > 2 actions, so all go to final flush
         with (
             mock.patch(
                 "core.services.search.index.bulk", return_value=(1, bulk_errors)
@@ -587,16 +645,14 @@ class TestSearchReindexAllBulk:
         assert result["failure_count"] == 2  # 1 thread doc + 1 message doc
         mock_logger.exception.assert_called_once()
 
-    @pytest.mark.parametrize("status_code", [429, 502, 503, 504])
+    @pytest.mark.parametrize("status_code", sorted(RETRYABLE_TRANSPORT_STATUS))
     def test_bulk_retryable_transport_error_is_reraised(
         self, mock_es_client_index, status_code
     ):
-        """5xx / 429 TransportError must propagate so Celery can retry.
-
-        Swallowing these would silently drop the chunk and emit one Sentry
-        event per chunk during an OpenSearch outage. Re-raising lets the
-        ``bulk_reindex_threads_task`` autoretry kick in with exponential
-        backoff and a single Sentry event per task.
+        """Retryable codes propagate as ``TransientTransportError`` so Celery
+        autoretry kicks in. Swallowing them would silently drop the chunk
+        and emit one Sentry event per chunk during an outage instead of one
+        per task.
         """
         thread = ThreadFactory()
         mailbox = MailboxFactory()
@@ -610,19 +666,19 @@ class TestSearchReindexAllBulk:
                 "core.services.search.index.bulk",
                 side_effect=TransportError(status_code, "unavailable", {}),
             ),
-            pytest.raises(TransportError),
+            pytest.raises(TransientTransportError),
         ):
             reindex_all()
 
-    @pytest.mark.parametrize("status_code", [429, 502, 503, 504])
-    def test_purge_orphan_docs_retryable_transport_error_is_reraised(
+    @pytest.mark.parametrize("status_code", [500, 501])
+    def test_bulk_non_retryable_5xx_is_not_reraised_as_transient(
         self, mock_es_client_index, status_code
     ):
-        """A retryable failure during the orphan purge must propagate too.
-
-        The bulk upsert is idempotent, so re-running the whole batch is
-        safer than letting orphan documents accumulate after each
-        OpenSearch incident.
+        """5xx codes outside ``RETRYABLE_TRANSPORT_STATUS`` are cluster bugs
+        that should surface in Sentry, not burn retries. The reindex loop
+        swallows them as per-request failures so the outer drain keeps
+        making progress; this guards against accidentally widening the
+        allowlist to all 5xx codes.
         """
         thread = ThreadFactory()
         mailbox = MailboxFactory()
@@ -630,12 +686,702 @@ class TestSearchReindexAllBulk:
         MessageFactory(thread=thread)
 
         mock_es_client_index.indices.exists.return_value = False
-        mock_es_client_index.delete_by_query.side_effect = TransportError(
+
+        with (
+            mock.patch(
+                "core.services.search.index.bulk",
+                side_effect=TransportError(status_code, "server_error", {}),
+            ),
+            mock.patch("core.services.search.index.logger") as mock_logger,
+        ):
+            result = reindex_all()
+
+        assert result["status"] == "success"
+        assert result["failure_count"] == 2  # 1 thread doc + 1 message doc
+        mock_logger.exception.assert_called_once()
+
+    def test_reindex_no_longer_calls_delete_by_query(self, mock_es_client_index):
+        """Reindex is now pure upsert — orphan cleanup lives elsewhere.
+
+        Previously each chunk fired a ``delete_by_query`` to sweep stale
+        message docs (the per-chunk purge that triggered cluster 503s
+        under load). Orphans are now handled by the dedicated
+        ``bulk_delete_messages_task`` queue fed by ``post_delete``
+        signals; the reindex loop must not touch ``delete_by_query`` at
+        all.
+        """
+        thread = ThreadFactory()
+        mailbox = MailboxFactory()
+        ThreadAccessFactory(mailbox=mailbox, thread=thread)
+        MessageFactory(thread=thread)
+
+        mock_es_client_index.indices.exists.return_value = False
+
+        with mock.patch("core.services.search.index.bulk", return_value=(2, [])):
+            reindex_all()
+
+        mock_es_client_index.delete_by_query.assert_not_called()
+
+
+@pytest.mark.django_db
+class TestBulkDeleteThreadsTask:
+    """Tests for the rewritten bulk_delete_threads_task (bulk delete by _id).
+
+    Replaces the previous ``delete_by_query`` implementation. The new
+    behaviour issues one ``DELETE`` action per thread parent doc through
+    ``opensearchpy.helpers.bulk`` — child message docs are handled by
+    ``bulk_delete_messages_task`` via cascaded ``Message.post_delete``
+    signals.
+    """
+
+    def test_uses_bulk_with_delete_actions(self):
+        """Each thread ID produces one bulk ``delete`` action by ``_id``."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_delete_threads_task
+
+        thread_ids = ["thread-a", "thread-b"]
+
+        with (
+            mock.patch(
+                "core.services.search.index.bulk", return_value=(2, [])
+            ) as mock_bulk,
+            mock.patch("core.services.search.index.get_opensearch_client"),
+        ):
+            result = bulk_delete_threads_task.run(thread_ids)
+
+        assert result == {"success": True, "deleted_threads": 2}
+        mock_bulk.assert_called_once()
+        actions = mock_bulk.call_args[0][1]
+        assert actions == [
+            {"_op_type": "delete", "_index": MESSAGE_INDEX, "_id": "thread-a"},
+            {"_op_type": "delete", "_index": MESSAGE_INDEX, "_id": "thread-b"},
+        ]
+        # Same timeout / chunk size knobs as the reindex bulk so a deletion
+        # storm cannot fall back to opensearch-py defaults (10s).
+        kwargs = mock_bulk.call_args[1]
+        assert kwargs["request_timeout"] == settings.OPENSEARCH_BULK_TIMEOUT
+        assert kwargs["max_chunk_bytes"] == settings.OPENSEARCH_BULK_MAX_BYTES
+        assert "max_retries" not in kwargs
+
+    def test_no_call_when_thread_ids_empty(self):
+        """An empty list is a no-op — no bulk request fired."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_delete_threads_task
+
+        with mock.patch("core.services.search.index.bulk") as mock_bulk:
+            result = bulk_delete_threads_task.run([])
+
+        assert result == {"success": True, "deleted_threads": 0}
+        mock_bulk.assert_not_called()
+
+    def test_disabled_setting_short_circuits(self):
+        """``OPENSEARCH_INDEX_THREADS=False`` disables the task entirely."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_delete_threads_task
+
+        with (
+            override_settings(OPENSEARCH_INDEX_THREADS=False),
+            mock.patch("core.services.search.index.bulk") as mock_bulk,
+        ):
+            result = bulk_delete_threads_task.run(["thread-a"])
+
+        assert result == {"success": False, "reason": "disabled"}
+        mock_bulk.assert_not_called()
+
+    @pytest.mark.parametrize("status_code", sorted(RETRYABLE_TRANSPORT_STATUS))
+    def test_retryable_transport_error_propagates(self, status_code):
+        """Retryable codes surface as ``TransientTransportError`` so Celery autoretry kicks in."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_delete_threads_task
+
+        with (
+            mock.patch(
+                "core.services.search.index.bulk",
+                side_effect=TransportError(status_code, "unavailable", {}),
+            ),
+            mock.patch("core.services.search.index.get_opensearch_client"),
+            pytest.raises(TransientTransportError),
+        ):
+            bulk_delete_threads_task.run(["thread-a"])
+
+    @pytest.mark.parametrize("status_code", [400, 500, 501])
+    def test_non_retryable_transport_error_does_not_trigger_retry(self, status_code):
+        """Codes outside ``RETRYABLE_TRANSPORT_STATUS`` reach the caller
+        untouched and land in Sentry on the first hit — no retry, no wrap.
+        """
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_delete_threads_task
+
+        with (
+            mock.patch(
+                "core.services.search.index.bulk",
+                side_effect=TransportError(status_code, "error", {}),
+            ),
+            mock.patch("core.services.search.index.get_opensearch_client"),
+            pytest.raises(TransportError) as exc_info,
+        ):
+            bulk_delete_threads_task.run(["thread-a"])
+
+        assert not isinstance(exc_info.value, TransientTransportError)
+
+
+@pytest.mark.django_db
+class TestBulkDeleteMessagesTask:
+    """Tests for the new bulk_delete_messages_task (bulk delete by _id).
+
+    Replaces the per-chunk ``_purge_orphan_docs`` ``delete_by_query`` that
+    the previous reindex loop fired to sweep stale message docs. Now we
+    track the explicit ``(thread_id, message_id)`` pairs at signal time
+    and bulk-delete them by ``_id`` — far cheaper for the cluster.
+    """
+
+    def test_uses_bulk_with_delete_actions_and_routing(self):
+        """Each pair produces a delete action with the parent ``_routing`` set."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_delete_messages_task
+
+        pairs = ["thread-a:msg-1", "thread-a:msg-2", "thread-b:msg-3"]
+
+        with (
+            mock.patch(
+                "core.services.search.index.bulk", return_value=(3, [])
+            ) as mock_bulk,
+            mock.patch("core.services.search.index.get_opensearch_client"),
+        ):
+            result = bulk_delete_messages_task.run(pairs)
+
+        assert result == {"success": True, "deleted_messages": 3}
+        actions = mock_bulk.call_args[0][1]
+        assert actions == [
+            {
+                "_op_type": "delete",
+                "_index": MESSAGE_INDEX,
+                "_id": "msg-1",
+                "_routing": "thread-a",
+            },
+            {
+                "_op_type": "delete",
+                "_index": MESSAGE_INDEX,
+                "_id": "msg-2",
+                "_routing": "thread-a",
+            },
+            {
+                "_op_type": "delete",
+                "_index": MESSAGE_INDEX,
+                "_id": "msg-3",
+                "_routing": "thread-b",
+            },
+        ]
+
+    def test_no_call_when_pairs_empty(self):
+        """An empty list is a no-op."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_delete_messages_task
+
+        with mock.patch("core.services.search.index.bulk") as mock_bulk:
+            result = bulk_delete_messages_task.run([])
+
+        assert result == {"success": True, "deleted_messages": 0}
+        mock_bulk.assert_not_called()
+
+    def test_malformed_pair_skipped_with_warning(self):
+        """A pair without ``thread_id:message_id`` shape is dropped with a log line."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_delete_messages_task
+
+        pairs = ["thread-a:msg-1", "no-separator", ":missing-thread", "missing-msg:"]
+
+        with (
+            mock.patch(
+                "core.services.search.index.bulk", return_value=(1, [])
+            ) as mock_bulk,
+            mock.patch("core.services.search.index.get_opensearch_client"),
+            mock.patch("core.services.search.tasks.logger") as mock_logger,
+        ):
+            result = bulk_delete_messages_task.run(pairs)
+
+        assert result == {"success": True, "deleted_messages": 1}
+        actions = mock_bulk.call_args[0][1]
+        assert actions == [
+            {
+                "_op_type": "delete",
+                "_index": MESSAGE_INDEX,
+                "_id": "msg-1",
+                "_routing": "thread-a",
+            }
+        ]
+        # Each malformed pair gets a warning so misuse is visible at triage.
+        assert mock_logger.warning.call_count == 3
+
+    def test_disabled_setting_short_circuits(self):
+        """``OPENSEARCH_INDEX_THREADS=False`` disables the task entirely."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_delete_messages_task
+
+        with (
+            override_settings(OPENSEARCH_INDEX_THREADS=False),
+            mock.patch("core.services.search.index.bulk") as mock_bulk,
+        ):
+            result = bulk_delete_messages_task.run(["thread-a:msg-1"])
+
+        assert result == {"success": False, "reason": "disabled"}
+        mock_bulk.assert_not_called()
+
+    @pytest.mark.parametrize("status_code", sorted(RETRYABLE_TRANSPORT_STATUS))
+    def test_retryable_transport_error_propagates(self, status_code):
+        """Retryable codes surface as ``TransientTransportError`` so Celery autoretry kicks in."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_delete_messages_task
+
+        with (
+            mock.patch(
+                "core.services.search.index.bulk",
+                side_effect=TransportError(status_code, "unavailable", {}),
+            ),
+            mock.patch("core.services.search.index.get_opensearch_client"),
+            pytest.raises(TransientTransportError),
+        ):
+            bulk_delete_messages_task.run(["thread-a:msg-1"])
+
+    @pytest.mark.parametrize("status_code", [400, 500, 501])
+    def test_non_retryable_transport_error_does_not_trigger_retry(self, status_code):
+        """Mirrors the ``bulk_delete_threads_task`` contract: codes outside
+        ``RETRYABLE_TRANSPORT_STATUS`` reach the caller untouched.
+        """
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_delete_messages_task
+
+        with (
+            mock.patch(
+                "core.services.search.index.bulk",
+                side_effect=TransportError(status_code, "error", {}),
+            ),
+            mock.patch("core.services.search.index.get_opensearch_client"),
+            pytest.raises(TransportError) as exc_info,
+        ):
+            bulk_delete_messages_task.run(["thread-a:msg-1"])
+
+        assert not isinstance(exc_info.value, TransientTransportError)
+
+    def test_per_doc_404_is_swallowed_without_logging(self):
+        """Per-document 404s on delete are benign (already gone) and must
+        not flood Sentry.
+
+        Cascaded ``Message.post_delete`` signals routinely enqueue deletes
+        for messages whose parent thread doc was never indexed or has just
+        been purged by ``bulk_delete_threads_task``; OpenSearch then returns
+        ``status: 404 / not_found`` per item. Logging those at ``error`` was
+        creating ~2400 Sentry events per day for a non-issue.
+        """
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_delete_messages_task
+
+        bulk_errors = [
+            {
+                "delete": {
+                    "_index": "messages",
+                    "_id": "msg-1",
+                    "result": "not_found",
+                    "status": 404,
+                }
+            }
+        ]
+
+        with (
+            mock.patch(
+                "core.services.search.index.bulk", return_value=(0, bulk_errors)
+            ),
+            mock.patch("core.services.search.index.get_opensearch_client"),
+            mock.patch("core.services.search.index.logger") as mock_logger,
+        ):
+            result = bulk_delete_messages_task.run(["thread-a:msg-1"])
+
+        assert result == {"success": True, "deleted_messages": 1}
+        mock_logger.error.assert_not_called()
+
+    def test_per_doc_non_404_error_is_still_logged(self):
+        """Other per-document errors must still surface — only 404 is benign."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_delete_messages_task
+
+        bulk_errors = [
+            {
+                "delete": {
+                    "_index": "messages",
+                    "_id": "msg-1",
+                    "error": {"type": "version_conflict_engine_exception"},
+                    "status": 409,
+                }
+            }
+        ]
+
+        with (
+            mock.patch(
+                "core.services.search.index.bulk", return_value=(0, bulk_errors)
+            ),
+            mock.patch("core.services.search.index.get_opensearch_client"),
+            mock.patch("core.services.search.index.logger") as mock_logger,
+        ):
+            bulk_delete_messages_task.run(["thread-a:msg-1"])
+
+        mock_logger.error.assert_called_with("Bulk indexing error: %s", bulk_errors[0])
+
+
+class TestRunRequestRetryFilter:
+    """Unitary OpenSearch calls participate in the shared retry contract.
+
+    Without this filter, a transient ``TransportError`` on a unitary call
+    (e.g., ``es.indices.exists``) would not be in ``RETRYABLE_EXCEPTIONS``
+    and would abort the surrounding Celery task — that was the root cause
+    of the residual Sentry issues that survived the ``delete_by_query``
+    removal.
+    """
+
+    @pytest.mark.parametrize("status_code", sorted(RETRYABLE_TRANSPORT_STATUS))
+    def test_retryable_status_codes_are_translated(self, status_code):
+        """Codes in ``RETRYABLE_TRANSPORT_STATUS`` surface as ``TransientTransportError``."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.index import _run_request
+
+        def boom():
+            raise TransportError(status_code, "unavailable", {"info": "x"})
+
+        with pytest.raises(TransientTransportError) as exc_info:
+            _run_request(boom)
+
+        assert exc_info.value.status_code == status_code
+
+    @pytest.mark.parametrize("status_code", [400, 401, 403, 404, 409, 500, 501])
+    def test_non_retryable_status_codes_propagate_untouched(self, status_code):
+        """Other transport errors keep their original type so caller bugs and
+        ``NotFoundError`` catches keep working unchanged.
+        """
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.index import _run_request
+
+        def boom():
+            raise TransportError(status_code, "error", {})
+
+        with pytest.raises(TransportError) as exc_info:
+            _run_request(boom)
+
+        assert not isinstance(exc_info.value, TransientTransportError)
+        assert exc_info.value.status_code == status_code
+
+    def test_happy_path_returns_callable_result(self):
+        """The wrapper is a passthrough on success."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.index import _run_request
+
+        assert _run_request(lambda x, y: x + y, 1, y=2) == 3
+
+    def test_connection_error_propagates_untouched(self):
+        """``ConnectionError`` is a ``TransportError`` subclass with a
+        non-numeric ``status_code``; it must fall through to the bare ``raise``
+        so Celery matches it directly via ``RETRYABLE_EXCEPTIONS`` (it is
+        unambiguously retryable on its own — no need to wrap it).
+        """
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.index import _run_request
+
+        def boom():
+            raise OpenSearchConnectionError("N/A", "Connection refused", {})
+
+        with pytest.raises(OpenSearchConnectionError) as exc_info:
+            _run_request(boom)
+
+        assert not isinstance(exc_info.value, TransientTransportError)
+
+
+class TestCreateIndexIfNotExistsRetry:
+    """Index existence / create calls participate in the autoretry contract.
+
+    The Sentry issue that motivated this work was raised by
+    ``es.indices.exists`` inside ``create_index_if_not_exists`` — the call
+    used to throw a raw ``TransportError`` that bypassed Celery autoretry
+    entirely and aborted whatever bulk task came after it.
+    """
+
+    @pytest.mark.parametrize("status_code", sorted(RETRYABLE_TRANSPORT_STATUS))
+    def test_retryable_status_on_indices_exists_translated(
+        self, status_code, mock_es_client_index
+    ):
+        """Retryable codes on the existence check surface as ``TransientTransportError``."""
+        mock_es_client_index.indices.exists.side_effect = TransportError(
             status_code, "unavailable", {}
         )
 
+        with pytest.raises(TransientTransportError):
+            create_index_if_not_exists()
+
+    @pytest.mark.parametrize("status_code", sorted(RETRYABLE_TRANSPORT_STATUS))
+    def test_retryable_status_on_indices_create_translated(
+        self, status_code, mock_es_client_index
+    ):
+        """Retryable codes on the create call surface as ``TransientTransportError`` too."""
+        mock_es_client_index.indices.exists.return_value = False
+        mock_es_client_index.indices.create.side_effect = TransportError(
+            status_code, "unavailable", {}
+        )
+
+        with pytest.raises(TransientTransportError):
+            create_index_if_not_exists()
+
+    def test_non_retryable_400_propagates_as_is(self, mock_es_client_index):
+        """Caller bugs (4xx) reach Sentry on the first hit, no retry."""
+        mock_es_client_index.indices.exists.side_effect = TransportError(
+            400, "bad_request", {}
+        )
+
+        with pytest.raises(TransportError) as exc_info:
+            create_index_if_not_exists()
+
+        assert not isinstance(exc_info.value, TransientTransportError)
+
+
+class TestEnsureIndexExists:
+    """One-shot guard around ``create_index_if_not_exists`` for hot paths.
+
+    One HEAD per worker process at first task, none after. The flag is set
+    *after* a successful call so a transient failure on the first probe
+    leaves the flag unset and the next task retries.
+    """
+
+    def test_subsequent_calls_short_circuit(self, mock_es_client_index):
+        """Second call must not touch the cluster."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.index import ensure_index_exists
+
+        mock_es_client_index.indices.exists.return_value = True
+
+        ensure_index_exists()
+        ensure_index_exists()
+        ensure_index_exists()
+
+        assert mock_es_client_index.indices.exists.call_count == 1
+
+    def test_failure_does_not_set_cache(self, mock_es_client_index):
+        """If the probe raises, the flag stays unset so the next call
+        retries — otherwise a transient on the first task would permanently
+        skip bootstrap for the rest of the worker's lifetime.
+        """
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.index import ensure_index_exists
+
+        mock_es_client_index.indices.exists.side_effect = TransportError(
+            503, "unavailable", {}
+        )
+
+        with pytest.raises(TransientTransportError):
+            ensure_index_exists()
+
+        mock_es_client_index.indices.exists.side_effect = None
+        mock_es_client_index.indices.exists.return_value = True
+
+        ensure_index_exists()
+        assert mock_es_client_index.indices.exists.call_count == 2
+
+        # Third call short-circuits via the now-set flag.
+        ensure_index_exists()
+        assert mock_es_client_index.indices.exists.call_count == 2
+
+
+@pytest.mark.django_db
+class TestSingleDocIndexRetry:
+    """``index_message`` / ``update_thread_mailbox_flags`` / ``index_thread``
+    propagate ``RETRYABLE_EXCEPTIONS`` instead of swallowing them in the broad
+    ``except Exception`` — otherwise the surrounding Celery task would never
+    autoretry on a transient and would silently desync the index.
+    """
+
+    @pytest.mark.parametrize("status_code", sorted(RETRYABLE_TRANSPORT_STATUS))
+    def test_index_message_propagates_transient_error(
+        self, status_code, mock_es_client_index, test_thread
+    ):
+        """Retryable codes on ``es.index`` propagate, not return ``False``."""
+        message = test_thread.messages.first()
+        mock_es_client_index.index.side_effect = TransportError(
+            status_code, "unavailable", {}
+        )
+
+        with pytest.raises(TransientTransportError):
+            index_message(message)
+
+    def test_index_message_swallows_non_transient_error(
+        self, mock_es_client_index, test_thread
+    ):
+        """Non-retryable errors keep the legacy log-and-return-False behavior
+        so a single bad doc cannot abort an outer loop.
+        """
+        message = test_thread.messages.first()
+        mock_es_client_index.index.side_effect = TransportError(400, "bad", {})
+
+        with mock.patch("core.services.search.index.logger") as mock_logger:
+            assert index_message(message) is False
+
+        mock_logger.error.assert_called_once()
+
+    @pytest.mark.parametrize("status_code", sorted(RETRYABLE_TRANSPORT_STATUS))
+    def test_update_thread_mailbox_flags_propagates_transient_error(
+        self, status_code, mock_es_client_index, test_thread
+    ):
+        """Same retry contract for the mailbox-flag re-index call."""
+        mock_es_client_index.index.side_effect = TransportError(
+            status_code, "unavailable", {}
+        )
+
+        with pytest.raises(TransientTransportError):
+            update_thread_mailbox_flags(test_thread)
+
+    @pytest.mark.parametrize("status_code", sorted(RETRYABLE_TRANSPORT_STATUS))
+    def test_index_thread_propagates_transient_error(
+        self, status_code, mock_es_client_index, test_thread
+    ):
+        """Same retry contract for the thread parent doc."""
+        mock_es_client_index.index.side_effect = TransportError(
+            status_code, "unavailable", {}
+        )
+
+        with pytest.raises(TransientTransportError):
+            index_thread(test_thread)
+
+    def test_index_message_propagates_connection_error(
+        self, mock_es_client_index, test_thread
+    ):
+        """Socket-level drops surface as ``OpenSearchConnectionError`` and
+        must propagate too — bare-raising ``RETRYABLE_EXCEPTIONS`` covers
+        both ``TransientTransportError`` and ``ConnectionError`` in one
+        clause.
+        """
+        message = test_thread.messages.first()
+        mock_es_client_index.index.side_effect = OpenSearchConnectionError(
+            "N/A", "Connection refused", {}
+        )
+
+        with pytest.raises(OpenSearchConnectionError):
+            index_message(message)
+
+    def test_update_thread_mailbox_flags_propagates_connection_error(
+        self, mock_es_client_index, test_thread
+    ):
+        """Same retry contract for the mailbox-flag re-index call."""
+        mock_es_client_index.index.side_effect = OpenSearchConnectionError(
+            "N/A", "Connection refused", {}
+        )
+
+        with pytest.raises(OpenSearchConnectionError):
+            update_thread_mailbox_flags(test_thread)
+
+    def test_index_thread_propagates_connection_error(
+        self, mock_es_client_index, test_thread
+    ):
+        """Same retry contract for the thread parent doc."""
+        mock_es_client_index.index.side_effect = OpenSearchConnectionError(
+            "N/A", "Connection refused", {}
+        )
+
+        with pytest.raises(OpenSearchConnectionError):
+            index_thread(test_thread)
+
+
+class TestHotPathProbesIndexOnceThenCaches:
+    """Per-task tasks HEAD the cluster manager once per worker, then cache.
+
+    Threads the needle between two earlier mistakes: probing on every task
+    (overhead + no retry safety net) and probing on no task at all (no
+    lazy-bootstrap safety net for fresh deploys). The cache flag is reset
+    between tests by the ``mock_es_client_index`` fixture so test ordering
+    does not matter.
+    """
+
+    @pytest.mark.django_db
+    def test_first_hot_path_call_probes_then_subsequent_calls_skip(
+        self, mock_es_client_index
+    ):
+        """One HEAD on first task, zero on the next, regardless of which
+        hot-path task is hit second.
+        """
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import (
+            bulk_reindex_threads_task,
+            index_message_task,
+        )
+
+        thread = ThreadFactory()
+        MessageFactory(thread=thread)
+        mock_es_client_index.indices.exists.return_value = True
+
+        with mock.patch("core.services.search.index.bulk", return_value=(0, [])):
+            bulk_reindex_threads_task.run([str(thread.id)])
+
+        assert mock_es_client_index.indices.exists.call_count == 1
+
+        index_message_task.run(str(thread.messages.first().id))
+
+        # Still 1 — the second task short-circuited via the cached flag.
+        assert mock_es_client_index.indices.exists.call_count == 1
+
+    @pytest.mark.django_db
+    def test_first_call_creates_index_when_missing(self, mock_es_client_index):
+        """If the index is missing on first call, the create is issued — so a
+        fresh deploy that forgot ``search_index_create`` still bootstraps
+        with the right parent-child mapping instead of letting OS
+        auto-create with its default mapping.
+        """
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_reindex_threads_task
+
+        thread = ThreadFactory()
+        MessageFactory(thread=thread)
+        mock_es_client_index.indices.exists.return_value = False
+
+        with mock.patch("core.services.search.index.bulk", return_value=(0, [])):
+            bulk_reindex_threads_task.run([str(thread.id)])
+
+        mock_es_client_index.indices.exists.assert_called_once()
+        mock_es_client_index.indices.create.assert_called_once()
+
+    @pytest.mark.django_db
+    def test_failure_on_first_probe_does_not_set_cache_flag(self, mock_es_client_index):
+        """End-to-end check of the same retry-on-failure contract as
+        ``TestEnsureIndexExists.test_failure_does_not_set_cache``, but
+        through a real Celery task entry point.
+        """
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_reindex_threads_task
+
+        thread = ThreadFactory()
+        MessageFactory(thread=thread)
+        mock_es_client_index.indices.exists.side_effect = TransportError(
+            503, "unavailable", {}
+        )
+
         with (
-            mock.patch("core.services.search.index.bulk", return_value=(2, [])),
-            pytest.raises(TransportError),
+            mock.patch("core.services.search.index.bulk", return_value=(0, [])),
+            pytest.raises(TransientTransportError),
         ):
-            reindex_all()
+            bulk_reindex_threads_task.run([str(thread.id)])
+
+        mock_es_client_index.indices.exists.side_effect = None
+        mock_es_client_index.indices.exists.return_value = True
+
+        with mock.patch("core.services.search.index.bulk", return_value=(0, [])):
+            bulk_reindex_threads_task.run([str(thread.id)])
+
+        assert mock_es_client_index.indices.exists.call_count == 2
+
+    @pytest.mark.django_db
+    def test_disabled_setting_short_circuits_before_probe(
+        self, mock_es_client_index, test_thread
+    ):
+        """``OPENSEARCH_INDEX_THREADS=False`` must skip the probe too —
+        otherwise we'd HEAD a cluster the deployment intentionally opted out
+        of.
+        """
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.tasks import bulk_reindex_threads_task
+
+        with override_settings(OPENSEARCH_INDEX_THREADS=False):
+            bulk_reindex_threads_task.run([str(test_thread.id)])
+
+        mock_es_client_index.indices.exists.assert_not_called()

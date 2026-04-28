@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from django.core.cache import cache
 from django.db import transaction
+from django.test import override_settings
 
 import pytest
 
@@ -439,25 +440,28 @@ class TestThreadReindexDeferrer:
             # Exiting the context must not raise.
 
     def test_flush_chunks_large_batches(self):
-        """IDs beyond DEFAULT_FLUSH_BATCH_SIZE are sliced across several tasks.
+        """IDs beyond ``SEARCH_FLUSH_BATCH_SIZE`` are sliced across several tasks.
 
         Guards against oversized Celery payloads when a bulk import collects
         more IDs than the cap enforced by ``process_pending_reindex``.
+        Uses ``override_settings`` with a small batch so the test stays
+        self-contained and cheap regardless of the production default.
         """
-        # pylint: disable-next=import-outside-toplevel
-        from core.services.search.coalescer import DEFAULT_FLUSH_BATCH_SIZE
+        batch_size = 10
+        ids = {f"thread-{i:05d}" for i in range(batch_size + 5)}
 
-        ids = {f"thread-{i:05d}" for i in range(DEFAULT_FLUSH_BATCH_SIZE + 5)}
-
-        with patch(
-            "core.services.search.tasks.bulk_reindex_threads_task.delay"
-        ) as mock_bulk:
+        with (
+            override_settings(SEARCH_FLUSH_BATCH_SIZE=batch_size),
+            patch(
+                "core.services.search.tasks.bulk_reindex_threads_task.delay"
+            ) as mock_bulk,
+        ):
             # pylint: disable=protected-access
             ThreadReindexDeferrer._flush(ids)
 
         assert mock_bulk.call_count == 2
         sent = [call.args[0] for call in mock_bulk.call_args_list]
-        assert len(sent[0]) == DEFAULT_FLUSH_BATCH_SIZE
+        assert len(sent[0]) == batch_size
         assert len(sent[1]) == 5
         assert set().union(*sent) == ids
 
@@ -569,7 +573,7 @@ class TestCoalescerRedisBackend:
 
             result = process_pending_reindex()
 
-        assert result == {"deleted": 0, "reindexed": 2}
+        assert result == {"deleted_threads": 0, "deleted_messages": 0, "reindexed": 2}
         mock_bulk.assert_called_once()
         (called_ids,) = mock_bulk.call_args[0]
         assert set(called_ids) == {tid.decode() for tid in ids}
@@ -605,18 +609,19 @@ class TestCoalescerRedisBackend:
 
             result = process_pending_reindex()
 
-        assert result == {"deleted": 2, "reindexed": 0}
+        assert result == {"deleted_threads": 2, "deleted_messages": 0, "reindexed": 0}
         mock_delete.assert_called_once()
         (called_ids,) = mock_delete.call_args[0]
         assert set(called_ids) == {tid.decode() for tid in ids}
         mock_reindex.assert_not_called()
 
-    def test_process_decrements_budget_on_fully_shadowed_reindex_batch(self):
-        """A reindex batch entirely filtered by drained deletes still consumes budget.
+    def test_process_does_not_consume_budget_on_fully_shadowed_reindex_batch(self):
+        """A reindex batch fully shadowed by drained deletes does not cost budget.
 
-        Regression guard: without decrementing ``remaining_budget`` on the
-        empty-filtered branch, a long shadow tail could keep one beat tick
-        spinning past ``max_batches``.
+        ``remaining_budget`` represents tasks actually handed off to the broker;
+        a batch where every ID was filtered out before ``delay()`` enqueues
+        nothing and must not count. The drain loop terminates when the reindex
+        set empties, regardless of how many shadowed batches were skipped.
         """
         # pylint: disable-next=import-outside-toplevel
         from core.services.search.coalescer import (
@@ -627,6 +632,10 @@ class TestCoalescerRedisBackend:
 
         shadow_id = b"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
         counters = {"delete": 0, "reindex": 0}
+        # More shadowed batches than the reindex budget would allow if the bug
+        # came back: with max_batches=3 and 1 delete consumed, only 2 reindex
+        # iterations would run before exhausting the budget. We feed 5.
+        shadowed_batches = 5
 
         def spop_side_effect(key, count=None):  # pylint: disable=unused-argument
             if key == PENDING_DELETE_KEY:
@@ -635,15 +644,9 @@ class TestCoalescerRedisBackend:
                 return [shadow_id] if counters["delete"] == 1 else []
             if key == PENDING_REINDEX_KEY:
                 counters["reindex"] += 1
-                # Safety net: a regression of the budget fix would loop here
-                # until the set drains. Fail fast instead of hanging the suite.
-                if counters["reindex"] > 50:
-                    raise AssertionError(
-                        "reindex loop exceeded max_batches — budget not decremented "
-                        "on fully-shadowed batch"
-                    )
-                # Always return an ID already shadowed by the delete pass.
-                return [shadow_id]
+                if counters["reindex"] <= shadowed_batches:
+                    return [shadow_id]
+                return []
             return []
 
         with (
@@ -657,10 +660,10 @@ class TestCoalescerRedisBackend:
 
             result = process_pending_reindex(max_batches=3)
 
-        # max_batches=3 → 1 delete batch consumed, 2 remaining for reindex.
-        # Each reindex iteration is fully shadowed but must still cost 1 budget.
-        assert counters["reindex"] == 2
-        assert result == {"deleted": 1, "reindexed": 0}
+        # All 5 shadowed batches are drained without consuming budget; the
+        # loop only stops when SPOP returns empty (the 6th call).
+        assert counters["reindex"] == shadowed_batches + 1
+        assert result == {"deleted_threads": 1, "deleted_messages": 0, "reindexed": 0}
         mock_reindex.assert_not_called()
 
     def test_process_noop_when_both_sets_empty(self):
@@ -681,7 +684,7 @@ class TestCoalescerRedisBackend:
 
             result = process_pending_reindex()
 
-        assert result == {"deleted": 0, "reindexed": 0}
+        assert result == {"deleted_threads": 0, "deleted_messages": 0, "reindexed": 0}
         mock_reindex.assert_not_called()
         mock_delete.assert_not_called()
 
@@ -702,6 +705,109 @@ class TestCoalescerRedisBackend:
         with patch("core.services.search.coalescer._redis_client") as mock_client:
             enqueue_thread_delete(None)
             mock_client.assert_not_called()
+
+    def test_enqueue_message_delete_encodes_pair(self):
+        """``enqueue_message_delete`` SADDs ``thread_id:message_id`` into the dedicated set."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.coalescer import (
+            PENDING_DELETE_MESSAGES_KEY,
+            enqueue_message_delete,
+        )
+
+        with patch("core.services.search.coalescer._redis_client") as mock_client:
+            enqueue_message_delete("thread-a", "msg-1")
+
+        mock_client.return_value.sadd.assert_called_once_with(
+            PENDING_DELETE_MESSAGES_KEY, "thread-a:msg-1"
+        )
+
+    def test_enqueue_message_delete_noop_when_either_arg_is_none(self):
+        """A missing thread_id or message_id is a no-op (and never touches Redis)."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.coalescer import enqueue_message_delete
+
+        with patch("core.services.search.coalescer._redis_client") as mock_client:
+            enqueue_message_delete(None, "msg-1")
+            enqueue_message_delete("thread-a", None)
+            enqueue_message_delete(None, None)
+
+        mock_client.assert_not_called()
+
+    def test_process_drains_message_delete_set(self):
+        """Message-delete pairs are handed to bulk_delete_messages_task."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.coalescer import (
+            PENDING_DELETE_MESSAGES_KEY,
+            process_pending_reindex,
+        )
+
+        pairs = [b"thread-a:msg-1", b"thread-b:msg-2"]
+
+        def spop_side_effect(key, count=None):  # pylint: disable=unused-argument
+            if key == PENDING_DELETE_MESSAGES_KEY:
+                spop_side_effect.calls += 1
+                return pairs if spop_side_effect.calls == 1 else []
+            return []
+
+        spop_side_effect.calls = 0
+
+        with (
+            patch("core.services.search.coalescer._redis_client") as mock_client,
+            patch(
+                "core.services.search.tasks.bulk_delete_messages_task.delay"
+            ) as mock_delete_messages,
+            patch("core.services.search.tasks.bulk_delete_threads_task.delay"),
+            patch("core.services.search.tasks.bulk_reindex_threads_task.delay"),
+        ):
+            mock_client.return_value.spop.side_effect = spop_side_effect
+
+            result = process_pending_reindex()
+
+        assert result == {
+            "deleted_threads": 0,
+            "deleted_messages": 2,
+            "reindexed": 0,
+        }
+        mock_delete_messages.assert_called_once()
+        (called,) = mock_delete_messages.call_args[0]
+        assert set(called) == {p.decode() for p in pairs}
+
+    def test_process_restores_message_pairs_when_delay_fails(self):
+        """Broker failure on the message delete task restores pairs to their set."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.coalescer import (
+            PENDING_DELETE_MESSAGES_KEY,
+            process_pending_reindex,
+        )
+
+        pairs = [b"thread-a:msg-1"]
+
+        def spop_side_effect(key, count=None):  # pylint: disable=unused-argument
+            if key == PENDING_DELETE_MESSAGES_KEY:
+                return pairs
+            return []
+
+        with (
+            patch("core.services.search.coalescer._redis_client") as mock_client,
+            patch(
+                "core.services.search.tasks.bulk_delete_messages_task.delay",
+                side_effect=Exception("broker down"),
+            ),
+        ):
+            mock_client.return_value.spop.side_effect = spop_side_effect
+
+            result = process_pending_reindex()
+
+        assert result == {
+            "deleted_threads": 0,
+            "deleted_messages": 0,
+            "reindexed": 0,
+        }
+        sadd_call = mock_client.return_value.sadd
+        sadd_call.assert_called_once()
+        args = sadd_call.call_args[0]
+        assert args[0] == PENDING_DELETE_MESSAGES_KEY
+        assert set(args[1:]) == {p.decode() for p in pairs}
 
     def test_enqueue_redis_error_swallowed(self):
         """Redis failure on enqueue never propagates to the caller."""
@@ -743,7 +849,7 @@ class TestCoalescerRedisBackend:
             enqueue_thread_reindex("thread-x")
 
         assert any(
-            "Redis unavailable while enqueuing thread thread-x" in rec.getMessage()
+            "Redis unavailable while enqueuing thread-x" in rec.getMessage()
             and PENDING_REINDEX_KEY in rec.getMessage()
             for rec in coalescer_caplog.records
         )
@@ -774,7 +880,7 @@ class TestCoalescerRedisBackend:
 
             result = process_pending_reindex()
 
-        assert result == {"deleted": 0, "reindexed": 0}
+        assert result == {"deleted_threads": 0, "deleted_messages": 0, "reindexed": 0}
         mock_delete.assert_not_called()
         mock_reindex.assert_not_called()
         assert any(
@@ -816,7 +922,7 @@ class TestCoalescerRedisBackend:
             # Must not raise even when the rescue path also hits Redis down.
             result = process_pending_reindex()
 
-        assert result == {"deleted": 0, "reindexed": 0}
+        assert result == {"deleted_threads": 0, "deleted_messages": 0, "reindexed": 0}
         assert any(
             "Redis unavailable while restoring" in rec.getMessage()
             and PENDING_REINDEX_KEY in rec.getMessage()
@@ -860,7 +966,7 @@ class TestCoalescerRedisBackend:
 
             result = process_pending_reindex()
 
-        assert result == {"deleted": 0, "reindexed": 0}
+        assert result == {"deleted_threads": 0, "deleted_messages": 0, "reindexed": 0}
         sadd_call = mock_client.return_value.sadd
         sadd_call.assert_called_once()
         args = sadd_call.call_args[0]
@@ -893,7 +999,7 @@ class TestCoalescerRedisBackend:
 
             result = process_pending_reindex()
 
-        assert result == {"deleted": 0, "reindexed": 0}
+        assert result == {"deleted_threads": 0, "deleted_messages": 0, "reindexed": 0}
         sadd_call = mock_client.return_value.sadd
         sadd_call.assert_called_once()
         args = sadd_call.call_args[0]
@@ -928,7 +1034,7 @@ class TestCoalescerRedisBackend:
             # Must not raise.
             result = process_pending_reindex()
 
-        assert result == {"deleted": 0, "reindexed": 0}
+        assert result == {"deleted_threads": 0, "deleted_messages": 0, "reindexed": 0}
 
 
 class TestCoalescerCacheBackend:
@@ -965,7 +1071,7 @@ class TestCoalescerCacheBackend:
 
             result = process_pending_reindex()
 
-        assert result == {"deleted": 0, "reindexed": 2}
+        assert result == {"deleted_threads": 0, "deleted_messages": 0, "reindexed": 2}
         mock_bulk.assert_called_once()
         (called_ids,) = mock_bulk.call_args[0]
         assert set(called_ids) == {"thread-a", "thread-b"}
@@ -993,7 +1099,7 @@ class TestCoalescerCacheBackend:
         ):
             result = process_pending_reindex()
 
-        assert result == {"deleted": 1, "reindexed": 1}
+        assert result == {"deleted_threads": 1, "deleted_messages": 0, "reindexed": 1}
         mock_delete.assert_called_once()
         (called_delete_ids,) = mock_delete.call_args[0]
         assert set(called_delete_ids) == {"thread-a"}
@@ -1022,7 +1128,7 @@ class TestCoalescerCacheBackend:
         ):
             result = process_pending_reindex()
 
-        assert result == {"deleted": 1, "reindexed": 0}
+        assert result == {"deleted_threads": 1, "deleted_messages": 0, "reindexed": 0}
         mock_reindex.assert_not_called()
 
     def test_process_noop_when_empty(self):
@@ -1040,7 +1146,7 @@ class TestCoalescerCacheBackend:
         ):
             result = process_pending_reindex()
 
-        assert result == {"deleted": 0, "reindexed": 0}
+        assert result == {"deleted_threads": 0, "deleted_messages": 0, "reindexed": 0}
         mock_reindex.assert_not_called()
         mock_delete.assert_not_called()
 
@@ -1100,8 +1206,89 @@ class TestCoalescerCacheBackend:
         ):
             result = process_pending_reindex()
 
-        assert result == {"deleted": 0, "reindexed": 0}
+        assert result == {"deleted_threads": 0, "deleted_messages": 0, "reindexed": 0}
         assert cache.get(PENDING_REINDEX_KEY) == {"thread-a", "thread-b"}
+
+    def test_enqueue_message_delete_encodes_pair(self):
+        """``enqueue_message_delete`` writes ``thread_id:message_id`` into the cache set."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.coalescer import (
+            PENDING_DELETE_MESSAGES_KEY,
+            enqueue_message_delete,
+        )
+
+        enqueue_message_delete("thread-a", "msg-1")
+
+        assert cache.get(PENDING_DELETE_MESSAGES_KEY) == {"thread-a:msg-1"}
+
+    def test_enqueue_message_delete_noop_when_either_arg_is_none(self):
+        """A missing thread_id or message_id is a no-op (and never writes to cache)."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.coalescer import (
+            PENDING_DELETE_MESSAGES_KEY,
+            enqueue_message_delete,
+        )
+
+        enqueue_message_delete(None, "msg-1")
+        enqueue_message_delete("thread-a", None)
+        enqueue_message_delete(None, None)
+
+        assert cache.get(PENDING_DELETE_MESSAGES_KEY) is None
+
+    def test_process_drains_message_delete_set(self):
+        """Message-delete pairs are handed to bulk_delete_messages_task."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.coalescer import (
+            PENDING_DELETE_MESSAGES_KEY,
+            enqueue_message_delete,
+            process_pending_reindex,
+        )
+
+        enqueue_message_delete("thread-a", "msg-1")
+        enqueue_message_delete("thread-b", "msg-2")
+
+        with (
+            patch(
+                "core.services.search.tasks.bulk_delete_messages_task.delay"
+            ) as mock_delete_messages,
+            patch("core.services.search.tasks.bulk_delete_threads_task.delay"),
+            patch("core.services.search.tasks.bulk_reindex_threads_task.delay"),
+        ):
+            result = process_pending_reindex()
+
+        assert result == {
+            "deleted_threads": 0,
+            "deleted_messages": 2,
+            "reindexed": 0,
+        }
+        mock_delete_messages.assert_called_once()
+        (called,) = mock_delete_messages.call_args[0]
+        assert set(called) == {"thread-a:msg-1", "thread-b:msg-2"}
+        assert cache.get(PENDING_DELETE_MESSAGES_KEY) is None
+
+    def test_process_restores_message_pairs_when_delay_fails(self):
+        """Broker failure on the message delete task restores pairs to their cache set."""
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.search.coalescer import (
+            PENDING_DELETE_MESSAGES_KEY,
+            enqueue_message_delete,
+            process_pending_reindex,
+        )
+
+        enqueue_message_delete("thread-a", "msg-1")
+
+        with patch(
+            "core.services.search.tasks.bulk_delete_messages_task.delay",
+            side_effect=Exception("broker down"),
+        ):
+            result = process_pending_reindex()
+
+        assert result == {
+            "deleted_threads": 0,
+            "deleted_messages": 0,
+            "reindexed": 0,
+        }
+        assert cache.get(PENDING_DELETE_MESSAGES_KEY) == {"thread-a:msg-1"}
 
     def test_process_chunks_pending_into_multiple_tasks(self):
         """batch_size caps each Celery payload, process drains the whole set."""
@@ -1121,7 +1308,7 @@ class TestCoalescerCacheBackend:
             result = process_pending_reindex(batch_size=3)
 
         # Single cycle drains everything, split into 3+2 across two tasks.
-        assert result == {"deleted": 0, "reindexed": 5}
+        assert result == {"deleted_threads": 0, "deleted_messages": 0, "reindexed": 5}
         assert mock_bulk.call_count == 2
         sent = [call.args[0] for call in mock_bulk.call_args_list]
         assert sorted(len(chunk) for chunk in sent) == [2, 3]
@@ -1157,7 +1344,7 @@ class TestCoalescerCacheBackend:
         ):
             result = process_pending_reindex(batch_size=1, max_batches=2)
 
-        assert result == {"deleted": 2, "reindexed": 0}
+        assert result == {"deleted_threads": 2, "deleted_messages": 0, "reindexed": 0}
         assert mock_delete.call_count == 2
         mock_reindex.assert_not_called()
         # The reindex set is untouched — it waits for the next cycle.
@@ -1171,44 +1358,62 @@ class TestPostDeleteSignals:
     def _enable_opensearch_indexing(self, settings):
         settings.OPENSEARCH_INDEX_THREADS = True
 
-    def test_message_delete_schedules_thread_reindex(
+    def test_message_delete_enqueues_message_delete(
         self, django_capture_on_commit_callbacks
     ):
-        """Deleting a Message schedules a reindex of its parent thread.
+        """Deleting a Message enqueues a targeted child-doc delete.
 
-        The reindex path purges orphan message documents from the index, so
-        no dedicated per-message delete task is needed.
+        We no longer schedule a thread reindex on message delete: that
+        path used to rely on a ``delete_by_query`` orphan purge inside
+        ``reindex_bulk_threads``, which was the source of the cluster
+        503s. The signal now hands off ``(thread_id, message_id)`` to
+        ``bulk_delete_messages_task`` for a cheap ``bulk delete by _id``.
         """
         message = factories.MessageFactory()
-        thread_id = message.thread_id
+        thread_id = str(message.thread_id)
+        message_id = str(message.id)
 
         with (
-            patch("core.signals.enqueue_thread_reindex") as mock_enqueue,
+            patch("core.signals.enqueue_message_delete") as mock_enqueue,
+            patch("core.signals.enqueue_thread_reindex") as mock_reindex,
             django_capture_on_commit_callbacks(execute=True),
         ):
             message.delete()
 
-        mock_enqueue.assert_called_once_with(thread_id)
+        mock_enqueue.assert_called_once_with(thread_id, message_id)
+        mock_reindex.assert_not_called()
 
-    def test_thread_delete_enqueues_delete(self, django_capture_on_commit_callbacks):
-        """Deleting a Thread enqueues the thread ID into the delete set.
+    def test_thread_delete_enqueues_delete_and_cascades_message_deletes(
+        self, django_capture_on_commit_callbacks
+    ):
+        """Deleting a Thread enqueues the parent + every cascaded child message.
 
-        A single ``bulk_delete_threads_task`` later sweeps the thread doc and
-        all its message children with one ``delete_by_query``, so cascade
-        deletes of child messages do not need per-row delete enqueues.
+        ``bulk_delete_threads_task`` now only sweeps the thread parent
+        doc, so child message docs must each ride the dedicated
+        ``pending_delete_messages`` set. Django fires ``post_delete`` for
+        cascaded rows, so the ``Message.post_delete`` handler picks them
+        up automatically.
         """
         thread = factories.ThreadFactory()
-        factories.MessageFactory(thread=thread)
-        factories.MessageFactory(thread=thread)
+        msg_a = factories.MessageFactory(thread=thread)
+        msg_b = factories.MessageFactory(thread=thread)
         thread_id = str(thread.id)
 
         with (
-            patch("core.signals.enqueue_thread_delete") as mock_enqueue_delete,
+            patch("core.signals.enqueue_thread_delete") as mock_enqueue_thread,
+            patch("core.signals.enqueue_message_delete") as mock_enqueue_msg,
             django_capture_on_commit_callbacks(execute=True),
         ):
             thread.delete()
 
-        mock_enqueue_delete.assert_called_once_with(thread_id)
+        mock_enqueue_thread.assert_called_once_with(thread_id)
+        called_pairs = {
+            (call.args[0], call.args[1]) for call in mock_enqueue_msg.call_args_list
+        }
+        assert called_pairs == {
+            (thread_id, str(msg_a.id)),
+            (thread_id, str(msg_b.id)),
+        }
 
     def test_delete_respects_disabled_setting(
         self, settings, django_capture_on_commit_callbacks
@@ -1216,25 +1421,30 @@ class TestPostDeleteSignals:
         """With ``OPENSEARCH_INDEX_THREADS=False``, no enqueue fires."""
         settings.OPENSEARCH_INDEX_THREADS = False
         thread = factories.ThreadFactory()
+        factories.MessageFactory(thread=thread)
 
         with (
             patch("core.signals.enqueue_thread_delete") as mock_enqueue_delete,
             patch("core.signals.enqueue_thread_reindex") as mock_enqueue_reindex,
+            patch("core.signals.enqueue_message_delete") as mock_enqueue_msg,
             django_capture_on_commit_callbacks(execute=True),
         ):
             thread.delete()
 
         mock_enqueue_delete.assert_not_called()
         mock_enqueue_reindex.assert_not_called()
+        mock_enqueue_msg.assert_not_called()
 
     @pytest.mark.django_db(transaction=True)
     def test_rollback_does_not_enqueue_delete(self):
         """A delete inside a rolled-back transaction must not enqueue anything."""
         thread = factories.ThreadFactory()
+        factories.MessageFactory(thread=thread)
 
         with (
             patch("core.signals.enqueue_thread_delete") as mock_enqueue_delete,
             patch("core.signals.enqueue_thread_reindex") as mock_enqueue_reindex,
+            patch("core.signals.enqueue_message_delete") as mock_enqueue_msg,
         ):
             with contextlib.suppress(RuntimeError), transaction.atomic():
                 thread.delete()
@@ -1242,6 +1452,7 @@ class TestPostDeleteSignals:
 
             mock_enqueue_delete.assert_not_called()
             mock_enqueue_reindex.assert_not_called()
+            mock_enqueue_msg.assert_not_called()
 
 
 class TestCoalescerDummyCacheGuard:
