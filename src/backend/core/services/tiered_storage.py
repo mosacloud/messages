@@ -194,11 +194,10 @@ class TieredStorageService:
         self.storage.save(key, ContentFile(content))
 
         logger.info(
-            "Uploaded blob %s to object storage: %s (%d bytes, key_id=%d)",
+            "Uploaded blob %s to object storage: %s (%d bytes)",
             blob.id,
             key,
             len(content),
-            blob.encryption_key_id,
         )
 
         # Return blob's existing encryption_key_id (unchanged)
