@@ -1,6 +1,7 @@
 """Tests for the core.services.search module."""
 # pylint: disable=too-many-lines
 
+from datetime import timedelta
 from unittest import mock
 
 from django.conf import settings
@@ -224,6 +225,64 @@ def test_reindex_mailbox(mock_es_client_index, test_mailbox, test_thread):  # py
     assert result["status"] == "success"
     assert result["mailbox"] == str(test_mailbox.id)
     assert result["indexed_threads"] == 1
+
+
+@pytest.mark.django_db
+def test_reindex_all_from_date_filters_threads(mock_es_client_index):  # pylint: disable=unused-argument
+    """``from_date`` skips threads whose ``updated_at`` is before the cutoff.
+
+    Backstop for the ``--from-date`` management option: the queryset filter
+    must be applied at the source so old threads never reach the bulk loop.
+    """
+    cutoff = timezone.now()
+
+    old_thread = ThreadFactory()
+    MessageFactory(thread=old_thread)
+    type(old_thread).objects.filter(pk=old_thread.pk).update(
+        updated_at=cutoff - timedelta(days=2)
+    )
+
+    fresh_thread = ThreadFactory()
+    MessageFactory(thread=fresh_thread)
+    type(fresh_thread).objects.filter(pk=fresh_thread.pk).update(
+        updated_at=cutoff + timedelta(hours=1)
+    )
+
+    with mock.patch("core.services.search.index.bulk", return_value=(0, [])):
+        result = reindex_all(from_date=cutoff)
+
+    # Only the fresh thread (and its message) should have been indexed.
+    assert result["indexed_threads"] == 1
+    assert result["indexed_messages"] == 1
+
+
+@pytest.mark.django_db
+def test_reindex_mailbox_from_date_filters_threads(  # pylint: disable=unused-argument
+    mock_es_client_index,
+    test_mailbox,
+):
+    """Same cutoff semantics on the per-mailbox path."""
+    cutoff = timezone.now()
+
+    old_thread = ThreadFactory()
+    ThreadAccessFactory(mailbox=test_mailbox, thread=old_thread)
+    MessageFactory(thread=old_thread)
+    type(old_thread).objects.filter(pk=old_thread.pk).update(
+        updated_at=cutoff - timedelta(days=2)
+    )
+
+    fresh_thread = ThreadFactory()
+    ThreadAccessFactory(mailbox=test_mailbox, thread=fresh_thread)
+    MessageFactory(thread=fresh_thread)
+    type(fresh_thread).objects.filter(pk=fresh_thread.pk).update(
+        updated_at=cutoff + timedelta(hours=1)
+    )
+
+    with mock.patch("core.services.search.index.bulk", return_value=(0, [])):
+        result = reindex_mailbox(str(test_mailbox.id), from_date=cutoff)
+
+    assert result["indexed_threads"] == 1
+    assert result["indexed_messages"] == 1
 
 
 def test_search_threads_with_query(mock_es_client_search):

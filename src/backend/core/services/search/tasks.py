@@ -2,6 +2,8 @@
 
 # pylint: disable=unused-argument, broad-exception-raised, broad-exception-caught
 
+from datetime import datetime
+
 from django.conf import settings
 
 from celery.utils.log import get_task_logger
@@ -37,7 +39,7 @@ from messages.celery_app import app as celery_app
 logger = get_task_logger(__name__)
 
 
-def _reindex_all_base(update_progress=None):
+def _reindex_all_base(update_progress=None, from_date=None):
     """Base function for reindexing all threads and messages.
 
     Delegates to the bulk ``reindex_all`` implementation in the search index
@@ -45,12 +47,14 @@ def _reindex_all_base(update_progress=None):
 
     Args:
         update_progress: Optional callback function to update progress
+        from_date: Optional ``datetime`` — when set, only threads with
+            ``updated_at >= from_date`` are reindexed.
     """
     if not settings.OPENSEARCH_INDEX_THREADS:
         logger.info("OpenSearch thread indexing is disabled.")
         return {"success": False, "reason": "disabled"}
 
-    result = _reindex_all_impl(progress_callback=update_progress)
+    result = _reindex_all_impl(progress_callback=update_progress, from_date=from_date)
 
     return {
         "success": True,
@@ -61,8 +65,14 @@ def _reindex_all_base(update_progress=None):
 
 
 @celery_app.task(bind=True)
-def reindex_all(self):
-    """Celery task wrapper for reindexing all threads and messages."""
+def reindex_all(self, from_date_iso=None):
+    """Celery task wrapper for reindexing all threads and messages.
+
+    Args:
+        from_date_iso: Optional ISO-8601 datetime string — forwarded as a
+            ``datetime`` filter on ``Thread.updated_at``. Stringified at the
+            edge because Celery serializes payloads through JSON.
+    """
 
     def update_progress(current, total, success_count, failure_count):
         """Update task progress."""
@@ -76,7 +86,8 @@ def reindex_all(self):
             },
         )
 
-    return _reindex_all_base(update_progress)
+    from_date = datetime.fromisoformat(from_date_iso) if from_date_iso else None
+    return _reindex_all_base(update_progress, from_date=from_date)
 
 
 @celery_app.task(bind=True)
@@ -139,7 +150,7 @@ def update_threads_mailbox_flags_task(self, thread_ids):
     return {"success": True, "results": results}
 
 
-def _reindex_mailbox_base(mailbox_id, update_progress=None):
+def _reindex_mailbox_base(mailbox_id, update_progress=None, from_date=None):
     """Base function for reindexing all threads in a mailbox.
 
     Delegates to the bulk ``reindex_mailbox`` implementation in the search
@@ -148,12 +159,16 @@ def _reindex_mailbox_base(mailbox_id, update_progress=None):
     Args:
         mailbox_id: The mailbox ID to reindex.
         update_progress: Optional callback function to update progress.
+        from_date: Optional ``datetime`` — when set, only threads with
+            ``updated_at >= from_date`` are reindexed.
     """
     if not settings.OPENSEARCH_INDEX_THREADS:
         logger.info("OpenSearch thread indexing is disabled.")
         return {"success": False, "reason": "disabled"}
 
-    result = _reindex_mailbox_impl(mailbox_id, progress_callback=update_progress)
+    result = _reindex_mailbox_impl(
+        mailbox_id, progress_callback=update_progress, from_date=from_date
+    )
 
     if result.get("status") == "error":
         return {"success": False, **result}
@@ -168,8 +183,14 @@ def _reindex_mailbox_base(mailbox_id, update_progress=None):
 
 
 @celery_app.task(bind=True)
-def reindex_mailbox_task(self, mailbox_id):
-    """Celery task wrapper for reindexing all threads in a mailbox."""
+def reindex_mailbox_task(self, mailbox_id, from_date_iso=None):
+    """Celery task wrapper for reindexing all threads in a mailbox.
+
+    Args:
+        mailbox_id: The mailbox UUID.
+        from_date_iso: Optional ISO-8601 datetime string — forwarded as a
+            ``datetime`` filter on ``Thread.updated_at``.
+    """
 
     def update_progress(current, total, success_count, failure_count):
         """Update task progress."""
@@ -183,7 +204,8 @@ def reindex_mailbox_task(self, mailbox_id):
             },
         )
 
-    return _reindex_mailbox_base(mailbox_id, update_progress)
+    from_date = datetime.fromisoformat(from_date_iso) if from_date_iso else None
+    return _reindex_mailbox_base(mailbox_id, update_progress, from_date=from_date)
 
 
 @celery_app.task(bind=True)

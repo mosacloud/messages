@@ -522,30 +522,46 @@ def reindex_bulk_threads(threads_qs, progress_callback=None):
     }
 
 
-def reindex_all(progress_callback=None):
+def reindex_all(progress_callback=None, from_date=None):
     """Reindex all threads using the bulk API for performance.
 
     Args:
         progress_callback: optional callable(current, total, success_count,
             failure_count) called after each chunk.
+        from_date: optional ``datetime`` — when set, only threads with
+            ``updated_at >= from_date`` are reindexed. Filtering on
+            ``updated_at`` (rather than ``created_at``) covers both newly
+            created threads and pre-existing threads that have changed
+            since the cutoff.
     """
-    return reindex_bulk_threads(models.Thread.objects.all(), progress_callback)
+    create_index_if_not_exists()
+    queryset = models.Thread.objects.all()
+    if from_date is not None:
+        queryset = queryset.filter(updated_at__gte=from_date)
+    return reindex_bulk_threads(queryset, progress_callback)
 
 
-def reindex_mailbox(mailbox_id: str, progress_callback=None):
+def reindex_mailbox(mailbox_id: str, progress_callback=None, from_date=None):
     """Reindex all messages and threads for a specific mailbox.
 
     Args:
         mailbox_id: The mailbox UUID as a string.
         progress_callback: optional callable(current, total, success_count,
             failure_count) called after each chunk.
+        from_date: optional ``datetime`` — when set, only threads with
+            ``updated_at >= from_date`` are reindexed.
     """
     try:
         mailbox = models.Mailbox.objects.get(id=mailbox_id)
     except models.Mailbox.DoesNotExist:
         return {"status": "error", "mailbox": mailbox_id, "error": "Mailbox not found"}
 
-    result = reindex_bulk_threads(mailbox.threads_viewer, progress_callback)
+    queryset = mailbox.threads_viewer
+    if from_date is not None:
+        queryset = queryset.filter(updated_at__gte=from_date)
+
+    create_index_if_not_exists()
+    result = reindex_bulk_threads(queryset, progress_callback)
     result["mailbox"] = mailbox_id
     return result
 
