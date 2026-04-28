@@ -31,8 +31,7 @@ class TieredStorageService:
     def __init__(self):
         """Initialize the service, checking if object storage is configured."""
         self._storage = None
-        opts = settings.STORAGES.get("message-blobs", {}).get("OPTIONS", {})
-        self.enabled = bool(opts.get("endpoint_url") or opts.get("access_key"))
+        self.enabled = bool(settings.STORAGES.get("message-blobs"))
         # encryption_keys is a dict: {"1": "key1", "2": "key2"}
         self.encryption_keys = settings.MESSAGES_BLOB_ENCRYPTION_KEYS or {}
         self.active_key_id = settings.MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID

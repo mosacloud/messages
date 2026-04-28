@@ -34,9 +34,7 @@ class TestVerifyTieredStorageDisabled:
         stderr = StringIO()
 
         with patch("core.services.tiered_storage.settings") as mock_settings:
-            mock_settings.STORAGES = {
-                "message-blobs": {"OPTIONS": {"endpoint_url": ""}}
-            }
+            mock_settings.STORAGES = {}
             mock_settings.MESSAGES_BLOB_ENCRYPTION_KEYS = {}
             mock_settings.MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID = 0
 
@@ -465,6 +463,7 @@ class TestReEncryptE2E:
         decrypted = service.decrypt(bytes(blob.raw_content), blob.encryption_key_id)
         assert pyzstd.decompress(decrypted) == original_content
 
+    @pytest.mark.django_db(transaction=True)
     def test_re_encrypt_object_storage_blob(self):
         """Test re-encrypting an object storage blob with real encryption."""
         import pyzstd

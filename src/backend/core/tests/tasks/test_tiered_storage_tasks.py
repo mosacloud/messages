@@ -44,9 +44,7 @@ class TestOffloadBlobsTaskDisabled:
     def test_task_disabled_when_no_storage(self):
         """Test that task returns disabled status when storage not configured."""
         with patch("core.services.tiered_storage.settings") as mock_settings:
-            mock_settings.STORAGES = {
-                "message-blobs": {"OPTIONS": {"endpoint_url": ""}}
-            }
+            mock_settings.STORAGES = {}
             mock_settings.MESSAGES_BLOB_ENCRYPTION_KEYS = {}
             mock_settings.MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID = 0
 
@@ -207,9 +205,7 @@ class TestOffloadSingleBlobTaskDisabled:
     def test_task_disabled_when_no_storage(self):
         """Test that task returns disabled status when storage not configured."""
         with patch("core.services.tiered_storage.settings") as mock_settings:
-            mock_settings.STORAGES = {
-                "message-blobs": {"OPTIONS": {"endpoint_url": ""}}
-            }
+            mock_settings.STORAGES = {}
             mock_settings.MESSAGES_BLOB_ENCRYPTION_KEYS = {}
             mock_settings.MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID = 0
 
@@ -310,6 +306,7 @@ class TestOffloadSingleBlobTaskE2E:
         assert blob.storage_location == BlobStorageLocationChoices.POSTGRES
         assert blob.raw_content is not None
 
+    @pytest.mark.django_db(transaction=True)
     def test_deduplication_during_offload(self):
         """Test that offload uses deduplication for identical content."""
         service = TieredStorageService()

@@ -315,6 +315,7 @@ class TestTieredStorageE2E:
         finally:
             service.storage.delete(storage_key)
 
+    @pytest.mark.django_db(transaction=True)
     def test_deduplication_single_upload(self):
         """Test that two blobs with same content result in single storage object."""
         service = TieredStorageService()
@@ -357,9 +358,12 @@ class TestTieredStorageE2E:
             if service.storage.exists(storage_key):
                 service.storage.delete(storage_key)
 
+    @pytest.mark.django_db(transaction=True)
     def test_full_offload_workflow(self):
         """Test the complete offload workflow: create blob, offload, read content."""
-        from core.services.tiered_storage_tasks import offload_single_blob_task
+        from core.services.tiered_storage_tasks import (
+            offload_single_blob_task,
+        )
 
         mailbox = factories.MailboxFactory()
         content = b"Content for full offload workflow test" * 20
@@ -386,6 +390,7 @@ class TestTieredStorageE2E:
         MESSAGES_BLOB_ENCRYPTION_KEYS={"1": _TEST_ENCRYPTION_KEY},
         MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID=1,
     )
+    @pytest.mark.django_db(transaction=True)
     def test_offload_with_encryption_roundtrip(self):
         """
         Test full offload workflow with encryption: create encrypted blob,
@@ -393,7 +398,9 @@ class TestTieredStorageE2E:
 
         This is a critical regression test for the double-encryption bug.
         """
-        from core.services.tiered_storage_tasks import offload_single_blob_task
+        from core.services.tiered_storage_tasks import (
+            offload_single_blob_task,
+        )
 
         mailbox = factories.MailboxFactory()
         original_content = b"Test content for encryption offload roundtrip" * 50
@@ -419,6 +426,7 @@ class TestTieredStorageE2E:
         finally:
             blob.delete()
 
+    @pytest.mark.django_db(transaction=True)
     def test_delete_if_orphaned(self):
         """Test that delete_if_orphaned correctly handles references."""
         service = TieredStorageService()
@@ -562,7 +570,7 @@ class TestTieredStorageE2E:
                     service.storage.delete(storage_key)
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 class TestTieredStorageCascadeDelete:
     """Tests that S3 cleanup works during cascade and bulk deletes."""
 

@@ -13,7 +13,9 @@ from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from core.enums import BlobStorageLocationChoices
+import pyzstd
+
+from core.enums import BlobStorageLocationChoices, CompressionTypeChoices
 from core.models import Blob
 from core.services.tiered_storage import TieredStorageService
 
@@ -277,10 +279,6 @@ class Command(BaseCommand):
 
             # The decrypted content is still compressed
             # We need to decompress to verify the original hash
-            import pyzstd
-
-            from core.enums import CompressionTypeChoices
-
             if blob.compression == CompressionTypeChoices.ZSTD:
                 original = pyzstd.decompress(decrypted)
             else:
@@ -451,7 +449,13 @@ class Command(BaseCommand):
 
                 blob.raw_content = encrypted
                 blob.encryption_key_id = new_key_id
-                blob.save(update_fields=["raw_content", "encryption_key_id"])
+                blob.save(
+                    update_fields=[
+                        "raw_content",
+                        "encryption_key_id",
+                        "size_compressed",
+                    ]
+                )
 
             self.stdout.write(
                 f"  Re-encrypted blob {blob.id} (POSTGRES): "
@@ -470,52 +474,74 @@ class Command(BaseCommand):
 
             storage_key = self.service.compute_storage_key(bytes(blob.sha256))
 
-            # Keep old content in memory so we can restore S3 if the
-            # transaction fails after the S3 overwrite.
-            old_encrypted = None
-            s3_updated = False
+            # Read & re-encrypt outside the DB transaction.
+            try:
+                with self.service.storage.open(storage_key, "rb") as f:
+                    old_encrypted = f.read()
+            except FileNotFoundError:
+                self.stderr.write(
+                    self.style.ERROR(
+                        f"  ERROR blob {blob.id}: not found in storage at {storage_key}"
+                    )
+                )
+                return "error"
+
+            decrypted = self.service.decrypt(old_encrypted, blob.encryption_key_id)
+            encrypted, new_key_id = self.service.encrypt(decrypted)
+
+            # Stage the new ciphertext at a temp key so the canonical object
+            # is not touched until the DB transaction commits. If the DB
+            # update fails, we drop the temp object and storage stays
+            # consistent with the DB.
+            temp_key = f"{storage_key}.tmp.{new_key_id}"
+            self.service.storage.save(temp_key, ContentFile(encrypted))
+
+            promote_done = {"value": False}
+
+            def _promote_temp():
+                try:
+                    self.service.storage.save(storage_key, ContentFile(encrypted))
+                finally:
+                    try:
+                        self.service.storage.delete(temp_key)
+                    except Exception as cleanup_err:  # pylint: disable=broad-except
+                        self.stderr.write(
+                            self.style.ERROR(
+                                f"  WARN blob {blob.id}: failed to delete temp "
+                                f"{temp_key}: {cleanup_err}"
+                            )
+                        )
+                promote_done["value"] = True
 
             try:
                 with transaction.atomic():
                     blob = Blob.objects.select_for_update().get(id=blob.id)
                     if blob.encryption_key_id == target_key_id:
+                        # Another worker beat us to it; clean up our temp.
+                        try:
+                            self.service.storage.delete(temp_key)
+                        except Exception as cleanup_err:  # pylint: disable=broad-except
+                            self.stderr.write(
+                                self.style.ERROR(
+                                    f"  WARN blob {blob.id}: failed to delete temp "
+                                    f"{temp_key}: {cleanup_err}"
+                                )
+                            )
                         return "skipped"
 
                     old_key_id = blob.encryption_key_id
-
-                    try:
-                        with self.service.storage.open(storage_key, "rb") as f:
-                            old_encrypted = f.read()
-                    except FileNotFoundError:
-                        self.stderr.write(
-                            self.style.ERROR(
-                                f"  ERROR blob {blob.id}: not found in storage at {storage_key}"
-                            )
-                        )
-                        return "error"
-
-                    decrypted = self.service.decrypt(old_encrypted, old_key_id)
-                    encrypted, new_key_id = self.service.encrypt(decrypted)
-
-                    self.service.storage.save(storage_key, ContentFile(encrypted))
-                    s3_updated = True
-
                     blob.encryption_key_id = new_key_id
                     blob.save(update_fields=["encryption_key_id"])
+                    transaction.on_commit(_promote_temp)
             except Exception:
-                # If S3 was overwritten but the transaction failed (DB error
-                # or commit failure), restore the old S3 content to prevent
-                # leaving the blob in a corrupted state.
-                if s3_updated and old_encrypted is not None:
+                if not promote_done["value"]:
                     try:
-                        self.service.storage.save(
-                            storage_key, ContentFile(old_encrypted)
-                        )
-                    except Exception as restore_err:  # pylint: disable=broad-except
+                        self.service.storage.delete(temp_key)
+                    except Exception as cleanup_err:  # pylint: disable=broad-except
                         self.stderr.write(
                             self.style.ERROR(
-                                f"  CRITICAL: failed to restore S3 content for "
-                                f"blob {blob.id}: {restore_err}"
+                                f"  WARN blob {blob.id}: failed to delete temp "
+                                f"{temp_key}: {cleanup_err}"
                             )
                         )
                 raise

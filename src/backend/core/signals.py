@@ -148,11 +148,20 @@ def cleanup_blob_storage(sender, instance, **kwargs):
 
     Uses a post_delete signal instead of a model delete() override to ensure
     cleanup also runs during CASCADE and QuerySet bulk deletes.
+
+    Defers the actual storage deletion to transaction.on_commit so that an
+    enclosing transaction rollback does not leave us with an object deleted
+    from S3 while the blob row is still in the DB.
     """
-    if instance.storage_location == BlobStorageLocationChoices.OBJECT_STORAGE:
-        service = TieredStorageService()
-        if service.enabled:
-            service.delete_if_orphaned(bytes(instance.sha256))
+    if instance.storage_location != BlobStorageLocationChoices.OBJECT_STORAGE:
+        return
+
+    service = TieredStorageService()
+    if not service.enabled:
+        return
+
+    sha256 = bytes(instance.sha256)
+    transaction.on_commit(lambda: service.delete_if_orphaned(sha256))
 
 
 @receiver(pre_delete, sender=models.Message)
