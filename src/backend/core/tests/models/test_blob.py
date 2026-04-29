@@ -1,6 +1,7 @@
 """Tests for blob compression functionality."""
 
 from django.core.exceptions import ValidationError
+from django.test import override_settings
 
 import pytest
 
@@ -11,17 +12,13 @@ from core import enums, factories
 class TestBlobCompression:
     """Test suite for blob compression functionality."""
 
+    @override_settings(MESSAGES_BLOB_COMPRESS="none")
     def test_blob_no_compression(self):
         """Test blob creation without compression."""
         content = b"Hello World" * 1000  # Create some content to compress
         mailbox = factories.MailboxFactory()
 
-        # Create blob without compression
-        blob = mailbox.create_blob(
-            content=content,
-            content_type="text/plain",
-            compression=enums.CompressionTypeChoices.NONE,
-        )
+        blob = mailbox.create_blob(content=content, content_type="text/plain")
 
         # Check sizes
         assert blob.size == len(content)  # Original size
@@ -31,17 +28,13 @@ class TestBlobCompression:
         assert blob.compression == enums.CompressionTypeChoices.NONE
         assert blob.get_content() == content  # Content should be unchanged
 
+    @override_settings(MESSAGES_BLOB_COMPRESS="zstd:3")
     def test_blob_zstd_compression(self):
         """Test blob creation with ZSTD compression."""
         content = b"Hello World" * 1000  # Create some content that will compress well
         mailbox = factories.MailboxFactory()
 
-        # Create blob with ZSTD compression
-        blob = mailbox.create_blob(
-            content=content,
-            content_type="text/plain",
-            compression=enums.CompressionTypeChoices.ZSTD,
-        )
+        blob = mailbox.create_blob(content=content, content_type="text/plain")
 
         # Check sizes
         assert blob.size == len(content)  # Original size
@@ -57,23 +50,16 @@ class TestBlobCompression:
 
         # Try to create blob with empty content
         with pytest.raises(ValidationError, match="Content cannot be empty"):
-            mailbox.create_blob(
-                content=b"",
-                content_type="text/plain",
-                compression=enums.CompressionTypeChoices.ZSTD,
-            )
+            mailbox.create_blob(content=b"", content_type="text/plain")
 
+    @override_settings(MESSAGES_BLOB_COMPRESS="zstd:3")
     def test_blob_large_content_compression(self):
         """Test compression with large content."""
         # Create a large content that should compress well
         content = b"A" * 1000000  # 1MB of repeating data
         mailbox = factories.MailboxFactory()
 
-        blob = mailbox.create_blob(
-            content=content,
-            content_type="text/plain",
-            compression=enums.CompressionTypeChoices.ZSTD,
-        )
+        blob = mailbox.create_blob(content=content, content_type="text/plain")
 
         # Verify compression ratio is significant
         compression_ratio = blob.size_compressed / blob.size

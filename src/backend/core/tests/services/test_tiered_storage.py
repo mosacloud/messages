@@ -190,7 +190,6 @@ class TestTieredStorageDB:
         blob = mailbox.create_blob(
             content=b"test content",
             content_type="text/plain",
-            compression=CompressionTypeChoices.ZSTD,
         )
 
         assert blob.storage_location == BlobStorageLocationChoices.POSTGRES
@@ -214,15 +213,12 @@ class TestTieredStorageDB:
         # Sanity floor: zstd on a single-byte run is well under 50 bytes.
         assert blob.size_compressed < 50, blob.size_compressed
 
+    @override_settings(MESSAGES_BLOB_COMPRESS="none")
     def test_no_compression_preserves_size(self):
-        """compression=NONE stores plaintext bytes as-is."""
+        """MESSAGES_BLOB_COMPRESS=none stores plaintext bytes as-is."""
         content = b"a" * 1024
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(
-            content=content,
-            content_type="text/plain",
-            compression=CompressionTypeChoices.NONE,
-        )
+        blob = mailbox.create_blob(content=content, content_type="text/plain")
 
         assert blob.size == 1024
         assert blob.size_compressed == 1024
@@ -248,18 +244,15 @@ class TestTieredStorageDB:
         assert blob.get_content() == content
 
     @override_settings(
+        MESSAGES_BLOB_COMPRESS="none",
         MESSAGES_BLOB_ENCRYPTION_KEYS={"1": _TEST_ENCRYPTION_KEY},
         MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID=1,
     )
     def test_encryption_with_no_compression_size(self):
-        """With compression=NONE: raw_content = plaintext_size + 28."""
+        """With MESSAGES_BLOB_COMPRESS=none: raw_content = plaintext_size + 28."""
         content = b"a" * 1024
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(
-            content=content,
-            content_type="text/plain",
-            compression=CompressionTypeChoices.NONE,
-        )
+        blob = mailbox.create_blob(content=content, content_type="text/plain")
 
         assert blob.encryption_key_id == 1
         assert blob.size_compressed == 1024 + 28
@@ -270,11 +263,7 @@ class TestTieredStorageDB:
         mailbox = factories.MailboxFactory()
         content = b"Hello World" * 100
 
-        blob = mailbox.create_blob(
-            content=content,
-            content_type="text/plain",
-            compression=CompressionTypeChoices.ZSTD,
-        )
+        blob = mailbox.create_blob(content=content, content_type="text/plain")
 
         assert blob.storage_location == BlobStorageLocationChoices.POSTGRES
         assert blob.get_content() == content
@@ -679,11 +668,8 @@ class TestTieredStorageE2E:
 
         # First blob lands with ZSTD and gets offloaded.
         mailbox1 = factories.MailboxFactory()
-        blob1 = mailbox1.create_blob(
-            content=content,
-            content_type="text/plain",
-            compression=CompressionTypeChoices.ZSTD,
-        )
+        with override_settings(MESSAGES_BLOB_COMPRESS="zstd:3"):
+            blob1 = mailbox1.create_blob(content=content, content_type="text/plain")
         assert blob1.compression == CompressionTypeChoices.ZSTD
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob1)
 
@@ -693,11 +679,8 @@ class TestTieredStorageE2E:
             # Operator flips the global default to NONE; a second mailbox
             # gets the same content compressed-as-NONE.
             mailbox2 = factories.MailboxFactory()
-            blob2 = mailbox2.create_blob(
-                content=content,
-                content_type="text/plain",
-                compression=CompressionTypeChoices.NONE,
-            )
+            with override_settings(MESSAGES_BLOB_COMPRESS="none"):
+                blob2 = mailbox2.create_blob(content=content, content_type="text/plain")
             assert blob2.compression == CompressionTypeChoices.NONE
 
             assert offload_single_blob_task(str(blob2.id))["status"] == "success"

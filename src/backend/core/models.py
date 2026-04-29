@@ -57,6 +57,7 @@ from core.enums import (
 )
 from core.mda.rfc5322 import EmailParseError, parse_email_message
 from core.mda.signing import generate_dkim_key as _generate_dkim_key
+from core.services.tiered_storage import TieredStorageService
 
 logger = getLogger(__name__)
 
@@ -761,19 +762,12 @@ class Mailbox(BaseModel):
         self,
         content: bytes,
         content_type: str,
-        compression: Optional[CompressionTypeChoices] = None,
         **kwargs,
     ) -> "Blob":
-        """Create a new blob owned by this mailbox.
-
-        ``compression=None`` means "use the configured default"
-        (``settings.MESSAGES_BLOB_COMPRESS``). Pass an explicit
-        ``CompressionTypeChoices`` value to override.
-        """
+        """Create a new blob owned by this mailbox."""
         return Blob.objects.create_blob(
             content=content,
             content_type=content_type,
-            compression=compression,
             mailbox=self,
             **kwargs,
         )
@@ -2075,7 +2069,6 @@ class BlobManager(models.Manager):
         self,
         content: bytes,
         content_type: str,
-        compression: Optional[CompressionTypeChoices] = None,
         **kwargs,
     ) -> "Blob":
         """
@@ -2083,24 +2076,21 @@ class BlobManager(models.Manager):
         Args:
             content: Raw binary content to store
             content_type: MIME type of the content
-            compression: Compression type to use (defaults to MESSAGES_BLOB_COMPRESS)
         Returns:
             The created Blob instance
         Raises:
-            ValidationError: If content is empty or compression is unsupported
+            ValidationError: If content is empty or MESSAGES_BLOB_COMPRESS is invalid
         """
         if not content:
             raise ValidationError({"content": "Content cannot be empty"})
 
         # Resolve algorithm + level from the configured spec ("zstd:3" etc.).
         try:
-            default_algo, zstd_level = parse_compression_spec(
+            compression, zstd_level = parse_compression_spec(
                 settings.MESSAGES_BLOB_COMPRESS
             )
         except ValueError as exc:
             raise ValidationError({"compression": str(exc)}) from exc
-        if compression is None:
-            compression = default_algo
 
         # Calculate SHA256 hash of the original content
         sha256_hash = hashlib.sha256(content).digest()
@@ -2109,7 +2099,6 @@ class BlobManager(models.Manager):
         original_size = len(content)
 
         # Apply compression if requested
-        compressed_content = content
         if compression == CompressionTypeChoices.ZSTD:
             compressed_content = pyzstd.compress(content, level_or_option=zstd_level)
             logger.debug(
@@ -2118,17 +2107,10 @@ class BlobManager(models.Manager):
                 len(compressed_content),
                 (1 - len(compressed_content) / original_size) * 100,
             )
-        elif compression == CompressionTypeChoices.NONE:
-            compressed_content = content
         else:
-            raise ValidationError(
-                {"compression": f"Unsupported compression type: {compression}"}
-            )
+            compressed_content = content
 
         # Encrypt content if encryption keys are configured
-        # pylint: disable-next=import-outside-toplevel
-        from core.services.tiered_storage import TieredStorageService
-
         service = TieredStorageService()
         encrypted_content, encryption_key_id = service.encrypt(compressed_content)
 
@@ -2276,9 +2258,6 @@ class Blob(BaseModel):
         Raises:
             ValueError: If the blob compression type is not supported or content unavailable
         """
-        # pylint: disable-next=import-outside-toplevel
-        from core.services.tiered_storage import TieredStorageService
-
         service = TieredStorageService()
 
         if self.storage_location == BlobStorageLocationChoices.POSTGRES:

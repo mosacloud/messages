@@ -31,8 +31,8 @@ logger = get_task_logger(__name__)
 _TRANSIENT_EXCEPTIONS = (OSError, BotoCoreError)
 
 
-@celery_app.task(bind=True)
-def offload_blobs_task(self) -> Dict[str, Any]:
+@celery_app.task
+def offload_blobs_task() -> Dict[str, Any]:
     """Periodic task: queue eligible blobs for offload to object storage."""
     if not settings.TIERED_STORAGE_OFFLOAD_ENABLED:
         return {"status": "disabled", "queued": 0}

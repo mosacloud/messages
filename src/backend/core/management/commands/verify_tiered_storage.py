@@ -20,7 +20,16 @@ from core.services.tiered_storage import TieredStorageService, sha256_advisory_l
 
 
 class Command(BaseCommand):
+    """Verify tiered storage integrity and manage encryption key rotation."""
+
     help = "Verify tiered storage integrity and manage encryption key rotation"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.service: TieredStorageService | None = None
+        self.verify_hashes: bool = False
+        self.limit: int = 0
+        self.dry_run: bool = False
 
     def add_arguments(self, parser):
         parser.add_argument(
