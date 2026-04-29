@@ -761,28 +761,21 @@ class Mailbox(BaseModel):
         self,
         content: bytes,
         content_type: str,
-        compression: Optional[CompressionTypeChoices] = CompressionTypeChoices.ZSTD,
+        compression: Optional[CompressionTypeChoices] = None,
+        **kwargs,
     ) -> "Blob":
+        """Create a new blob owned by this mailbox.
+
+        ``compression=None`` means "use the configured default"
+        (``settings.MESSAGES_BLOB_COMPRESS``). Pass an explicit
+        ``CompressionTypeChoices`` value to override.
         """
-        Create a new blob with automatic SHA256 calculation and compression.
-
-        Args:
-            content: Raw binary content to store
-            content_type: MIME type of the content
-            compression: Compression type to use (defaults to ZSTD)
-
-        Returns:
-            The created Blob instance
-
-        Raises:
-            ValueError: If content is empty
-        """
-
         return Blob.objects.create_blob(
             content=content,
             content_type=content_type,
             compression=compression,
             mailbox=self,
+            **kwargs,
         )
 
     def get_abilities(self, user):
@@ -2247,6 +2240,14 @@ class Blob(BaseModel):
                     models.Q(mailbox__isnull=False) | models.Q(maildomain__isnull=False)
                 ),
                 name="blob_has_owner",
+            ),
+        ]
+        indexes = [
+            # Hot-path index for the periodic offload scan
+            # (storage_location=POSTGRES, created_at < cutoff, size >= min).
+            models.Index(
+                fields=["storage_location", "created_at"],
+                name="blob_offload_scan_idx",
             ),
         ]
 

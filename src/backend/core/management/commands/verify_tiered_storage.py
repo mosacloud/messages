@@ -165,18 +165,27 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(f"INVALID PATH: {obj_name}"))
                 continue
 
-            refs_exist = Blob.objects.filter(
-                sha256=sha_bytes,
-                storage_location=BlobStorageLocationChoices.OBJECT_STORAGE,
-                encryption_key_id=key_id,
-            ).exists()
+            # Compression isn't in the path — pull it (and ref existence)
+            # from the DB row in one query.
+            ref_compression = (
+                Blob.objects.filter(
+                    sha256=sha_bytes,
+                    storage_location=BlobStorageLocationChoices.OBJECT_STORAGE,
+                    encryption_key_id=key_id,
+                )
+                .values_list("compression", flat=True)
+                .first()
+            )
+            refs_exist = ref_compression is not None
 
             if not refs_exist:
                 orphan_count += 1
                 self.stdout.write(self.style.WARNING(f"ORPHAN: {obj_name}"))
 
             if self.verify_hashes and refs_exist:
-                if not self._verify_blob_hash(obj_name, sha_bytes, key_id):
+                if not self._verify_blob_hash(
+                    obj_name, sha_bytes, key_id, ref_compression
+                ):
                     hash_mismatch_count += 1
 
             if checked_count % 100 == 0:
@@ -207,24 +216,21 @@ class Command(BaseCommand):
                 yield obj["Key"]
 
     def _verify_blob_hash(
-        self, obj_name: str, expected_sha_bytes: bytes, key_id: int
+        self,
+        obj_name: str,
+        expected_sha_bytes: bytes,
+        key_id: int,
+        compression: int,
     ) -> bool:
-        """Download the storage object, decrypt with ``key_id``, decompress and
-        check that ``sha256(decompressed) == expected_sha_bytes``."""
+        """Download the storage object, decrypt with ``key_id``, decompress
+        per ``compression``, and check that
+        ``sha256(decompressed) == expected_sha_bytes``."""
         try:
-            blob = Blob.objects.filter(
-                sha256=expected_sha_bytes,
-                storage_location=BlobStorageLocationChoices.OBJECT_STORAGE,
-                encryption_key_id=key_id,
-            ).first()
-            if not blob:
-                return True  # nothing to compare against
-
             with self.service.storage.open(obj_name, "rb") as f:
                 encrypted = f.read()
             decrypted = self.service.decrypt(encrypted, key_id)
 
-            if blob.compression == CompressionTypeChoices.ZSTD:
+            if compression == CompressionTypeChoices.ZSTD:
                 original = pyzstd.decompress(decrypted)
             else:
                 original = decrypted

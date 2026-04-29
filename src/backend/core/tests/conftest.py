@@ -1,6 +1,6 @@
 """Fixtures for tests in the messages core application"""
 
-# pylint: disable=import-outside-toplevel,broad-exception-caught
+# pylint: disable=import-outside-toplevel
 
 from unittest import mock
 
@@ -15,36 +15,33 @@ VIA = [USER, TEAM]
 
 @pytest.fixture(scope="session", autouse=True)
 def ensure_storage_buckets():
-    """
-    Ensure all required S3 buckets exist before running tests.
+    """Create any missing S3 buckets needed by tests (session-scoped, autouse).
 
-    This is a session-scoped fixture that runs once at the start of the test session.
-    It creates any missing buckets in MinIO/S3 that are needed for tests.
+    ``head_bucket`` raises ``ClientError`` on 404 (boto3 doesn't expose a
+    ``NoSuchBucket`` class for HEAD); other status codes are real failures
+    and propagate so config problems aren't silently masked.
     """
     from django.core.files.storage import storages
 
-    buckets_to_ensure = ["message-imports", "message-blobs"]
+    from botocore.exceptions import ClientError
 
-    for storage_name in buckets_to_ensure:
+    for storage_name in ("message-imports", "message-blobs"):
         if storage_name not in storages.backends:
             continue
-
+        storage = storages[storage_name]
+        if not hasattr(storage, "bucket"):
+            continue
+        client = storage.bucket.meta.client
+        bucket_name = storage.bucket.name
         try:
-            storage = storages[storage_name]
-            # Use boto3 to create bucket if it doesn't exist
-            if hasattr(storage, "bucket"):
-                client = storage.bucket.meta.client
-                bucket_name = storage.bucket.name
-                try:
-                    client.head_bucket(Bucket=bucket_name)
-                except client.exceptions.NoSuchBucket:
-                    client.create_bucket(Bucket=bucket_name)
-                except Exception:
-                    # Bucket exists or other error, continue
-                    pass
-        except Exception:
-            # Storage not configured or other error, skip
-            pass
+            client.head_bucket(Bucket=bucket_name)
+        except ClientError as e:
+            status = e.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            code = e.response.get("Error", {}).get("Code")
+            if status == 404 or code in {"404", "NoSuchBucket"}:
+                client.create_bucket(Bucket=bucket_name)
+            else:
+                raise
 
 
 @pytest.fixture

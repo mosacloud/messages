@@ -27,7 +27,7 @@ class TestTieredStorageServiceUnit:
     """Pure unit tests for TieredStorageService (no DB, no storage)."""
 
     def test_compute_storage_key(self):
-        """Test that storage keys are computed correctly from SHA256 and key_id."""
+        """Storage keys encode (key_id, sha)."""
         sha256 = bytes.fromhex(
             "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
         )
@@ -302,19 +302,29 @@ class TestTieredStorageDB:
         assert blob1.sha256 == blob2.sha256
         assert blob1.id != blob2.id
 
-    def test_get_existing_key_id(self):
-        """get_existing_key_id returns the key_id of an existing OBJECT_STORAGE sibling."""
+    def test_get_existing_sibling(self):
+        """get_existing_sibling returns ``(key_id, compression)`` of any
+        OBJECT_STORAGE sibling, or None if there is none.
+
+        Compression is intentionally NOT a filter — a sha256 has exactly
+        one stored object cluster-wide, and new uploads adopt its
+        compression rather than creating a parallel object.
+        """
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = mailbox.create_blob(content=b"test content", content_type="text/plain")
 
-        assert service.get_existing_key_id(bytes(blob.sha256)) is None
+        assert service.get_existing_sibling(bytes(blob.sha256)) is None
 
         blob.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
         blob.encryption_key_id = 7
+        blob.compression = CompressionTypeChoices.ZSTD
         blob.save()
 
-        assert service.get_existing_key_id(bytes(blob.sha256)) == 7
+        assert service.get_existing_sibling(bytes(blob.sha256)) == (
+            7,
+            CompressionTypeChoices.ZSTD,
+        )
 
 
 @pytest.mark.django_db
@@ -393,9 +403,10 @@ class TestTieredStorageE2E:
             assert service.storage.exists(storage_key)
 
             # Upload second blob - should detect duplicate
-            key_id = service.upload_blob(blob2)
+            key_id, compression = service.upload_blob(blob2)
             blob2.storage_location = enums.BlobStorageLocationChoices.OBJECT_STORAGE
             blob2.encryption_key_id = key_id
+            blob2.compression = compression
             blob2.save()
 
             # Still only one object
@@ -513,9 +524,7 @@ class TestTieredStorageE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = mailbox.create_blob(content=b"test", content_type="text/plain")
-        storage_key = TieredStorageService.compute_storage_key(
-            bytes(blob.sha256), blob.encryption_key_id
-        )
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         assert not service.storage.exists(storage_key)
         try:
@@ -555,8 +564,9 @@ class TestTieredStorageE2E:
         path_b = TieredStorageService.compute_storage_key_for_blob(blob_b)
 
         try:
-            returned_key_id = service.upload_blob(blob_b)
+            returned_key_id, returned_compression = service.upload_blob(blob_b)
             assert returned_key_id == blob_b.encryption_key_id
+            assert returned_compression == blob_b.compression
             assert service.storage.exists(path_b)
         finally:
             for k in (path_a, path_b):
@@ -627,20 +637,21 @@ class TestTieredStorageE2E:
             try:
                 service = TieredStorageService()
                 # Upload first blob
-                returned_key_id1 = service.upload_blob(blob1)
+                returned_key_id1, returned_compression1 = service.upload_blob(blob1)
                 blob1.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
                 blob1.encryption_key_id = returned_key_id1
+                blob1.compression = returned_compression1
                 blob1.raw_content = None
                 blob1.save()
 
                 assert returned_key_id1 == 1  # Original key
 
                 # Upload second blob - dedup should kick in
-                returned_key_id2 = service.upload_blob(blob2)
+                returned_key_id2, returned_compression2 = service.upload_blob(blob2)
                 blob2.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
-                blob2.encryption_key_id = (
-                    returned_key_id2  # Gets key 1 from first blob!
-                )
+                # Gets key 1 from first blob!
+                blob2.encryption_key_id = returned_key_id2
+                blob2.compression = returned_compression2
                 blob2.raw_content = None
                 blob2.save()
 
@@ -656,6 +667,55 @@ class TestTieredStorageE2E:
                 service = TieredStorageService()
                 if service.storage and service.storage.exists(storage_key):
                     service.storage.delete(storage_key)
+
+    @pytest.mark.django_db(transaction=True)
+    def test_deduplication_adopts_existing_compression(self):
+        """A new blob created with a different compression than the
+        already-stored sibling MUST adopt the sibling's compression on
+        offload — otherwise restore() would decompress the wrong way."""
+        from core.services.tiered_storage_tasks import offload_single_blob_task
+
+        content = b"shared content for cross-compression dedup" * 5
+
+        # First blob lands with ZSTD and gets offloaded.
+        mailbox1 = factories.MailboxFactory()
+        blob1 = mailbox1.create_blob(
+            content=content,
+            content_type="text/plain",
+            compression=CompressionTypeChoices.ZSTD,
+        )
+        assert blob1.compression == CompressionTypeChoices.ZSTD
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob1)
+
+        try:
+            assert offload_single_blob_task(str(blob1.id))["status"] == "success"
+
+            # Operator flips the global default to NONE; a second mailbox
+            # gets the same content compressed-as-NONE.
+            mailbox2 = factories.MailboxFactory()
+            blob2 = mailbox2.create_blob(
+                content=content,
+                content_type="text/plain",
+                compression=CompressionTypeChoices.NONE,
+            )
+            assert blob2.compression == CompressionTypeChoices.NONE
+
+            assert offload_single_blob_task(str(blob2.id))["status"] == "success"
+
+            blob2.refresh_from_db()
+            # Adopted ZSTD from blob1 — otherwise blob2 would try to read
+            # the ZSTD-compressed bytes as plaintext on get_content().
+            assert blob2.compression == CompressionTypeChoices.ZSTD
+            assert blob2.get_content() == content
+
+            # Both rows resolve to the same storage object.
+            assert (
+                TieredStorageService.compute_storage_key_for_blob(blob2) == storage_key
+            )
+        finally:
+            service = TieredStorageService()
+            if service.storage and service.storage.exists(storage_key):
+                service.storage.delete(storage_key)
 
 
 @pytest.mark.django_db(transaction=True)

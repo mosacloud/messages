@@ -13,6 +13,7 @@ from django.db import transaction
 from django.utils.timezone import now
 
 from botocore.exceptions import BotoCoreError
+from celery.exceptions import Retry
 from celery.utils.log import get_task_logger
 
 from core.enums import BlobStorageLocationChoices
@@ -88,7 +89,10 @@ def offload_single_blob_task(self, blob_id: str) -> Dict[str, Any]:
                 if not got:
                     raise self.retry(countdown=5)
 
-                blob = Blob.objects.select_for_update().get(id=blob_id)
+                try:
+                    blob = Blob.objects.select_for_update().get(id=blob_id)
+                except Blob.DoesNotExist:
+                    return {"status": "not_found", "blob_id": blob_id}
 
                 if blob.storage_location != BlobStorageLocationChoices.POSTGRES:
                     return {"status": "already_offloaded", "blob_id": blob_id}
@@ -97,15 +101,19 @@ def offload_single_blob_task(self, blob_id: str) -> Dict[str, Any]:
                     logger.warning("Blob %s has no raw_content to offload", blob_id)
                     return {"status": "no_content", "blob_id": blob_id}
 
-                key_id = service.upload_blob(blob)
+                key_id, compression = service.upload_blob(blob)
 
                 blob.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
                 blob.encryption_key_id = key_id
+                # Adopt the existing object's compression on dedup hits;
+                # for fresh uploads this is a no-op (matches blob.compression).
+                blob.compression = compression
                 blob.raw_content = None
                 blob.save(
                     update_fields=[
                         "storage_location",
                         "encryption_key_id",
+                        "compression",
                         "raw_content",
                     ]
                 )
@@ -115,6 +123,10 @@ def offload_single_blob_task(self, blob_id: str) -> Dict[str, Any]:
                 )
                 return {"status": "success", "blob_id": blob_id, "key_id": key_id}
 
+    except Retry:  # pylint: disable=try-except-raise
+        # ``self.retry()`` raises Retry — re-raise so Celery handles it instead
+        # of the broad ``except Exception`` below swallowing it.
+        raise
     except _TRANSIENT_EXCEPTIONS as e:
         logger.warning("Transient error offloading blob %s: %s", blob_id, e)
         raise self.retry(exc=e, countdown=60 * (2**self.request.retries)) from e
@@ -126,11 +138,7 @@ def offload_single_blob_task(self, blob_id: str) -> Dict[str, Any]:
 @celery_app.task(bind=True, max_retries=30)
 def cleanup_orphaned_blob_task(self, sha256_hex: str, key_id: int) -> Dict[str, Any]:
     """Delete a storage object if its ``(sha256, key_id)`` cohort is empty.
-
-    Queued by the ``post_delete`` signal on ``Blob``. Acquires the
-    per-sha256 advisory lock so it serializes with concurrent offload
-    and re-encrypt of the same content.
-    """
+    Queued by the ``post_delete`` signal on ``Blob``."""
     service = TieredStorageService()
     if not service.enabled:
         return {"status": "disabled"}
@@ -145,4 +153,6 @@ def cleanup_orphaned_blob_task(self, sha256_hex: str, key_id: int) -> Dict[str, 
                 deleted = service.delete_if_orphaned(sha256, key_id)
                 return {"status": "deleted" if deleted else "still_referenced"}
     except _TRANSIENT_EXCEPTIONS as e:
+        # Retry from the inner ``self.retry(countdown=5)`` propagates naturally
+        # since neither it nor _TRANSIENT_EXCEPTIONS catches it here.
         raise self.retry(exc=e, countdown=60 * (2**self.request.retries)) from e
