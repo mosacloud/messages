@@ -140,6 +140,26 @@ The application uses a new environment file structure with `.defaults` and `.loc
 | `STORAGE_MESSAGE_IMPORTS_REGION_NAME` | None | S3 region | Optional |
 | `STORAGE_MESSAGE_IMPORTS_EXPIRE_POLICY` | `3600` | Upload policy expiration (1h) | Optional |
 
+### Tiered Blob Storage
+
+Blobs (raw email bodies and attachments) live in PostgreSQL by default and
+can be offloaded to S3 after a configurable age. See [tiered storage
+docs](tiered-storage.md) for the runbook (rotation, verify, recovery).
+
+| Variable | Default | Description | Required |
+|----------|---------|-------------|----------|
+| `STORAGE_MESSAGE_BLOBS_ENDPOINT_URL` | unset (offload disabled) | S3 endpoint URL for blob bucket | Optional |
+| `STORAGE_MESSAGE_BLOBS_BUCKET_NAME` | `msg-blobs` | S3 bucket name | Optional |
+| `STORAGE_MESSAGE_BLOBS_ACCESS_KEY` | unset | S3 access key | Optional |
+| `STORAGE_MESSAGE_BLOBS_SECRET_KEY` | unset | S3 secret key | Optional |
+| `STORAGE_MESSAGE_BLOBS_REGION_NAME` | unset | S3 region | Optional |
+| `TIERED_STORAGE_OFFLOAD_ENABLED` | `False` | Master switch for the periodic offload task | Optional |
+| `TIERED_STORAGE_OFFLOAD_AFTER_DAYS` | `3` | Age threshold (days) for offload | Optional |
+| `TIERED_STORAGE_OFFLOAD_MIN_SIZE` | `0` | Minimum blob size in bytes (0 = all) | Optional |
+| `MESSAGES_BLOB_COMPRESS` | `zstd:3` | Default compression: `none`, `zstd`, or `zstd:<level>` | Optional |
+| `MESSAGES_BLOB_ENCRYPTION_KEYS` | `{}` | JSON dict mapping `key_id` → secret string (SHA-256'd to AES-256). E.g. `{"1": "<32+ char random string>"}` | Optional |
+| `MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID` | `0` | Which key_id to encrypt new blobs with (0 = no encryption) | Optional |
+
 ### Static Files
 
 | Variable | Default | Description | Required |

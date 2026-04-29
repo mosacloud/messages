@@ -201,11 +201,7 @@ class JSONValue(values.Value):
     def to_python(self, value):
         """
         Return the python representation of the JSON string.
-
-        Returns None for empty strings, allowing the default value to be used.
         """
-        if not value or not value.strip():
-            return None
         return json.loads(value)
 
 

@@ -480,10 +480,10 @@ class Base(Configuration):
         "zstd:3", environ_name="MESSAGES_BLOB_COMPRESS", environ_prefix=None
     )
 
-    # Blob encryption keys (dict mapping key_id -> key for stable key rotation)
-    # Format: {"1": "base64-fernet-key", "2": "another-key"}
-    # key_id=0 in DB means no encryption, key_id>=1 refers to dict key
-    # Works for both PostgreSQL and object storage blobs
+    # Blob encryption keys (dict mapping key_id -> arbitrary high-entropy
+    # secret, hashed to a 32-byte AES-256 key). Format: {"1": "<secret>"}.
+    # key_id=0 in DB means no encryption, key_id>=1 refers to dict key.
+    # Works for both PostgreSQL and object storage blobs.
     MESSAGES_BLOB_ENCRYPTION_KEYS = JSONValue(
         {}, environ_name="MESSAGES_BLOB_ENCRYPTION_KEYS", environ_prefix=None
     )

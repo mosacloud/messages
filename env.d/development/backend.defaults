@@ -51,9 +51,9 @@ STORAGE_MESSAGE_IMPORTS_EXPIRE_POLICY=600
 # Default compression for new blobs ("none", "zstd", or "zstd:<level>")
 MESSAGES_BLOB_COMPRESS=zstd:3
 
-# Blob encryption keys (JSON dict: {"1": "key1", "2": "key2"}). Empty = no encryption
-# Works for both PostgreSQL and object storage blobs
-MESSAGES_BLOB_ENCRYPTION_KEYS=
+# Blob encryption keys (JSON dict: {"1": "key1", "2": "key2"}). {} = no encryption.
+# Works for both PostgreSQL and object storage blobs.
+MESSAGES_BLOB_ENCRYPTION_KEYS={}
 # Which key ID to use for new encryptions (must exist in MESSAGES_BLOB_ENCRYPTION_KEYS)
 MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID=0
 
