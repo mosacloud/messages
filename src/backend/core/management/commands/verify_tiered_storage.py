@@ -9,7 +9,6 @@ re-encrypt blobs with a new key (key rotation).
 import hashlib
 from typing import Iterator
 
-from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
@@ -103,7 +102,7 @@ class Command(BaseCommand):
 
         for blob in queryset.iterator(chunk_size=1000):
             checked_count += 1
-            key = self.service.compute_storage_key(bytes(blob.sha256))
+            key = self.service.compute_storage_key_for_blob(blob)
 
             if not self.service.storage.exists(key):
                 missing_count += 1
@@ -154,34 +153,30 @@ class Command(BaseCommand):
 
             checked_count += 1
 
-            # Extract SHA256 from path: blobs/{sha[:3]}/{sha}
+            # Path format: blobs/{key_id}/{sha[:3]}/{sha}
             parts = obj_name.split("/")
-            if len(parts) < 3:
+            try:
+                if len(parts) != 4 or parts[0] != "blobs":
+                    raise ValueError("unexpected path shape")
+                key_id = int(parts[1])
+                sha_bytes = bytes.fromhex(parts[3])
+            except ValueError:
                 invalid_count += 1
                 self.stdout.write(self.style.WARNING(f"INVALID PATH: {obj_name}"))
                 continue
 
-            sha_hex = parts[-1]
-            try:
-                sha_bytes = bytes.fromhex(sha_hex)
-            except ValueError:
-                invalid_count += 1
-                self.stdout.write(self.style.WARNING(f"INVALID SHA256: {obj_name}"))
-                continue
-
-            # Check if any blob references this object
             refs_exist = Blob.objects.filter(
                 sha256=sha_bytes,
                 storage_location=BlobStorageLocationChoices.OBJECT_STORAGE,
+                encryption_key_id=key_id,
             ).exists()
 
             if not refs_exist:
                 orphan_count += 1
                 self.stdout.write(self.style.WARNING(f"ORPHAN: {obj_name}"))
 
-            # Optionally verify hash
             if self.verify_hashes and refs_exist:
-                if not self._verify_blob_hash(obj_name, sha_bytes):
+                if not self._verify_blob_hash(obj_name, sha_bytes, key_id):
                     hash_mismatch_count += 1
 
             if checked_count % 100 == 0:
@@ -204,72 +199,37 @@ class Command(BaseCommand):
             )
 
     def _list_storage_objects(self, prefix: str) -> Iterator[str]:
-        """
-        List all objects with given prefix.
+        """List object keys under a prefix using boto3 pagination."""
+        bucket = self.service.storage.bucket
+        paginator = bucket.meta.client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket.name, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                yield obj["Key"]
 
-        This is a generator that yields object names.
-        Implementation depends on the storage backend.
-        """
-        # Try to use listdir if available (django-storages S3)
-        storage = self.service.storage
-
-        # For S3-compatible storage with boto3
-        if hasattr(storage, "bucket"):
-            # Direct boto3 access
-            bucket = storage.bucket
-            paginator = bucket.meta.client.get_paginator("list_objects_v2")
-            for page in paginator.paginate(Bucket=bucket.name, Prefix=prefix):
-                for obj in page.get("Contents", []):
-                    yield obj["Key"]
-        elif hasattr(storage, "listdir"):
-            # Fallback to Django's listdir (may not work for all backends)
-            # This is recursive and may be slow
-            def _walk(path):
-                dirs, files = storage.listdir(path)
-                for f in files:
-                    yield f"{path}/{f}" if path else f
-                for d in dirs:
-                    full_path = f"{path}/{d}" if path else d
-                    yield from _walk(full_path)
-
-            yield from _walk(prefix.rstrip("/"))
-        else:
-            raise NotImplementedError(
-                "Storage backend does not support object listing. "
-                "Use a S3-compatible backend."
-            )
-
-    def _verify_blob_hash(self, obj_name: str, expected_sha_bytes: bytes) -> bool:
-        """
-        Download, decrypt, decompress, and verify the hash of a blob.
-
-        Returns True if hash matches, False otherwise.
-        """
+    def _verify_blob_hash(
+        self, obj_name: str, expected_sha_bytes: bytes, key_id: int
+    ) -> bool:
+        """Download the storage object, decrypt with ``key_id``, decompress and
+        check that ``sha256(decompressed) == expected_sha_bytes``."""
         try:
-            # Get a blob to know the encryption key_id and compression
             blob = Blob.objects.filter(
                 sha256=expected_sha_bytes,
                 storage_location=BlobStorageLocationChoices.OBJECT_STORAGE,
+                encryption_key_id=key_id,
             ).first()
-
             if not blob:
-                return True  # No blob to verify against
+                return True  # nothing to compare against
 
-            # Download and decrypt
             with self.service.storage.open(obj_name, "rb") as f:
                 encrypted = f.read()
+            decrypted = self.service.decrypt(encrypted, key_id)
 
-            decrypted = self.service.decrypt(encrypted, blob.encryption_key_id)
-
-            # The decrypted content is still compressed
-            # We need to decompress to verify the original hash
             if blob.compression == CompressionTypeChoices.ZSTD:
                 original = pyzstd.decompress(decrypted)
             else:
                 original = decrypted
 
             actual_hash = hashlib.sha256(original).digest()
-
             if actual_hash != expected_sha_bytes:
                 self.stdout.write(
                     self.style.ERROR(
@@ -279,9 +239,7 @@ class Command(BaseCommand):
                     )
                 )
                 return False
-
             return True
-
         except Exception as e:  # pylint: disable=broad-except
             self.stdout.write(self.style.ERROR(f"VERIFY ERROR: {obj_name} - {e}"))
             return False
@@ -353,23 +311,20 @@ class Command(BaseCommand):
 
         for blob in queryset.iterator(chunk_size=100):
             try:
-                result = self._re_encrypt_single_blob(blob, current_key_id)
-                if result == "success":
+                rotated = self._rotate_one(blob, current_key_id)
+                if rotated:
                     success_count += 1
-                elif result == "skipped":
-                    skipped_count += 1
                 else:
-                    error_count += 1
+                    skipped_count += 1
             except Exception as e:  # pylint: disable=broad-except
                 error_count += 1
                 self.stderr.write(
                     self.style.ERROR(f"ERROR re-encrypting blob {blob.id}: {e}")
                 )
 
-            if (success_count + error_count + skipped_count) % 100 == 0:
-                self.stdout.write(
-                    f"  Progress: {success_count + error_count + skipped_count}/{total_count}"
-                )
+            done = success_count + error_count + skipped_count
+            if done % 100 == 0:
+                self.stdout.write(f"  Progress: {done}/{total_count}")
 
         self.stdout.write("")
         self.stdout.write(f"Re-encrypted: {success_count}")
@@ -383,146 +338,24 @@ class Command(BaseCommand):
                 self.style.WARNING(f"Key rotation completed with {error_count} errors")
             )
 
-    def _re_encrypt_single_blob(self, blob: Blob, target_key_id: int) -> str:
-        """Re-encrypt a single blob (and its dedup cohort) with the target key.
-
-        Holds the per-sha256 advisory lock for the duration so concurrent
-        offload, cleanup, or another re-encrypt of the same content cannot
-        interleave.
-
-        Returns "success", "skipped", or "error".
-        """
+    def _rotate_one(self, blob: Blob, target_key_id: int) -> bool:
+        """Rotate one blob under transaction + per-sha lock. Returns rotated?"""
+        sha256 = bytes(blob.sha256)
         if self.dry_run:
-            location = blob.get_storage_location_display()
             self.stdout.write(
-                f"  Would re-encrypt blob {blob.id} ({location}): "
+                f"  Would re-encrypt blob {blob.id} "
+                f"({blob.get_storage_location_display()}): "
                 f"key_id {blob.encryption_key_id} -> {target_key_id}"
             )
-            return "success"
+            return True
 
-        sha256 = bytes(blob.sha256)
-
-        if blob.storage_location == BlobStorageLocationChoices.POSTGRES:
-            return self._re_encrypt_postgres_blob(blob, sha256, target_key_id)
-        return self._re_encrypt_object_storage_blob(blob, sha256, target_key_id)
-
-    def _re_encrypt_postgres_blob(
-        self, blob: Blob, sha256: bytes, target_key_id: int
-    ) -> str:
-        """Re-encrypt a single PostgreSQL-backed blob row in place."""
         with transaction.atomic(), sha256_advisory_lock(sha256):
-            blob = Blob.objects.select_for_update().get(id=blob.id)
-            if blob.encryption_key_id == target_key_id:
-                return "skipped"
-            if blob.raw_content is None:
-                self.stdout.write(
-                    self.style.WARNING(
-                        f"  SKIP blob {blob.id}: no content in PostgreSQL"
-                    )
-                )
-                return "skipped"
+            blob.refresh_from_db()
+            rotated = self.service.rotate_blob(blob, target_key_id)
 
-            old_key_id = blob.encryption_key_id
-            decrypted = self.service.decrypt(bytes(blob.raw_content), old_key_id)
-            encrypted, new_key_id = self.service.encrypt(decrypted)
-
-            blob.raw_content = encrypted
-            blob.encryption_key_id = new_key_id
-            blob.save(
-                update_fields=["raw_content", "encryption_key_id", "size_compressed"]
-            )
-
-        self.stdout.write(
-            f"  Re-encrypted blob {blob.id} (POSTGRES): "
-            f"key_id {old_key_id} -> {new_key_id}"
-        )
-        return "success"
-
-    def _re_encrypt_object_storage_blob(
-        self, blob: Blob, sha256: bytes, target_key_id: int
-    ) -> str:
-        """Re-encrypt the storage object backing an OBJECT_STORAGE cohort.
-
-        Stages the new ciphertext at a temp key so a crash between DB
-        commit and storage promote leaves storage and DB consistent.
-        Concurrency is handled by the per-sha256 advisory lock; the
-        bulk-update flips every sibling to the new key in one round trip.
-        """
-        if not self.service.enabled:
+        if rotated:
             self.stdout.write(
-                self.style.WARNING(
-                    f"  SKIP blob {blob.id}: object storage not configured"
-                )
+                f"  Re-encrypted blob {blob.id} "
+                f"({blob.get_storage_location_display()}) -> key_id {target_key_id}"
             )
-            return "skipped"
-
-        storage_key = self.service.compute_storage_key(sha256)
-        temp_key = None
-
-        try:
-            with transaction.atomic(), sha256_advisory_lock(sha256):
-                cohort = Blob.objects.filter(
-                    sha256=sha256,
-                    storage_location=BlobStorageLocationChoices.OBJECT_STORAGE,
-                ).exclude(encryption_key_id=target_key_id)
-                old_blob = cohort.first()
-                if old_blob is None:
-                    return "skipped"
-                old_key_id = old_blob.encryption_key_id
-
-                try:
-                    with self.service.storage.open(storage_key, "rb") as f:
-                        old_encrypted = f.read()
-                except FileNotFoundError:
-                    self.stderr.write(
-                        self.style.ERROR(
-                            f"  ERROR blob {blob.id}: not found in storage at "
-                            f"{storage_key}"
-                        )
-                    )
-                    return "error"
-
-                decrypted = self.service.decrypt(old_encrypted, old_key_id)
-                encrypted, new_key_id = self.service.encrypt(decrypted)
-
-                temp_key = f"{storage_key}.tmp.{new_key_id}"
-                self.service.storage.save(temp_key, ContentFile(encrypted))
-
-                cohort.update(encryption_key_id=new_key_id)
-
-                staged_temp = temp_key
-
-                def _promote_temp():
-                    try:
-                        self.service.storage.save(storage_key, ContentFile(encrypted))
-                    finally:
-                        try:
-                            self.service.storage.delete(staged_temp)
-                        except Exception as cleanup_err:  # pylint: disable=broad-except
-                            self.stderr.write(
-                                self.style.ERROR(
-                                    f"  WARN blob {blob.id}: failed to delete "
-                                    f"temp {staged_temp}: {cleanup_err}"
-                                )
-                            )
-
-                transaction.on_commit(_promote_temp)
-                # Promotion now owns temp_key; don't double-delete on rollback.
-                temp_key = None
-        finally:
-            if temp_key is not None:
-                try:
-                    self.service.storage.delete(temp_key)
-                except Exception as cleanup_err:  # pylint: disable=broad-except
-                    self.stderr.write(
-                        self.style.ERROR(
-                            f"  WARN blob {blob.id}: failed to delete temp "
-                            f"{temp_key}: {cleanup_err}"
-                        )
-                    )
-
-        self.stdout.write(
-            f"  Re-encrypted blob {blob.id} (OBJECT_STORAGE): "
-            f"key_id {old_key_id} -> {new_key_id}"
-        )
-        return "success"
+        return rotated

@@ -48,6 +48,9 @@ STORAGE_MESSAGE_IMPORTS_ACCESS_KEY=st-messages
 STORAGE_MESSAGE_IMPORTS_SECRET_KEY=password
 STORAGE_MESSAGE_IMPORTS_EXPIRE_POLICY=600
 
+# Default compression for new blobs ("none", "zstd", or "zstd:<level>")
+MESSAGES_BLOB_COMPRESS=zstd:3
+
 # Blob encryption keys (JSON dict: {"1": "key1", "2": "key2"}). Empty = no encryption
 # Works for both PostgreSQL and object storage blobs
 MESSAGES_BLOB_ENCRYPTION_KEYS=

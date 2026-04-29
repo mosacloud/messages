@@ -474,9 +474,10 @@ class Base(Configuration):
         environ_prefix=None,
     )
 
-    # Blob compression settings
-    MESSAGES_BLOB_ZSTD_LEVEL = values.PositiveIntegerValue(
-        default=3, environ_name="MESSAGES_BLOB_ZSTD_LEVEL", environ_prefix=None
+    # Default compression for new blobs.
+    # Format: "<algo>" or "<algo>:<level>". Examples: "none", "zstd", "zstd:3".
+    MESSAGES_BLOB_COMPRESS = values.Value(
+        "zstd:3", environ_name="MESSAGES_BLOB_COMPRESS", environ_prefix=None
     )
 
     # Blob encryption keys (dict mapping key_id -> key for stable key rotation)

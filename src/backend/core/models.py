@@ -51,6 +51,7 @@ from core.enums import (
     ThreadAccessRoleChoices,
     ThreadEventTypeChoices,
     UserAbilities,
+    parse_compression_spec,
     thread_event_type_choices,
     user_event_type_choices,
 )
@@ -2081,7 +2082,7 @@ class BlobManager(models.Manager):
         self,
         content: bytes,
         content_type: str,
-        compression: Optional[CompressionTypeChoices] = CompressionTypeChoices.ZSTD,
+        compression: Optional[CompressionTypeChoices] = None,
         **kwargs,
     ) -> "Blob":
         """
@@ -2089,7 +2090,7 @@ class BlobManager(models.Manager):
         Args:
             content: Raw binary content to store
             content_type: MIME type of the content
-            compression: Compression type to use (defaults to ZSTD)
+            compression: Compression type to use (defaults to MESSAGES_BLOB_COMPRESS)
         Returns:
             The created Blob instance
         Raises:
@@ -2097,6 +2098,16 @@ class BlobManager(models.Manager):
         """
         if not content:
             raise ValidationError({"content": "Content cannot be empty"})
+
+        # Resolve algorithm + level from the configured spec ("zstd:3" etc.).
+        try:
+            default_algo, zstd_level = parse_compression_spec(
+                settings.MESSAGES_BLOB_COMPRESS
+            )
+        except ValueError as exc:
+            raise ValidationError({"compression": str(exc)}) from exc
+        if compression is None:
+            compression = default_algo
 
         # Calculate SHA256 hash of the original content
         sha256_hash = hashlib.sha256(content).digest()
@@ -2107,9 +2118,7 @@ class BlobManager(models.Manager):
         # Apply compression if requested
         compressed_content = content
         if compression == CompressionTypeChoices.ZSTD:
-            compressed_content = pyzstd.compress(
-                content, level_or_option=settings.MESSAGES_BLOB_ZSTD_LEVEL
-            )
+            compressed_content = pyzstd.compress(content, level_or_option=zstd_level)
             logger.debug(
                 "Compressed blob from %d bytes to %d bytes (%.1f%% reduction)",
                 original_size,

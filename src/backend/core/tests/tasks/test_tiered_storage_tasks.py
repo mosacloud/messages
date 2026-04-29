@@ -6,6 +6,7 @@ Only minimal mocking for disabled state and error simulation.
 
 # pylint: disable=no-value-for-parameter,unused-argument
 
+import secrets
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -14,7 +15,6 @@ from django.test import override_settings
 from django.utils.timezone import now
 
 import pytest
-from cryptography.fernet import Fernet
 
 from core import factories
 from core.enums import BlobStorageLocationChoices
@@ -26,7 +26,7 @@ from core.services.tiered_storage_tasks import (
 )
 
 # Generate encryption keys at module level for decorators
-_TEST_ENCRYPTION_KEY = Fernet.generate_key().decode()
+_TEST_ENCRYPTION_KEY = secrets.token_hex(32)
 
 
 @pytest.mark.django_db
@@ -136,7 +136,7 @@ class TestOffloadBlobsTaskE2E:
         mailbox = factories.MailboxFactory()
         content = b"immediate offload test content" * 20
         blob = mailbox.create_blob(content=content, content_type="text/plain")
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
             # No age manipulation - blob was just created
@@ -162,7 +162,7 @@ class TestOffloadBlobsTaskE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = mailbox.create_blob(content=b"test", content_type="text/plain")
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
             # Offload the blob
@@ -228,7 +228,7 @@ class TestOffloadSingleBlobTaskE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = mailbox.create_blob(content=b"test", content_type="text/plain")
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
             # Manually offload
@@ -250,7 +250,7 @@ class TestOffloadSingleBlobTaskE2E:
         mailbox = factories.MailboxFactory()
         original_content = b"test content for offload" * 20
         blob = mailbox.create_blob(content=original_content, content_type="text/plain")
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
             result = offload_single_blob_task(str(blob.id))
@@ -318,7 +318,7 @@ class TestOffloadSingleBlobTaskE2E:
         blob2 = mailbox2.create_blob(content=content, content_type="text/plain")
 
         assert blob1.sha256 == blob2.sha256
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob1.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob1)
 
         try:
             # Offload first blob
@@ -358,7 +358,7 @@ class TestOffloadSingleBlobTaskE2E:
         # create_blob() should automatically encrypt when keys are configured
         blob = mailbox.create_blob(content=original_content, content_type="text/plain")
         assert blob.encryption_key_id > 0  # Should be encrypted
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
             result = offload_single_blob_task(str(blob.id))
@@ -381,7 +381,7 @@ class TestOffloadSingleBlobTaskE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = mailbox.create_blob(content=b"test content", content_type="text/plain")
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
             # First offload succeeds

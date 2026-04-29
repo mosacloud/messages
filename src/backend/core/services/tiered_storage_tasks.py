@@ -124,8 +124,8 @@ def offload_single_blob_task(self, blob_id: str) -> Dict[str, Any]:
 
 
 @celery_app.task(bind=True, max_retries=30)
-def cleanup_orphaned_blob_task(self, sha256_hex: str) -> Dict[str, Any]:
-    """Delete a storage object if no blob references its sha256 anymore.
+def cleanup_orphaned_blob_task(self, sha256_hex: str, key_id: int) -> Dict[str, Any]:
+    """Delete a storage object if its ``(sha256, key_id)`` cohort is empty.
 
     Queued by the ``post_delete`` signal on ``Blob``. Acquires the
     per-sha256 advisory lock so it serializes with concurrent offload
@@ -142,7 +142,7 @@ def cleanup_orphaned_blob_task(self, sha256_hex: str) -> Dict[str, Any]:
             with sha256_advisory_lock(sha256, blocking=False) as got:
                 if not got:
                     raise self.retry(countdown=5)
-                deleted = service.delete_if_orphaned(sha256)
+                deleted = service.delete_if_orphaned(sha256, key_id)
                 return {"status": "deleted" if deleted else "still_referenced"}
     except _TRANSIENT_EXCEPTIONS as e:
         raise self.retry(exc=e, countdown=60 * (2**self.request.retries)) from e

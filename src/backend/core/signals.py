@@ -158,7 +158,8 @@ def cleanup_blob_storage(sender, instance, **kwargs):
     from core.services.tiered_storage_tasks import cleanup_orphaned_blob_task
 
     sha_hex = bytes(instance.sha256).hex()
-    transaction.on_commit(lambda: cleanup_orphaned_blob_task.delay(sha_hex))
+    key_id = instance.encryption_key_id
+    transaction.on_commit(lambda: cleanup_orphaned_blob_task.delay(sha_hex, key_id))
 
 
 @receiver(pre_delete, sender=models.Message)

@@ -6,20 +6,20 @@ Only minimal mocking is used for testing disabled/error states.
 
 # pylint: disable=unused-argument,import-outside-toplevel
 
+import secrets
 from io import StringIO
 
 from django.core.management import call_command
 from django.test import override_settings
 
 import pytest
-from cryptography.fernet import Fernet
 
 from core import factories
 from core.enums import BlobStorageLocationChoices
 from core.services.tiered_storage import TieredStorageService
 
 # Generate encryption key at module level for decorators
-_TEST_ENCRYPTION_KEY = Fernet.generate_key().decode()
+_TEST_ENCRYPTION_KEY = secrets.token_hex(32)
 
 
 @pytest.mark.django_db
@@ -52,7 +52,7 @@ class TestVerifyDbToStorageE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = factories.BlobFactory(mailbox=mailbox)
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
             # Upload blob to storage
@@ -117,9 +117,7 @@ class TestVerifyDbToStorageE2E:
             blob.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
             blob.save()
             blobs.append(blob)
-            storage_keys.append(
-                TieredStorageService.compute_storage_key(bytes(blob.sha256))
-            )
+            storage_keys.append(TieredStorageService.compute_storage_key_for_blob(blob))
 
         try:
             stdout = StringIO()
@@ -150,7 +148,7 @@ class TestVerifyStorageToDbE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = factories.BlobFactory(mailbox=mailbox)
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
             service.upload_blob(blob)
@@ -182,7 +180,7 @@ class TestVerifyStorageToDbE2E:
         service = TieredStorageService()
         # Create an orphan object in storage (no DB record)
         orphan_sha = "a" * 64
-        orphan_key = f"blobs/{orphan_sha[:3]}/{orphan_sha}"
+        orphan_key = f"blobs/0/{orphan_sha[:3]}/{orphan_sha}"
         service.storage.save(orphan_key, ContentFile(b"orphan content"))
 
         try:
@@ -209,7 +207,7 @@ class TestVerifyStorageToDbE2E:
         mailbox = factories.MailboxFactory()
         content = b"Content for hash verification test" * 10
         blob = mailbox.create_blob(content=content, content_type="text/plain")
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
             service.upload_blob(blob)
@@ -247,7 +245,7 @@ class TestVerifyHashesE2E:
         mailbox = factories.MailboxFactory()
         content = b"Content that will be corrupted" * 10
         blob = mailbox.create_blob(content=content, content_type="text/plain")
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
             # Upload blob normally
@@ -291,7 +289,7 @@ class TestVerifyHashesE2E:
         # create_blob() should automatically encrypt when keys are configured
         blob = mailbox.create_blob(content=content, content_type="text/plain")
         assert blob.encryption_key_id > 0  # Should be encrypted
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
             service.upload_blob(blob)
@@ -344,7 +342,7 @@ class TestReEncryptE2E:
 
     def test_all_blobs_already_current_key(self):
         """Test that re-encrypt reports success when all blobs use current key."""
-        key = Fernet.generate_key().decode()
+        key = secrets.token_hex(32)
         service = TieredStorageService()
         service.encryption_keys = {"1": key}
         service.active_key_id = 1
@@ -384,8 +382,8 @@ class TestReEncryptE2E:
         import pyzstd
 
         service = TieredStorageService()
-        old_key = Fernet.generate_key().decode()
-        new_key = Fernet.generate_key().decode()
+        old_key = secrets.token_hex(32)
+        new_key = secrets.token_hex(32)
 
         mailbox = factories.MailboxFactory()
         original_content = b"test content for re-encryption" * 20
@@ -424,7 +422,7 @@ class TestReEncryptE2E:
 
         output = stdout.getvalue()
         assert "Re-encrypted" in output
-        assert "key_id 2 -> 1" in output
+        assert "Re-encrypted: 1" in output
 
         # Verify blob was updated
         blob.refresh_from_db()
@@ -440,8 +438,8 @@ class TestReEncryptE2E:
         import pyzstd
 
         service = TieredStorageService()
-        old_key = Fernet.generate_key().decode()
-        new_key = Fernet.generate_key().decode()
+        old_key = secrets.token_hex(32)
+        new_key = secrets.token_hex(32)
 
         mailbox = factories.MailboxFactory()
         original_content = b"test content for object storage re-encryption" * 20
@@ -457,7 +455,8 @@ class TestReEncryptE2E:
         blob.encryption_key_id = key_id
         blob.save()
 
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        old_path = TieredStorageService.compute_storage_key_for_blob(blob)
+        new_path = TieredStorageService.compute_storage_key(bytes(blob.sha256), 1)
 
         try:
             # Upload to storage
@@ -488,25 +487,26 @@ class TestReEncryptE2E:
                 )
 
             output = stdout.getvalue()
-            assert "Re-encrypted" in output
-            assert "key_id 2 -> 1" in output
-            assert "OBJECT_STORAGE" in output
+            assert "Re-encrypted: 1" in output
 
             # Verify blob was updated
             blob.refresh_from_db()
             assert blob.encryption_key_id == 1
 
-            # Verify content is still readable
+            # Verify content moved from old path to new path
+            assert not service.storage.exists(old_path)
+            assert service.storage.exists(new_path)
             downloaded = service.download_blob(blob)
             assert pyzstd.decompress(downloaded) == original_content
         finally:
-            if service.storage.exists(storage_key):
-                service.storage.delete(storage_key)
+            for k in (old_path, new_path):
+                if service.storage.exists(k):
+                    service.storage.delete(k)
 
     def test_dry_run(self):
         """Test that --dry-run shows what would be done without changes."""
         service = TieredStorageService()
-        key = Fernet.generate_key().decode()
+        key = secrets.token_hex(32)
         service.encryption_keys = {"1": key}
         service.active_key_id = 1
 
@@ -545,7 +545,7 @@ class TestReEncryptE2E:
     def test_re_encrypt_with_limit(self):
         """Test that --limit restricts number of blobs re-encrypted."""
         service = TieredStorageService()
-        key = Fernet.generate_key().decode()
+        key = secrets.token_hex(32)
         service.encryption_keys = {"1": key}
         service.active_key_id = 1
 
@@ -584,7 +584,7 @@ class TestReEncryptE2E:
     def test_re_encrypt_skips_blob_without_content(self):
         """Test that re-encrypt skips PostgreSQL blobs with no content."""
         service = TieredStorageService()
-        key = Fernet.generate_key().decode()
+        key = secrets.token_hex(32)
         service.encryption_keys = {"1": key}
         service.active_key_id = 1
 
@@ -612,5 +612,8 @@ class TestReEncryptE2E:
             )
 
         output = stdout.getvalue()
-        assert "SKIP" in output
         assert "Skipped: 1" in output
+        # Blob row left unchanged.
+        blob.refresh_from_db()
+        assert blob.encryption_key_id == 0
+        assert blob.raw_content is None

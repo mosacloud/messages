@@ -6,47 +6,52 @@ Unit tests only cover pure functions that don't require storage.
 
 # pylint: disable=protected-access,import-outside-toplevel,no-value-for-parameter,unused-argument
 
+import secrets
+
+from django.db import transaction
 from django.test import override_settings
 
 import pytest
-from cryptography.fernet import Fernet
 
 from core import enums, factories
 from core.enums import BlobStorageLocationChoices, CompressionTypeChoices
-from core.services.tiered_storage import TieredStorageService
+from core.services.tiered_storage import TieredStorageService, sha256_advisory_lock
 
 # Generate encryption keys at module level for decorators
-_TEST_ENCRYPTION_KEY = Fernet.generate_key().decode()
-_TEST_ENCRYPTION_KEY_1 = Fernet.generate_key().decode()
-_TEST_ENCRYPTION_KEY_2 = Fernet.generate_key().decode()
+_TEST_ENCRYPTION_KEY = secrets.token_hex(32)
+_TEST_ENCRYPTION_KEY_1 = secrets.token_hex(32)
+_TEST_ENCRYPTION_KEY_2 = secrets.token_hex(32)
 
 
 class TestTieredStorageServiceUnit:
     """Pure unit tests for TieredStorageService (no DB, no storage)."""
 
     def test_compute_storage_key(self):
-        """Test that storage keys are computed correctly from SHA256."""
+        """Test that storage keys are computed correctly from SHA256 and key_id."""
         sha256 = bytes.fromhex(
             "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
         )
 
-        key = TieredStorageService.compute_storage_key(sha256)
-
-        assert (
-            key
-            == "blobs/abc/abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        assert TieredStorageService.compute_storage_key(sha256, 0) == (
+            "blobs/0/abc/"
+            "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        )
+        assert TieredStorageService.compute_storage_key(sha256, 2) == (
+            "blobs/2/abc/"
+            "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
         )
 
     def test_compute_storage_key_different_prefixes(self):
-        """Test that different SHA256 hashes produce different directory prefixes."""
+        """Different SHA256 hashes produce different sha-prefix directories."""
         sha1 = bytes.fromhex("abc" + "0" * 61)
         sha2 = bytes.fromhex("def" + "0" * 61)
 
-        key1 = TieredStorageService.compute_storage_key(sha1)
-        key2 = TieredStorageService.compute_storage_key(sha2)
-
-        assert key1.startswith("blobs/abc/")
-        assert key2.startswith("blobs/def/")
+        assert TieredStorageService.compute_storage_key(sha1, 0).startswith(
+            "blobs/0/abc/"
+        )
+        assert TieredStorageService.compute_storage_key(sha2, 0).startswith(
+            "blobs/0/def/"
+        )
 
     def test_encrypt_decrypt_no_keys(self):
         """Test that encryption is a passthrough when no keys are configured."""
@@ -64,9 +69,9 @@ class TestTieredStorageServiceUnit:
         assert decrypted == data
 
     def test_encrypt_decrypt_with_key(self):
-        """Test encryption and decryption with a Fernet key."""
+        """Test encryption and decryption with an AES-GCM key."""
         service = TieredStorageService()
-        key = Fernet.generate_key().decode()
+        key = secrets.token_hex(32)
         service.encryption_keys = {"1": key}
         service.active_key_id = 1
 
@@ -82,7 +87,7 @@ class TestTieredStorageServiceUnit:
     def test_encrypt_passthrough_when_active_key_zero(self):
         """Test that encryption is passthrough when active_key_id=0 even with keys configured."""
         service = TieredStorageService()
-        key = Fernet.generate_key().decode()
+        key = secrets.token_hex(32)
         service.encryption_keys = {"1": key}
         service.active_key_id = 0  # Disabled
 
@@ -103,54 +108,49 @@ class TestTieredStorageServiceUnit:
     def test_encrypt_with_missing_active_key(self):
         """Test that encrypt fails if active_key_id not in encryption_keys."""
         service = TieredStorageService()
-        service.encryption_keys = {"1": Fernet.generate_key().decode()}
+        service.encryption_keys = {"1": secrets.token_hex(32)}
         service.active_key_id = 99  # Not in keys
 
-        with pytest.raises(ValueError, match="Active encryption key_id 99 not found"):
+        with pytest.raises(ValueError, match="key_id 99 not found"):
             service.encrypt(b"test data")
 
     def test_decrypt_with_corrupted_data(self):
-        """Test that decrypt fails gracefully with corrupted Fernet data."""
-        from cryptography.fernet import InvalidToken
+        """decrypt fails with InvalidTag on corrupted ciphertext."""
+        from cryptography.exceptions import InvalidTag
 
         service = TieredStorageService()
-        key = Fernet.generate_key().decode()
-        service.encryption_keys = {"1": key}
+        service.encryption_keys = {"1": secrets.token_hex(32)}
         service.active_key_id = 1
 
-        # Corrupted data that looks like Fernet but isn't valid
-        corrupted = b"gAAAAABinvalidtokendata"
-
-        with pytest.raises(InvalidToken):
-            service.decrypt(corrupted, 1)
+        with pytest.raises(InvalidTag):
+            service.decrypt(b"\x00" * 64, 1)
 
     def test_decrypt_with_wrong_key(self):
-        """Test that decrypt fails when using wrong key."""
-        from cryptography.fernet import InvalidToken
+        """decrypt fails with InvalidTag when key doesn't match."""
+        from cryptography.exceptions import InvalidTag
 
         service = TieredStorageService()
-        key1 = Fernet.generate_key().decode()
-        key2 = Fernet.generate_key().decode()
-        service.encryption_keys = {"1": key1, "2": key2}
+        service.encryption_keys = {
+            "1": secrets.token_hex(32),
+            "2": secrets.token_hex(32),
+        }
 
-        # Encrypt with key 1
         service.active_key_id = 1
         encrypted, _ = service.encrypt(b"test data")
 
-        # Try to decrypt with key 2
-        with pytest.raises(InvalidToken):
+        with pytest.raises(InvalidTag):
             service.decrypt(encrypted, 2)
 
     def test_encrypt_empty_data(self):
         """Test that encryption works with empty data."""
         service = TieredStorageService()
-        key = Fernet.generate_key().decode()
+        key = secrets.token_hex(32)
         service.encryption_keys = {"1": key}
         service.active_key_id = 1
 
         encrypted, key_id = service.encrypt(b"")
         assert key_id == 1
-        assert encrypted != b""  # Fernet adds overhead
+        assert encrypted != b""  # AES-GCM adds nonce + tag
 
         decrypted = service.decrypt(encrypted, key_id)
         assert decrypted == b""
@@ -158,8 +158,8 @@ class TestTieredStorageServiceUnit:
     def test_encrypt_with_key_rotation(self):
         """Test that we can encrypt with new key and decrypt with old key."""
         service = TieredStorageService()
-        old_key = Fernet.generate_key().decode()
-        new_key = Fernet.generate_key().decode()
+        old_key = secrets.token_hex(32)
+        new_key = secrets.token_hex(32)
 
         # Both keys available
         service.encryption_keys = {"1": old_key, "2": new_key}
@@ -196,6 +196,74 @@ class TestTieredStorageDB:
         assert blob.storage_location == BlobStorageLocationChoices.POSTGRES
         assert blob.encryption_key_id == 0
         assert blob.raw_content is not None
+
+    def test_zstd_compresses_repetitive_content(self):
+        """1024 'a's should compress to a tiny PG payload."""
+        import pyzstd
+
+        content = b"a" * 1024
+        mailbox = factories.MailboxFactory()
+        blob = mailbox.create_blob(content=content, content_type="text/plain")
+
+        assert blob.compression == CompressionTypeChoices.ZSTD
+        assert blob.size == 1024
+        assert blob.encryption_key_id == 0
+        # raw_content is the compressed bytes verbatim (no encryption).
+        assert blob.size_compressed == len(bytes(blob.raw_content))
+        assert blob.size_compressed == len(pyzstd.compress(content, level_or_option=3))
+        # Sanity floor: zstd on a single-byte run is well under 50 bytes.
+        assert blob.size_compressed < 50, blob.size_compressed
+
+    def test_no_compression_preserves_size(self):
+        """compression=NONE stores plaintext bytes as-is."""
+        content = b"a" * 1024
+        mailbox = factories.MailboxFactory()
+        blob = mailbox.create_blob(
+            content=content,
+            content_type="text/plain",
+            compression=CompressionTypeChoices.NONE,
+        )
+
+        assert blob.size == 1024
+        assert blob.size_compressed == 1024
+        assert bytes(blob.raw_content) == content
+
+    @override_settings(
+        MESSAGES_BLOB_ENCRYPTION_KEYS={"1": _TEST_ENCRYPTION_KEY},
+        MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID=1,
+    )
+    def test_encryption_adds_exactly_aesgcm_overhead(self):
+        """raw_content = compressed bytes + 28 (AES-GCM nonce 12 + tag 16)."""
+        import pyzstd
+
+        content = b"a" * 1024
+        pure_compressed_len = len(pyzstd.compress(content, level_or_option=3))
+
+        mailbox = factories.MailboxFactory()
+        blob = mailbox.create_blob(content=content, content_type="text/plain")
+
+        assert blob.encryption_key_id == 1
+        assert blob.size_compressed == pure_compressed_len + 28
+        # And content still round-trips cleanly.
+        assert blob.get_content() == content
+
+    @override_settings(
+        MESSAGES_BLOB_ENCRYPTION_KEYS={"1": _TEST_ENCRYPTION_KEY},
+        MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID=1,
+    )
+    def test_encryption_with_no_compression_size(self):
+        """With compression=NONE: raw_content = plaintext_size + 28."""
+        content = b"a" * 1024
+        mailbox = factories.MailboxFactory()
+        blob = mailbox.create_blob(
+            content=content,
+            content_type="text/plain",
+            compression=CompressionTypeChoices.NONE,
+        )
+
+        assert blob.encryption_key_id == 1
+        assert blob.size_compressed == 1024 + 28
+        assert blob.get_content() == content
 
     def test_blob_get_content_from_postgres(self):
         """Test getting content from a blob stored in PostgreSQL."""
@@ -234,21 +302,19 @@ class TestTieredStorageDB:
         assert blob1.sha256 == blob2.sha256
         assert blob1.id != blob2.id
 
-    def test_check_already_uploaded(self):
-        """Test that check_already_uploaded correctly identifies existing blobs."""
+    def test_get_existing_key_id(self):
+        """get_existing_key_id returns the key_id of an existing OBJECT_STORAGE sibling."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-
         blob = mailbox.create_blob(content=b"test content", content_type="text/plain")
 
-        # Initially in POSTGRES
-        assert not service.check_already_uploaded(bytes(blob.sha256))
+        assert service.get_existing_key_id(bytes(blob.sha256)) is None
 
-        # Mark as uploaded
         blob.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
+        blob.encryption_key_id = 7
         blob.save()
 
-        assert service.check_already_uploaded(bytes(blob.sha256))
+        assert service.get_existing_key_id(bytes(blob.sha256)) == 7
 
 
 @pytest.mark.django_db
@@ -264,7 +330,7 @@ class TestTieredStorageE2E:
         content = b"Hello, this is e2e test content for tiered storage!" * 10
 
         blob = mailbox.create_blob(content=content, content_type="text/plain")
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
             service.upload_blob(blob)
@@ -291,7 +357,7 @@ class TestTieredStorageE2E:
         # create_blob() should automatically encrypt when keys are configured
         blob = mailbox.create_blob(content=content, content_type="text/plain")
         assert blob.encryption_key_id > 0  # Should be encrypted
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
             service.upload_blob(blob)
@@ -316,7 +382,7 @@ class TestTieredStorageE2E:
         blob2 = mailbox2.create_blob(content=content, content_type="text/plain")
 
         assert blob1.sha256 == blob2.sha256
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob1.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob1)
 
         try:
             # Upload first blob
@@ -417,52 +483,85 @@ class TestTieredStorageE2E:
 
     @pytest.mark.django_db(transaction=True)
     def test_delete_if_orphaned(self):
-        """Test that delete_if_orphaned correctly handles references."""
+        """delete_if_orphaned only deletes when no blob references (sha, key_id)."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = mailbox.create_blob(content=b"test content", content_type="text/plain")
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
-            # Upload and mark as in object storage
             service.upload_blob(blob)
             blob.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
             blob.save()
 
-            # Should not delete while referenced
-            result = service.delete_if_orphaned(bytes(blob.sha256))
-            assert result is False
+            # Still referenced by the blob row → no-op.
+            assert (
+                service.delete_if_orphaned(bytes(blob.sha256), blob.encryption_key_id)
+                is False
+            )
             assert service.storage.exists(storage_key)
 
-            # Delete the blob reference
+            # Deleting the blob fires the cleanup signal which removes the object.
             blob.delete()
-
-            # Now should delete the orphan
-            result = service.delete_if_orphaned(bytes.fromhex(blob.sha256.hex()))
-            # Note: blob.delete() triggers post_delete signal which calls delete_if_orphaned
-            # Just verify the storage is empty
             assert not service.storage.exists(storage_key)
         finally:
             if service.storage.exists(storage_key):
                 service.storage.delete(storage_key)
 
-    def test_exists(self):
-        """Test the exists() method."""
+    def test_upload_creates_storage_object(self):
+        """upload_blob writes to the (sha, key_id) path."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blob = mailbox.create_blob(content=b"test", content_type="text/plain")
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key(
+            bytes(blob.sha256), blob.encryption_key_id
+        )
 
-        # Should not exist yet
-        assert not service.exists(bytes(blob.sha256))
-
+        assert not service.storage.exists(storage_key)
         try:
             service.upload_blob(blob)
-            assert service.exists(bytes(blob.sha256))
+            assert service.storage.exists(storage_key)
         finally:
             service.storage.delete(storage_key)
 
-        assert not service.exists(bytes(blob.sha256))
+    def test_upload_falls_through_when_storage_object_missing(self):
+        """If a sibling DB row says OBJECT_STORAGE but the S3 object is gone
+        (manual deletion, lifecycle expiry, etc.), upload_blob must NOT trust
+        the dedup fast-path — it has to upload from raw_content so the new
+        row doesn't end up pointing at nothing."""
+        service = TieredStorageService()
+        mailbox_a = factories.MailboxFactory()
+        mailbox_b = factories.MailboxFactory()
+        content = b"shared content for missing-storage fallback test" * 5
+
+        # Blob A: upload then mark OBJECT_STORAGE.
+        blob_a = mailbox_a.create_blob(content=content, content_type="text/plain")
+        service.upload_blob(blob_a)
+        blob_a.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
+        blob_a.raw_content = None
+        blob_a.save()
+
+        path_a = TieredStorageService.compute_storage_key_for_blob(blob_a)
+        assert service.storage.exists(path_a)
+
+        # Simulate the storage object disappearing out of band.
+        service.storage.delete(path_a)
+        assert not service.storage.exists(path_a)
+
+        # Blob B has the same content; dedup would normally short-circuit
+        # against blob A, but the storage-existence guard must force a real
+        # upload so B's data lands somewhere.
+        blob_b = mailbox_b.create_blob(content=content, content_type="text/plain")
+        path_b = TieredStorageService.compute_storage_key_for_blob(blob_b)
+
+        try:
+            returned_key_id = service.upload_blob(blob_b)
+            assert returned_key_id == blob_b.encryption_key_id
+            assert service.storage.exists(path_b)
+        finally:
+            for k in (path_a, path_b):
+                if service.storage.exists(k):
+                    service.storage.delete(k)
 
     def test_download_missing_blob_raises(self):
         """Test that download_blob raises FileNotFoundError for missing blob."""
@@ -523,7 +622,7 @@ class TestTieredStorageE2E:
 
             # Same SHA256 (computed on original content)
             assert blob1.sha256 == blob2.sha256
-            storage_key = TieredStorageService.compute_storage_key(bytes(blob1.sha256))
+            storage_key = TieredStorageService.compute_storage_key_for_blob(blob1)
 
             try:
                 service = TieredStorageService()
@@ -569,7 +668,7 @@ class TestTieredStorageCascadeDelete:
         mailbox = factories.MailboxFactory()
         blob = mailbox.create_blob(content=b"cascade test", content_type="text/plain")
 
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
             service.upload_blob(blob)
@@ -598,7 +697,7 @@ class TestTieredStorageCascadeDelete:
             content=b"queryset delete test", content_type="text/plain"
         )
 
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
             service.upload_blob(blob)
@@ -627,8 +726,8 @@ class TestTieredStorageKeyRotation:
         import pyzstd
 
         service = TieredStorageService()
-        old_key = Fernet.generate_key().decode()
-        new_key = Fernet.generate_key().decode()
+        old_key = secrets.token_hex(32)
+        new_key = secrets.token_hex(32)
 
         mailbox = factories.MailboxFactory()
         original_content = b"Content for key rotation test" * 20
@@ -666,17 +765,16 @@ class TestTieredStorageKeyRotation:
         assert pyzstd.decompress(decrypted) == original_content
 
     def test_key_rotation_object_storage_blob(self):
-        """Test re-encrypting an object storage blob with a new key."""
+        """rotate_blob moves the storage object from old path to new path."""
         import pyzstd
 
         service = TieredStorageService()
-        old_key = Fernet.generate_key().decode()
-        new_key = Fernet.generate_key().decode()
+        old_key = secrets.token_hex(32)
+        new_key = secrets.token_hex(32)
 
         mailbox = factories.MailboxFactory()
         original_content = b"Content for object storage key rotation" * 20
 
-        # Create blob and encrypt with old key
         blob = mailbox.create_blob(content=original_content, content_type="text/plain")
         compressed = bytes(blob.raw_content)
 
@@ -687,37 +785,30 @@ class TestTieredStorageKeyRotation:
         blob.encryption_key_id = old_key_id
         blob.save()
 
-        storage_key = TieredStorageService.compute_storage_key(bytes(blob.sha256))
+        old_path = TieredStorageService.compute_storage_key_for_blob(blob)
+        new_path = TieredStorageService.compute_storage_key(bytes(blob.sha256), 2)
 
         try:
-            # Upload to storage
             service.upload_blob(blob)
             blob.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
             blob.raw_content = None
             blob.save()
 
-            # Add new key
             service.encryption_keys = {"1": old_key, "2": new_key}
             service.active_key_id = 2
 
-            # Download, re-encrypt, upload
-            with service.storage.open(storage_key, "rb") as f:
-                encrypted_content = f.read()
+            with transaction.atomic(), sha256_advisory_lock(bytes(blob.sha256)):
+                assert service.rotate_blob(blob, 2) is True
 
-            decrypted = service.decrypt(encrypted_content, blob.encryption_key_id)
-            encrypted_new, new_key_id = service.encrypt(decrypted)
-
-            from django.core.files.base import ContentFile
-
-            service.storage.save(storage_key, ContentFile(encrypted_new))
-            blob.encryption_key_id = new_key_id
-            blob.save()
-
+            blob.refresh_from_db()
             assert blob.encryption_key_id == 2
+            # Old path is gone, new path is the canonical one.
+            assert not service.storage.exists(old_path)
+            assert service.storage.exists(new_path)
 
-            # Verify content accessible
             downloaded = service.download_blob(blob)
             assert pyzstd.decompress(downloaded) == original_content
         finally:
-            if service.storage.exists(storage_key):
-                service.storage.delete(storage_key)
+            for k in (old_path, new_path):
+                if service.storage.exists(k):
+                    service.storage.delete(k)
