@@ -27,6 +27,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='blob',
-            index=models.Index(fields=['storage_location', 'created_at'], name='blob_offload_scan_idx'),
+            index=models.Index(condition=models.Q(('storage_location', 1)), fields=['created_at'], name='blob_offload_scan_idx'),
         ),
     ]

@@ -2243,11 +2243,14 @@ class Blob(BaseModel):
             ),
         ]
         indexes = [
-            # Hot-path index for the periodic offload scan
+            # Hot-path partial index for the periodic offload scan
             # (storage_location=POSTGRES, created_at < cutoff, size >= min).
             models.Index(
-                fields=["storage_location", "created_at"],
+                fields=["created_at"],
                 name="blob_offload_scan_idx",
+                condition=models.Q(
+                    storage_location=BlobStorageLocationChoices.POSTGRES
+                ),
             ),
         ]
 
