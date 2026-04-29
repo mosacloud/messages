@@ -223,7 +223,7 @@ class TieredStorageService:
 
         key = self.compute_storage_key_for_blob(blob)
         self.storage.save(key, ContentFile(bytes(blob.raw_content)))
-        logger.info("Uploaded blob %s to %s", blob.id, key)
+        logger.info("Uploaded blob %s to object storage", blob.id)
         return blob.encryption_key_id, blob.compression
 
     def download_blob(self, blob: "Blob") -> bytes:
