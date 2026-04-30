@@ -11,6 +11,7 @@ from typing import Iterator
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.db.models import Min
 
 import pyzstd
 
@@ -302,17 +303,33 @@ class Command(BaseCommand):
         if self.dry_run:
             self.stdout.write(self.style.WARNING("DRY RUN - no changes will be made"))
 
-        # Find blobs that need re-encryption (not using current key)
-        # This includes key_id=0 (unencrypted) and key_id>1 (old keys)
-        queryset = Blob.objects.exclude(encryption_key_id=current_key_id)
-
-        if self.limit > 0:
-            queryset = queryset[: self.limit]
-
-        total_count = (
-            queryset.count() if self.limit == 0 else min(self.limit, queryset.count())
+        # Build a worklist of unique re-encryption work-units.
+        # POSTGRES rows each carry their own ciphertext, so each row is a
+        # unit. OBJECT_STORAGE rows sharing the same (sha256,
+        # encryption_key_id) share a single stored object and rotate as a
+        # cohort — represented here by one chosen blob.id per cohort.
+        # Applying --limit to this worklist (rather than the raw queryset)
+        # makes "rotate N units" mean N actual rotations regardless of
+        # cohort sizes.
+        needs_rotate = Blob.objects.exclude(encryption_key_id=current_key_id)
+        postgres_ids = list(
+            needs_rotate.filter(
+                storage_location=BlobStorageLocationChoices.POSTGRES
+            ).values_list("id", flat=True)
         )
-        self.stdout.write(f"Blobs to re-encrypt: {total_count}")
+        object_storage_ids = list(
+            needs_rotate.filter(
+                storage_location=BlobStorageLocationChoices.OBJECT_STORAGE
+            )
+            .values("sha256", "encryption_key_id")
+            .annotate(repr_id=Min("id"))
+            .values_list("repr_id", flat=True)
+        )
+        worklist = postgres_ids + object_storage_ids
+        if self.limit > 0:
+            worklist = worklist[: self.limit]
+        total_count = len(worklist)
+        self.stdout.write(f"Work units to re-encrypt: {total_count}")
 
         if total_count == 0:
             self.stdout.write(
@@ -324,7 +341,13 @@ class Command(BaseCommand):
         error_count = 0
         skipped_count = 0
 
-        for blob in queryset.iterator(chunk_size=100):
+        for blob_id in worklist:
+            try:
+                blob = Blob.objects.get(id=blob_id)
+            except Blob.DoesNotExist:
+                # Concurrently deleted between worklist build and rotation.
+                skipped_count += 1
+                continue
             try:
                 rotated = self._rotate_one(blob, current_key_id)
                 if rotated:

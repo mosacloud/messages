@@ -579,7 +579,7 @@ class TestReEncryptE2E:
             )
 
         output = stdout.getvalue()
-        assert "Blobs to re-encrypt: 2" in output
+        assert "Work units to re-encrypt: 2" in output
 
     def test_re_encrypt_skips_blob_without_content(self):
         """Test that re-encrypt skips PostgreSQL blobs with no content."""
