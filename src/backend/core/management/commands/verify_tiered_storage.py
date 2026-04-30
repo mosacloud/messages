@@ -11,7 +11,6 @@ from typing import Iterator
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from django.db.models import Min
 
 import pyzstd
 
@@ -321,9 +320,9 @@ class Command(BaseCommand):
             needs_rotate.filter(
                 storage_location=BlobStorageLocationChoices.OBJECT_STORAGE
             )
-            .values("sha256", "encryption_key_id")
-            .annotate(repr_id=Min("id"))
-            .values_list("repr_id", flat=True)
+            .order_by("sha256", "encryption_key_id", "id")
+            .distinct("sha256", "encryption_key_id")
+            .values_list("id", flat=True)
         )
         worklist = postgres_ids + object_storage_ids
         if self.limit > 0:
