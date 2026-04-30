@@ -1,8 +1,4 @@
-.thread-labels-widget {
-    position: relative;
-}
-
-.thread-labels-widget[aria-busy="true"] {
+.labels-widget[aria-busy="true"] {
     cursor: wait;
 
     & > .c__button {
@@ -10,7 +6,7 @@
     }
 }
 
-.thread-labels-widget__loading-labels-tooltip-content {
+.labels-widget__loading-labels-tooltip-content {
     display: inline-flex;
     align-items: center;
     gap: var(--c--globals--spacings--xs);
@@ -20,21 +16,18 @@
     }
 }
 
-.thread-labels-widget__popup {
-    position: absolute;
-    right: -25%;
-    top: 100%;
+.labels-widget__popup {
+    display: flex;
+    flex-direction: column;
     background-color: var(--c--contextuals--background--surface--secondary);
     border: 1px solid var(--c--contextuals--border--surface--primary);
     border-radius: 4px;
     box-shadow: 0 2px 5px 0 var(--c--contextuals--background--semantic--contextual--primary-hover);
     z-index: 10000;
     width: min(400px, 60vw);
-    max-height: max(600px, 80vh);
-    margin-top: var(--c--globals--spacings--2xs);
 }
 
-.thread-labels-widget__popup__header {
+.labels-widget__popup__header {
     display: flex;
     flex-direction: column;
     gap: var(--c--globals--spacings--xs);
@@ -54,18 +47,19 @@
     }
 }
 
-.thread-labels-widget__popup__content {
+.labels-widget__popup__content {
     display: flex;
     flex-direction: column;
     gap: var(--c--globals--spacings--xs);
     list-style: none;
     padding: var(--c--globals--spacings--sm) var(--c--globals--spacings--base);
     margin: 0;
-    max-height: 300px;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
 }
 
-.thread-labels-widget__popup__overlay {
+.labels-widget__popup__overlay {
     position: fixed;
     top: 0;
     left: 0;
@@ -74,14 +68,14 @@
     z-index: 1000;
 }
 
-.thread-labels-widget__popup__content__empty .c__button {
+.labels-widget__popup__content__empty .c__button {
     text-wrap: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;
     white-space: nowrap;
     max-width: 100%;
 
-    & > .thread-labels-widget__popup__content__empty__button-label {
+    & > .labels-widget__popup__content__empty__button-label {
         text-overflow: ellipsis;
         overflow: hidden;
         white-space: nowrap;

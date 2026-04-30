@@ -3,13 +3,14 @@
 from core.services.search.index import (
     create_index_if_not_exists,
     delete_index,
+    ensure_index_exists,
     get_opensearch_client,
     index_message,
     index_thread,
     reindex_all,
     reindex_mailbox,
     reindex_thread,
-    update_thread_unread_mailboxes,
+    update_thread_mailbox_flags,
 )
 from core.services.search.mapping import MESSAGE_INDEX, MESSAGE_MAPPING
 from core.services.search.parse import parse_search_query
@@ -22,6 +23,7 @@ __all__ = [
     # Client & Index management
     "get_opensearch_client",
     "create_index_if_not_exists",
+    "ensure_index_exists",
     "delete_index",
     # Indexing
     "index_message",
@@ -29,7 +31,7 @@ __all__ = [
     "reindex_all",
     "reindex_mailbox",
     "reindex_thread",
-    "update_thread_unread_mailboxes",
+    "update_thread_mailbox_flags",
     # Parsing
     "parse_search_query",
     # Searching

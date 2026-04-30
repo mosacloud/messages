@@ -10,11 +10,22 @@ const useSpam = () => {
     const { invalidateThreadMessages, invalidateThreadsStats } = useMailboxContext();
     const { mark, unmark, status } = useFlag('spam', {
         toastMessages: {
-            thread: (count: number) => t('{{count}} threads have been reported as spam.', { count: count, defaultValue_one: 'The thread has been reported as spam.' }),
-            message: (count: number) => t('{{count}} messages have been reported as spam.', { count: count, defaultValue_one: 'The message has been reported as spam.' }),
+            thread: (updatedCount, submittedCount) => {
+                if (updatedCount === 0) return t('No thread could be reported as spam.');
+                if (updatedCount < submittedCount) return t('{{count}} out of {{total}} threads have been reported as spam.', { count: updatedCount, total: submittedCount, defaultValue_one: '{{count}} out of {{total}} thread has been reported as spam.' });
+                return t('{{count}} threads have been reported as spam.', { count: updatedCount, defaultValue_one: 'The thread has been reported as spam.' });
+            },
+            message: (updatedCount, submittedCount) => {
+                if (updatedCount === 0) return t('No message could be reported as spam.');
+                if (updatedCount < submittedCount) return t('{{count}} out of {{total}} messages have been reported as spam.', { count: updatedCount, total: submittedCount, defaultValue_one: '{{count}} out of {{total}} message has been reported as spam.' });
+                return t('{{count}} messages have been reported as spam.', { count: updatedCount, defaultValue_one: 'The message has been reported as spam.' });
+            },
         },
-        onSuccess: () => {
-            invalidateThreadMessages();
+        onSuccess: (data) => {
+            invalidateThreadMessages({
+                type: 'update',
+                metadata: { threadIds: data.thread_ids, ids: data.message_ids },
+            });
             invalidateThreadsStats();
         },
     });

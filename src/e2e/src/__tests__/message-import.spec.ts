@@ -18,11 +18,16 @@ test.describe("Import Message", () => {
   });
 
   test("should import an eml archive file", async ({ page, browserName }) => {
-    const email = `user.e2e.${browserName}@example.local`;
+    const email = `import.e2e@example.local`;
+    await page.waitForLoadState("networkidle");
+
+    // Go the import mailbox
+    await page.getByRole("button", { name: getMailboxEmail('user', browserName) }).click();
+    await page.getByRole("menuitem", { name: getMailboxEmail('import') }).click();
     await page.waitForLoadState("networkidle");
 
     // As the database is fresh, there should be no threads and the Import messages button should be visible
-    const noThreads = page.getByText("No threads.");
+    const noThreads = page.getByText("No threads");
     await expect(page.getByRole("link", { name: "Import messages" })).toBeVisible();
 
     const header = page.locator(".c__header");
@@ -104,26 +109,17 @@ test.describe("Import Message", () => {
     const email = `user.e2e.${browserName}@example.local`;
     await page.waitForLoadState("networkidle");
 
-    // Go to the shared mailbox and check if the user has sender rights
+    // Go to the shared mailbox where the user only has sender rights
     await page.getByRole("button", { name: email }).click();
     await page
       .getByRole("menuitem", { name: getMailboxEmail("shared") })
       .click();
     await page.waitForLoadState("networkidle");
 
-    // As the database is fresh, there should be no threads but the Import messages button should not be visible
-    // as the user does not have admin rights to the shared mailbox
-    await expect(page.getByText("No threads.")).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: "Import messages" })
-    ).not.toBeVisible();
-
-    // And also in the header settings menu, there should be no entry to import messages
+    // The header settings button should be disabled because the user has no
+    // admin abilities on the shared mailbox, so no menu option is available.
     const header = page.locator(".c__header");
     const settingsButton = header.getByRole("button", { name: "More options" });
-    await settingsButton.click();
-    await expect(
-      page.getByRole("menuitem", { name: "Import messages" })
-    ).not.toBeVisible();
+    await expect(settingsButton).toBeDisabled();
   });
 });

@@ -11,11 +11,22 @@ const useTrash = () => {
 
     const { mark, unmark, status } = useFlag('trashed', {
         toastMessages: {
-            thread: (count: number) => t('{{count}} threads have been deleted.', { count: count, defaultValue_one: 'The thread has been deleted.' }),
-            message: (count: number) => t('{{count}} messages have been deleted.', { count: count, defaultValue_one: 'The message has been deleted.' }),
+            thread: (updatedCount, submittedCount) => {
+                if (updatedCount === 0) return t('No thread could be deleted.');
+                if (updatedCount < submittedCount) return t('{{count}} out of {{total}} threads have been deleted.', { count: updatedCount, total: submittedCount, defaultValue_one: '{{count}} out of {{total}} thread has been deleted.' });
+                return t('{{count}} threads have been deleted.', { count: updatedCount, defaultValue_one: 'The thread has been deleted.' });
+            },
+            message: (updatedCount, submittedCount) => {
+                if (updatedCount === 0) return t('No message could be deleted.');
+                if (updatedCount < submittedCount) return t('{{count}} out of {{total}} messages have been deleted.', { count: updatedCount, total: submittedCount, defaultValue_one: '{{count}} out of {{total}} message has been deleted.' });
+                return t('{{count}} messages have been deleted.', { count: updatedCount, defaultValue_one: 'The message has been deleted.' });
+            },
         },
-        onSuccess: () => {
-            invalidateThreadMessages();
+        onSuccess: (data) => {
+            invalidateThreadMessages({
+                type: 'update',
+                metadata: { threadIds: data.thread_ids, ids: data.message_ids },
+            });
             invalidateThreadsStats();
         }
     });

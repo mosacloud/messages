@@ -856,6 +856,38 @@ class TestPrepareOutboundMessageSenderUser:
 
 
 @pytest.mark.django_db
+class TestPrepareOutboundMessageReadAt:
+    """Test that prepare_outbound_message marks the thread as read for the sender."""
+
+    def test_prepare_outbound_message_updates_sender_read_at(self, mailbox_sender):
+        """Sending a message should update the sender's ThreadAccess.read_at
+        so the thread does not appear unread in their own mailbox."""
+        thread = factories.ThreadFactory()
+        access = factories.ThreadAccessFactory(
+            mailbox=mailbox_sender,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        sender_contact = factories.ContactFactory(mailbox=mailbox_sender)
+        message = factories.MessageFactory(
+            thread=thread,
+            sender=sender_contact,
+            is_draft=True,
+            subject="Test read_at",
+        )
+        assert access.read_at is None
+
+        outbound.prepare_outbound_message(
+            mailbox_sender, message, "Hello", "<p>Hello</p>"
+        )
+
+        access.refresh_from_db()
+        message.refresh_from_db()
+        assert access.read_at is not None
+        assert access.read_at >= message.created_at
+
+
+@pytest.mark.django_db
 class TestSendMessageDKIMVerification:
     """Test DKIM verification in send_message."""
 
@@ -1076,6 +1108,119 @@ class TestSendMessageDKIMVerification:
 
         # Verify internal delivery was attempted
         assert mock_deliver_inbound.called
+
+
+def _create_spf_test_message(mailbox_sender):
+    """Create the common objects needed by SPF check tests.
+
+    Returns (message, sender_contact, external_contact, recipient, thread).
+    """
+    thread = factories.ThreadFactory()
+    factories.ThreadAccessFactory(
+        mailbox=mailbox_sender,
+        thread=thread,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+    sender_contact = factories.ContactFactory(mailbox=mailbox_sender)
+    message = factories.MessageFactory(
+        thread=thread,
+        sender=sender_contact,
+        is_draft=False,
+        is_sender=True,
+        subject="Test SPF",
+    )
+
+    raw_mime = (
+        f"From: {sender_contact.email}\r\n"
+        "To: external@other.com\r\n"
+        "Subject: Test\r\n\r\nBody\r\n"
+    ).encode()
+    blob = mailbox_sender.create_blob(content=raw_mime, content_type="message/rfc822")
+    message.blob = blob
+    message.save()
+
+    external_contact = factories.ContactFactory(
+        mailbox=mailbox_sender, email="external@other.com"
+    )
+    recipient = factories.MessageRecipientFactory(
+        message=message,
+        contact=external_contact,
+        type=models.MessageRecipientTypeChoices.TO,
+    )
+
+    return message, sender_contact, external_contact, recipient, thread
+
+
+@pytest.mark.django_db
+class TestSendMessageSPFCheck:
+    """Test SPF check in send_message."""
+
+    def setup_method(self):
+        """Clear SPF cache so each test hits the mocked DNS resolver."""
+        cache.clear()
+
+    @override_settings(MESSAGES_SPF_CHECK_OUTGOING=True)
+    @patch("core.services.dns.check.dns.resolver.resolve")
+    @patch("core.mda.outbound.send_outbound_message")
+    def test_spf_check_failure_marks_for_retry(
+        self, mock_send_outbound, mock_dns_resolve, mailbox_sender
+    ):
+        """When SPF check fails, external recipients are marked for retry."""
+        message, _, _, recipient, _ = _create_spf_test_message(mailbox_sender)
+
+        # DNS returns no SPF record → check_spf_status returns False
+        mock_dns_resolve.side_effect = dns.resolver.NXDOMAIN()
+
+        outbound.send_message(message)
+
+        assert not mock_send_outbound.called
+        recipient.refresh_from_db()
+        assert recipient.delivery_status == enums.MessageDeliveryStatusChoices.RETRY
+        assert "SPF check failed" in recipient.delivery_message
+
+    @override_settings(
+        MESSAGES_SPF_CHECK_OUTGOING=True,
+        MESSAGES_DNS_RECORDS='[{"target":"","type":"txt",'
+        '"value":"v=spf1 ip4:1.2.3.4 -all"}]',
+    )
+    @patch("core.services.dns.check.dns.resolver.resolve")
+    @patch("core.mda.outbound.send_outbound_message")
+    def test_spf_check_success_sends_message(
+        self, mock_send_outbound, mock_dns_resolve, mailbox_sender
+    ):
+        """When SPF check passes, message is sent normally."""
+        message, _, _, _, _ = _create_spf_test_message(mailbox_sender)
+
+        def resolve_side_effect(name, record_type):
+            if name == mailbox_sender.domain.name:
+                rr = MagicMock()
+                rr.strings = (b"v=spf1 ip4:1.2.3.4 -all",)
+                answer = MagicMock()
+                answer.rrset = [rr]
+                return answer
+            raise dns.resolver.NXDOMAIN()
+
+        mock_dns_resolve.side_effect = resolve_side_effect
+        mock_send_outbound.return_value = {"external@other.com": {"delivered": True}}
+
+        outbound.send_message(message)
+
+        assert mock_send_outbound.called
+
+    @patch("core.mda.outbound.send_outbound_message")
+    def test_spf_check_skipped_when_disabled(self, mock_send_outbound, mailbox_sender):
+        """When MESSAGES_SPF_CHECK_OUTGOING is False (default), no SPF check."""
+        message, _, _, _, _ = _create_spf_test_message(mailbox_sender)
+
+        mock_send_outbound.return_value = {"external@other.com": {"delivered": True}}
+
+        # No DNS mock needed — SPF check should not run
+        with patch("core.services.dns.check.dns.resolver.resolve") as mock_resolve:
+            outbound.send_message(message)
+            # check_spf_status should not have been called
+            assert not mock_resolve.called
+
+        assert mock_send_outbound.called
 
 
 # 1x1 red pixel PNG, small enough to be used in tests

@@ -71,8 +71,15 @@ The application uses a new environment file structure with `.defaults` and `.loc
 | Variable | Default | Description | Required |
 |----------|---------|-------------|----------|
 | `OPENSEARCH_URL` | `["http://opensearch:9200"]` | OpenSearch hosts list | Optional |
-| `OPENSEARCH_TIMEOUT` | `20` | OpenSearch query timeout | Optional |
+| `OPENSEARCH_TIMEOUT` | `20` | OpenSearch query timeout (seconds) for unitary requests | Optional |
+| `OPENSEARCH_BULK_TIMEOUT` | `60` | OpenSearch request timeout (seconds) applied to bulk indexation calls. Raise it if full reindex (`make search-index`) hits timeouts on large payloads. | Optional |
+| `OPENSEARCH_BULK_MAX_BYTES` | `26_214_400` | Flush threshold (bytes) for bulk indexation payloads; default 25 MiB. Once accumulated actions exceed this, `opensearch-py` emits a sub-chunk HTTP request. Note: this is a batching threshold, not a per-document cap — a single oversized document is still sent as its own chunk. Keep well under the OpenSearch server `http.max_content_length` | Optional |
+| `OPENSEARCH_BULK_CHUNK_SIZE` | `50` | Number of thread documents (and their child message documents) accumulated before a bulk flush in `reindex_bulk_threads`. Lower values reduce per-request cluster pressure (heap, queue depth) at the cost of more round-trips. Lower this if you see 503s on bulk requests. | Optional |
+| `OPENSEARCH_MAX_RETRIES` | `3` | Transport-level retry budget on the OpenSearch client. The opensearch-py transport already retries on 502/503/504 (`DEFAULT_RETRY_ON_STATUS`); this just exposes the count so it can be raised above the library default. Whatever exhausts this budget is wrapped as `TransientTransportError` and handed to Celery autoretry (5 attempts, exponential backoff up to 600s). | Optional |
 | `OPENSEARCH_INDEX_THREADS` | `True` | Enable thread indexing | Optional |
+| `SEARCH_REINDEX_TASKS_INTERVAL` | `30` | Interval (seconds) between Celery Beat runs of `process_pending_reindex_task`, which drains the reindex and delete coalescing buffers and enqueues bulk thread tasks. Longer values cut Celery/OpenSearch load at the cost of search-result staleness. | Optional |
+| `SEARCH_FLUSH_BATCH_SIZE` | `1000` | Maximum number of thread / message IDs handed to a single `bulk_*_task` call. This is the unit of parallelism, retry granularity and worker occupation for catch-up flows. Lower means more, shorter tasks (better parallelism, cheaper retries on failure); higher means fewer, longer tasks (less broker chatter but worse failure isolation). | Optional |
+| `SEARCH_FLUSH_MAX_BATCHES` | `10` | Maximum number of `bulk_*_task` calls a single Beat tick is allowed to enqueue, shared across the three handoffs (reindex / thread-delete / message-delete). Bounds catch-up bursts so a huge backlog is spread across several ticks rather than flooding the broker in one go. Effective per-tick capacity is roughly `SEARCH_FLUSH_BATCH_SIZE × SEARCH_FLUSH_MAX_BATCHES` IDs. | Optional |
 
 ## Mail Processing Configuration
 
@@ -240,6 +247,7 @@ _Those settings are deprecated and will be removed in the future._
 | `NEXT_PUBLIC_API_ORIGIN` | `http://localhost:8901` | Frontend API origin | Dev |
 | `NEXT_PUBLIC_LANGUAGES` | `[["en-US","English"],["fr-FR","Français"],["nl-NL","Nederlands"]]` | Languages available for frontend | Optional |
 | `NEXT_PUBLIC_DEFAULT_LANGUAGE` | `en-US` | Default language for frontend | Optional |
+| `NEXT_PUBLIC_FORCED_DEFAULT_LANGUAGE` | `false` | When `true`, the default language fallback is `NEXT_PUBLIC_DEFAULT_LANGUAGE` instead of the browser language. | Optional |
 | `NEXT_PUBLIC_THEME_CONFIG` | `{theme: "white-label"}` | Theme configuration for frontend | Optional |
 | `NEXT_PUBLIC_FEEDBACK_WIDGET_API_URL` || Feedback widget API URL | Optional |
 | `NEXT_PUBLIC_FEEDBACK_WIDGET_PATH` || Feedback widget path | Optional |
@@ -258,6 +266,22 @@ _Those settings are deprecated and will be removed in the future._
 
 ## Application Settings
 
+### Common Feature Flags
+
+Kill-switches for opt-out features. Flip to `False` to disable the
+corresponding API action and hide the related frontend entry points,
+without redeploying the frontend (the flag is pulled from
+`GET /api/v1.0/config/`).
+
+| Variable | Default | Description | Required |
+|----------|---------|-------------|----------|
+| `FEATURE_IMPORT_MESSAGES` | `True` | Enables message import (IMAP, PST, MBOX, etc.). When `False`, mailbox admins lose the `CAN_IMPORT_MESSAGES` ability. | Optional |
+| `FEATURE_MAILBOX_ADMIN_CHANNELS` | `` | Comma-separated list of channel types enabled for mailbox admin (e.g., `widget,api_key`). Empty list disables all channel types. | Optional |
+| `FEATURE_MAILDOMAIN_CREATE` | `True` | Allows superusers to create new mail domains via the API. When `False`, the create action returns 403. | Optional |
+| `FEATURE_MAILDOMAIN_MANAGE_ACCESSES` | `True` | Allows managing mail domain accesses (create/delete). When `False`, those actions return 403. | Optional |
+| `FEATURE_MESSAGE_TEMPLATES` | `True` | Enables the "message templates" feature. When `False`, mailbox admins lose the `CAN_MANAGE_MESSAGE_TEMPLATES` ability and the related UI is hidden. | Optional |
+| `FEATURE_THREAD_SPLIT` | `True` | Enables "split thread" feature. When `False`, the split API action returns 404 and the frontend hides the menu entry. | Optional |
+
 ### Business Logic
 
 | Variable | Default | Description | Required |
@@ -270,6 +294,7 @@ _Those settings are deprecated and will be removed in the future._
 | `MAX_OUTGOING_BODY_SIZE` | `5242880` | Maximum size in bytes for outgoing email body (text + HTML) (5MB) | Optional |
 | `MAX_TEMPLATE_IMAGE_SIZE` | `2097152` | Maximum size in bytes for images embedded in templates and signatures (2MB) | Optional |
 | `MAX_RECIPIENTS_PER_MESSAGE` | `500` | Maximum number of recipients per message (to + cc + bcc) | Optional |
+| `MAX_THREAD_EVENT_EDIT_DELAY` | `3600` | Time window in seconds during which a ThreadEvent (internal comment) can still be edited or deleted after creation. Set to `0` to disable the restriction. | Optional |
 
 ### Model custom attributes schema
 
@@ -296,7 +321,6 @@ _Those settings are deprecated and will be removed in the future._
 | `AI_MODEL` | None | Default model used for AI features | Optional |
 | `FEATURE_AI_SUMMARY` | `False` | Default enabled mode for summary AI features | Required |
 | `FEATURE_AI_AUTOLABELS` | `False` | Default enabled mode for label AI features | Required |
-| `FEATURE_MAILBOX_ADMIN_CHANNELS` | `` | Comma-separated list of channel types enabled for mailbox admin (e.g., `widget,api_key`). Empty list disables all channel types. | Optional |
 
 ### Throttling
 
@@ -307,6 +331,7 @@ Outbound message throttling limits the number of **external recipients** (recipi
 |----------|---------|-------------|----------|
 | `THROTTLE_MAILBOX_OUTBOUND_EXTERNAL_RECIPIENTS` | None | Rate limit per mailbox. Format: `count/period` where period is `minute`, `hour`, or `day`. Example: `1000/day` limits each mailbox to 1000 external recipients per day. | Optional |
 | `THROTTLE_MAILDOMAIN_OUTBOUND_EXTERNAL_RECIPIENTS` | None | Rate limit per maildomain. Format: `count/period`. Example: `10000/day` limits each domain to 10000 external recipients per day. | Optional |
+| `THROTTLE_AUTOREPLY_PER_SENDER` | `1/day` | Rate limit for autoreplies per sender per mailbox. Format: `count/period`. Example: `1/day` limits each sender to 1 autoreply per day per mailbox. | Optional |
 
 ### Image Proxy
 
@@ -318,6 +343,13 @@ it can lead to memory exhaustion, increase at your own risk.
 | `IMAGE_PROXY_ENABLED` | `False` | Whether external images should be proxied | Optional |
 | `IMAGE_PROXY_MAX_SIZE` | `5242880` (5MB) | Maximum size in bytes for external images | Optional |
 | `IMAGE_PROXY_CACHE_TTL` | `2592000` (30 days) | Cache TTL in seconds for external images | Optional |
+
+### Frontend
+
+| Variable | Default | Description | Required |
+|----------|---------|-------------|----------|
+| `FRONTEND_THEME` | `white-label` | Theme for the frontend | Optional |
+| `FRONTEND_SILENT_LOGIN_ENABLED` | `False` | Whether silent login is enabled | Optional |
 
 ### Third-party Services
 

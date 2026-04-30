@@ -1,6 +1,6 @@
 """Tests for the channel API endpoints."""
 
-# pylint: disable=redefined-outer-name, unused-argument, too-many-public-methods
+# pylint: disable=redefined-outer-name, unused-argument, too-many-public-methods, import-outside-toplevel
 
 import uuid
 
@@ -252,6 +252,20 @@ class TestChannelCreate:
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data["type"] == "widget"
 
+    @override_settings(FEATURE_MAILBOX_ADMIN_CHANNELS=["widget"])
+    def test_create_channel_missing_type_is_rejected(self, api_client, mailbox):
+        """Omitting ``type`` on CREATE must be a 400 — never silently default
+        to "mta" and bypass FEATURE_MAILBOX_ADMIN_CHANNELS. Regression lock
+        for the bug where the model field default and the serializer's
+        ``if channel_type:`` short-circuit combined to let "mta" channels
+        through on any nested mailbox/user POST."""
+        url = reverse("mailbox-channels-list", kwargs={"mailbox_id": mailbox.id})
+        response = api_client.post(
+            url, {"name": "no type", "settings": {}}, format="json"
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "type" in response.data
+
 
 @pytest.mark.django_db
 class TestChannelRetrieve:
@@ -421,3 +435,134 @@ class TestChannelDomainAdminAccess:
 
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data["name"] == "Domain Admin Widget"
+
+
+@pytest.mark.django_db
+class TestChannelEncryptedSettings:
+    """Test encrypted_settings and user fields on the Channel model."""
+
+    def test_encrypted_settings_stored_on_model(self, mailbox):
+        """encrypted_settings can be set and read back."""
+        channel = ChannelFactory(
+            mailbox=mailbox, type="widget", settings={"public": "value"}
+        )
+        channel.encrypted_settings = {"secret_key": "s3cret"}
+        channel.save()
+
+        channel.refresh_from_db()
+        assert channel.encrypted_settings["secret_key"] == "s3cret"
+        assert channel.settings["public"] == "value"
+
+    def test_encrypted_settings_not_in_api_response(self, api_client, mailbox):
+        """encrypted_settings must never leak in the REST API — neither as
+        a top-level key nor smuggled into the visible ``settings`` payload."""
+        channel = ChannelFactory(mailbox=mailbox, type="widget")
+        channel.encrypted_settings = {"password": "s3cret"}
+        channel.save()
+
+        url = reverse(
+            "mailbox-channels-detail",
+            kwargs={"mailbox_id": mailbox.id, "pk": channel.id},
+        )
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "encrypted_settings" not in response.data
+        assert "password" not in response.data
+
+        # Defense in depth: a serializer bug that copied encrypted_settings
+        # into the visible ``settings`` JSON would also be a leak. Inspect
+        # both the secret keys and the secret values.
+        settings_payload = response.data.get("settings") or {}
+        assert "password" not in settings_payload
+        assert "s3cret" not in settings_payload.values()
+
+    def test_encrypted_settings_not_in_list_response(self, api_client, mailbox):
+        """encrypted_settings must not appear in list responses either —
+        same defense-in-depth check on each item's ``settings`` payload."""
+        channel = ChannelFactory(mailbox=mailbox, type="widget")
+        channel.encrypted_settings = {"token": "abc"}
+        channel.save()
+
+        url = reverse("mailbox-channels-list", kwargs={"mailbox_id": mailbox.id})
+        response = api_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        for item in response.data:
+            assert "encrypted_settings" not in item
+            settings_payload = item.get("settings") or {}
+            assert "token" not in settings_payload
+            assert "abc" not in settings_payload.values()
+
+    def test_user_field_target_on_user_scope_channel(self, user):
+        """Channel.user is the *target* user for scope_level=user channels."""
+        channel = ChannelFactory(
+            user=user, scope_level="user", mailbox=None, maildomain=None
+        )
+        channel.refresh_from_db()
+        assert channel.user == user
+
+    def test_user_field_creator_audit_on_mailbox_scope_channel(self, user, mailbox):
+        """On non-user-scope channels, Channel.user is the creator audit
+        — an OPTIONAL FK pointing at the User who created it via DRF."""
+        channel = ChannelFactory(mailbox=mailbox, type="widget", user=user)
+        channel.refresh_from_db()
+        assert channel.user == user
+
+    def test_user_field_nullable_on_mailbox_scope_channel(self, mailbox):
+        """The creator FK is nullable — channels created by the CLI / data
+        migration / Django admin may not have a creator stamped."""
+        channel = ChannelFactory(mailbox=mailbox, type="widget")
+        assert channel.user is None
+
+
+@pytest.mark.django_db
+class TestChannelReservedSettingsKeys:
+    """The serializer rejects callers that try to write reserved settings
+    keys (e.g. ``api_key_hashes``). Server-side generators write directly
+    to encrypted_settings, callers cannot influence its contents."""
+
+    @override_settings(FEATURE_MAILBOX_ADMIN_CHANNELS=["api_key"])
+    def test_post_with_reserved_key_in_settings_is_rejected(self, api_client, mailbox):
+        """Smuggling api_key_hashes via settings is a 400."""
+        url = reverse("mailbox-channels-list", kwargs={"mailbox_id": mailbox.id})
+        response = api_client.post(
+            url,
+            data={
+                "name": "Tries to inject a hash",
+                "type": "api_key",
+                "settings": {
+                    "scopes": ["messages:send"],
+                    "api_key_hashes": ["a" * 64],
+                },
+            },
+            format="json",
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    @override_settings(FEATURE_MAILBOX_ADMIN_CHANNELS=["api_key"])
+    def test_unrelated_settings_keys_pass_through(self, api_client, mailbox):
+        """Non-reserved keys in settings (e.g. expires_at) flow through
+        the API as caller-supplied data — only the reserved list is locked
+        down."""
+        url = reverse("mailbox-channels-list", kwargs={"mailbox_id": mailbox.id})
+        response = api_client.post(
+            url,
+            data={
+                "name": "Has expires_at",
+                "type": "api_key",
+                "settings": {
+                    "scopes": ["messages:send"],
+                    "expires_at": "2030-01-01T00:00:00Z",
+                },
+            },
+            format="json",
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        channel = models.Channel.objects.get(id=response.data["id"])
+        assert channel.settings["expires_at"] == "2030-01-01T00:00:00Z"
+        # And api_key_hashes is what the server generated, not what the
+        # caller smuggled (the caller didn't smuggle anything here, but
+        # we still assert the encrypted_settings shape).
+        assert "api_key_hashes" in channel.encrypted_settings
+        assert "api_key_hashes" not in channel.settings

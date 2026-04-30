@@ -9,6 +9,7 @@ import ErrorPage from "next/error";
 import { Toaster } from "@/features/ui/components/toaster";
 import { Icon, IconSize, IconType } from "@gouvfr-lasuite/ui-kit";
 import { useTheme } from "@/features/providers/theme";
+import { LayoutProvider } from "@/features/layouts/components/layout-context";
 
 type AdminLayoutProps = {
   children: React.ReactNode;
@@ -122,18 +123,20 @@ export function AdminLayout(props: AdminLayoutProps) {
   const { theme, variant } = useTheme();
 
   return (
-    <AppLayout
-      isLeftPanelOpen={false}
-      setIsLeftPanelOpen={() => { }}
-      leftPanelContent={null}
-      hideSearch
-      hideLeftPanelOnDesktop={true}
-      icon={<Link href="/"><img src={`/images/${theme}/app-logo-${variant}.svg`} alt="logo" height={40} /></Link>}
-    >
-      <AdminMailDomainProvider>
-        <AdminLayoutContent {...props} />
-        <Toaster />
-      </AdminMailDomainProvider>
-    </AppLayout>
+    <LayoutProvider>
+      <AppLayout
+        isLeftPanelOpen={false}
+        setIsLeftPanelOpen={() => { }}
+        leftPanelContent={null}
+        hideSearch
+        hideLeftPanelOnDesktop={true}
+        icon={<Link href="/"><img src={`/images/${theme}/app-logo-${variant}.svg`} alt="logo" height={40} /></Link>}
+      >
+        <AdminMailDomainProvider>
+          <AdminLayoutContent {...props} />
+          <Toaster />
+        </AdminMailDomainProvider>
+      </AppLayout>
+    </LayoutProvider>
   );
 }

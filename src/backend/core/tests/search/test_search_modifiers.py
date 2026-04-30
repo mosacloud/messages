@@ -115,13 +115,14 @@ def test_search_threads_with_multiple_modifiers(mock_es_client):
             break
     assert subject_query_found, "Subject query was not found in the OpenSearch query"
 
-    # Check for starred filter
+    # Check for starred filter (now uses has_parent + starred_mailboxes)
     starred_filter_found = False
     for filter_item in call_args["body"]["query"]["bool"]["filter"]:
-        if "term" in filter_item:
-            if "is_starred" in filter_item["term"]:
-                starred_filter_found = True
-                assert filter_item["term"]["is_starred"] is True
+        if "has_parent" in filter_item:
+            hp = filter_item["has_parent"]
+            if hp.get("parent_type") == "thread" and "terms" in hp.get("query", {}):
+                if "starred_mailboxes" in hp["query"]["terms"]:
+                    starred_filter_found = True
 
     assert starred_filter_found, "Starred filter was not found in the OpenSearch query"
 
@@ -184,6 +185,142 @@ def test_search_threads_is_unread_without_mailbox_ids(mock_es_client):
         assert "has_parent" not in filter_item, (
             "has_parent filter should not be present without mailbox_ids"
         )
+
+
+def test_search_threads_filters_is_starred_true(mock_es_client):
+    """Test that filters={'is_starred': True} uses has_parent on starred_mailboxes."""
+    search_threads("some text", mailbox_ids=["mbx-1"], filters={"is_starred": True})
+
+    call_args = mock_es_client.search.call_args[1]
+    filters = call_args["body"]["query"]["bool"]["filter"]
+
+    # Should use has_parent with starred_mailboxes
+    has_parent_found = False
+    for filter_item in filters:
+        if "has_parent" in filter_item:
+            hp = filter_item["has_parent"]
+            query = hp.get("query", {})
+            if "terms" in query and "starred_mailboxes" in query["terms"]:
+                has_parent_found = True
+                assert query["terms"]["starred_mailboxes"] == ["mbx-1"]
+
+    assert has_parent_found, "has_parent starred_mailboxes filter was not found"
+
+    # Should NOT emit a legacy {"term": {"is_starred": ...}} filter
+    for filter_item in filters:
+        if "term" in filter_item:
+            assert "is_starred" not in filter_item["term"], (
+                "Legacy is_starred term filter should not be emitted"
+            )
+
+
+def test_search_threads_filters_is_starred_false(mock_es_client):
+    """Test that filters={'is_starred': False} uses has_parent must_not on starred_mailboxes."""
+    search_threads("some text", mailbox_ids=["mbx-1"], filters={"is_starred": False})
+
+    call_args = mock_es_client.search.call_args[1]
+    filters = call_args["body"]["query"]["bool"]["filter"]
+
+    has_parent_found = False
+    for filter_item in filters:
+        if "has_parent" in filter_item:
+            hp = filter_item["has_parent"]
+            query = hp.get("query", {})
+            if "bool" in query and "must_not" in query["bool"]:
+                must_not = query["bool"]["must_not"]
+                if "terms" in must_not and "starred_mailboxes" in must_not["terms"]:
+                    has_parent_found = True
+                    assert must_not["terms"]["starred_mailboxes"] == ["mbx-1"]
+
+    assert has_parent_found, (
+        "has_parent must_not starred_mailboxes filter was not found"
+    )
+
+
+def test_search_threads_filters_is_unread_true(mock_es_client):
+    """Test that filters={'is_unread': True} uses has_parent on unread_mailboxes."""
+    search_threads("some text", mailbox_ids=["mbx-1"], filters={"is_unread": True})
+
+    call_args = mock_es_client.search.call_args[1]
+    filters = call_args["body"]["query"]["bool"]["filter"]
+
+    has_parent_found = False
+    for filter_item in filters:
+        if "has_parent" in filter_item:
+            hp = filter_item["has_parent"]
+            query = hp.get("query", {})
+            if "terms" in query and "unread_mailboxes" in query["terms"]:
+                has_parent_found = True
+                assert query["terms"]["unread_mailboxes"] == ["mbx-1"]
+
+    assert has_parent_found, "has_parent unread_mailboxes filter was not found"
+
+    for filter_item in filters:
+        if "term" in filter_item:
+            assert "is_unread" not in filter_item["term"], (
+                "Legacy is_unread term filter should not be emitted"
+            )
+
+
+def test_search_threads_filters_is_unread_false(mock_es_client):
+    """Test that filters={'is_unread': False} uses has_parent must_not on unread_mailboxes."""
+    search_threads("some text", mailbox_ids=["mbx-1"], filters={"is_unread": False})
+
+    call_args = mock_es_client.search.call_args[1]
+    filters = call_args["body"]["query"]["bool"]["filter"]
+
+    has_parent_found = False
+    for filter_item in filters:
+        if "has_parent" in filter_item:
+            hp = filter_item["has_parent"]
+            query = hp.get("query", {})
+            if "bool" in query and "must_not" in query["bool"]:
+                must_not = query["bool"]["must_not"]
+                if "terms" in must_not and "unread_mailboxes" in must_not["terms"]:
+                    has_parent_found = True
+                    assert must_not["terms"]["unread_mailboxes"] == ["mbx-1"]
+
+    assert has_parent_found, "has_parent must_not unread_mailboxes filter was not found"
+
+
+def test_search_threads_filters_starred_without_mailbox_ids(mock_es_client):
+    """Test that filters={'is_starred': True} without mailbox_ids does not add a filter."""
+    search_threads("some text", filters={"is_starred": True})
+
+    call_args = mock_es_client.search.call_args[1]
+    filters = call_args["body"]["query"]["bool"]["filter"]
+
+    for filter_item in filters:
+        if "has_parent" in filter_item:
+            hp = filter_item["has_parent"]
+            query = hp.get("query", {})
+            assert "starred_mailboxes" not in query.get("terms", {}), (
+                "starred_mailboxes filter should not be present without mailbox_ids"
+            )
+        if "term" in filter_item:
+            assert "is_starred" not in filter_item["term"], (
+                "Legacy is_starred term filter should not be emitted"
+            )
+
+
+def test_search_threads_filters_other_fields_still_use_term(mock_es_client):
+    """Test that non-mailbox-scoped filters still use the generic term filter."""
+    search_threads(
+        "some text",
+        mailbox_ids=["mbx-1"],
+        filters={"is_starred": True, "is_sender": True},
+    )
+
+    call_args = mock_es_client.search.call_args[1]
+    filters = call_args["body"]["query"]["bool"]["filter"]
+
+    sender_term_found = False
+    for filter_item in filters:
+        if "term" in filter_item and "is_sender" in filter_item["term"]:
+            sender_term_found = True
+            assert filter_item["term"]["is_sender"] is True
+
+    assert sender_term_found, "is_sender should still use the generic term filter"
 
 
 def test_search_threads_with_exact_phrase(mock_es_client):

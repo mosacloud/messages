@@ -1,11 +1,9 @@
 """Permission handlers for the messages core app."""
 
-from secrets import compare_digest
-
-from django.conf import settings
 from django.core import exceptions
 
 from rest_framework import permissions
+from rest_framework.exceptions import PermissionDenied
 
 from core import enums, models
 
@@ -108,20 +106,47 @@ class IsAllowedToAccess(IsAuthenticated):
         if not IsAuthenticated.has_permission(self, request, view):
             return False
 
-        # This check is primarily for LIST actions based on query params
-        mailbox_id = request.query_params.get("mailbox_id")  # Used by Thread list
-        thread_id = request.query_params.get("thread_id")  # Used by Message list
+        # For nested routes under /threads/{thread_id}/events/ or /threads/{thread_id}/accesses/
+        # URL path kwargs take priority — ignore query params when URL provides thread_id
+        thread_id_from_url = view.kwargs.get("thread_id")
+
+        # Query params are only used for flat routes (Thread list, Message list)
+        mailbox_id = (
+            request.query_params.get("mailbox_id") if not thread_id_from_url else None
+        )
+        thread_id = (
+            request.query_params.get("thread_id") if not thread_id_from_url else None
+        )
 
         # If it's a detail action (retrieve, update, destroy), object-level permission is checked
         # by has_object_permission. If it's a list action without filters, deny access.
         is_list_action = hasattr(view, "action") and view.action == "list"
 
         if not is_list_action:
+            # For create action on nested routes, check full edit rights
+            # on the thread: EDITOR ThreadAccess role AND CAN_EDIT MailboxAccess role.
+            if (
+                thread_id_from_url
+                and hasattr(view, "action")
+                and view.action == "create"
+            ):
+                return (
+                    models.ThreadAccess.objects.editable_by(request.user)
+                    .filter(thread_id=thread_id_from_url)
+                    .exists()
+                )
             # Allow non-list actions (like detail views or specific APIViews like SendMessageView)
             # to proceed to object-level checks or handle permissions within the view.
             return True
 
         # --- The following logic only applies if is_list_action is True --- #
+        # Check access for nested thread routes (e.g., /threads/{id}/events/)
+        if thread_id_from_url:
+            return models.ThreadAccess.objects.filter(
+                thread_id=thread_id_from_url,
+                mailbox__accesses__user=request.user,
+            ).exists()
+
         # Check access based on query params for LIST action
         if thread_id:
             # Check if the user has access to this specific thread to list messages
@@ -142,6 +167,13 @@ class IsAllowedToAccess(IsAuthenticated):
         if isinstance(obj, models.Mailbox):
             # Check access directly on the mailbox
             return models.MailboxAccess.objects.filter(mailbox=obj, user=user).exists()
+
+        if isinstance(obj, models.ThreadEvent):
+            # Write actions are handled by HasThreadEditAccess, so we only
+            # need to gate read access on any ThreadAccess for the thread.
+            return models.ThreadAccess.objects.filter(
+                thread=obj.thread, mailbox__accesses__user=user
+            ).exists()
 
         if isinstance(obj, (models.Message, models.Thread)):
             thread = obj.thread if isinstance(obj, models.Message) else obj
@@ -292,6 +324,17 @@ class IsAllowedToManageThreadAccess(IsAuthenticated):
         if obj.thread.id != view.kwargs.get("thread_id"):
             return False
 
+        # Destroying a ThreadAccess removes the thread for every member of
+        # `obj.mailbox` (the row is unique per (thread, mailbox)). Require
+        # editor-level rights on that mailbox so a viewer cannot revoke
+        # access on behalf of the whole team. Thread role is irrelevant:
+        # a viewer on the thread but editor on the mailbox can still leave.
+        if view.action == "destroy":
+            return obj.mailbox.accesses.filter(
+                user=request.user,
+                role__in=enums.MAILBOX_ROLES_CAN_EDIT,
+            ).exists()
+
         return (
             models.ThreadAccess.objects.select_related("mailbox")
             .filter(
@@ -420,26 +463,233 @@ class IsMailboxAdmin(permissions.BasePermission):
         return is_domain_admin
 
 
-class HasMetricsApiKey(permissions.BasePermission):
-    """Allows access only to users with the metrics API key."""
+class HasChannelScope(permissions.BasePermission):
+    """Scope-based permission for service calls authenticated as a Channel.
+
+    Auth-scheme-agnostic: it only inspects ``request.auth`` (which must be a
+    ``Channel`` set by an authentication class like ``ChannelApiKeyAuthentication``)
+    and checks that ``required_scope`` is listed in the channel's
+    ``settings["scopes"]``. Additionally, if the required scope is in
+    ``CHANNEL_API_KEY_SCOPES_GLOBAL_ONLY``, the calling channel must itself
+    be ``scope_level=global`` — this is the second of two enforcement points
+    for global-only scopes (the first is the serializer at write time).
+
+    The view remains responsible for resource-level bounds via
+    ``request.auth.api_key_covers(...)`` — this class does not know which
+    mailbox or domain the action is about to touch.
+
+    Subclasses set ``required_scope`` — use the ``channel_scope()`` factory
+    below to create one on the fly so ``permission_classes`` can reference it
+    declaratively.
+    """
+
+    required_scope: str = ""
 
     def has_permission(self, request, view):
-        return compare_digest(
-            request.headers.get("Authorization") or "",
-            f"Bearer {settings.METRICS_API_KEY}",
-        )
-
-
-class HasProvisioningApiKey(permissions.BasePermission):
-    """Allows access only to requests bearing the provisioning API key."""
-
-    def has_permission(self, request, view):
-        if not settings.PROVISIONING_API_KEY:
+        channel = request.auth
+        if not isinstance(channel, models.Channel):
             return False
-        return compare_digest(
-            request.headers.get("Authorization") or "",
-            f"Bearer {settings.PROVISIONING_API_KEY}",
+        if not isinstance(channel.settings, dict):
+            return False
+        scopes = channel.settings.get("scopes")
+        if not isinstance(scopes, list) or not all(isinstance(s, str) for s in scopes):
+            return False
+        if self.required_scope not in scopes:
+            return False
+        if (
+            self.required_scope in enums.CHANNEL_API_KEY_SCOPES_GLOBAL_ONLY
+            and channel.scope_level != enums.ChannelScopeLevel.GLOBAL
+        ):
+            return False
+        return True
+
+
+def channel_scope(required_scope: str) -> type:
+    """Return a ``HasChannelScope`` subclass with ``required_scope`` pre-bound.
+
+    DRF's ``permission_classes`` expects a list of classes, not instances, so
+    we synthesize a tiny subclass per scope. Usage:
+
+        permission_classes = [channel_scope(ChannelApiKeyScope.MESSAGES_SEND)]
+    """
+    return type(
+        f"HasChannelScope_{required_scope}",
+        (HasChannelScope,),
+        {"required_scope": str(required_scope)},
+    )
+
+
+class IsGlobalChannelMixin:
+    """Mixin for APIViews that require ``request.auth`` to be a Channel
+    with ``scope_level=global``. Drop this onto a view *in addition to*
+    ``ChannelApiKeyAuthentication`` + ``channel_scope(...)``.
+
+    Two-layer defense in depth: even when the required scope is in
+    ``CHANNEL_API_KEY_SCOPES_GLOBAL_ONLY`` (and ``HasChannelScope`` already
+    rejects non-global callers), the view itself re-asserts the requirement
+    so a future scope-set typo can't accidentally weaken the endpoint. The
+    mixin's ``initial()`` runs after authentication+permission, so by the
+    time it executes ``request.auth`` is guaranteed to be a Channel.
+    """
+
+    def initial(self, request, *args, **kwargs):
+        """Re-assert scope_level=global after authentication+permission run."""
+        super().initial(request, *args, **kwargs)
+        channel = getattr(request, "auth", None)
+        if (
+            not isinstance(channel, models.Channel)
+            or channel.scope_level != enums.ChannelScopeLevel.GLOBAL
+        ):
+            # Generic message — do not leak the scope_level requirement
+            # to the caller.
+            raise PermissionDenied()
+
+
+def _user_can_comment_on_thread(user, thread_id):
+    """True if ``user`` can post/read internal comments on ``thread_id``.
+
+    Requires any ``ThreadAccess`` (viewer or editor) on a mailbox where the
+    user has ``MAILBOX_ROLES_CAN_EDIT``. Writing an internal comment is a
+    personal authoring act that does not mutate the thread's shared state,
+    so VIEWER ThreadAccess is enough as long as the user is at least editor
+    on the mailbox.
+    """
+    return models.ThreadAccess.objects.filter(
+        thread_id=thread_id,
+        mailbox__accesses__user=user,
+        mailbox__accesses__role__in=enums.MAILBOX_ROLES_CAN_EDIT,
+    ).exists()
+
+
+class HasThreadCommentAccess(IsAuthenticated):
+    """Allows users who can author internal comments on the thread.
+
+    Used for endpoints that serve the comment authoring flow (posting an
+    ``im`` ThreadEvent, listing thread users to pick mention targets): both
+    must stay accessible to Thread VIEWERs as long as they are at least
+    editor on one of the mailboxes sharing the thread.
+    """
+
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+
+        thread_id = view.kwargs.get("thread_id")
+        if not thread_id:
+            return False
+
+        return _user_can_comment_on_thread(request.user, thread_id)
+
+
+class HasThreadEventWriteAccess(IsAuthenticated):
+    """Gates write actions on ThreadEvent — rules depend on the event type.
+
+    Only ``im`` events (internal comments) relax the thread-level role: a
+    Thread VIEWER with mailbox edit rights can create/update/destroy their
+    own ``im`` events. Any other event type is considered a shared-state
+    mutation (system event, status change, …) and keeps the stricter
+    full-edit-rights policy (``MailboxAccess`` in ``MAILBOX_ROLES_CAN_EDIT``
+    AND ``ThreadAccess.role == EDITOR``).
+
+    Author check for update/destroy is enforced here regardless of type —
+    no user can edit or delete another user's event.
+    """
+
+    message = "You do not have permission to perform this action on this thread."
+
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+
+        thread_id = view.kwargs.get("thread_id")
+        if thread_id is None:
+            return True
+
+        if view.action == "create":
+            event_type = request.data.get("type") if hasattr(request, "data") else None
+            if event_type == enums.ThreadEventTypeChoices.IM:
+                return _user_can_comment_on_thread(request.user, thread_id)
+            # Non-IM (or missing) types require full edit rights. Using the
+            # stricter path as the default keeps unknown types safe.
+            return (
+                models.ThreadAccess.objects.editable_by(request.user)
+                .filter(thread_id=thread_id)
+                .exists()
+            )
+
+        # update / partial_update / destroy: defer to object-level check
+        # (type is resolved from the stored instance, not the payload).
+        return True
+
+    def has_object_permission(self, request, view, obj):
+        if not isinstance(obj, models.ThreadEvent):
+            return False
+
+        if (
+            view.action in ("update", "partial_update", "destroy")
+            and obj.author_id != request.user.id
+        ):
+            return False
+
+        if obj.type == enums.ThreadEventTypeChoices.IM:
+            return _user_can_comment_on_thread(request.user, obj.thread_id)
+
+        return obj.thread.get_abilities(request.user)[enums.ThreadAbilities.CAN_EDIT]
+
+
+class HasThreadEditAccess(IsAuthenticated):
+    """Allows access only to users with full edit rights on the thread.
+
+    Full edit rights require BOTH:
+    - `ThreadAccess.role == EDITOR` on the thread
+    - A `MailboxAccess.role` in `MAILBOX_ROLES_CAN_EDIT` on the same mailbox
+
+    This prevents a user with VIEWER MailboxAccess on a shared mailbox
+    from mutating threads that the mailbox has EDITOR ThreadAccess to.
+    """
+
+    message = "You do not have permission to perform this action on this thread."
+
+    def has_permission(self, request, view):
+        """Check editor access up-front on nested thread routes.
+
+        On nested routes (e.g. ``/threads/{thread_id}/events/``), the thread
+        id comes from the URL and we can enforce the editor role before the
+        view resolves any object — required for ``create`` where no object
+        exists yet. On top-level routes (e.g. ``/threads/{pk}/``), defer to
+        ``has_object_permission``.
+        """
+        if not super().has_permission(request, view):
+            return False
+
+        thread_id_from_url = view.kwargs.get("thread_id")
+        if thread_id_from_url is None:
+            return True
+
+        return (
+            models.ThreadAccess.objects.editable_by(request.user)
+            .filter(thread_id=thread_id_from_url)
+            .exists()
         )
+
+    def has_object_permission(self, request, view, obj):
+        """Check editor access on the thread the object belongs to.
+
+        Supports both ``Thread`` and ``ThreadEvent`` objects. For
+        ``ThreadEvent``, also enforces that only the event author can perform
+        update or destroy actions.
+        """
+        if isinstance(obj, models.ThreadEvent):
+            if (
+                view.action in ("update", "partial_update", "destroy")
+                and obj.author_id != request.user.id
+            ):
+                return False
+            thread = obj.thread
+        else:
+            thread = obj
+
+        return thread.get_abilities(request.user)[enums.ThreadAbilities.CAN_EDIT]
 
 
 class HasAccessToMailbox(IsAuthenticated):

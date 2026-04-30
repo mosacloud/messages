@@ -3,6 +3,19 @@ import { useSearchParams } from "next/navigation";
 import { useMailboxContext } from "./mailbox";
 import { Thread } from "@/features/api/gen/models/thread";
 
+export enum SelectionReadStatus {
+    NONE = 'none',
+    READ = 'read',
+    UNREAD = 'unread',
+    MIXED = 'mixed',
+}
+export enum SelectionStarredStatus {
+    NONE = 'none',
+    STARRED = 'starred',
+    UNSTARRED = 'unstarred',
+    MIXED = 'mixed',
+}
+
 interface ThreadSelectionState {
     selectedThreadIds: Set<string>;
     isSelectionMode: boolean;
@@ -17,6 +30,8 @@ interface ThreadSelectionState {
     enableSelectionMode: () => void;
     isAllSelected: boolean;
     isSomeSelected: boolean;
+    selectionReadStatus: SelectionReadStatus;
+    selectionStarredStatus: SelectionStarredStatus;
 }
 
 const ThreadSelectionContext = createContext<ThreadSelectionState | null>(null);
@@ -167,6 +182,37 @@ const useThreadSelectionState = (threads: Thread[] | undefined, selectedThread: 
         return threads.some((thread) => selectedThreadIds.has(thread.id));
     }, [threads, selectedThreadIds]);
 
+    const { selectionReadStatus, selectionStarredStatus } = useMemo(() => {
+        if (selectedThreadIds.size === 0) return { selectionReadStatus: SelectionReadStatus.NONE, selectionStarredStatus: SelectionStarredStatus.NONE };
+        const selectedThreads = threads?.filter(t => selectedThreadIds.has(t.id)) || [];
+        if (selectedThreads.length === 0) return { selectionReadStatus: SelectionReadStatus.NONE, selectionStarredStatus: SelectionStarredStatus.NONE };
+
+        const hasUnread = selectedThreads.some(t => t.has_unread);
+        const hasRead = selectedThreads.some(t => !t.has_unread);
+        const readStatus = hasUnread && hasRead ? SelectionReadStatus.MIXED : hasUnread ? SelectionReadStatus.UNREAD : SelectionReadStatus.READ;
+
+        const hasStarred = selectedThreads.some(t => t.has_starred);
+        const hasUnstarred = selectedThreads.some(t => !t.has_starred);
+        const starredStatus = hasStarred && hasUnstarred ? SelectionStarredStatus.MIXED : hasStarred ? SelectionStarredStatus.STARRED : SelectionStarredStatus.UNSTARRED;
+
+        return { selectionReadStatus: readStatus, selectionStarredStatus: starredStatus };
+    }, [selectedThreadIds, threads]);
+
+    // Prune stale IDs from selection when threads change
+    useEffect(() => {
+        if (!threads) return;
+        setSelectedThreadIds((prev) => {
+            if (prev.size === 0) return prev;
+            const threadIds = new Set(threads.map((t) => t.id));
+            const pruned = new Set([...prev].filter((id) => threadIds.has(id)));
+            if (pruned.size === prev.size) return prev;
+            if (pruned.size === 0) {
+                setIsSelectionMode(false);
+            }
+            return pruned;
+        });
+    }, [threads]);
+
     // Clear selection when search params change
     useEffect(() => {
         setSelectedThreadIds(new Set());
@@ -197,6 +243,9 @@ const useThreadSelectionState = (threads: Thread[] | undefined, selectedThread: 
             if (!isSelectionMode) return;
 
             if (e.key === 'Escape') {
+                // Defer to any modal dialog / popup stacked above (labels widget popup,
+                // Cunningham modal, etc.) — they own the Escape while open.
+                if (document.querySelector('[aria-modal="true"]')) return;
                 e.preventDefault();
                 clearSelection();
                 return;
@@ -219,6 +268,8 @@ const useThreadSelectionState = (threads: Thread[] | undefined, selectedThread: 
         enableSelectionMode,
         isAllSelected,
         isSomeSelected,
+        selectionReadStatus,
+        selectionStarredStatus,
     };
 };
 

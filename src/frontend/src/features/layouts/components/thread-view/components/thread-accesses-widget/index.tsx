@@ -1,4 +1,4 @@
-import { Button, Tooltip } from "@gouvfr-lasuite/cunningham-react"
+import { Button, Tooltip, useModals } from "@gouvfr-lasuite/cunningham-react"
 import { Icon, IconType, ShareModal } from "@gouvfr-lasuite/ui-kit"
 import { useState } from "react";
 import { ThreadAccessRoleChoices, ThreadAccessDetail, MailboxLight } from "@/features/api/gen/models";
@@ -27,7 +27,8 @@ export const ThreadAccessesWidget = ({ accesses }: ThreadAccessesWidgetProps) =>
     const { t } = useTranslation();
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
-    const { selectedMailbox, selectedThread, invalidateThreadMessages } = useMailboxContext();
+    const { selectedMailbox, selectedThread, invalidateThreadMessages, invalidateThreadsStats, unselectThread } = useMailboxContext();
+    const modals = useModals();
     const { mutate: removeThreadAccess } = useThreadsAccessesDestroy({ mutation: { onSuccess: () => invalidateThreadMessages() } });
     const { mutate: createThreadAccess } = useThreadsAccessesCreate({ mutation: { onSuccess: () => invalidateThreadMessages() } });
     const { mutate: updateThreadAccess } = useThreadsAccessesUpdate({ mutation: { onSuccess: () => invalidateThreadMessages() } });
@@ -45,9 +46,13 @@ export const ThreadAccessesWidget = ({ accesses }: ThreadAccessesWidgetProps) =>
     });
 
     const searchResults = searchMailboxesQuery.data?.data.filter((mailbox) => !accesses.some(a => a.mailbox.id === mailbox.id)).map(getAccessUser) ?? [];
-    const normalizedAccesses = accesses.map((access) => ({ ...access, user: getAccessUser(access.mailbox) }));
     const hasOnlyOneEditor = accesses.filter((a) => a.role === ThreadAccessRoleChoices.editor).length === 1;
     const canManageThreadAccess = useAbility(Abilities.CAN_MANAGE_THREAD_ACCESS, [selectedMailbox!, selectedThread!]);
+    const normalizedAccesses = accesses.map((access) => ({
+        ...access,
+        user: getAccessUser(access.mailbox),
+        can_delete: canManageThreadAccess && accesses.length > 1 && (!hasOnlyOneEditor || access.role !== ThreadAccessRoleChoices.editor),
+    }));
 
     const handleCreateAccesses = (mailboxes: MailboxLight[], role: string) => {
         const mailboxIds = [...new Set(mailboxes.map((m) => m.id))];
@@ -75,7 +80,7 @@ export const ThreadAccessesWidget = ({ accesses }: ThreadAccessesWidgetProps) =>
         });
     }
 
-    const handleDeleteAccess = (access: ThreadAccessDetail) => {
+    const handleDeleteAccess = async (access: ThreadAccessDetail) => {
         // TODO : Update Share Modal to hide the remove button if there is only one editor
         if (hasOnlyOneEditor && access.role === ThreadAccessRoleChoices.editor) {
             addToast(<ToasterItem type="error">
@@ -86,6 +91,20 @@ export const ThreadAccessesWidget = ({ accesses }: ThreadAccessesWidgetProps) =>
             });
             return;
         };
+        const isSelfRemoval = access.mailbox.id === selectedMailbox?.id;
+        const decision = await modals.deleteConfirmationModal({
+            title: isSelfRemoval ? t('Leave this thread?') : t('Remove access?'),
+            children: isSelfRemoval
+                ? t(
+                    'You and all users with access to the mailbox "{{mailboxName}}" will no longer see this thread.',
+                    { mailboxName: access.mailbox.email }
+                )
+                : t(
+                    'All users with access to the mailbox "{{mailboxName}}" will no longer see this thread.',
+                    { mailboxName: access.mailbox.email }
+                ),
+        });
+        if (decision !== 'delete') return;
         removeThreadAccess({
             id: access.id,
             threadId: selectedThread!.id
@@ -94,6 +113,15 @@ export const ThreadAccessesWidget = ({ accesses }: ThreadAccessesWidgetProps) =>
                 addToast(<ToasterItem>
                     <p>{t('Thread access removed')}</p>
                 </ToasterItem>);
+                if (isSelfRemoval) {
+                    setIsShareModalOpen(false);
+                    invalidateThreadMessages({
+                        type: 'delete',
+                        metadata: { threadIds: [selectedThread!.id] },
+                    });
+                    invalidateThreadsStats();
+                    unselectThread();
+                }
             }
         });
     }

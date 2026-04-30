@@ -50,7 +50,6 @@ export const MailboxLabelsBase = ({ mailbox }: MailboxLabelsProps) => {
 
   const handleDragOver = (e: React.DragEvent<HTMLElement>) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'link';
     setIsDragOver(true);
   };
 

@@ -29,8 +29,10 @@ const DEFAULT_CONFIG: AppConfig = {
     IMAGE_PROXY_ENABLED: false,
     FEATURE_MAILDOMAIN_CREATE: true,
     FEATURE_MAILDOMAIN_MANAGE_ACCESSES: true,
+    FEATURE_THREAD_SPLIT: true,
     DRIVE: DEFAULT_DRIVE_CONFIG,
     MESSAGES_MANUAL_RETRY_MAX_AGE: 0,
+    FRONTEND_SILENT_LOGIN_ENABLED: false,
 }
 
 const ConfigContext = createContext<AppConfig>(DEFAULT_CONFIG)
@@ -59,7 +61,7 @@ export const ConfigProvider = ({ children }: PropsWithChildren) => {
               height: "100vh",
             }}
           >
-            <Spinner />
+            <Spinner size="xl"/>
           </div>
         );
       }

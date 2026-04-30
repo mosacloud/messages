@@ -115,7 +115,7 @@ class TestApiDraftAndSendMessage:
         assert draft_message.is_draft is True
         assert draft_message.is_sender is True
         assert draft_message.is_trashed is False
-        assert draft_message.is_starred is False
+
         assert draft_message.has_attachments is False
         assert draft_message.sent_at is None
         assert draft_message.draft_blob.get_content().decode("utf-8") == draft_content
@@ -132,7 +132,7 @@ class TestApiDraftAndSendMessage:
         assert draft_message.thread.has_messages is True
         assert draft_message.thread.has_sender is False
         assert draft_message.thread.has_trashed is False
-        assert draft_message.thread.has_starred is False
+
         assert draft_message.thread.has_attachments is False
         assert draft_message.thread.has_draft is True
         assert draft_message.thread.sender_names == [draft_message.sender.name]
@@ -190,14 +190,14 @@ class TestApiDraftAndSendMessage:
         assert sent_message.is_draft is False
         assert sent_message.is_sender is True
         assert sent_message.is_trashed is False
-        assert sent_message.is_starred is False
+
         assert sent_message.sent_at is not None
 
         # Assert the thread is updated
         assert sent_message.thread.has_messages is True
         assert sent_message.thread.has_sender is True
         assert sent_message.thread.has_trashed is False
-        assert sent_message.thread.has_starred is False
+
         assert sent_message.thread.has_draft is False
         assert sent_message.thread.sender_names == [sent_message.sender.name]
         assert sent_message.thread.messaged_at is not None
@@ -309,14 +309,14 @@ class TestApiDraftAndSendMessage:
         assert draft_message.is_draft is True
         assert draft_message.is_sender is True
         assert draft_message.is_trashed is False
-        assert draft_message.is_starred is False
+
         assert draft_message.has_attachments is False
         assert draft_message.draft_blob.get_content().decode("utf-8") == draft_content
 
         assert draft_message.thread.has_messages is True
         assert draft_message.thread.has_sender is False
         assert draft_message.thread.has_trashed is False
-        assert draft_message.thread.has_starred is False
+
         assert draft_message.thread.has_attachments is False
         assert draft_message.thread.has_draft is True
         assert draft_message.thread.sender_names == [
@@ -352,14 +352,14 @@ class TestApiDraftAndSendMessage:
         assert sent_message.is_draft is False
         assert sent_message.is_sender is True
         assert sent_message.is_trashed is False
-        assert sent_message.is_starred is False
+
         assert sent_message.sent_at is not None
 
         # Assert the thread is updated
         assert sent_message.thread.has_messages is True
         assert sent_message.thread.has_sender is True
         assert sent_message.thread.has_trashed is False
-        assert sent_message.thread.has_starred is False
+
         assert sent_message.thread.has_draft is False
         assert sent_message.thread.sender_names == [
             message.sender.name,

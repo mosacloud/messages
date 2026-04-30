@@ -8,6 +8,7 @@
 import type { ThreadAccessRoleChoices } from "./thread_access_role_choices";
 import type { ThreadAccessDetail } from "./thread_access_detail";
 import type { ThreadLabel } from "./thread_label";
+import type { ThreadAbilities } from "./thread_abilities";
 
 /**
  * Serialize threads.
@@ -20,6 +21,7 @@ export interface Thread {
   readonly snippet: string;
   readonly messages: string;
   readonly has_unread: boolean;
+  readonly has_unread_mention: boolean;
   readonly has_trashed: boolean;
   /** Whether all messages in the thread are trashed */
   readonly is_trashed: boolean;
@@ -69,4 +71,6 @@ export interface Thread {
   readonly accesses: readonly ThreadAccessDetail[];
   readonly labels: readonly ThreadLabel[];
   readonly summary: string;
+  readonly events_count: number;
+  readonly abilities: ThreadAbilities;
 }

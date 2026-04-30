@@ -232,6 +232,14 @@ def test_search_parse_query_is_starred_modifier_french():
     assert result == {"text": "some text", "is_starred": True}
 
 
+def test_search_parse_query_is_starred_modifier_dutch():
+    """Test parsing 'is:gevolgd' modifier in Dutch."""
+    query = "is:gevolgd some text"
+    result = parse_search_query(query)
+
+    assert result == {"text": "some text", "is_starred": True}
+
+
 def test_search_parse_query_is_read_modifier_english():
     """Test parsing 'is:read' modifier in English."""
     query = "is:read some text"

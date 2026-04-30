@@ -24,6 +24,7 @@ import type {
 import type { BlobUploadCreate201, BlobUploadCreateBody } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -67,7 +68,7 @@ export const getBlobDownloadRetrieveQueryKey = (id?: string) => {
 
 export const getBlobDownloadRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof blobDownloadRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -105,11 +106,11 @@ export const getBlobDownloadRetrieveQueryOptions = <
 export type BlobDownloadRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof blobDownloadRetrieve>>
 >;
-export type BlobDownloadRetrieveQueryError = unknown;
+export type BlobDownloadRetrieveQueryError = ErrorType<unknown>;
 
 export function useBlobDownloadRetrieve<
   TData = Awaited<ReturnType<typeof blobDownloadRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options: {
@@ -136,7 +137,7 @@ export function useBlobDownloadRetrieve<
 };
 export function useBlobDownloadRetrieve<
   TData = Awaited<ReturnType<typeof blobDownloadRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -163,7 +164,7 @@ export function useBlobDownloadRetrieve<
 };
 export function useBlobDownloadRetrieve<
   TData = Awaited<ReturnType<typeof blobDownloadRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -183,7 +184,7 @@ export function useBlobDownloadRetrieve<
 
 export function useBlobDownloadRetrieve<
   TData = Awaited<ReturnType<typeof blobDownloadRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   id: string,
   options?: {
@@ -279,7 +280,7 @@ export const blobUploadCreate = async (
 };
 
 export const getBlobUploadCreateMutationOptions = <
-  TError = void,
+  TError = ErrorType<void>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -320,9 +321,12 @@ export type BlobUploadCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof blobUploadCreate>>
 >;
 export type BlobUploadCreateMutationBody = BlobUploadCreateBody;
-export type BlobUploadCreateMutationError = void;
+export type BlobUploadCreateMutationError = ErrorType<void>;
 
-export const useBlobUploadCreate = <TError = void, TContext = unknown>(
+export const useBlobUploadCreate = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof blobUploadCreate>>,

@@ -78,11 +78,69 @@ class Base(Configuration):
     OPENSEARCH_TIMEOUT = values.PositiveIntegerValue(
         20, environ_name="OPENSEARCH_TIMEOUT", environ_prefix=None
     )
+    OPENSEARCH_BULK_TIMEOUT = values.PositiveIntegerValue(
+        60, environ_name="OPENSEARCH_BULK_TIMEOUT", environ_prefix=None
+    )
+    OPENSEARCH_BULK_MAX_BYTES = values.PositiveIntegerValue(
+        25 * 1024 * 1024,
+        environ_name="OPENSEARCH_BULK_MAX_BYTES",
+        environ_prefix=None,
+    )
+    # Number of thread documents (and their child message documents)
+    # accumulated before a bulk flush. Lower values reduce per-request
+    # cluster pressure (heap, queue depth) at the cost of more round-trips.
+    OPENSEARCH_BULK_CHUNK_SIZE = values.PositiveIntegerValue(
+        50,
+        environ_name="OPENSEARCH_BULK_CHUNK_SIZE",
+        environ_prefix=None,
+    )
+    # Transport-level retry budget for the OpenSearch client. The
+    # opensearch-py transport already retries on 502/503/504 (its
+    # ``DEFAULT_RETRY_ON_STATUS``) — this just exposes the count so we
+    # can lift it above the library default of 3 if needed. Whatever
+    # bubbles up through this budget is wrapped as
+    # ``TransientTransportError`` and handed to Celery autoretry.
+    OPENSEARCH_MAX_RETRIES = values.PositiveIntegerValue(
+        3,
+        environ_name="OPENSEARCH_MAX_RETRIES",
+        environ_prefix=None,
+    )
     OPENSEARCH_INDEX_THREADS = values.BooleanValue(
         True, environ_name="OPENSEARCH_INDEX_THREADS", environ_prefix=None
     )
     OPENSEARCH_CA_CERTS = values.Value(
         None, environ_name="OPENSEARCH_CA_CERTS", environ_prefix=None
+    )
+    # Interval (seconds) at which the Celery Beat task drains the Redis
+    # coalescing buffers (reindex + delete) and enqueues bulk thread tasks.
+    # Longer intervals reduce Celery/OpenSearch load at the cost of search
+    # result staleness for recent writes.
+    SEARCH_REINDEX_TASKS_INTERVAL = values.PositiveIntegerValue(
+        30,
+        environ_name="SEARCH_REINDEX_TASKS_INTERVAL",
+        environ_prefix=None,
+    )
+    # Maximum number of thread / message IDs handed to a single
+    # ``bulk_*_task`` call. Each batch becomes one Celery task, so the
+    # value is the unit of parallelism, retry granularity and worker
+    # occupation for catch-up flows. Lower means more, shorter tasks
+    # (better parallelism, cheaper retries); higher means fewer, longer
+    # tasks (less broker chatter but worse failure isolation).
+    SEARCH_FLUSH_BATCH_SIZE = values.PositiveIntegerValue(
+        1000,
+        environ_name="SEARCH_FLUSH_BATCH_SIZE",
+        environ_prefix=None,
+    )
+    # Maximum number of ``bulk_*_task`` calls a single Beat tick is
+    # allowed to enqueue, shared across the three handoffs (reindex /
+    # thread-delete / message-delete). Bounds catch-up bursts so a huge
+    # backlog is spread across several ticks rather than flooding the
+    # broker in one go. Effective per-tick capacity is roughly
+    # ``SEARCH_FLUSH_BATCH_SIZE * SEARCH_FLUSH_MAX_BATCHES`` IDs.
+    SEARCH_FLUSH_MAX_BATCHES = values.PositiveIntegerValue(
+        10,
+        environ_name="SEARCH_FLUSH_MAX_BATCHES",
+        environ_prefix=None,
     )
 
     # Upload limits
@@ -120,6 +178,16 @@ class Base(Configuration):
         500, environ_name="MAX_RECIPIENTS_PER_MESSAGE", environ_prefix=None
     )
 
+    # Thread events
+    # Time window (in seconds) during which a ThreadEvent can be edited or
+    # deleted after creation. Set to 0 to disable the restriction and allow
+    # edits indefinitely.
+    MAX_THREAD_EVENT_EDIT_DELAY = values.PositiveIntegerValue(
+        60 * 60,  # 1 hour in seconds
+        environ_name="MAX_THREAD_EVENT_EDIT_DELAY",
+        environ_prefix=None,
+    )
+
     # Throttling - limits external recipients per mailbox/maildomain per time period
     # Format: "count/period" where period is minute, hour, or day. None to disable.
     THROTTLE_MAILBOX_OUTBOUND_EXTERNAL_RECIPIENTS = ThrottleRateValue(
@@ -130,6 +198,14 @@ class Base(Configuration):
     THROTTLE_MAILDOMAIN_OUTBOUND_EXTERNAL_RECIPIENTS = ThrottleRateValue(
         None,
         environ_name="THROTTLE_MAILDOMAIN_OUTBOUND_EXTERNAL_RECIPIENTS",
+        environ_prefix=None,
+    )
+
+    # Autoreply rate limit: max autoreplies per sender per mailbox per time period
+    # Format: "count/period" where period is minute, hour, or day. None to disable.
+    THROTTLE_AUTOREPLY_PER_SENDER = ThrottleRateValue(
+        "1/day",
+        environ_name="THROTTLE_AUTOREPLY_PER_SENDER",
         environ_prefix=None,
     )
 
@@ -265,7 +341,16 @@ class Base(Configuration):
 
     # Spam filtering settings
 
-    # Default spam configuration for all mail domains, overrideable per mail domain in custom_settings
+    # Default spam configuration for all mail domains, overrideable per mail
+    # domain in custom_settings. Recognised keys include:
+    #   rspamd_url / rspamd_auth : rspamd /checkv2 endpoint + optional auth header
+    #   trusted_relays           : int, how many upstream Received blocks to trust
+    #                              for header-based rules (default 1)
+    #   rules                    : list of hardcoded header-match spam rules
+    #   inbound_auth             : sender authentication backend — one of
+    #                              "native", "rspamd", "authentication-results",
+    #                              or None/absent to disable. See
+    #                              core.mda.inbound_auth for semantics.
     SPAM_CONFIG = values.DictValue({}, environ_name="SPAM_CONFIG", environ_prefix=None)
 
     # MTA settings
@@ -381,6 +466,13 @@ class Base(Configuration):
     MESSAGES_DKIM_VERIFY_OUTGOING = values.BooleanValue(
         default=False,
         environ_name="MESSAGES_DKIM_VERIFY_OUTGOING",
+        environ_prefix=None,
+    )
+
+    # Block outgoing messages when SPF includes are not correctly set up
+    MESSAGES_SPF_CHECK_OUTGOING = values.BooleanValue(
+        default=False,
+        environ_name="MESSAGES_SPF_CHECK_OUTGOING",
         environ_prefix=None,
     )
 
@@ -606,6 +698,9 @@ class Base(Configuration):
     FRONTEND_THEME = values.Value(
         None, environ_name="FRONTEND_THEME", environ_prefix=None
     )
+    FRONTEND_SILENT_LOGIN_ENABLED = values.BooleanValue(
+        default=False, environ_name="FRONTEND_SILENT_LOGIN_ENABLED", environ_prefix=None
+    )
 
     # Celery
     CELERY_BROKER_URL = values.Value(
@@ -690,6 +785,8 @@ class Base(Configuration):
     OIDC_RP_SCOPES = values.Value(
         "openid email", environ_name="OIDC_RP_SCOPES", environ_prefix=None
     )
+    OIDC_AUTHENTICATE_CLASS = "lasuite.oidc_login.views.OIDCAuthenticationRequestView"
+    OIDC_CALLBACK_CLASS = "lasuite.oidc_login.views.OIDCAuthenticationCallbackView"
     LOGIN_REDIRECT_URL = values.Value(
         None, environ_name="LOGIN_REDIRECT_URL", environ_prefix=None
     )
@@ -785,6 +882,9 @@ class Base(Configuration):
         None, environ_name="PROMETHEUS_API_KEY", environ_prefix=None
     )
 
+    # DEPRECATED: ignored since global api_key Channels landed.
+    # Kept only so AppConfig.ready() can emit a deprecation warning when
+    # either env var is set. Migrate to a global api_key Channel.
     METRICS_API_KEY = values.Value(
         None, environ_name="METRICS_API_KEY", environ_prefix=None
     )
@@ -830,8 +930,15 @@ class Base(Configuration):
     FEATURE_IMPORT_MESSAGES = values.BooleanValue(
         default=True, environ_name="FEATURE_IMPORT_MESSAGES", environ_prefix=None
     )
+    # NOTE: "webhook" is intentionally NOT in the default list — the
+    # outbound webhook delivery pipeline is not wired yet. Keeping the
+    # type creatable would let users mint dead-letter channels that look
+    # functional. Add "webhook" here once core/mda/webhook_tasks.py and
+    # the post_save signal land.
     FEATURE_MAILBOX_ADMIN_CHANNELS = values.ListValue(
-        default=[], environ_name="FEATURE_MAILBOX_ADMIN_CHANNELS", environ_prefix=None
+        default=["api_key"],
+        environ_name="FEATURE_MAILBOX_ADMIN_CHANNELS",
+        environ_prefix=None,
     )
     FEATURE_MAILDOMAIN_CREATE = values.BooleanValue(
         default=True, environ_name="FEATURE_MAILDOMAIN_CREATE", environ_prefix=None
@@ -840,6 +947,12 @@ class Base(Configuration):
         default=True,
         environ_name="FEATURE_MAILDOMAIN_MANAGE_ACCESSES",
         environ_prefix=None,
+    )
+    # Kill-switch for the "split thread" feature. When False, the
+    # corresponding API action is disabled and the frontend hides the
+    # related menu entry.
+    FEATURE_THREAD_SPLIT = values.BooleanValue(
+        default=True, environ_name="FEATURE_THREAD_SPLIT", environ_prefix=None
     )
 
     # Logging
@@ -1183,6 +1296,8 @@ class Test(Base):
 
     # Add a test encryption key for django-fernet-encrypted-fields
     SALT_KEY = ["test-salt-for-development-only"]
+
+    FEATURE_MAILBOX_ADMIN_CHANNELS = ["api_key", "widget"]
 
     SCHEMA_CUSTOM_ATTRIBUTES_USER = {}
     SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN = {}

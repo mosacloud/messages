@@ -119,12 +119,21 @@ class ConfigView(drf.views.APIView):
                             "type": "boolean",
                             "readOnly": True,
                         },
+                        "FEATURE_THREAD_SPLIT": {
+                            "type": "boolean",
+                            "readOnly": True,
+                        },
                         "MESSAGES_MANUAL_RETRY_MAX_AGE": {
                             "type": "integer",
                             "description": (
                                 "Maximum age in seconds for a message to be eligible "
                                 "for manual retry of failed deliveries"
                             ),
+                            "readOnly": True,
+                        },
+                        "FRONTEND_SILENT_LOGIN_ENABLED": {
+                            "type": "boolean",
+                            "description": "Whether silent OIDC login is enabled",
                             "readOnly": True,
                         },
                     },
@@ -146,7 +155,9 @@ class ConfigView(drf.views.APIView):
                         "IMAGE_PROXY_ENABLED",
                         "FEATURE_MAILDOMAIN_CREATE",
                         "FEATURE_MAILDOMAIN_MANAGE_ACCESSES",
+                        "FEATURE_THREAD_SPLIT",
                         "MESSAGES_MANUAL_RETRY_MAX_AGE",
+                        "FRONTEND_SILENT_LOGIN_ENABLED",
                     ],
                 },
             )
@@ -170,10 +181,12 @@ class ConfigView(drf.views.APIView):
             "FEATURE_MAILBOX_ADMIN_CHANNELS",
             "FEATURE_MAILDOMAIN_CREATE",
             "FEATURE_MAILDOMAIN_MANAGE_ACCESSES",
+            "FEATURE_THREAD_SPLIT",
             "MAX_OUTGOING_ATTACHMENT_SIZE",
             "MAX_OUTGOING_BODY_SIZE",
             "MAX_INCOMING_EMAIL_SIZE",
             "MAX_RECIPIENTS_PER_MESSAGE",
+            "FRONTEND_SILENT_LOGIN_ENABLED",
         ]
         dict_settings = {}
         for setting in array_settings:

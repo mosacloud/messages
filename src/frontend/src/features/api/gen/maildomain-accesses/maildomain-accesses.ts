@@ -28,6 +28,7 @@ import type {
 } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -70,7 +71,7 @@ export const getMaildomainsAccessesListQueryKey = (maildomainPk?: string) => {
 
 export const getMaildomainsAccessesListQueryOptions = <
   TData = Awaited<ReturnType<typeof maildomainsAccessesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   maildomainPk: string,
   options?: {
@@ -109,11 +110,11 @@ export const getMaildomainsAccessesListQueryOptions = <
 export type MaildomainsAccessesListQueryResult = NonNullable<
   Awaited<ReturnType<typeof maildomainsAccessesList>>
 >;
-export type MaildomainsAccessesListQueryError = unknown;
+export type MaildomainsAccessesListQueryError = ErrorType<unknown>;
 
 export function useMaildomainsAccessesList<
   TData = Awaited<ReturnType<typeof maildomainsAccessesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   maildomainPk: string,
   options: {
@@ -140,7 +141,7 @@ export function useMaildomainsAccessesList<
 };
 export function useMaildomainsAccessesList<
   TData = Awaited<ReturnType<typeof maildomainsAccessesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   maildomainPk: string,
   options?: {
@@ -167,7 +168,7 @@ export function useMaildomainsAccessesList<
 };
 export function useMaildomainsAccessesList<
   TData = Awaited<ReturnType<typeof maildomainsAccessesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   maildomainPk: string,
   options?: {
@@ -187,7 +188,7 @@ export function useMaildomainsAccessesList<
 
 export function useMaildomainsAccessesList<
   TData = Awaited<ReturnType<typeof maildomainsAccessesList>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   maildomainPk: string,
   options?: {
@@ -256,7 +257,7 @@ export const maildomainsAccessesCreate = async (
 };
 
 export const getMaildomainsAccessesCreateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -298,10 +299,10 @@ export type MaildomainsAccessesCreateMutationResult = NonNullable<
 >;
 export type MaildomainsAccessesCreateMutationBody =
   MaildomainAccessWriteRequest;
-export type MaildomainsAccessesCreateMutationError = unknown;
+export type MaildomainsAccessesCreateMutationError = ErrorType<unknown>;
 
 export const useMaildomainsAccessesCreate = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -370,7 +371,7 @@ export const getMaildomainsAccessesRetrieveQueryKey = (
 
 export const getMaildomainsAccessesRetrieveQueryOptions = <
   TData = Awaited<ReturnType<typeof maildomainsAccessesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   maildomainPk: string,
   id: string,
@@ -414,11 +415,11 @@ export const getMaildomainsAccessesRetrieveQueryOptions = <
 export type MaildomainsAccessesRetrieveQueryResult = NonNullable<
   Awaited<ReturnType<typeof maildomainsAccessesRetrieve>>
 >;
-export type MaildomainsAccessesRetrieveQueryError = unknown;
+export type MaildomainsAccessesRetrieveQueryError = ErrorType<unknown>;
 
 export function useMaildomainsAccessesRetrieve<
   TData = Awaited<ReturnType<typeof maildomainsAccessesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   maildomainPk: string,
   id: string,
@@ -446,7 +447,7 @@ export function useMaildomainsAccessesRetrieve<
 };
 export function useMaildomainsAccessesRetrieve<
   TData = Awaited<ReturnType<typeof maildomainsAccessesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   maildomainPk: string,
   id: string,
@@ -474,7 +475,7 @@ export function useMaildomainsAccessesRetrieve<
 };
 export function useMaildomainsAccessesRetrieve<
   TData = Awaited<ReturnType<typeof maildomainsAccessesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   maildomainPk: string,
   id: string,
@@ -495,7 +496,7 @@ export function useMaildomainsAccessesRetrieve<
 
 export function useMaildomainsAccessesRetrieve<
   TData = Awaited<ReturnType<typeof maildomainsAccessesRetrieve>>,
-  TError = unknown,
+  TError = ErrorType<unknown>,
 >(
   maildomainPk: string,
   id: string,
@@ -567,7 +568,7 @@ export const maildomainsAccessesDestroy = async (
 };
 
 export const getMaildomainsAccessesDestroyMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -608,10 +609,10 @@ export type MaildomainsAccessesDestroyMutationResult = NonNullable<
   Awaited<ReturnType<typeof maildomainsAccessesDestroy>>
 >;
 
-export type MaildomainsAccessesDestroyMutationError = unknown;
+export type MaildomainsAccessesDestroyMutationError = ErrorType<unknown>;
 
 export const useMaildomainsAccessesDestroy = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {

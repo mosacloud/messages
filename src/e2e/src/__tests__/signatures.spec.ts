@@ -28,7 +28,8 @@ test.describe("Mailbox Signatures", () => {
     await page.waitForLoadState("networkidle");
 
     // Navigate to signatures page
-    const settingsButton = page.getByRole("button", { name: "More options" });
+    const header = page.locator(".c__header");
+    const settingsButton = header.getByRole("button", { name: "More options" });
     await settingsButton.click();
     await page.getByRole("menuitem", { name: "Signatures" }).click();
     await page.waitForURL("**/mailbox/*/signatures");
@@ -45,7 +46,8 @@ test.describe("Mailbox Signatures", () => {
     await page.waitForLoadState("networkidle");
 
     // Open the settings dropdown menu
-    const settingsButton = page.getByRole("button", { name: "More options" });
+    const header = page.locator(".c__header");
+    const settingsButton = header.getByRole("button", { name: "More options" });
     await expect(settingsButton).toBeVisible();
     await settingsButton.click();
 
@@ -90,7 +92,8 @@ test.describe("Mailbox Signatures", () => {
     await page.waitForLoadState("networkidle");
 
     // Navigate to signatures page
-    const settingsButton = page.getByRole("button", { name: "More options" });
+    const header = page.locator(".c__header");
+    const settingsButton = header.getByRole("button", { name: "More options" });
     await settingsButton.click();
     await page.getByRole("menuitem", { name: "Signatures" }).click();
     await page.waitForURL("**/mailbox/*/signatures");
@@ -134,7 +137,8 @@ test.describe("Mailbox Signatures", () => {
     await page.waitForLoadState("networkidle");
 
     // Navigate to signatures page
-    const settingsButton = page.getByRole("button", { name: "More options" });
+    const header = page.locator(".c__header");
+    const settingsButton = header.getByRole("button", { name: "More options" });
     await settingsButton.click();
     await page.getByRole("menuitem", { name: "Signatures" }).click();
     await page.waitForURL("**/mailbox/*/signatures");
@@ -172,7 +176,8 @@ test.describe("Mailbox Signatures", () => {
     await page.waitForLoadState("networkidle");
 
     // Navigate to signatures page
-    const settingsButton = page.getByRole("button", { name: "More options" });
+    const header = page.locator(".c__header");
+    const settingsButton = header.getByRole("button", { name: "More options" });
     await settingsButton.click();
     await page.getByRole("menuitem", { name: "Signatures" }).click();
     await page.waitForURL("**/mailbox/*/signatures");
@@ -206,7 +211,8 @@ test.describe("Mailbox Signatures", () => {
     await page.waitForLoadState("networkidle");
 
     // Navigate to signatures page
-    const settingsButton = page.getByRole("button", { name: "More options" });
+    const header = page.locator(".c__header");
+    const settingsButton = header.getByRole("button", { name: "More options" });
     await settingsButton.click();
     await page.getByRole("menuitem", { name: "Signatures" }).click();
     await page.waitForURL("**/mailbox/*/signatures");
@@ -235,7 +241,8 @@ test.describe("Mailbox Signatures", () => {
     await page.waitForLoadState("networkidle");
 
     // Navigate to signatures page
-    const settingsButton = page.getByRole("button", { name: "More options" });
+    const header = page.locator(".c__header");
+    const settingsButton = header.getByRole("button", { name: "More options" });
     await settingsButton.click();
     await page.getByRole("menuitem", { name: "Signatures" }).click();
     await page.waitForURL("**/mailbox/*/signatures");
@@ -270,7 +277,8 @@ test.describe("Mailbox Signatures", () => {
     await page.waitForLoadState("networkidle");
 
     // Navigate to signatures page
-    const settingsButton = page.getByRole("button", { name: "More options" });
+    const header = page.locator(".c__header");
+    const settingsButton = header.getByRole("button", { name: "More options" });
     await settingsButton.click();
     await page.getByRole("menuitem", { name: "Signatures" }).click();
     await page.waitForURL("**/mailbox/*/signatures");
@@ -317,7 +325,8 @@ test.describe("Mailbox Signatures", () => {
     await page.waitForLoadState("networkidle");
 
     // Navigate to mailbox signatures page
-    const userSettingsButton = page.getByRole("button", { name: "More options" });
+    const header = page.locator(".c__header");
+    const userSettingsButton = header.getByRole("button", { name: "More options" });
     await userSettingsButton.click();
     await page.getByRole("menuitem", { name: "Signatures" }).click();
     await page.waitForURL("**/mailbox/*/signatures");
@@ -338,7 +347,6 @@ test.describe("Mailbox Signatures", () => {
     await page.waitForLoadState("networkidle");
 
     // Navigate to domain admin
-    const header = page.locator(".c__header");
     const settingsButton = header.getByRole("button", { name: "More options" });
     await settingsButton.click();
     await page.getByRole("menuitem", { name: "Domain admin" }).click();

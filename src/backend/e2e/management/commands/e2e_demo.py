@@ -5,6 +5,7 @@ This command creates demo users, mailboxes, shared mailboxes, and outbox test da
 for E2E testing across different browsers (chromium, firefox, webkit).
 """
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
@@ -15,18 +16,20 @@ from core.enums import (
     MailDomainAccessRoleChoices,
     MessageDeliveryStatusChoices,
     ThreadAccessRoleChoices,
+    ThreadEventTypeChoices,
 )
 from core.services.identity.keycloak import get_keycloak_admin_client
 
 BROWSERS = ["chromium", "firefox", "webkit"]
 DOMAIN_NAME = "example.local"
 SHARED_MAILBOX_LOCAL_PART = "shared.e2e"
+IMPORT_MAILBOX_LOCAL_PART = "import.e2e"
 
 
 class Command(BaseCommand):
     """Create E2E demo data for testing."""
 
-    help = "Create E2E demo data (users, mailboxes, and outbox test messages)"
+    help = "Create E2E demo data (users, mailboxes, outbox and inbox test messages)"
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -87,20 +90,24 @@ class Command(BaseCommand):
                 self.style.SUCCESS(f"    ✓ Mailbox admin: {mailbox_admin_email}")
             )
 
-        # Step 3: Create shared mailbox
-        self.stdout.write(
-            f"\n-- 3/5 📥 Creating shared mailbox: {SHARED_MAILBOX_LOCAL_PART}@{DOMAIN_NAME}"
-        )
+        # Step 3: Create shared mailboxes
+        self.stdout.write("\n-- 3/5 📥 Creating shared mailboxes")
         shared_mailbox = self._create_shared_mailbox(SHARED_MAILBOX_LOCAL_PART, domain)
         self.stdout.write(
             self.style.SUCCESS(
                 f"  ✓ Shared mailbox created: {SHARED_MAILBOX_LOCAL_PART}@{DOMAIN_NAME}"
             )
         )
+        import_mailbox = self._create_shared_mailbox(IMPORT_MAILBOX_LOCAL_PART, domain)
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"  ✓ Import mailbox created: {IMPORT_MAILBOX_LOCAL_PART}@{DOMAIN_NAME}"
+            )
+        )
 
         # Step 4: Add all regular users with sender role to the shared mailbox
         self.stdout.write(
-            "\n-- 4/5 🔐 Adding users to shared mailbox with appropriate roles"
+            "\n-- 4/5 🔐 Adding users to shared mailboxes with appropriate roles"
         )
         for user, _ in regular_users:
             self._add_mailbox_access(shared_mailbox, user, MailboxRoleChoices.SENDER)
@@ -109,6 +116,10 @@ class Command(BaseCommand):
                     f"  ✓ Added {user.email} as SENDER to shared mailbox"
                 )
             )
+            self._add_mailbox_access(import_mailbox, user, MailboxRoleChoices.ADMIN)
+            self.stdout.write(
+                self.style.SUCCESS(f"  ✓ Added {user.email} as ADMIN to shared mailbox")
+            )
 
         # Step 5: Add mailbox admin users with admin role to the shared mailbox
         for user, _ in mailbox_admin_users:
@@ -116,11 +127,24 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(f"  ✓ Added {user.email} as ADMIN to shared mailbox")
             )
+            self._add_mailbox_access(import_mailbox, user, MailboxRoleChoices.ADMIN)
+            self.stdout.write(
+                self.style.SUCCESS(f"  ✓ Added {user.email} as ADMIN to import mailbox")
+            )
 
         # Step 6: Create outbox test data for each browser
-        self.stdout.write("\n-- 5/5 📬 Creating outbox test data")
+        self.stdout.write("\n-- 5/7 📬 Creating outbox test data")
         for browser in BROWSERS:
             self._create_outbox_test_data(domain, browser)
+
+        # Step 7: Create inbox test data for each browser
+        self.stdout.write("\n-- 6/7 📥 Creating inbox test data")
+        for browser in BROWSERS:
+            self._create_inbox_test_data(domain, browser)
+
+        # Step 8: Create shared mailbox thread data for IM testing
+        self.stdout.write("\n-- 7/7 💬 Creating shared mailbox thread for IM testing")
+        self._create_shared_mailbox_thread_data(shared_mailbox, regular_users)
 
     def _create_user_with_mailbox(
         self, email, domain, is_domain_admin=False, is_superuser=False
@@ -339,6 +363,65 @@ class Command(BaseCommand):
             self.style.SUCCESS(f"  ✓ Outbox test data created for {browser}")
         )
 
+    def _create_inbox_test_data(self, domain, browser):
+        """Create inbox test data (received threads) for a specific browser."""
+        self.stdout.write(f"\n----  Browser: {browser}")
+
+        try:
+            mailbox = models.Mailbox.objects.get(
+                local_part=f"user.e2e.{browser}", domain=domain
+            )
+        except models.Mailbox.DoesNotExist:
+            self.stdout.write(
+                self.style.ERROR(f"  ✗ Mailbox not found: user.e2e.{browser}")
+            )
+            return
+
+        inbox_subjects = [
+            "Inbox thread alpha",
+            "Inbox thread beta",
+        ]
+
+        # Clean up existing inbox test threads
+        existing = models.Thread.objects.filter(
+            subject__in=inbox_subjects,
+            accesses__mailbox=mailbox,
+        )
+        deleted_count = existing.count()
+        if deleted_count > 0:
+            existing.delete()
+            self.stdout.write(
+                self.style.WARNING(
+                    f"  ⚠ Deleted {deleted_count} existing inbox test thread(s)"
+                )
+            )
+
+        for subject in inbox_subjects:
+            sender_contact, _ = models.Contact.objects.get_or_create(
+                email=f"external.{browser}@external.invalid",
+                mailbox=mailbox,
+                defaults={"name": f"External Sender {browser}"},
+            )
+
+            thread = models.Thread.objects.create(subject=subject)
+            models.ThreadAccess.objects.create(
+                thread=thread,
+                mailbox=mailbox,
+                role=ThreadAccessRoleChoices.EDITOR,
+            )
+            models.Message.objects.create(
+                thread=thread,
+                sender=sender_contact,
+                subject=subject,
+                is_sender=False,
+                is_draft=False,
+            )
+            thread.update_stats()
+
+        self.stdout.write(
+            self.style.SUCCESS(f"  ✓ Inbox test data created for {browser}")
+        )
+
     def _create_thread_with_message(self, mailbox, sender_contact, subject, recipients):
         """
         Create a thread with a message and recipients.
@@ -387,3 +470,87 @@ class Command(BaseCommand):
         thread.update_stats()
 
         return thread
+
+    def _create_shared_mailbox_thread_data(self, shared_mailbox, regular_users):
+        """Create a thread in the shared mailbox for testing internal messages (IM).
+
+        Also seeds one pre-aged ThreadEvent per browser user so the
+        "edit delay elapsed" e2e test can assert on a message whose
+        `is_editable` has already flipped to false — no runtime ageing
+        required, keeps the test deterministic and fast.
+        """
+        subject = "Shared inbox thread for IM"
+
+        # Clean up existing thread
+        existing = models.Thread.objects.filter(
+            subject=subject,
+            accesses__mailbox=shared_mailbox,
+        )
+        deleted_count = existing.count()
+        if deleted_count > 0:
+            existing.delete()
+            self.stdout.write(
+                self.style.WARNING(
+                    f"  ⚠ Deleted {deleted_count} existing shared mailbox IM thread(s)"
+                )
+            )
+
+        # Create thread with EDITOR access so the IM input is visible
+        thread = models.Thread.objects.create(subject=subject)
+        models.ThreadAccess.objects.create(
+            thread=thread,
+            mailbox=shared_mailbox,
+            role=ThreadAccessRoleChoices.EDITOR,
+        )
+
+        # Create an external sender message so the thread appears in inbox
+        sender_contact, _ = models.Contact.objects.get_or_create(
+            email="external@external.invalid",
+            mailbox=shared_mailbox,
+            defaults={"name": "External Sender"},
+        )
+        models.Message.objects.create(
+            thread=thread,
+            sender=sender_contact,
+            subject=subject,
+            is_sender=False,
+            is_draft=False,
+        )
+
+        # Seed one pre-aged IM ThreadEvent per browser user.
+        #
+        # The "edit delay elapsed" test needs a ThreadEvent whose
+        # `created_at` is older than `MAX_THREAD_EVENT_EDIT_DELAY`, so that
+        # `is_editable` returns false and the UI hides Edit/Delete actions.
+        #
+        # Each browser gets its own aged event authored by its own user so
+        # the `canModify = isAuthor && is_editable` check in the frontend
+        # exercises the `is_editable: false` branch (not the `isAuthor: false`
+        # one).
+        past = timezone.now() - timezone.timedelta(
+            seconds=settings.MAX_THREAD_EVENT_EDIT_DELAY + 1
+        )
+        for user, _mailbox in regular_users:
+            # Extract "{browser}" from "user.e2e.{browser}@{domain}".
+            browser = user.email.split("@")[0].removeprefix("user.e2e.")
+            content = f"[e2e-aged-{browser}] Message past edit delay"
+            event = models.ThreadEvent.objects.create(
+                thread=thread,
+                type=ThreadEventTypeChoices.IM,
+                author=user,
+                data={"content": content},
+            )
+            # Bypass `auto_now` / `auto_now_add` with a raw UPDATE so the
+            # timestamps actually land in the past.
+            models.ThreadEvent.objects.filter(pk=event.pk).update(
+                created_at=past, updated_at=past
+            )
+            self.stdout.write(
+                self.style.SUCCESS(f"  ✓ Seeded aged ThreadEvent for {user.email}")
+            )
+
+        thread.update_stats()
+
+        self.stdout.write(
+            self.style.SUCCESS(f"  ✓ Shared mailbox IM thread created: {subject}")
+        )

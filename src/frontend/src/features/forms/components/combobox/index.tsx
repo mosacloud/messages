@@ -14,6 +14,7 @@ export type ComboBoxProps =  {
     onChange?: (value: string[]) => void,
     renderChipLabel?: (item: Option) => string,
     valueValidator?: (value: string) => boolean,
+    autoFocus?: boolean,
 } & Omit<SelectProps, 'value' | 'defaultValue' | 'onChange'>;
 
 export const ComboBox = (props: ComboBoxProps) => {
@@ -85,6 +86,7 @@ export const ComboBox = (props: ComboBoxProps) => {
                 addSelectedItem(selectedItem);
                 setInputValue('');
             },
+            defaultHighlightedIndex: 0,
             onInputValueChange: ({ inputValue: newInputValue }) => {
                 const isPasted = newInputValue.length - inputValue?.length > 1
                 const [newItems, rest] = parseInputValue(newInputValue);
@@ -148,6 +150,10 @@ export const ComboBox = (props: ComboBoxProps) => {
     useEffect(() => {
         props.onChange?.(selectedItems.map(item => item.value || item.label));
     }, [selectedItems]);
+
+    useEffect(() => {
+        if (props.autoFocus) inputRef.current?.focus();
+    }, [props.autoFocus]);
 
     return (
         <Field className={clsx("c__combobox", {

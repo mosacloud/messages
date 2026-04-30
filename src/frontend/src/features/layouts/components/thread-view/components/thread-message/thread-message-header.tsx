@@ -8,6 +8,7 @@ import { Badge } from "@/features/ui/components/badge";
 import { ContactChip, ContactChipDeliveryStatus, ContactChipDeliveryAction } from "@/features/ui/components/contact-chip";
 import { DateHelper } from "@/features/utils/date-helper";
 import useTrash from "@/features/message/use-trash";
+import useAbility, { Abilities } from "@/hooks/use-ability";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { ThreadMessageHeaderProps } from "./types";
 import ThreadMessageActions from "./thread-message-actions";
@@ -28,19 +29,32 @@ const ThreadMessageHeader = ({
     const { t, i18n } = useTranslation();
     const { user } = useAuth();
     const { markAsUntrashed } = useTrash();
-    const { selectedMailbox } = useMailboxContext();
+    const { selectedMailbox, selectedThread } = useMailboxContext();
+    // Untrash is a shared-state mutation — only show the banner action
+    // to users who have full edit rights on the thread.
+    const canEditThread = useAbility(Abilities.CAN_EDIT_THREAD, selectedThread ?? null);
 
-    // Derived state specific to header
-    const isSuspiciousSender = Boolean(message.stmsg_headers?.['sender-auth'] === 'none');
+    // Derived state specific to header. 'none' = we couldn't verify the sender
+    // (missing DKIM, no upstream auth data); 'fail' = explicit DMARC disavowal
+    // from the sender's domain, i.e. almost certainly a forgery.
+    const senderAuth = message.stmsg_headers?.['sender-auth'];
+    const isUnverifiedSender = senderAuth === 'none';
+    const isForgedSender = senderAuth === 'fail';
+
+    const isUserSender = useMemo(() => {
+        if (!message.is_sender) return false;
+        if (!message.sender_user) return true;
+        if (message.sender_user.email === selectedMailbox?.email) return true;
+        return false;
+    }, [message.is_sender, message.sender_user, selectedMailbox?.email, user?.id]);
 
     const senderUserName = useMemo(() => {
-        if (message.is_sender && message.sender_user && selectedMailbox && selectedMailbox.email !== message.sender_user.email) {
+        if (message.is_sender && message.sender_user && selectedMailbox?.email !== message.sender_user.email) {
             if (user?.id === message.sender_user.id) return t('You')
             return message.sender_user.full_name ?? message.sender_user.email;
         }
-
         return undefined;
-    }, [message.is_sender, message.sender_user, selectedMailbox?.is_identity, user?.id, t])
+    }, [message.is_sender, message.sender_user, selectedMailbox?.email, user?.id, t])
 
     // Handler for untrash banner action
     const handleMarkAsUntrashed = useCallback(() => {
@@ -123,18 +137,25 @@ const ThreadMessageHeader = ({
                         type="info"
                         icon={<span className="material-icons">restore_from_trash</span>}
                         fullWidth
-                        actions={[
+                        actions={canEditThread ? [
                             {
                                 label: t('Undelete'),
                                 onClick: handleMarkAsUntrashed,
                             }
-                        ]}
+                        ] : undefined}
                     >
                         <p>{t('This message has been deleted.')}</p>
                     </Banner>
                 )}
                 <div className="thread-message__header-rows" style={{ marginBottom: 'var(--c--globals--spacings--sm)' }}>
-                    {isSuspiciousSender && (
+                    {isForgedSender && (
+                        <Banner type="error" compact fullWidth>
+                            <div className="thread-message__header-banner__content">
+                                <p>{t("This message failed sender authentication and is likely a forgery. Do not trust it.")}</p>
+                            </div>
+                        </Banner>
+                    )}
+                    {isUnverifiedSender && (
                         <Banner type="warning" compact fullWidth>
                             <div className="thread-message__header-banner__content">
                                 <p>{t("This contact's identity could not be verified. Proceed with caution.")}</p>
@@ -152,9 +173,9 @@ const ThreadMessageHeader = ({
                                 <ContactChip
                                     className="thread-message__sender-chip"
                                     contact={message.sender}
-                                    isUser={message.is_sender}
+                                    isUser={isUserSender}
                                     senderUserName={senderUserName}
-                                    status={isSuspiciousSender ? 'unverified' : undefined}
+                                    status={isForgedSender ? 'forged' : isUnverifiedSender ? 'unverified' : undefined}
                                     displayEmail
                                 />
                             </div>

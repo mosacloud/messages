@@ -2,6 +2,7 @@
 """Tests for the Thread API list endpoint."""
 
 from datetime import timedelta
+from unittest import mock
 
 from django.urls import reverse
 from django.utils import timezone
@@ -19,6 +20,7 @@ from core.factories import (
     MessageFactory,
     MessageRecipientFactory,
     ThreadAccessFactory,
+    ThreadEventFactory,
     ThreadFactory,
     UserFactory,
 )
@@ -27,6 +29,211 @@ from core.models import MailboxAccess, Thread
 pytestmark = pytest.mark.django_db
 
 API_URL = reverse("threads-list")
+
+
+# --- Tests for thread ordering ---
+
+
+def test_list_threads_default_ordering_by_messaged_at(api_client):
+    """Test that threads are ordered by messaged_at descending by default."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    now = timezone.now()
+
+    thread_old = ThreadFactory(messaged_at=now - timedelta(hours=2), has_messages=True)
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_old,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    thread_recent = ThreadFactory(
+        messaged_at=now - timedelta(hours=1), has_messages=True
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_recent,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    response = api_client.get(API_URL, {"mailbox_id": str(mailbox.id)})
+    assert response.status_code == status.HTTP_200_OK
+    result_ids = [r["id"] for r in response.data["results"]]
+    assert result_ids == [str(thread_recent.id), str(thread_old.id)]
+
+
+def test_list_threads_draft_only_thread_not_first(api_client):
+    """Test that a draft-only thread (messaged_at=NULL) does not appear before
+    threads with actual messages. The Coalesce fallback to draft_messaged_at
+    should position it according to its draft creation time."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    now = timezone.now()
+
+    # Thread with a regular message (messaged_at=now-1h)
+    thread_with_message = ThreadFactory(
+        messaged_at=now - timedelta(hours=1), has_messages=True
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_with_message,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    # Thread with only a draft (messaged_at=NULL, draft_messaged_at=now-2h)
+    thread_draft_only = ThreadFactory(
+        messaged_at=None,
+        draft_messaged_at=now - timedelta(hours=2),
+        has_draft=True,
+        has_messages=True,
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_draft_only,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    response = api_client.get(API_URL, {"mailbox_id": str(mailbox.id)})
+    assert response.status_code == status.HTTP_200_OK
+    result_ids = [r["id"] for r in response.data["results"]]
+    # messaged_at(1h ago) > draft_messaged_at(2h ago) → regular thread first
+    assert result_ids == [str(thread_with_message.id), str(thread_draft_only.id)]
+
+
+def test_list_threads_draft_only_ordered_by_draft_date(api_client):
+    """Test that among draft-only threads, the most recent draft comes first."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    now = timezone.now()
+
+    thread_old_draft = ThreadFactory(
+        messaged_at=None,
+        draft_messaged_at=now - timedelta(hours=2),
+        has_draft=True,
+        has_messages=True,
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_old_draft,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    thread_recent_draft = ThreadFactory(
+        messaged_at=None,
+        draft_messaged_at=now - timedelta(hours=1),
+        has_draft=True,
+        has_messages=True,
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_recent_draft,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    response = api_client.get(API_URL, {"mailbox_id": str(mailbox.id)})
+    assert response.status_code == status.HTTP_200_OK
+    result_ids = [r["id"] for r in response.data["results"]]
+    assert result_ids == [str(thread_recent_draft.id), str(thread_old_draft.id)]
+
+
+def test_list_threads_has_messages_filter_ordering(api_client):
+    """Test that has_messages=1 returns threads ordered correctly, with
+    draft-only threads positioned by their draft date, not at the top."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    now = timezone.now()
+
+    # Thread with regular message (recent)
+    thread_recent_msg = ThreadFactory(
+        messaged_at=now - timedelta(minutes=30), has_messages=True
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_recent_msg,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    # Thread with only a draft (oldest)
+    thread_draft = ThreadFactory(
+        messaged_at=None,
+        draft_messaged_at=now - timedelta(hours=2),
+        has_draft=True,
+        has_messages=True,
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_draft,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    # Thread with regular message (old)
+    thread_old_msg = ThreadFactory(
+        messaged_at=now - timedelta(hours=1), has_messages=True
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_old_msg,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    response = api_client.get(
+        API_URL, {"mailbox_id": str(mailbox.id), "has_messages": "1"}
+    )
+    assert response.status_code == status.HTTP_200_OK
+    result_ids = [r["id"] for r in response.data["results"]]
+    # Expected: recent msg (30min), old msg (1h), draft (2h)
+    assert result_ids == [
+        str(thread_recent_msg.id),
+        str(thread_old_msg.id),
+        str(thread_draft.id),
+    ]
+
+
+def test_list_threads_view_specific_ordering(api_client):
+    """Test that view-specific filters use their dedicated ordering field."""
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])
+    now = timezone.now()
+
+    # Thread with an old messaged_at but recent draft
+    thread_a = ThreadFactory(
+        messaged_at=now - timedelta(hours=2),
+        draft_messaged_at=now,
+        has_draft=True,
+        has_messages=True,
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_a,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    # Thread with a less recent draft
+    thread_b = ThreadFactory(
+        messaged_at=None,
+        draft_messaged_at=now - timedelta(hours=1),
+        has_draft=True,
+        has_messages=True,
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread_b,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+
+    # has_draft=1 should order by draft_messaged_at desc
+    response = api_client.get(
+        API_URL, {"mailbox_id": str(mailbox.id), "has_draft": "1"}
+    )
+    assert response.status_code == status.HTTP_200_OK
+    result_ids = [r["id"] for r in response.data["results"]]
+    # thread_a draft_messaged_at(now) > thread_b draft_messaged_at(1h ago)
+    assert result_ids == [str(thread_a.id), str(thread_b.id)]
 
 
 def test_delete_thread_viewer_should_be_forbidden(api_client):
@@ -47,12 +254,73 @@ def test_delete_thread_viewer_should_be_forbidden(api_client):
     assert response.status_code == status.HTTP_403_FORBIDDEN
     assert Thread.objects.filter(pk=thread.pk).exists()
 
-    # Elevate to EDITOR and verify delete succeeds
+    # Elevate BOTH ThreadAccess and MailboxAccess to EDITOR — full edit
+    # rights on a thread require both roles.
     thread_access.role = enums.ThreadAccessRoleChoices.EDITOR
     thread_access.save()
+    MailboxAccess.objects.filter(user=user, mailbox=mailbox).update(
+        role=enums.MailboxRoleChoices.EDITOR
+    )
     response = api_client.delete(url)
     assert response.status_code == status.HTTP_204_NO_CONTENT
     assert not Thread.objects.filter(pk=thread.pk).exists()
+
+
+def test_delete_thread_viewer_mailbox_with_editor_thread_access_forbidden(api_client):
+    """Previously-missed scenario: VIEWER MailboxAccess + EDITOR ThreadAccess.
+
+    A shared inbox grants EDITOR ThreadAccess to every incoming thread,
+    but a user with only VIEWER MailboxAccess on that inbox must not be
+    able to delete those threads. `HasThreadEditAccess` previously
+    checked only the ThreadAccess role and missed this case.
+    """
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])  # VIEWER mailbox role
+    thread = ThreadFactory()
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread,
+        role=enums.ThreadAccessRoleChoices.EDITOR,  # Mailbox has edit on thread
+    )
+    MessageFactory(thread=thread)
+
+    url = reverse("threads-detail", kwargs={"pk": str(thread.id)})
+    response = api_client.delete(url)
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert Thread.objects.filter(pk=thread.pk).exists()
+
+    # Elevating MailboxAccess to EDITOR unblocks the destroy action.
+    MailboxAccess.objects.filter(user=user, mailbox=mailbox).update(
+        role=enums.MailboxRoleChoices.EDITOR
+    )
+    response = api_client.delete(url)
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert not Thread.objects.filter(pk=thread.pk).exists()
+
+
+def test_refresh_summary_viewer_forbidden(api_client):
+    """A viewer cannot trigger the AI summary regeneration — it mutates
+    `thread.summary`. The endpoint is covered by `HasThreadEditAccess`
+    via `ThreadViewSet.get_permissions`.
+    """
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])  # VIEWER mailbox role
+    thread = ThreadFactory(summary="initial")
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+    MessageFactory(thread=thread)
+
+    url = reverse("threads-refresh-summary", kwargs={"pk": str(thread.id)})
+    response = api_client.post(url)
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    thread.refresh_from_db()
+    assert thread.summary == "initial"  # untouched
 
 
 def test_list_threads_success(api_client):
@@ -204,43 +472,85 @@ def test_list_threads_filter_has_trashed(api_client):
 
 
 def test_list_threads_filter_has_starred(api_client):
-    """Test filtering threads by has_starred=1."""
+    """Test filtering threads by has_starred=1 (mailbox-scoped via ThreadAccess.starred_at)."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
     mailbox = MailboxFactory(users_read=[user])
-    # Thread 1: Has starred messages
+    # Thread 1: Starred for this mailbox
     thread1 = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox,
         thread=thread1,
         role=enums.ThreadAccessRoleChoices.EDITOR,
+        starred_at=timezone.now(),
     )
-    MessageFactory(thread=thread1, is_starred=True)
-    # Thread 2: No starred messages
+    MessageFactory(thread=thread1)
+    # Thread 2: Not starred
     thread2 = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox,
         thread=thread2,
         role=enums.ThreadAccessRoleChoices.EDITOR,
     )
-    MessageFactory(thread=thread2, is_starred=False)
+    MessageFactory(thread=thread2)
 
-    thread1.update_stats()
-    thread2.update_stats()
-
-    response = api_client.get(API_URL, {"has_starred": "1"})
+    response = api_client.get(
+        API_URL, {"has_starred": "1", "mailbox_id": str(mailbox.id)}
+    )
     assert response.status_code == status.HTTP_200_OK
     assert response.data["count"] == 1
     assert response.data["results"][0]["id"] == str(thread1.id)
 
-    response = api_client.get(API_URL, {"has_starred": "0"})
+    response = api_client.get(
+        API_URL, {"has_starred": "0", "mailbox_id": str(mailbox.id)}
+    )
     assert response.status_code == status.HTTP_200_OK
     assert response.data["count"] == 1
     assert response.data["results"][0]["id"] == str(thread2.id)
 
+    # Shared thread: starred for mailbox but not for mailbox2
+    mailbox2 = MailboxFactory(users_read=[user])
+    shared_thread = ThreadFactory()
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=shared_thread,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+        starred_at=timezone.now(),
+    )
+    ThreadAccessFactory(
+        mailbox=mailbox2,
+        thread=shared_thread,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+    MessageFactory(thread=shared_thread)
+
+    # mailbox should see the shared thread as starred
+    response = api_client.get(
+        API_URL, {"has_starred": "1", "mailbox_id": str(mailbox.id)}
+    )
+    assert response.status_code == status.HTTP_200_OK
+    starred_ids = {r["id"] for r in response.data["results"]}
+    assert str(shared_thread.id) in starred_ids
+
+    # mailbox2 should NOT see the shared thread as starred
+    response = api_client.get(
+        API_URL, {"has_starred": "1", "mailbox_id": str(mailbox2.id)}
+    )
+    assert response.status_code == status.HTTP_200_OK
+    starred_ids = {r["id"] for r in response.data["results"]}
+    assert str(shared_thread.id) not in starred_ids
+
+    # mailbox2 should see the shared thread as unstarred
+    response = api_client.get(
+        API_URL, {"has_starred": "0", "mailbox_id": str(mailbox2.id)}
+    )
+    assert response.status_code == status.HTTP_200_OK
+    unstarred_ids = {r["id"] for r in response.data["results"]}
+    assert str(shared_thread.id) in unstarred_ids
+
 
 def test_list_threads_filter_combined(api_client):
-    """Test filtering threads by combining filters."""
+    """Test filtering threads by combining filters (starred is mailbox-scoped)."""
     user = UserFactory()
     api_client.force_authenticate(user=user)
     mailbox = MailboxFactory(users_read=[user])
@@ -251,36 +561,34 @@ def test_list_threads_filter_combined(api_client):
         thread=thread1,
         role=enums.ThreadAccessRoleChoices.EDITOR,
     )
-    MessageFactory(thread=thread1, is_starred=False, is_trashed=False)
-    # Thread 2: Has trashed message (starred message is trashed, so has_starred=False)
+    MessageFactory(thread=thread1, is_trashed=False)
+    # Thread 2: Has trashed message, not starred
     thread2 = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox,
         thread=thread2,
         role=enums.ThreadAccessRoleChoices.EDITOR,
     )
-    MessageFactory(thread=thread2, is_starred=True, is_trashed=True)
+    MessageFactory(thread=thread2, is_trashed=True)
     # Thread 3: Starred, not trashed
     thread3 = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox,
         thread=thread3,
         role=enums.ThreadAccessRoleChoices.EDITOR,
+        starred_at=timezone.now(),
     )
-    MessageFactory(thread=thread3, is_starred=True, is_trashed=False)
-    # Thread 4: Has both starred (not trashed) and trashed messages
+    MessageFactory(thread=thread3, is_trashed=False)
+    # Thread 4: Starred AND has trashed messages
     thread4 = ThreadFactory()
     ThreadAccessFactory(
         mailbox=mailbox,
         thread=thread4,
         role=enums.ThreadAccessRoleChoices.EDITOR,
+        starred_at=timezone.now(),
     )
-    MessageFactory(
-        thread=thread4, is_starred=True, is_trashed=False
-    )  # Starred, not trashed
-    MessageFactory(
-        thread=thread4, is_starred=False, is_trashed=True
-    )  # Not starred, trashed
+    MessageFactory(thread=thread4, is_trashed=False)
+    MessageFactory(thread=thread4, is_trashed=True)
 
     # Thread 5 : Is spam not trashed
     thread5 = ThreadFactory()
@@ -294,27 +602,37 @@ def test_list_threads_filter_combined(api_client):
     for t in [thread1, thread2, thread3, thread4, thread5]:
         t.update_stats()
 
-    # Filter: has_starred=1 AND has_trashed=1 (thread has both starred non-trashed AND trashed messages)
-    response = api_client.get(API_URL, {"has_starred": "1", "has_trashed": "1"})
+    params = {"mailbox_id": str(mailbox.id)}
+
+    # Filter: has_starred=1 AND has_trashed=1 (thread is starred AND has trashed messages)
+    response = api_client.get(
+        API_URL, {**params, "has_starred": "1", "has_trashed": "1"}
+    )
     assert response.status_code == status.HTTP_200_OK
     assert response.data["count"] == 1
     assert response.data["results"][0]["id"] == str(thread4.id)
 
-    # Filter: has_starred=1 AND has_trashed=0 (thread has starred non-trashed messages, no trashed messages)
-    response = api_client.get(API_URL, {"has_starred": "1", "has_trashed": "0"})
+    # Filter: has_starred=1 AND has_trashed=0 (thread is starred, no trashed messages)
+    response = api_client.get(
+        API_URL, {**params, "has_starred": "1", "has_trashed": "0"}
+    )
     assert response.status_code == status.HTTP_200_OK
     assert response.data["count"] == 1
     assert response.data["results"][0]["id"] == str(thread3.id)
 
-    # Filter: has_starred=0 AND has_trashed=0 (thread has no starred non-trashed messages, no trashed messages)
-    response = api_client.get(API_URL, {"has_starred": "0", "has_trashed": "0"})
+    # Filter: has_starred=0 AND has_trashed=0 (thread not starred, no trashed messages)
+    response = api_client.get(
+        API_URL, {**params, "has_starred": "0", "has_trashed": "0"}
+    )
     assert response.status_code == status.HTTP_200_OK
     assert response.data["count"] == 1
     thread_ids = [t["id"] for t in response.data["results"]]
     assert str(thread1.id) in thread_ids
 
-    # Filter: has_starred=0 AND has_trashed=1 (thread has no starred non-trashed messages, but has trashed messages)
-    response = api_client.get(API_URL, {"has_starred": "0", "has_trashed": "1"})
+    # Filter: has_starred=0 AND has_trashed=1 (thread not starred, has trashed messages)
+    response = api_client.get(
+        API_URL, {**params, "has_starred": "0", "has_trashed": "1"}
+    )
     assert response.status_code == status.HTTP_200_OK
     assert response.data["count"] == 1
     assert response.data["results"][0]["id"] == str(thread2.id)
@@ -358,20 +676,19 @@ class TestThreadStatsAPI:
             has_messages=True,
             has_trashed=False,
             has_draft=True,
-            has_starred=True,
             has_sender=True,
         )
         ThreadAccessFactory(
             mailbox=mailbox,
             thread=thread1,
             role=enums.ThreadAccessRoleChoices.EDITOR,
+            starred_at=timezone.now(),
         )
 
         thread2 = ThreadFactory(
             has_messages=True,
             has_trashed=True,
             has_draft=False,
-            has_starred=False,
             has_sender=True,
         )
         ThreadAccessFactory(
@@ -392,7 +709,8 @@ class TestThreadStatsAPI:
         response = api_client.get(
             url,
             {
-                "stats_fields": "has_messages,has_trashed,has_draft,has_starred,has_sender"
+                "mailbox_id": str(mailbox.id),
+                "stats_fields": "has_messages,has_trashed,has_draft,has_starred,has_sender",
             },
         )
 
@@ -401,7 +719,7 @@ class TestThreadStatsAPI:
             "has_messages": 2,  # Both threads have has_messages=True
             "has_trashed": 1,  # Only thread2 has has_trashed=True
             "has_draft": 1,  # Only thread1 has has_draft=True
-            "has_starred": 1,  # Only thread1 has has_starred=True
+            "has_starred": 1,  # Only thread1 is starred
             "has_sender": 2,  # Both threads have has_sender=True
         }
 
@@ -441,14 +759,15 @@ class TestThreadStatsAPI:
         mailbox = MailboxFactory(users_read=[user])
 
         # Starred thread
-        thread1 = ThreadFactory(has_starred=True, has_messages=True)
+        thread1 = ThreadFactory(has_messages=True)
         ThreadAccessFactory(
             mailbox=mailbox,
             thread=thread1,
             role=enums.ThreadAccessRoleChoices.EDITOR,
+            starred_at=timezone.now(),
         )
         # Not starred thread
-        thread2 = ThreadFactory(has_starred=False, has_messages=True)
+        thread2 = ThreadFactory(has_messages=True)
         ThreadAccessFactory(
             mailbox=mailbox,
             thread=thread2,
@@ -456,7 +775,12 @@ class TestThreadStatsAPI:
         )
 
         response = api_client.get(
-            url, {"has_starred": "1", "stats_fields": "has_messages"}
+            url,
+            {
+                "has_starred": "1",
+                "stats_fields": "has_messages",
+                "mailbox_id": str(mailbox.id),
+            },
         )
 
         assert response.status_code == 200
@@ -539,6 +863,7 @@ class TestThreadStatsAPI:
             has_messages=True,
             has_active=True,
             active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
         ThreadAccessFactory(
             mailbox=mailbox1,
@@ -551,6 +876,7 @@ class TestThreadStatsAPI:
             has_messages=True,
             has_active=True,
             active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
         ThreadAccessFactory(
             mailbox=mailbox2,
@@ -560,7 +886,7 @@ class TestThreadStatsAPI:
         thread1_mbx2.labels.add(label1_mbx2)
 
         # Test stats with label_slug filter without mailbox_id
-        # all_unread is 0 because unread state requires a mailbox context
+        # all_unread checks across all user's mailboxes
         response = api_client.get(
             url,
             {
@@ -572,7 +898,7 @@ class TestThreadStatsAPI:
         assert response.status_code == 200
         # Should count threads from both mailboxes since user has access to both
         assert response.data["all"] == 2
-        assert response.data["all_unread"] == 0
+        assert response.data["all_unread"] == 2
 
         # Test stats with label_slug and mailbox_id filter - should return only threads from that mailbox
         response = api_client.get(
@@ -739,13 +1065,21 @@ class TestThreadStatsAPI:
 
         # Create threads with different unread states
         thread1 = ThreadFactory(
-            has_messages=True, has_active=True, active_messaged_at=timezone.now()
+            has_messages=True,
+            has_active=True,
+            active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
         thread2 = ThreadFactory(
-            has_messages=True, has_active=True, active_messaged_at=timezone.now()
+            has_messages=True,
+            has_active=True,
+            active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
         thread3 = ThreadFactory(
-            has_starred=True, has_active=True, active_messaged_at=timezone.now()
+            has_active=True,
+            active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
 
         for thread in [thread1, thread2, thread3]:
@@ -778,36 +1112,46 @@ class TestThreadStatsAPI:
         mailbox = MailboxFactory(users_read=[user])
 
         # Create threads with different combinations of flags and unread status
-        # thread1: unread (has_active + active_messaged_at, no read_at)
+        # thread1: unread (messaged_at set, no read_at), starred
         thread1 = ThreadFactory(
-            has_starred=True,
             has_sender=True,
             is_spam=False,
             has_active=True,
             active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
-        # thread2: read (has_active + active_messaged_at, read_at set)
+        # thread2: read (messaged_at set, read_at set), starred
         thread2 = ThreadFactory(
-            has_starred=True,
             has_sender=True,
             is_spam=False,
             has_active=True,
             active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
-        # thread3: unread (no has_active, so not unread despite no read_at)
+        # thread3: not unread (no messaged_at despite no read_at), not starred
         thread3 = ThreadFactory(
-            has_starred=False,
             has_sender=False,
             is_spam=True,
             has_active=False,
         )
 
-        for thread in [thread1, thread2, thread3]:
-            ThreadAccessFactory(
-                mailbox=mailbox,
-                thread=thread,
-                role=enums.ThreadAccessRoleChoices.EDITOR,
-            )
+        ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread1,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+            starred_at=timezone.now(),
+        )
+        ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread2,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+            starred_at=timezone.now(),
+        )
+        ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread3,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
 
         # Mark thread2 as read
         access2 = thread2.accesses.get(mailbox=mailbox)
@@ -833,12 +1177,12 @@ class TestThreadStatsAPI:
 
         assert response.status_code == 200
         assert response.data == {
-            "has_starred": 2,  # thread1 and thread2 have has_starred=True
+            "has_starred": 2,  # thread1 and thread2 are starred
             "has_starred_unread": 1,  # Only thread1 is starred AND unread
             "has_sender": 2,  # thread1 and thread2 have has_sender=True
             "has_sender_unread": 1,  # Only thread1 is sender AND unread
             "is_spam": 1,  # Only thread3 is spam
-            "is_spam_unread": 0,  # thread3 has no active messages so not unread
+            "is_spam_unread": 0,  # thread3 has no messaged_at so not unread
             "has_active": 2,  # thread1 and thread2 have has_active=True
             "has_active_unread": 1,  # Only thread1 is active AND unread
         }
@@ -850,34 +1194,45 @@ class TestThreadStatsAPI:
         mailbox = MailboxFactory(users_read=[user])
 
         # Create threads with different combinations
-        # thread1: unread
+        # thread1: unread, starred
         thread1 = ThreadFactory(
-            has_starred=True,
             has_sender=True,
             has_active=True,
             active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
-        # thread2: read
+        # thread2: read, starred
         thread2 = ThreadFactory(
-            has_starred=True,
             has_sender=True,
             has_active=True,
             active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
-        # thread3: unread
+        # thread3: unread, not starred
         thread3 = ThreadFactory(
-            has_starred=False,
             has_sender=True,
             has_active=True,
             active_messaged_at=timezone.now(),
+            messaged_at=timezone.now(),
         )
 
-        for thread in [thread1, thread2, thread3]:
-            ThreadAccessFactory(
-                mailbox=mailbox,
-                thread=thread,
-                role=enums.ThreadAccessRoleChoices.EDITOR,
-            )
+        ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread1,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+            starred_at=timezone.now(),
+        )
+        ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread2,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+            starred_at=timezone.now(),
+        )
+        ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread3,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
 
         # Mark thread2 as read
         access2 = thread2.accesses.get(mailbox=mailbox)
@@ -1311,3 +1666,174 @@ class TestThreadListAPI:
         assert (
             MailboxAccess.objects.get(user=user2, mailbox=mailbox).accessed_at is None
         )
+
+    def test_list_threads_without_mailbox_id_should_not_return_inaccessible_threads(
+        self, api_client, url
+    ):
+        """A user searching without mailbox_id should not see threads they
+        have no access to. This tests the OpenSearch hydration path which
+        must enforce ThreadAccess-based access control."""
+        user = UserFactory()
+        other_user = UserFactory()
+        api_client.force_authenticate(user=user)
+
+        # Create a mailbox and thread only accessible by the other user
+        other_mailbox = MailboxFactory(users_read=[other_user])
+        other_thread = ThreadFactory()
+        ThreadAccessFactory(
+            mailbox=other_mailbox,
+            thread=other_thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        MessageFactory(thread=other_thread)
+
+        # Create a mailbox and thread accessible by our user
+        user_mailbox = MailboxFactory(users_read=[user])
+        user_thread = ThreadFactory()
+        ThreadAccessFactory(
+            mailbox=user_mailbox,
+            thread=user_thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        MessageFactory(thread=user_thread)
+
+        # Mock OpenSearch to return both threads (as if it had no access control)
+        with mock.patch("core.api.viewsets.thread.search_threads") as mock_search:
+            mock_search.return_value = {
+                "threads": [
+                    {"id": str(other_thread.id)},
+                    {"id": str(user_thread.id)},
+                ],
+                "total": 2,
+            }
+
+            response = api_client.get(url, {"search": "test query"})
+
+        assert response.status_code == status.HTTP_200_OK
+        result_ids = [r["id"] for r in response.data["results"]]
+        # The user should only see their own thread, not the other user's
+        assert str(user_thread.id) in result_ids
+        assert str(other_thread.id) not in result_ids
+
+    def test_list_threads_with_other_user_mailbox_id_should_be_forbidden(
+        self, api_client, url
+    ):
+        """A user searching with another user's mailbox_id should get a 403,
+        matching the behavior of get_queryset() for the non-search path."""
+        user = UserFactory()
+        other_user = UserFactory()
+        api_client.force_authenticate(user=user)
+
+        # Create a mailbox only accessible by the other user
+        other_mailbox = MailboxFactory(users_read=[other_user])
+        other_thread = ThreadFactory()
+        ThreadAccessFactory(
+            mailbox=other_mailbox,
+            thread=other_thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        MessageFactory(thread=other_thread)
+
+        # Mock OpenSearch to return the thread
+        with mock.patch("core.api.viewsets.thread.search_threads") as mock_search:
+            mock_search.return_value = {
+                "threads": [{"id": str(other_thread.id)}],
+                "total": 1,
+            }
+
+            response = api_client.get(
+                url,
+                {"search": "test query", "mailbox_id": str(other_mailbox.id)},
+            )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+class TestThreadListEventsCount:
+    """Test that ThreadSerializer exposes events_count on the list endpoint.
+
+    This count drives the frontend refetch-on-new-event effect in MailboxProvider.
+    """
+
+    @pytest.fixture
+    def url(self):
+        """Return the URL for the list endpoint."""
+        return reverse("threads-list")
+
+    @staticmethod
+    def _setup_user_with_thread(user=None):
+        """Create a user with an admin mailbox and an editor thread access."""
+        user = user or UserFactory()
+        mailbox = MailboxFactory()
+        MailboxAccessFactory(
+            mailbox=mailbox,
+            user=user,
+            role=enums.MailboxRoleChoices.ADMIN,
+        )
+        thread = ThreadFactory()
+        ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        return user, mailbox, thread
+
+    def test_list_threads_events_count_zero_when_no_events(self, api_client, url):
+        """A thread without any ThreadEvent should expose events_count == 0."""
+        user, mailbox, thread = self._setup_user_with_thread()
+        api_client.force_authenticate(user=user)
+
+        response = api_client.get(url, {"mailbox_id": str(mailbox.id)})
+
+        assert response.status_code == status.HTTP_200_OK
+        payload = next(t for t in response.data["results"] if t["id"] == str(thread.id))
+        assert payload["events_count"] == 0
+
+    def test_list_threads_events_count_matches_thread_events(self, api_client, url):
+        """events_count should equal the number of ThreadEvents attached to the thread."""
+        user, mailbox, thread = self._setup_user_with_thread()
+        api_client.force_authenticate(user=user)
+
+        ThreadEventFactory(thread=thread, author=user)
+        ThreadEventFactory(thread=thread, author=user)
+        ThreadEventFactory(thread=thread, author=user)
+
+        response = api_client.get(url, {"mailbox_id": str(mailbox.id)})
+
+        assert response.status_code == status.HTTP_200_OK
+        payload = next(t for t in response.data["results"] if t["id"] == str(thread.id))
+        assert payload["events_count"] == 3
+
+    def test_list_threads_events_count_distinct_per_thread(self, api_client, url):
+        """events_count must use distinct counting to avoid JOIN multiplication.
+
+        The queryset joins on accesses__mailbox, so without ``distinct=True`` the
+        count would be multiplied by the number of ThreadAccess rows. Guard against
+        regressions by creating several accesses and expecting the raw event count.
+        """
+        user, mailbox, thread = self._setup_user_with_thread()
+        api_client.force_authenticate(user=user)
+
+        # Add two extra accesses on the same thread from other mailboxes the user
+        # also has access to, to force multiple JOIN rows.
+        for _ in range(2):
+            extra_mailbox = MailboxFactory()
+            MailboxAccessFactory(
+                mailbox=extra_mailbox,
+                user=user,
+                role=enums.MailboxRoleChoices.ADMIN,
+            )
+            ThreadAccessFactory(
+                mailbox=extra_mailbox,
+                thread=thread,
+                role=enums.ThreadAccessRoleChoices.EDITOR,
+            )
+
+        ThreadEventFactory(thread=thread, author=user)
+        ThreadEventFactory(thread=thread, author=user)
+
+        response = api_client.get(url, {"mailbox_id": str(mailbox.id)})
+
+        assert response.status_code == status.HTTP_200_OK
+        payload = next(t for t in response.data["results"] if t["id"] == str(thread.id))
+        assert payload["events_count"] == 2

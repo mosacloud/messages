@@ -19,6 +19,25 @@ from core.services.importer.mbox_tasks import process_mbox_file_task
 
 pytestmark = pytest.mark.django_db
 
+
+@pytest.fixture(autouse=True)
+def _mock_ssrf_dns():
+    """Short-circuit SSRF DNS validation for IMAP import tests.
+
+    The IMAP endpoint validates the server hostname via
+    ``core.services.ssrf.validate_hostname``; tests use unresolvable fixtures
+    like ``imap.example.com`` so we bypass validation to reach the mocked IMAP
+    task code. We patch the symbol imported into
+    ``core.services.importer.imap`` rather than ``socket.getaddrinfo``, which
+    would also break real DNS lookups (e.g. boto3 reaching the S3 bucket).
+    """
+    with patch(
+        "core.services.importer.imap.validate_hostname",
+        return_value=["93.184.216.34"],
+    ):
+        yield
+
+
 IMPORT_FILE_URL = "/api/v1.0/import/file/"
 IMPORT_IMAP_URL = "/api/v1.0/import/imap/"
 

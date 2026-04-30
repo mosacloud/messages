@@ -21,6 +21,7 @@ import type {
 } from ".././models";
 
 import { fetchAPI } from "../../fetch-api";
+import type { ErrorType } from "../../fetch-api";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -88,7 +89,7 @@ export const importFileCreate = async (
 };
 
 export const getImportFileCreateMutationOptions = <
-  TError = void,
+  TError = ErrorType<void>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -129,9 +130,12 @@ export type ImportFileCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof importFileCreate>>
 >;
 export type ImportFileCreateMutationBody = ImportFileRequest;
-export type ImportFileCreateMutationError = void;
+export type ImportFileCreateMutationError = ErrorType<void>;
 
-export const useImportFileCreate = <TError = void, TContext = unknown>(
+export const useImportFileCreate = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof importFileCreate>>,
@@ -187,7 +191,7 @@ export const importFileUploadCreate = async (
 };
 
 export const getImportFileUploadCreateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -226,9 +230,12 @@ export type ImportFileUploadCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof importFileUploadCreate>>
 >;
 
-export type ImportFileUploadCreateMutationError = unknown;
+export type ImportFileUploadCreateMutationError = ErrorType<unknown>;
 
-export const useImportFileUploadCreate = <TError = unknown, TContext = unknown>(
+export const useImportFileUploadCreate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof importFileUploadCreate>>,
@@ -282,7 +289,7 @@ export const importFileUploadUpdate = async (
 };
 
 export const getImportFileUploadUpdateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -323,9 +330,12 @@ export type ImportFileUploadUpdateMutationResult = NonNullable<
   Awaited<ReturnType<typeof importFileUploadUpdate>>
 >;
 
-export type ImportFileUploadUpdateMutationError = unknown;
+export type ImportFileUploadUpdateMutationError = ErrorType<unknown>;
 
-export const useImportFileUploadUpdate = <TError = unknown, TContext = unknown>(
+export const useImportFileUploadUpdate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof importFileUploadUpdate>>,
@@ -379,7 +389,7 @@ export const importFileUploadDestroy = async (
 };
 
 export const getImportFileUploadDestroyMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -420,10 +430,10 @@ export type ImportFileUploadDestroyMutationResult = NonNullable<
   Awaited<ReturnType<typeof importFileUploadDestroy>>
 >;
 
-export type ImportFileUploadDestroyMutationError = unknown;
+export type ImportFileUploadDestroyMutationError = ErrorType<unknown>;
 
 export const useImportFileUploadDestroy = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -479,7 +489,7 @@ export const importFileUploadPartCreate = async (
 };
 
 export const getImportFileUploadPartCreateMutationOptions = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -520,10 +530,10 @@ export type ImportFileUploadPartCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof importFileUploadPartCreate>>
 >;
 
-export type ImportFileUploadPartCreateMutationError = unknown;
+export type ImportFileUploadPartCreateMutationError = ErrorType<unknown>;
 
 export const useImportFileUploadPartCreate = <
-  TError = unknown,
+  TError = ErrorType<unknown>,
   TContext = unknown,
 >(
   options?: {
@@ -625,7 +635,7 @@ export const importImapCreate = async (
 };
 
 export const getImportImapCreateMutationOptions = <
-  TError = void,
+  TError = ErrorType<void>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -666,9 +676,12 @@ export type ImportImapCreateMutationResult = NonNullable<
   Awaited<ReturnType<typeof importImapCreate>>
 >;
 export type ImportImapCreateMutationBody = ImportIMAPRequest;
-export type ImportImapCreateMutationError = void;
+export type ImportImapCreateMutationError = ErrorType<void>;
 
-export const useImportImapCreate = <TError = void, TContext = unknown>(
+export const useImportImapCreate = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(
   options?: {
     mutation?: UseMutationOptions<
       Awaited<ReturnType<typeof importImapCreate>>,

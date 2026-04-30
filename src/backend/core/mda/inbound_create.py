@@ -2,7 +2,6 @@
 
 # pylint: disable=broad-exception-caught
 
-import html
 import logging
 import re
 from typing import Any, Dict, List, Optional
@@ -22,6 +21,7 @@ from core.ai.utils import (
 from core.services.importer.labels import (
     compute_labels_and_flags,
 )
+from core.utils import extract_snippet
 
 logger = logging.getLogger(__name__)
 
@@ -133,18 +133,10 @@ def _create_thread(
 ) -> models.Thread:
     """Create a new thread."""
 
-    snippet = ""
-    if text_body := parsed_email.get("textBody"):
-        snippet = text_body[0].get("content", "")[:140]
-    elif html_body := parsed_email.get("htmlBody"):
-        html_content = html_body[0].get("content", "")
-        clean_text = re.sub("<[^>]+>", " ", html_content)
-        snippet = " ".join(html.unescape(clean_text).strip().split())[:140]
-    # Fallback to subject if no body content
-    elif subject_val := parsed_email.get("subject"):
-        snippet = subject_val[:140]
-    else:
-        snippet = "(No snippet available)"  # Absolute fallback
+    snippet = extract_snippet(
+        parsed_email,
+        fallback=parsed_email.get("subject") or "(No snippet available)",
+    )
 
     # Truncate subject to 255 characters if it exceeds max_length
     thread_subject = parsed_email.get("subject")
@@ -187,7 +179,7 @@ def _find_thread_by_message_ids(
     return None
 
 
-def _create_message_from_inbound(
+def _create_message_from_inbound(  # pylint: disable=too-many-arguments
     recipient_email: str,
     parsed_email: Dict[str, Any],
     raw_data: bytes,
@@ -198,14 +190,21 @@ def _create_message_from_inbound(
     imap_flags: Optional[List[str]] = None,
     channel: Optional[models.Channel] = None,
     is_spam: bool = False,
-) -> bool:
-    """Create a message and thread from inbound message data.
+    is_outbound: bool = False,
+) -> Optional[models.Message]:
+    """Create a message and thread from parsed email data.
+
+    Used for inbound delivery, imports, and outbound submission.
+    Returns the created Message on success, or None on failure.
+    Callers that only need a boolean can check truthiness of the return value.
+
+    When ``is_outbound`` is True:
+    - ``is_sender`` is forced to True
+    - No blob is created (the caller handles DKIM signing + blob via prepare_outbound_message)
+    - AI features (summary, auto-labels) are skipped
+    - The message is created as a draft (finalized later by prepare_outbound_message)
 
     Warning: messages imported here could be is_sender=True.
-
-    This method continues the logic of deliver_inbound_message, potentially asynchronously.
-
-    TODO: continue splitting this into smaller methods.
     """
     # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     message_flags = {}
@@ -225,14 +224,14 @@ def _create_message_from_inbound(
 
     except (DjangoDbError, ValidationError) as e:
         logger.error("Failed to find or create thread for %s: %s", recipient_email, e)
-        return False  # Indicate failure
+        return None  # Indicate failure
     except Exception as e:
         logger.exception(
             "Unexpected error finding/creating thread for %s: %s",
             recipient_email,
             e,
         )
-        return False
+        return None
 
     if is_import:
         # get labels from parsed_email
@@ -317,7 +316,7 @@ def _create_message_from_inbound(
             mailbox.id,
             e,
         )
-        return False  # Indicate failure
+        return None  # Indicate failure
     except Exception as e:
         logger.exception(
             "Unexpected error with sender contact %s in mailbox %s: %s",
@@ -325,7 +324,7 @@ def _create_message_from_inbound(
             mailbox.id,
             e,
         )
-        return False
+        return None
 
     # --- 5. Create Message --- #
     try:
@@ -337,18 +336,24 @@ def _create_message_from_inbound(
                 mime_id=parsed_email.get("in_reply_to"), thread=thread
             ).first()
 
-        blob = mailbox.create_blob(
-            content=raw_data,
-            content_type="message/rfc822",
-        )
+        # Outbound: no blob yet — prepare_outbound_message handles
+        # DKIM signing and blob creation later.
+        blob = None
+        if not is_outbound:
+            blob = mailbox.create_blob(
+                content=raw_data,
+                content_type="message/rfc822",
+            )
 
         # Truncate subject to 255 characters if it exceeds max_length
         subject = parsed_email.get("subject")
         if subject and len(subject) > 255:
             subject = subject[:255]
 
-        is_sender = (is_import and is_import_sender) or (
-            sender_email == recipient_email
+        is_sender = (
+            is_outbound
+            or (is_import and is_import_sender)
+            or (sender_email == recipient_email)
         )
 
         message = models.Message.objects.create(
@@ -359,10 +364,11 @@ def _create_message_from_inbound(
             mime_id=parsed_email.get("messageId", parsed_email.get("message_id"))
             or None,
             parent=parent_message,
-            sent_at=parsed_email.get("date") or timezone.now(),
-            is_draft=False,
+            sent_at=(
+                None if is_outbound else (parsed_email.get("date") or timezone.now())
+            ),
+            is_draft=is_outbound,  # Outbound: draft until prepare_outbound_message finalizes
             is_sender=is_sender,
-            is_starred=False,
             is_trashed=False,
             is_spam=is_spam,
             has_attachments=len(parsed_email.get("attachments", [])) > 0,
@@ -372,8 +378,10 @@ def _create_message_from_inbound(
             # We need to set the created_at field to the date of the message
             # because the inbound message is not created at the same time as the message is received
             message.created_at = parsed_email.get("date") or timezone.now()
-            # Extract is_unread from flags (handled via ThreadAccess.read_at)
+            # Extract flags handled via ThreadAccess (not Message fields)
             import_is_unread = message_flags.pop("is_unread", True)
+            import_is_starred = message_flags.pop("_starred", False)
+
             for flag, value in message_flags.items():
                 if hasattr(message, flag):
                     setattr(message, flag, value)
@@ -383,16 +391,23 @@ def _create_message_from_inbound(
                     *message_flags.keys(),
                 ]
             )
-            # If the imported message is read, update read_at on ThreadAccess
-            if not import_is_unread:
-                access = models.ThreadAccess.objects.filter(
-                    thread=thread, mailbox=mailbox
-                ).first()
-                if access and (
+            # Update ThreadAccess for read/starred state
+            access = models.ThreadAccess.objects.filter(
+                thread=thread, mailbox=mailbox
+            ).first()
+            if access:
+                update_fields = []
+                # Sent messages are always considered read by the sender
+                if (is_sender or not import_is_unread) and (
                     access.read_at is None or message.created_at > access.read_at
                 ):
                     access.read_at = message.created_at
-                    access.save(update_fields=["read_at"])
+                    update_fields.append("read_at")
+                if import_is_starred and access.starred_at is None:
+                    access.starred_at = message.created_at
+                    update_fields.append("starred_at")
+                if update_fields:
+                    access.save(update_fields=update_fields)
         elif is_sender:
             access = models.ThreadAccess.objects.filter(
                 thread=thread, mailbox=mailbox
@@ -402,14 +417,14 @@ def _create_message_from_inbound(
                 access.save(update_fields=["read_at"])
     except (DjangoDbError, ValidationError) as e:
         logger.error("Failed to create message in thread %s: %s", thread.id, e)
-        return False  # Indicate failure
+        return None  # Indicate failure
     except Exception as e:
         logger.exception(
             "Unexpected error creating message in thread %s: %s",
             thread.id,
             e,
         )
-        return False
+        return None
 
     # --- 6. Create Recipient Contacts and Links --- #
     # deduplicate recipients
@@ -502,24 +517,17 @@ def _create_message_from_inbound(
     try:
         # Update snippet using the new message's body if possible
         # (This assumes the subject was used for the initial snippet if body was empty)
-        new_snippet = ""
-        if text_body := parsed_email.get("textBody"):
-            new_snippet = text_body[0].get("content", "")[:140]
-        elif html_body := parsed_email.get("htmlBody"):
-            html_content = html_body[0].get("content", "")
-            clean_text = re.sub("<[^>]+>", " ", html_content)
-            new_snippet = " ".join(html.unescape(clean_text).strip().split())[:140]
-        elif subject_val := parsed_email.get("subject"):  # Fallback to subject
-            new_snippet = subject_val[:140]
-        else:
-            new_snippet = ""
+        new_snippet = extract_snippet(
+            parsed_email,
+            fallback=parsed_email.get("subject", ""),
+        )
 
         if new_snippet:
             thread.snippet = new_snippet
             thread.save(update_fields=["snippet"])
 
-        # Do not trigger AI features on import or spam
-        if not is_import and not is_spam:
+        # Do not trigger AI features on import, spam, or outbound
+        if not is_import and not is_spam and not is_outbound:
             # Update summary if needed is ai is enabled
             if is_ai_summary_enabled():
                 messages = get_messages_from_thread(thread)
@@ -558,7 +566,7 @@ def _create_message_from_inbound(
         mailbox.id,
         thread.id,
     )
-    return True  # Indicate success
+    return message  # Return created Message on success (truthy), None on failure
 
 
 # def _process_attachments(

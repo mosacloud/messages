@@ -3,6 +3,7 @@ Core application factories
 """
 
 import json
+import uuid
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
@@ -12,6 +13,7 @@ import factory.fuzzy
 from faker import Faker
 
 from core import enums, models
+from core.enums import UserEventTypeChoices
 
 fake = Faker()
 
@@ -144,6 +146,33 @@ class ThreadAccessFactory(factory.django.DjangoModelFactory):
     )
 
 
+class ThreadEventFactory(factory.django.DjangoModelFactory):
+    """A factory to create thread events for testing purposes."""
+
+    class Meta:
+        model = models.ThreadEvent
+
+    thread = factory.SubFactory(ThreadFactory)
+    type = "im"
+    data = factory.LazyAttribute(lambda o: {"content": fake.sentence()})
+    author = factory.SubFactory(UserFactory)
+
+
+class UserEventFactory(factory.django.DjangoModelFactory):
+    """A factory to create user events for testing purposes."""
+
+    class Meta:
+        model = models.UserEvent
+
+    user = factory.SubFactory(UserFactory)
+    thread = factory.SubFactory(ThreadFactory)
+    thread_event = factory.SubFactory(
+        ThreadEventFactory,
+        thread=factory.SelfAttribute("..thread"),
+    )
+    type = UserEventTypeChoices.MENTION
+
+
 class ContactFactory(factory.django.DjangoModelFactory):
     """A factory to random contacts for testing purposes."""
 
@@ -246,7 +275,15 @@ class AttachmentFactory(factory.django.DjangoModelFactory):
 
 
 class ChannelFactory(factory.django.DjangoModelFactory):
-    """A factory to create channels for testing purposes."""
+    """A factory to create channels for testing purposes.
+
+    ``scope_level`` is derived from the FKs by default:
+      - mailbox set → "mailbox" (default)
+      - maildomain set → "maildomain"
+      - user set → "user"
+      - none of the above → "global"
+    Callers can always override ``scope_level=`` explicitly.
+    """
 
     class Meta:
         model = models.Channel
@@ -255,6 +292,53 @@ class ChannelFactory(factory.django.DjangoModelFactory):
     type = factory.fuzzy.FuzzyChoice(["widget", "mta"])
     settings = factory.Dict({"config": {"enabled": True}})
     mailbox = factory.SubFactory(MailboxFactory)
+    maildomain = None
+    user = None
+    scope_level = factory.LazyAttribute(
+        lambda o: (
+            "mailbox"
+            if o.mailbox is not None
+            else "maildomain"
+            if o.maildomain is not None
+            else "user"
+            if o.user is not None
+            else "global"
+        )
+    )
+
+
+def make_api_key_channel(
+    *,
+    scope_level=enums.ChannelScopeLevel.GLOBAL,
+    scopes=(),
+    mailbox=None,
+    maildomain=None,
+    user=None,
+    name=None,
+    extra_settings=None,
+):
+    """Create an api_key Channel and return ``(channel, plaintext)``.
+
+    Single source of truth for tests that need a working api_key. Mints
+    the secret via ``Channel.rotate_api_key`` so the production helper is
+    exercised on the same code path the DRF/admin flows use, and so the
+    plaintext prefix stays consistent across production and tests.
+
+    Returned plaintext is the only chance to capture it — the row's
+    ``encrypted_settings.api_key_hashes`` only stores the SHA-256 digest.
+    """
+    channel = models.Channel(
+        name=name or f"test-{uuid.uuid4().hex[:6]}",
+        type=enums.ChannelTypes.API_KEY,
+        scope_level=scope_level,
+        mailbox=mailbox,
+        maildomain=maildomain,
+        user=user,
+        settings={"scopes": list(scopes), **(extra_settings or {})},
+    )
+    plaintext = channel.rotate_api_key(save=False)
+    channel.save()
+    return channel, plaintext
 
 
 class BlobFactory(factory.django.DjangoModelFactory):
@@ -293,7 +377,18 @@ class MessageTemplateFactory(factory.django.DjangoModelFactory):
 
     name = factory.Sequence(lambda n: f"Template {n}")
     type = factory.fuzzy.FuzzyChoice(
-        [choice[0] for choice in enums.MessageTemplateTypeChoices.choices]
+        [
+            choice[0]
+            for choice in enums.MessageTemplateTypeChoices.choices
+            if choice[0] != enums.MessageTemplateTypeChoices.AUTOREPLY
+        ]
+    )
+    metadata = factory.LazyAttribute(
+        lambda o: (
+            {"schedule_type": "always"}
+            if o.type == enums.MessageTemplateTypeChoices.AUTOREPLY
+            else {}
+        )
     )
 
     @classmethod

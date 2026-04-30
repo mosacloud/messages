@@ -8,6 +8,36 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-16
+
+### Added
+
+- Add autoreply feature with scheduling support #569
+- Add an action to split a thread from a message #561
+- Add starred/important thread feature scoped per mailbox #581
+- Add unread and starred filters in thread panel #581
+- Add better filtering and granularity for usage metrics
+- Expose `oidc_autojoin` and `identity_sync` flags in provisioning API
+
+### Changed
+
+- Customize thread panel bulk actions according to selection state
+- Rename usage API params to be more generic #589
+- Remove per-message starred in favor of thread-level starred #588
+
+  _⚠️ This migration requires a search reindex to be run after the upgrade._
+
+- Use `url_permalink` from Drive and limit requests to Drive resource server #587
+
+### Fixed
+
+- Make DNS checking more resilient
+- Remove `mailbox.id` from metrics
+
+### Security
+
+- Prevent XSS and URL redirect in shallow navigation
+
 ## [0.4.0] - 2026-03-05
 
 ### Added
@@ -135,7 +165,8 @@ and this project adheres to
 - Exclude `is_trashed` and `is_spam` threads from search results by default
 - `to` search modifier now looks for messages where recipient fields (to, cc, bcc) contain the given email address.
 
-[unreleased]: https://github.com/suitenumerique/messages/compare/v0.4.0...main
+[unreleased]: https://github.com/suitenumerique/messages/compare/v0.5.0...main
+[0.5.0]: https://github.com/suitenumerique/messages/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/suitenumerique/messages/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/suitenumerique/messages/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/suitenumerique/messages/releases/v0.2.0

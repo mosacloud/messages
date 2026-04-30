@@ -1,12 +1,24 @@
 """Tests for the provisioning maildomains endpoint."""
 # pylint: disable=redefined-outer-name
 
+import uuid
+
 from django.urls import reverse
 
 import pytest
 
-from core.factories import MailDomainFactory
+from core.enums import ChannelApiKeyScope, ChannelScopeLevel
+from core.factories import MailDomainFactory, make_api_key_channel
 from core.models import MailDomain
+
+
+def _make_api_key_channel(
+    scopes=(ChannelApiKeyScope.MAILDOMAINS_CREATE.value,), **kwargs
+):
+    """Wrapper around the shared factory pre-loaded with the
+    maildomains-write scope used by every test in this module."""
+    kwargs.setdefault("name", "provisioning-test")
+    return make_api_key_channel(scopes=scopes, **kwargs)
 
 
 @pytest.fixture
@@ -16,46 +28,68 @@ def url():
 
 
 @pytest.fixture
-def auth_header(settings):
-    """Returns the authentication header for the provisioning endpoint."""
-    settings.PROVISIONING_API_KEY = "test-provisioning-key"
-    return {"HTTP_AUTHORIZATION": "Bearer test-provisioning-key"}
+def auth_header():
+    """Global-scope api_key with ChannelApiKeyScope.MAILDOMAINS_CREATE."""
+    channel, plaintext = _make_api_key_channel()
+    return {
+        "HTTP_X_CHANNEL_ID": str(channel.id),
+        "HTTP_X_API_KEY": plaintext,
+    }
 
 
 # -- Authentication tests --
 
 
 @pytest.mark.django_db
-def test_provisioning_no_auth_returns_403(client, url):
-    """Request without Authorization header returns 403."""
+def test_provisioning_no_auth_returns_401(client, url):
+    """Request without X-Channel-Id/X-API-Key returns 401 (not authenticated)."""
     response = client.post(
         url, data={"domains": ["test.fr"]}, content_type="application/json"
     )
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 
 @pytest.mark.django_db
-def test_provisioning_wrong_token_returns_403(client, url, settings):
-    """Request with wrong token returns 403."""
-    settings.PROVISIONING_API_KEY = "correct-key"
+def test_provisioning_wrong_token_returns_401(client, url):
+    """Request with wrong token returns 401 (invalid credentials)."""
+    channel, _plaintext = _make_api_key_channel()
     response = client.post(
         url,
         data={"domains": ["test.fr"]},
         content_type="application/json",
-        HTTP_AUTHORIZATION="Bearer wrong-key",
+        HTTP_X_CHANNEL_ID=str(channel.id),
+        HTTP_X_API_KEY="not-the-real-key",
     )
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 
 @pytest.mark.django_db
-def test_provisioning_no_key_configured_returns_403(client, url, settings):
-    """When PROVISIONING_API_KEY is not configured, returns 403."""
-    settings.PROVISIONING_API_KEY = None
+def test_provisioning_unknown_channel_returns_401(client, url):
+    """Unknown channel id returns 401 (invalid credentials)."""
     response = client.post(
         url,
         data={"domains": ["test.fr"]},
         content_type="application/json",
-        HTTP_AUTHORIZATION="Bearer some-key",
+        HTTP_X_CHANNEL_ID=str(uuid.uuid4()),
+        HTTP_X_API_KEY="anything",
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.django_db
+def test_provisioning_non_global_scope_returns_403(client, url):
+    """A maildomain-scope key cannot call maildomain provisioning."""
+    domain = MailDomainFactory(name="test.fr")
+    channel, plaintext = _make_api_key_channel(
+        scope_level=ChannelScopeLevel.MAILDOMAIN,
+        maildomain=domain,
+    )
+    response = client.post(
+        url,
+        data={"domains": ["new.fr"]},
+        content_type="application/json",
+        HTTP_X_CHANNEL_ID=str(channel.id),
+        HTTP_X_API_KEY=plaintext,
     )
     assert response.status_code == 403
 
@@ -216,3 +250,94 @@ def test_provisioning_missing_domains_returns_400(client, url, auth_header):
         **auth_header,
     )
     assert response.status_code == 400
+
+
+# -- oidc_autojoin and identity_sync tests --
+
+
+@pytest.mark.django_db
+def test_provisioning_default_oidc_autojoin_true(client, url, auth_header):
+    """oidc_autojoin defaults to True when not provided."""
+    response = client.post(
+        url,
+        data={"domains": ["autojoin.fr"]},
+        content_type="application/json",
+        **auth_header,
+    )
+    assert response.status_code == 200
+    domain = MailDomain.objects.get(name="autojoin.fr")
+    assert domain.oidc_autojoin is True
+
+
+@pytest.mark.django_db
+def test_provisioning_default_identity_sync_false(client, url, auth_header):
+    """identity_sync defaults to False when not provided."""
+    response = client.post(
+        url,
+        data={"domains": ["sync.fr"]},
+        content_type="application/json",
+        **auth_header,
+    )
+    assert response.status_code == 200
+    domain = MailDomain.objects.get(name="sync.fr")
+    assert domain.identity_sync is False
+
+
+@pytest.mark.django_db
+def test_provisioning_explicit_oidc_autojoin_false(client, url, auth_header):
+    """oidc_autojoin can be explicitly set to False."""
+    response = client.post(
+        url,
+        data={"domains": ["nojoin.fr"], "oidc_autojoin": False},
+        content_type="application/json",
+        **auth_header,
+    )
+    assert response.status_code == 200
+    domain = MailDomain.objects.get(name="nojoin.fr")
+    assert domain.oidc_autojoin is False
+
+
+@pytest.mark.django_db
+def test_provisioning_explicit_identity_sync_true(client, url, auth_header):
+    """identity_sync can be explicitly set to True."""
+    response = client.post(
+        url,
+        data={"domains": ["synced.fr"], "identity_sync": True},
+        content_type="application/json",
+        **auth_header,
+    )
+    assert response.status_code == 200
+    domain = MailDomain.objects.get(name="synced.fr")
+    assert domain.identity_sync is True
+
+
+@pytest.mark.django_db
+def test_provisioning_updates_oidc_autojoin_on_existing(client, url, auth_header):
+    """oidc_autojoin is updated on existing domains when it differs."""
+    MailDomainFactory(name="existing.fr", oidc_autojoin=True)
+
+    response = client.post(
+        url,
+        data={"domains": ["existing.fr"], "oidc_autojoin": False},
+        content_type="application/json",
+        **auth_header,
+    )
+    assert response.status_code == 200
+    domain = MailDomain.objects.get(name="existing.fr")
+    assert domain.oidc_autojoin is False
+
+
+@pytest.mark.django_db
+def test_provisioning_updates_identity_sync_on_existing(client, url, auth_header):
+    """identity_sync is updated on existing domains when it differs."""
+    MailDomainFactory(name="existing.fr", identity_sync=False)
+
+    response = client.post(
+        url,
+        data={"domains": ["existing.fr"], "identity_sync": True},
+        content_type="application/json",
+        **auth_header,
+    )
+    assert response.status_code == 200
+    domain = MailDomain.objects.get(name="existing.fr")
+    assert domain.identity_sync is True

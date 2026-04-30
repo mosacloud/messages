@@ -1,12 +1,14 @@
 """Admin classes and registrations for core app."""
 # pylint: disable=too-many-lines
 
+import json
 import logging
 
+from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth import admin as auth_admin
 from django.core.files.storage import storages
-from django.db.models import Q
+from django.db.models import JSONField, Q
 from django.http import HttpResponseNotAllowed
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -27,6 +29,33 @@ from core.services.throttle import get_throttle_status
 from . import models
 from .enums import MessageDeliveryStatusChoices
 from .forms import IMAPImportForm, MessageImportForm
+
+
+class PrettyJSONWidget(forms.Textarea):
+    """A textarea widget that pretty-prints JSON content."""
+
+    def __init__(self, attrs=None):
+        default_attrs = {"cols": 80, "rows": 20, "style": "font-family: monospace;"}
+        if attrs:
+            default_attrs.update(attrs)
+        super().__init__(attrs=default_attrs)
+
+    def format_value(self, value):
+        if isinstance(value, str):
+            try:
+                value = json.dumps(json.loads(value), indent=2, ensure_ascii=False)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return value
+
+
+# Apply pretty JSON widget globally to every ModelAdmin (in-house and
+# third-party). EncryptedJSONField inherits from TextField, not JSONField,
+# so encrypted columns are unaffected.
+admin.ModelAdmin.formfield_overrides = {
+    **admin.ModelAdmin.formfield_overrides,
+    JSONField: {"widget": PrettyJSONWidget},
+}
 
 
 class RecipientDeliveryStatusFilter(admin.SimpleListFilter):
@@ -104,9 +133,24 @@ retry_send_messages_action.short_description = (
 )
 
 
+class PasswordlessUserForm(forms.Form):
+    """Minimal form to create a passwordless (sub-less) User from the admin."""
+
+    email = forms.EmailField(label="Email", required=True)
+
+    def clean_email(self):
+        """Reject emails that are already in use."""
+        email = self.cleaned_data["email"]
+        if models.User.objects.filter(email=email).exists():
+            raise forms.ValidationError("A user with this email already exists.")
+        return email
+
+
 @admin.register(models.User)
 class UserAdmin(auth_admin.UserAdmin):
     """Admin class for the User model"""
+
+    change_list_template = "admin/core/user/change_list.html"
 
     fieldsets = (
         (
@@ -183,6 +227,56 @@ class UserAdmin(auth_admin.UserAdmin):
         "updated_at",
     )
     search_fields = ("id", "sub", "admin_email", "email", "full_name")
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "add-passwordless/",
+                self.admin_site.admin_view(self.add_passwordless_view),
+                name="core_user_add_passwordless",
+            ),
+        ]
+        return custom_urls + urls
+
+    def add_passwordless_view(self, request):
+        """Create a passwordless (sub-less) user from a single email field.
+
+        These users cannot authenticate locally (unusable password, no
+        ``admin_email``) and will be claimed on first OIDC login by
+        ``UserManager.get_user_by_sub_or_email``.
+        """
+        if request.method == "POST":
+            form = PasswordlessUserForm(request.POST)
+            if form.is_valid():
+                email = form.cleaned_data["email"]
+                user = models.User.objects.filter(email=email).first()
+                if user is None:
+                    user = models.User(email=email)
+                    user.set_unusable_password()
+                    user.save()
+                    messages.success(
+                        request,
+                        f"Passwordless user created: {user.email}",
+                    )
+                else:
+                    messages.info(
+                        request,
+                        f"User already exists: {user.email}",
+                    )
+                return redirect("admin:core_user_changelist")
+        else:
+            form = PasswordlessUserForm()
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Add passwordless user",
+            "form": form,
+            "opts": self.model._meta,  # noqa: SLF001
+        }
+        return TemplateResponse(
+            request, "admin/core/user/add_passwordless.html", context
+        )
 
 
 class MailDomainAccessInline(admin.TabularInline):
@@ -383,26 +477,109 @@ class MailboxAdmin(admin.ModelAdmin):
 class ChannelAdmin(admin.ModelAdmin):
     """Admin class for the Channel model"""
 
-    list_display = ("name", "type", "mailbox", "maildomain", "created_at")
-    list_filter = ("type", "created_at")
+    list_display = (
+        "name",
+        "type",
+        "scope_level",
+        "mailbox",
+        "maildomain",
+        "user",
+        "created_at",
+    )
+    list_filter = ("type", "scope_level", "created_at")
     search_fields = ("name", "type")
-    readonly_fields = ("created_at", "updated_at")
-    autocomplete_fields = ("mailbox", "maildomain")
+    readonly_fields = ("created_at", "updated_at", "last_used_at")
+    autocomplete_fields = ("mailbox", "maildomain", "user")
+    change_form_template = "admin/core/channel/change_form.html"
 
     fieldsets = (
-        (None, {"fields": ("name", "type", "settings")}),
+        (None, {"fields": ("name", "type", "scope_level", "settings")}),
         (
             "Target",
             {
-                "fields": ("mailbox", "maildomain"),
-                "description": "Specify either a mailbox or maildomain, but not both.",
+                "fields": ("mailbox", "maildomain", "user"),
+                "description": (
+                    "Bind the channel to exactly the target required by its "
+                    "scope_level: 'global' → none; 'maildomain' → maildomain; "
+                    "'mailbox' → mailbox; 'user' → user. On non-user scopes "
+                    "the user FK is an optional creator audit."
+                ),
             },
         ),
         (
             "Timestamps",
-            {"fields": ("created_at", "updated_at"), "classes": ("collapse",)},
+            {
+                "fields": ("created_at", "updated_at", "last_used_at"),
+                "classes": ("collapse",),
+            },
         ),
     )
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        """Constrain ``type`` to known ChannelTypes in the admin form.
+
+        The model field is intentionally a free-form CharField (see
+        ``ChannelTypes`` docstring — adding a new type must not require a
+        migration). The choice constraint is therefore admin-only.
+        """
+        if db_field.name == "type":
+            # pylint: disable=import-outside-toplevel
+            from core.enums import ChannelTypes
+
+            kwargs["widget"] = forms.Select(
+                choices=[(t.value, t.value) for t in ChannelTypes]
+            )
+            return db_field.formfield(**kwargs)
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "<path:object_id>/regenerate-api-key/",
+                self.admin_site.admin_view(self.regenerate_api_key_view),
+                name="core_channel_regenerate_api_key",
+            ),
+        ]
+        return custom_urls + urls
+
+    def regenerate_api_key_view(self, request, object_id):
+        """Regenerate the api_key secret on an api_key channel.
+
+        Delegates the actual rotation to ``Channel.rotate_api_key`` (single
+        source of truth, shared with the DRF create + regenerate flows). The
+        plaintext is rendered ONCE in the response body and never stored in
+        cookies, session, or the messages framework — closing the window
+        where a credential could leak through signed-cookie message storage.
+        """
+        # pylint: disable=import-outside-toplevel
+        from core.enums import ChannelTypes
+
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+
+        channel = self.get_object(request, object_id)
+        if channel is None:
+            messages.error(request, "Channel not found.")
+            return redirect("..")
+        if channel.type != ChannelTypes.API_KEY:
+            messages.error(
+                request, "Only api_key channels can have their secret regenerated."
+            )
+            return redirect("..")
+
+        plaintext = channel.rotate_api_key()
+
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,  # noqa: SLF001
+            "original": channel,
+            "title": "New api_key generated",
+            "api_key": plaintext,
+        }
+        return TemplateResponse(
+            request, "admin/core/channel/regenerated_api_key.html", context
+        )
 
 
 @admin.register(models.MailboxAccess)
@@ -419,14 +596,49 @@ class ThreadAccessInline(admin.TabularInline):
 
     model = models.ThreadAccess
     autocomplete_fields = ("mailbox",)
-    readonly_fields = ("read_at",)
+    readonly_fields = ("read_at", "starred_at")
+
+
+class ThreadEventInline(admin.TabularInline):
+    """Inline class for the ThreadEvent model"""
+
+    model = models.ThreadEvent
+    autocomplete_fields = ("author", "channel")
+    raw_id_fields = ("message",)
+    readonly_fields = ("created_at",)
+    extra = 0
+
+
+class UserEventInline(admin.TabularInline):
+    """Inline class for the UserEvent model.
+
+    UserEvent entries are created exclusively by business logic (mentions,
+    assignments) and must never be edited via the admin: editing ``thread_event``
+    would desynchronize ``user_event.thread`` from
+    ``user_event.thread_event.thread``, breaking mention filters and unread flags.
+    """
+
+    model = models.UserEvent
+    readonly_fields = (
+        "user",
+        "thread",
+        "thread_event",
+        "type",
+        "read_at",
+        "created_at",
+    )
+    can_delete = False
+    extra = 0
+
+    def has_add_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(models.Thread)
 class ThreadAdmin(admin.ModelAdmin):
     """Admin class for the Thread model"""
 
-    inlines = [ThreadAccessInline]
+    inlines = [ThreadAccessInline, ThreadEventInline, UserEventInline]
     list_display = (
         "id",
         "subject",
@@ -441,7 +653,6 @@ class ThreadAdmin(admin.ModelAdmin):
         "has_trashed",
         "has_archived",
         "has_draft",
-        "has_starred",
         "has_sender",
         "has_attachments",
         "has_delivery_pending",
@@ -458,7 +669,6 @@ class ThreadAdmin(admin.ModelAdmin):
                     "has_trashed",
                     "has_archived",
                     "has_draft",
-                    "has_starred",
                     "has_sender",
                     "has_messages",
                     "has_attachments",
@@ -493,7 +703,6 @@ class ThreadAdmin(admin.ModelAdmin):
         "has_trashed",
         "has_archived",
         "has_draft",
-        "has_starred",
         "has_attachments",
         "has_sender",
         "has_messages",
@@ -593,7 +802,6 @@ class MessageAdmin(admin.ModelAdmin):
     list_filter = (
         "is_sender",
         "is_draft",
-        "is_starred",
         "is_trashed",
         "is_spam",
         "is_archived",

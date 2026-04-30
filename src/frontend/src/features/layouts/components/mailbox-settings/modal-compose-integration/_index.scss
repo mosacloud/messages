@@ -211,7 +211,7 @@
     border-top: 1px solid var(--c--contextuals--border--semantic--neutral--default);
 }
 
-// Tags Selector (reuses thread-labels-widget and cunningham styles)
+// Tags Selector (reuses labels-widget and cunningham styles)
 .tags-selector {
     position: relative;
     width: 100% !important;
@@ -257,7 +257,3 @@
     min-height: 24px;
 }
 
-.tags-selector__popup {
-    left: 0;
-    right: auto;
-}

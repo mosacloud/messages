@@ -1,12 +1,12 @@
 import { ThreadsStatsRetrieve200, ThreadsStatsRetrieveStatsFields, useThreadsStatsRetrieve } from "@/features/api/gen"
-import { useMailboxContext } from "@/features/providers/mailbox"
+import { getThreadsStatsQueryKey, useMailboxContext } from "@/features/providers/mailbox"
 import clsx from "clsx"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { useMemo, useState } from "react"
-import { useLayoutContext } from "../../../main"
+import { useLayoutContext } from "@/features/layouts/components/layout-context"
 import { useTranslation } from "react-i18next"
-import { Icon, IconType } from "@gouvfr-lasuite/ui-kit"
+import { Icon, IconSize, IconType } from "@gouvfr-lasuite/ui-kit"
 import i18n from "@/features/i18n/initI18n";
 import useArchive from "@/features/message/use-archive";
 import useTrash from "@/features/message/use-trash";
@@ -15,6 +15,7 @@ import { handle } from "@/features/utils/errors";
 import ViewHelper from "@/features/utils/view-helper";
 import { addToast, ToasterItem } from "@/features/ui/components/toaster";
 import { Tooltip } from "@gouvfr-lasuite/cunningham-react"
+import { EXPANDED_FOLDERS_KEY } from "@/features/config/constants"
 
 // @TODO: replace with real data when folder will be ready
 type Folder = {
@@ -22,8 +23,10 @@ type Folder = {
     name: string;
     icon: string;
     filter?: Record<string, string>;
+    showStats: boolean;
     searchable?: boolean;
     conditional?: boolean;
+    children?: Folder[];
 }
 
 export const MAILBOX_FOLDERS = () => [
@@ -32,24 +35,52 @@ export const MAILBOX_FOLDERS = () => [
         name: i18n.t("Inbox"),
         icon: "inbox",
         searchable: false,
+        showStats: true,
         filter: {
             has_active: "1"
         },
-    },
-    {
-        id: "all_messages",
-        name: i18n.t("All messages"),
-        icon: "mark_as_unread",
-        searchable: true,
-        filter: {
-            has_messages: "1"
-        },
+        children: [
+            {
+                id: "unread",
+                name: i18n.t("Unread"),
+                icon: "mark_email_unread",
+                searchable: false,
+                showStats: true,
+                filter: {
+                    has_active: "1",
+                    has_unread: "1",
+                },
+            },
+            {
+                id: "starred",
+                name: i18n.t("Starred"),
+                icon: "star",
+                searchable: false,
+                showStats: true,
+                filter: {
+                    has_active: "1",
+                    has_starred: "1",
+                },
+            },
+            {
+                id: "mentioned",
+                name: i18n.t("Mentioned"),
+                icon: "alternate_email",
+                searchable: false,
+                showStats: true,
+                filter: {
+                    has_active: "1",
+                    has_mention: "1",
+                },
+            },
+        ],
     },
     {
         id: "drafts",
         name: i18n.t("Drafts"),
         icon: "mode_edit",
         searchable: true,
+        showStats: true,
         filter: {
             has_draft: "1",
         },
@@ -60,6 +91,7 @@ export const MAILBOX_FOLDERS = () => [
         icon: "schedule_send",
         searchable: false,
         conditional: true,
+        showStats: true,
         filter: {
             has_sender: "1",
             has_delivery_pending: "1"
@@ -70,6 +102,7 @@ export const MAILBOX_FOLDERS = () => [
         name: i18n.t("Sent"),
         icon: "outbox",
         searchable: true,
+        showStats: true,
         filter: {
             has_sender: "1",
             has_delivery_pending: "0"
@@ -80,6 +113,7 @@ export const MAILBOX_FOLDERS = () => [
         name: i18n.t("Archives"),
         icon: "inventory_2",
         searchable: true,
+        showStats: true,
         filter: {
             has_archived: "1",
         },
@@ -89,6 +123,7 @@ export const MAILBOX_FOLDERS = () => [
         name: i18n.t("Spam"),
         icon: "report",
         searchable: true,
+        showStats: true,
         filter: {
             is_spam: "1",
         },
@@ -98,11 +133,28 @@ export const MAILBOX_FOLDERS = () => [
         name: i18n.t("Trash"),
         icon: "delete",
         searchable: true,
+        showStats: false,
         filter: {
             has_trashed: "1",
         },
     },
-] as const satisfies readonly Folder[];
+] as const;
+
+/**
+ * Virtual "All messages" folder. Not displayed in the sidebar — it represents
+ * the absence of any folder filter ("show everything"). Exposed separately so
+ * that the search filters form (and any view that needs the concept) can
+ * reference it without polluting MAILBOX_FOLDERS with a non-sidebar entry.
+ */
+export const ALL_MESSAGES_FOLDER = () => ({
+    id: "all_messages" as const,
+    name: i18n.t("All messages"),
+    icon: "mark_as_unread",
+    showStats: true,
+    filter: {
+        has_messages: "1",
+    },
+});
 
 /**
  * Combines multiple stats fields into a comma-separated string for the API.
@@ -118,29 +170,94 @@ const combineStatsFields = (
     return fields.join(',') as ThreadsStatsRetrieveStatsFields;
 };
 
+/**
+ * Finds the root folder in the MAILBOX_FOLDERS tree structure whose match
+ * (either directly or through one of its children) satisfies the predicate.
+ * A child match still returns the root folder so consumers always get the
+ * top-level entry (e.g. "Inbox" rather than "Unread").
+ */
+export const findRootFolder = (predicate: (folder: Folder) => boolean): Folder | undefined => {
+    for (const folder of MAILBOX_FOLDERS() as readonly Folder[]) {
+        if (predicate(folder)) return folder;
+        if (folder.children?.some(predicate)) return folder;
+    }
+    return undefined;
+};
+
 export const MailboxList = () => {
+    const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>(() => {
+        if (typeof window === 'undefined') return { 'inbox': true };
+        const savedState = localStorage.getItem(EXPANDED_FOLDERS_KEY);
+        if (savedState === null) return { 'inbox': true };
+        return JSON.parse(savedState) as Record<string, boolean>;
+    });
+
+    /**
+    * Toggle the expanded state of a folder and save the state to localStorage.
+    */
+    const toggleFolder = (folderId: string) => {
+        setExpandedFolders((prev) => {
+            const nextState = {
+                ...prev,
+                [folderId]: !prev[folderId],
+            };
+            if (typeof window !== 'undefined') {
+                localStorage.setItem(EXPANDED_FOLDERS_KEY, JSON.stringify(nextState));
+            }
+            return nextState;
+        });
+    };
 
     return (
         <nav className="mailbox-list">
-            {MAILBOX_FOLDERS().map((folder) => (
-                <FolderItem
-                    key={folder.icon}
-                    folder={folder}
-                />
+            {(MAILBOX_FOLDERS() as readonly Folder[]).map((folder) => (
+                <div key={folder.id}>
+                    <FolderItem
+                        folder={folder}
+                        hasChildren={!!folder.children?.length}
+                        isExpanded={!!expandedFolders[folder.id]}
+                        onToggleExpand={() => toggleFolder(folder.id)}
+                        childrenContainerId={`mailbox-children-${folder.id}`}
+                    />
+                    {folder.children && (
+                        <div
+                            id={`mailbox-children-${folder.id}`}
+                            className={clsx("mailbox__children", {
+                                "mailbox__children--collapsed": !expandedFolders[folder.id],
+                            })}
+                        >
+                            {folder.children.map((child) => (
+                                <FolderItem
+                                    key={child.id}
+                                    folder={child}
+                                    isChild
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
             ))}
         </nav>
     )
 }
 
 type FolderItemProps = {
-    folder: Folder
+    folder: Folder;
+    isChild?: boolean;
+    hasChildren?: boolean;
+    isExpanded?: boolean;
+    onToggleExpand?: () => void;
+    // Id of the children container the expand/collapse button toggles.
+    // Used as the target of `aria-controls` so screen readers can follow
+    // the disclosure relationship.
+    childrenContainerId?: string;
 }
 
 // Folders that accept thread drops
 const DROPPABLE_FOLDER_IDS = ['inbox', 'archives', 'spam', 'trash'] as const;
 type DroppableFolderId = typeof DROPPABLE_FOLDER_IDS[number];
 
-const FolderItem = ({ folder }: FolderItemProps) => {
+const FolderItem = ({ folder, isChild, hasChildren, isExpanded, onToggleExpand, childrenContainerId }: FolderItemProps) => {
     const { t } = useTranslation();
     const { selectedMailbox } = useMailboxContext();
     const { closeLeftPanel } = useLayoutContext();
@@ -159,6 +276,7 @@ const FolderItem = ({ folder }: FolderItemProps) => {
     const stats_fields = useMemo(() => {
         if (folder.id === 'drafts') return ThreadsStatsRetrieveStatsFields.all;
         if (folder.id === 'outbox') return ThreadsStatsRetrieveStatsFields.all;
+        if (folder.id === 'mentioned') return ThreadsStatsRetrieveStatsFields.has_unread_mention;
         return ThreadsStatsRetrieveStatsFields.all_unread;
     }, [folder.id]);
     const { data } = useThreadsStatsRetrieve({
@@ -169,7 +287,8 @@ const FolderItem = ({ folder }: FolderItemProps) => {
         ...folder.filter
     }, {
         query: {
-            queryKey: ['threads', 'stats', selectedMailbox!.id, queryParams],
+            enabled: folder.showStats,
+            queryKey: getThreadsStatsQueryKey(selectedMailbox!.id, queryParams),
         }
     });
 
@@ -204,22 +323,31 @@ const FolderItem = ({ folder }: FolderItemProps) => {
         }
     }, [folder.id, isArchivedView, isSpamView, isTrashedView, isDraftsView, isSentView]);
 
-    const isActive = useMemo(() => {
-        const folderFilter = Object.entries(folder.filter || {});
-        if (folderFilter.length !== searchParams.size) return false;
+    const isFolderActive = (folder: Folder): boolean => {
+        if (hasChildren === true && isExpanded) {
+            const hasChildrenActive = folder.children?.some((child) => isFolderActive(child)) ?? false;
+            if (hasChildrenActive) return false;
+        }
 
+        const folderFilter = Object.entries(folder.filter || {});
         return folderFilter.every(([key, value]) => {
             return searchParams.get(key) === value;
         });
-    }, [searchParams, folder.filter]);
+    };
+    const isActive = isFolderActive(folder);
 
     const folderCount = folderStats?.[stats_fields] ?? 0;
     const hasDeliveryFailed = (folderStats?.[ThreadsStatsRetrieveStatsFields.has_delivery_failed] ?? 0) > 0;
 
     const handleDragOver = (e: React.DragEvent<HTMLAnchorElement>) => {
+        // All folder actions (archive/spam/trash and restore-to-inbox)
+        // mutate shared thread state, so the drop is refused when the
+        // dragged selection has no editable thread. The source advertises
+        // this via the `text/thread-editable` dataTransfer type (the JSON
+        // payload is not readable on dragover).
+        if (!e.dataTransfer.types.includes('text/thread-editable')) return;
         e.preventDefault();
         e.stopPropagation();
-        e.dataTransfer.dropEffect = 'link';
         setIsDragOver(true);
     };
 
@@ -238,6 +366,10 @@ const FolderItem = ({ folder }: FolderItemProps) => {
         try {
             const data = JSON.parse(rawData);
             if (data.type !== 'thread' || !data.threadIds?.length) return;
+            // Defence in depth: dragover already filtered this out, but
+            // re-check on drop in case a source ever sets the JSON without
+            // the dataTransfer type (e.g. programmatic DnD in tests).
+            if (!data.hasEditable) return;
 
             const threadIds = data.threadIds as string[];
 
@@ -307,33 +439,35 @@ const FolderItem = ({ folder }: FolderItemProps) => {
         }
     };
 
-    const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-        closeLeftPanel();
-        // Prevent navigation if already on this folder
-        if (isActive) {
-            e.preventDefault();
-        }
-    };
-
     if (folder.conditional && folderCount === 0) {
         return null;
     }
 
-    return (
+    // Disclosure button label. Including the folder name gives the button
+    // a self-standing accessible name (e.g. "Expand Inbox") instead of a
+    // bare "Expand" which would force screen reader users to rely on the
+    // preceding link context to understand what is being toggled.
+    const chevronLabel = isExpanded
+        ? t("Collapse {{name}}", { name: t(folder.name) })
+        : t("Expand {{name}}", { name: t(folder.name) });
+
+    const link = (
         <Link
             href={`/mailbox/${selectedMailbox?.id}?${queryParams}`}
-            onClick={handleClick}
+            onClick={closeLeftPanel}
             shallow={false}
             className={clsx("mailbox__item", {
                 "mailbox__item--active": isActive,
-                "mailbox__item--drag-over": isDragOver
+                "mailbox__item--drag-over": isDragOver,
+                "mailbox__item--child": isChild,
+                "mailbox__item--with-chevron": hasChildren,
             })}
             onDragOver={isDroppable ? handleDragOver : undefined}
             onDragLeave={isDroppable ? handleDragLeave : undefined}
             onDrop={isDroppable ? handleDrop : undefined}
         >
             <p className="mailbox__item-label">
-                <Icon name={folder.icon} type={IconType.OUTLINED} aria-hidden="true" />
+                <Icon name={folder.icon} type={IconType.OUTLINED} aria-hidden="true" size={IconSize.SMALL} />
                 {t(folder.name)}
             </p>
             <div className="mailbox__item__metadata">
@@ -343,5 +477,30 @@ const FolderItem = ({ folder }: FolderItemProps) => {
             }
             </div>
         </Link>
+    );
+
+    if (!hasChildren) {
+        return link;
+    }
+
+    // Wrap the link and the disclosure button as siblings so the two
+    // interactive controls stay accessible (interactive content cannot be
+    // nested inside an <a>) and the link's accessible name stays clean.
+    return (
+        <div className="mailbox__item-row">
+            <button
+                type="button"
+                className={clsx("mailbox__item-chevron", {
+                    "mailbox__item-chevron--collapsed": !isExpanded,
+                })}
+                onClick={onToggleExpand}
+                aria-expanded={isExpanded}
+                aria-controls={childrenContainerId}
+                aria-label={chevronLabel}
+            >
+                <Icon name="expand_more" type={IconType.OUTLINED} aria-hidden="true" />
+            </button>
+            {link}
+        </div>
     )
 }

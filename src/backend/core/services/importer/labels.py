@@ -25,10 +25,10 @@ IMAP_LABEL_TO_MESSAGE_FLAG = {
     "INBOX.INBOX.Sent": "is_sender",
     "Archived": "is_archived",
     "Messages archivés": "is_archived",
-    "Starred": "is_starred",
-    "[Gmail]/Starred": "is_starred",
-    "[Gmail]/Suivis": "is_starred",
-    "Favoris": "is_starred",
+    "Starred": "_starred",
+    "[Gmail]/Starred": "_starred",
+    "[Gmail]/Suivis": "_starred",
+    "Favoris": "_starred",
     "Trash": "is_trashed",
     "TRASH": "is_trashed",
     "[Gmail]/Corbeille": "is_trashed",
@@ -106,7 +106,7 @@ def compute_labels_and_flags(
 
         # Handle \\Flagged flag (follow-up / starred)
         if "\\Flagged" in imap_flags:
-            message_flags["is_starred"] = True
+            message_flags["_starred"] = True
 
     # Special case: if message is sender or draft, it should not be unread
     if message_flags.get("is_sender") or message_flags.get("is_draft"):
@@ -128,10 +128,36 @@ def handle_duplicate_message(
         parsed_email, imap_labels, imap_flags
     )
 
+    # Extract flags handled via ThreadAccess (not Message fields)
+    import_is_unread = message_flags.pop("is_unread", True)
+    import_is_starred = message_flags.pop("_starred", False)
+
     for flag, value in message_flags.items():
         if hasattr(existing_message, flag):
             setattr(existing_message, flag, value)
-    existing_message.save(update_fields=message_flags.keys())
+    if message_flags:
+        existing_message.save(update_fields=message_flags.keys())
+
+    # Update ThreadAccess.starred_at if the duplicate is starred
+    if not import_is_unread or import_is_starred:
+        access = models.ThreadAccess.objects.filter(
+            thread=existing_message.thread, mailbox=mailbox
+        ).first()
+        if access:
+            update_fields = []
+            if not import_is_unread and (
+                access.read_at is None or existing_message.created_at > access.read_at
+            ):
+                access.read_at = existing_message.created_at
+                update_fields.append("read_at")
+            if import_is_starred and (
+                access.starred_at is None
+                or existing_message.created_at > access.starred_at
+            ):
+                access.starred_at = existing_message.created_at
+                update_fields.append("starred_at")
+            if update_fields:
+                access.save(update_fields=update_fields)
 
     for label in labels:
         try:

@@ -1,13 +1,27 @@
 """OpenSearch index and mapping configuration."""
 
-# Index name constants
-MESSAGE_INDEX = "messages"
+import os
+
+# Index name constants. When running under pytest-xdist, give every worker its
+# own index so parallel test workers do not race on the same shared index
+# (create/delete/index operations would otherwise step on each other and
+# surface as flaky `resource_already_exists_exception` / missing-doc errors).
+# In production PYTEST_XDIST_WORKER is unset, so the name stays "messages".
+_XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER", "")
+MESSAGE_INDEX = f"messages_{_XDIST_WORKER}" if _XDIST_WORKER else "messages"
 
 # Schema definitions
 MESSAGE_MAPPING = {
     "settings": {
         "number_of_shards": 1,
         "number_of_replicas": 0,
+        # OpenSearch defaults to 1s — too aggressive under sustained
+        # indexing load because every refresh rebuilds segment-level
+        # caches (notably the join-field global ordinal). Test fixtures
+        # call ``indices.refresh()`` explicitly so this does not slow
+        # them down. To change on an existing index, push a settings
+        # update via ``PUT /<index>/_settings``.
+        "refresh_interval": "5s",
         "analysis": {
             "analyzer": {
                 "email_analyzer": {
@@ -34,6 +48,7 @@ MESSAGE_MAPPING = {
             "thread_id": {"type": "keyword"},
             "mailbox_ids": {"type": "keyword"},
             "unread_mailboxes": {"type": "keyword"},
+            "starred_mailboxes": {"type": "keyword"},
             # Message fields
             "message_id": {"type": "keyword"},
             "mime_id": {"type": "keyword"},
@@ -113,7 +128,6 @@ MESSAGE_MAPPING = {
             "is_trashed": {"type": "boolean"},
             "is_archived": {"type": "boolean"},
             "is_spam": {"type": "boolean"},
-            "is_starred": {"type": "boolean"},
             "is_sender": {"type": "boolean"},
         },
     },

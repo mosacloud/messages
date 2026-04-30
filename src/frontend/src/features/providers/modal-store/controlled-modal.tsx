@@ -1,7 +1,7 @@
-import { Modal, ModalProps } from "@gouvfr-lasuite/cunningham-react";
+import { Modal, ModalDefaultVariantProps } from "@gouvfr-lasuite/cunningham-react";
 import { useModalStore } from ".";
 
-type ControlledModalProps = Omit<ModalProps, "isOpen" | "onClose"> & { modalId: string; onClose?: () => void, confirmFn?: () => Promise<boolean> }
+type ControlledModalProps = Omit<ModalDefaultVariantProps, "isOpen" | "onClose"> & { modalId: string; onClose?: () => void, confirmFn?: () => Promise<boolean> }
 
 /**
  * A controlled modal aims to work with the ModalStoreProvider to be controlled

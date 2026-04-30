@@ -183,9 +183,14 @@ def search_threads(  # pylint: disable=too-many-branches
             search_body["query"]["bool"]["filter"].append({"term": {"is_spam": False}})
 
         # Add is: filters (starred, read, unread)
-        if parsed_query.get("is_starred", False):
+        if parsed_query.get("is_starred", False) and mailbox_ids:
             search_body["query"]["bool"]["filter"].append(
-                {"term": {"is_starred": True}}
+                {
+                    "has_parent": {
+                        "parent_type": "thread",
+                        "query": {"terms": {"starred_mailboxes": mailbox_ids}},
+                    }
+                }
             )
 
         if parsed_query.get("is_read") is not None and mailbox_ids:
@@ -222,6 +227,26 @@ def search_threads(  # pylint: disable=too-many-branches
 
         # Add other filters if provided
         if filters:
+            # Handle mailbox-scoped filters that use has_parent queries
+            # instead of legacy term fields that no longer exist in the index
+            filter_starred = filters.pop("is_starred", None)
+            if filter_starred is not None and mailbox_ids:
+                starred_query = {"terms": {"starred_mailboxes": mailbox_ids}}
+                if not filter_starred:
+                    starred_query = {"bool": {"must_not": starred_query}}
+                search_body["query"]["bool"]["filter"].append(
+                    {"has_parent": {"parent_type": "thread", "query": starred_query}}
+                )
+
+            filter_unread = filters.pop("is_unread", None)
+            if filter_unread is not None and mailbox_ids:
+                unread_query = {"terms": {"unread_mailboxes": mailbox_ids}}
+                if not filter_unread:
+                    unread_query = {"bool": {"must_not": unread_query}}
+                search_body["query"]["bool"]["filter"].append(
+                    {"has_parent": {"parent_type": "thread", "query": unread_query}}
+                )
+
             for field, value in filters.items():
                 search_body["query"]["bool"]["filter"].append({"term": {field: value}})
 

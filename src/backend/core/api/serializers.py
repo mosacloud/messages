@@ -6,6 +6,7 @@ import json
 import uuid
 
 from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Count, Q
 
@@ -32,6 +33,25 @@ class CreateOnlyFieldsMixin:
             for field_name in getattr(self.Meta, "create_only_fields", []):
                 if field_name in self.fields:
                     self.fields[field_name].read_only = True
+
+
+@extend_schema_field({"type": "object", "additionalProperties": True})
+class ObjectJSONField(serializers.JSONField):
+    """JSONField annotated as ``type: object`` for OpenAPI schema generation."""
+
+
+def _build_thread_event_data_schema():
+    """Build the OpenAPI schema for ThreadEvent.data from model DATA_SCHEMAS.
+
+    Returns a `oneOf` composition when multiple types are defined.
+    """
+    schemas = models.ThreadEvent.DATA_SCHEMAS
+    return {"oneOf": list(schemas.values())}
+
+
+@extend_schema_field(_build_thread_event_data_schema())
+class ThreadEventDataField(serializers.JSONField):
+    """JSONField for ThreadEvent.data, OpenAPI-annotated from model DATA_SCHEMAS."""
 
 
 class IntegerChoicesField(serializers.ChoiceField):
@@ -236,6 +256,7 @@ class MailboxSerializer(AbilitiesModelSerializer):
     count_unread_threads = serializers.SerializerMethodField(read_only=True)
     count_threads = serializers.SerializerMethodField(read_only=True)
     count_delivering = serializers.SerializerMethodField(read_only=True)
+    count_unread_mentions = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = models.Mailbox
@@ -247,6 +268,7 @@ class MailboxSerializer(AbilitiesModelSerializer):
             "count_unread_threads",
             "count_threads",
             "count_delivering",
+            "count_unread_mentions",
         ]
         read_only_fields = fields
 
@@ -278,7 +300,7 @@ class MailboxSerializer(AbilitiesModelSerializer):
         return None
 
     def _get_cached_counts(self, instance):
-        """Get or compute cached counts for the instance in a single query."""
+        """Get or compute cached counts for the instance."""
         cache_key = f"_counts_{instance.pk}"
         if not hasattr(self, cache_key):
             counts = instance.thread_accesses.aggregate(
@@ -293,20 +315,42 @@ class MailboxSerializer(AbilitiesModelSerializer):
                     distinct=True,
                 ),
             )
+            # Count distinct threads in this mailbox with an active unread
+            # mention UserEvent for the current user. Done in a separate query
+            # to avoid join-multiplication breaking the other counts above.
+            request = self.context.get("request")
+            if request and request.user.is_authenticated:
+                counts["count_unread_mentions"] = (
+                    models.UserEvent.objects.filter(
+                        user=request.user,
+                        type=enums.UserEventTypeChoices.MENTION,
+                        read_at__isnull=True,
+                        thread__accesses__mailbox=instance,
+                    )
+                    .values("thread_id")
+                    .distinct()
+                    .count()
+                )
+            else:
+                counts["count_unread_mentions"] = 0
             setattr(self, cache_key, counts)
         return getattr(self, cache_key)
 
-    def get_count_unread_threads(self, instance):
+    def get_count_unread_threads(self, instance) -> int:
         """Return the number of threads with unread messages in the mailbox."""
         return self._get_cached_counts(instance)["count_unread_threads"]
 
-    def get_count_threads(self, instance):
+    def get_count_threads(self, instance) -> int:
         """Return the number of threads in the mailbox."""
         return self._get_cached_counts(instance)["count_threads"]
 
-    def get_count_delivering(self, instance):
+    def get_count_delivering(self, instance) -> int:
         """Return the number of threads with messages being delivered."""
         return self._get_cached_counts(instance)["count_delivering"]
+
+    def get_count_unread_mentions(self, instance) -> int:
+        """Return the number of threads with unread mentions for the current user."""
+        return self._get_cached_counts(instance)["count_unread_mentions"]
 
     @extend_schema_field(
         {
@@ -375,6 +419,16 @@ class ReadMessageTemplateSerializer(serializers.ModelSerializer):
     html_body = serializers.CharField(required=False, allow_null=True, default=None)
     text_body = serializers.CharField(required=False, allow_null=True, default=None)
     raw_body = serializers.CharField(required=False, allow_null=True, default=None)
+    metadata = ObjectJSONField(required=False, default=dict)
+    is_active_autoreply = serializers.SerializerMethodField()
+    signature = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    @extend_schema_field(serializers.BooleanField(allow_null=True))
+    def get_is_active_autoreply(self, obj):
+        """Return whether the autoreply is currently active based on schedule."""
+        if obj.type != enums.MessageTemplateTypeChoices.AUTOREPLY:
+            return None
+        return obj.is_active_autoreply()
 
     def __init__(self, *args, **kwargs):
         body_fields = kwargs.pop("body_fields", None)
@@ -414,6 +468,9 @@ class ReadMessageTemplateSerializer(serializers.ModelSerializer):
             "is_active",
             "is_forced",
             "is_default",
+            "metadata",
+            "signature",
+            "is_active_autoreply",
             "created_at",
             "updated_at",
         ]
@@ -577,7 +634,7 @@ class ThreadAccessDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.ThreadAccess
-        fields = ["id", "mailbox", "role", "read_at"]
+        fields = ["id", "mailbox", "role", "read_at", "starred_at"]
         read_only_fields = fields
 
 
@@ -588,9 +645,36 @@ class ThreadSerializer(serializers.ModelSerializer):
     sender_names = serializers.ListField(child=serializers.CharField(), read_only=True)
     user_role = serializers.SerializerMethodField(read_only=True)
     has_unread = serializers.SerializerMethodField(read_only=True)
+    has_unread_mention = serializers.SerializerMethodField(read_only=True)
+    has_starred = serializers.SerializerMethodField(read_only=True)
     accesses = serializers.SerializerMethodField()
     labels = serializers.SerializerMethodField()
     summary = serializers.CharField(read_only=True)
+    events_count = serializers.IntegerField(read_only=True)
+    abilities = serializers.SerializerMethodField(read_only=True)
+
+    @extend_schema_field(serializers.DictField(child=serializers.BooleanField()))
+    def get_abilities(self, instance):
+        """Return the current user's abilities on the thread, scoped to
+        the mailbox context when provided. Frontend components use this
+        to hide mutating actions (archive, spam, delete, reply...) from
+        users with read-only access.
+
+        Prefers the ``_can_edit`` annotation set by the viewset queryset
+        (single SQL subquery for the whole page) and falls back to a
+        per-instance query for code paths that build threads outside the
+        annotated queryset (e.g. the split action).
+        """
+        can_edit = getattr(instance, "_can_edit", None)
+        if can_edit is not None:
+            return {enums.ThreadAbilities.CAN_EDIT: can_edit}
+
+        request = self.context.get("request")
+        if request is None:
+            return {}
+        return instance.get_abilities(
+            request.user, mailbox_id=self.context.get("mailbox_id")
+        )
 
     @extend_schema_field(serializers.BooleanField())
     def get_has_unread(self, instance):
@@ -600,6 +684,24 @@ class ThreadSerializer(serializers.ModelSerializer):
         Returns False when the annotation is absent (no mailbox context).
         """
         return getattr(instance, "_has_unread", False)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_has_unread_mention(self, instance):
+        """Return whether the thread has unread mentions for the current user.
+
+        Requires the _has_unread_mention annotation (set by ThreadViewSet).
+        Returns False when the annotation is absent (no mailbox context).
+        """
+        return getattr(instance, "_has_unread_mention", False)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_has_starred(self, instance):
+        """Return whether the thread is starred for the current mailbox.
+
+        Requires the _has_starred annotation (set by ThreadViewSet when mailbox_id is provided).
+        Returns False when the annotation is absent (no mailbox context).
+        """
+        return getattr(instance, "_has_starred", False)
 
     @extend_schema_field(ThreadAccessDetailSerializer(many=True))
     def get_accesses(self, instance):
@@ -646,6 +748,7 @@ class ThreadSerializer(serializers.ModelSerializer):
             "snippet",
             "messages",
             "has_unread",
+            "has_unread_mention",
             "has_trashed",
             "is_trashed",
             "has_archived",
@@ -670,6 +773,8 @@ class ThreadSerializer(serializers.ModelSerializer):
             "accesses",
             "labels",
             "summary",
+            "events_count",
+            "abilities",
         ]
         read_only_fields = fields  # Mark all as read-only for safety
 
@@ -898,10 +1003,10 @@ class MessageSerializer(serializers.ModelSerializer):
             "is_sender",
             "is_draft",
             "is_unread",
-            "is_starred",
             "is_trashed",
             "is_archived",
             "has_attachments",
+            "mime_id",
             "signature",
             "stmsg_headers",
         ]
@@ -920,6 +1025,52 @@ class ThreadAccessSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer)
         create_only_fields = ["thread", "mailbox"]
 
 
+class ThreadEventSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer):
+    """Serialize thread event information."""
+
+    author = UserWithoutAbilitiesSerializer(read_only=True)
+    data = ThreadEventDataField()
+    has_unread_mention = serializers.SerializerMethodField()
+    is_editable = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.ThreadEvent
+        fields = [
+            "id",
+            "thread",
+            "type",
+            "channel",
+            "message",
+            "author",
+            "data",
+            "has_unread_mention",
+            "is_editable",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "thread",
+            "channel",
+            "author",
+            "has_unread_mention",
+            "is_editable",
+            "created_at",
+            "updated_at",
+        ]
+        create_only_fields = ["type", "message"]
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_has_unread_mention(self, obj):
+        """Return whether the event has an unread mention for the current user."""
+        return getattr(obj, "_has_unread_mention", False)
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_is_editable(self, obj):
+        """Return whether the event is still within the edit delay window."""
+        return obj.is_editable()
+
+
 class MailboxAccessReadSerializer(serializers.ModelSerializer):
     """Serialize mailbox access information for read operations with nested user details.
     Mailbox context is implied by the URL, so mailbox details are not included here.
@@ -934,23 +1085,23 @@ class MailboxAccessReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields  # All fields are effectively read-only from this serializer's perspective
 
 
-class UserField(serializers.PrimaryKeyRelatedField):
-    """Custom field that accepts either UUID or email address for user lookup."""
+class UserAccessWriteField(serializers.PrimaryKeyRelatedField):
+    """Custom field that accepts either UUID or email address for user lookup.
+
+    When an email is provided and no matching user exists, a passwordless
+    "stub" user is created. The stub has no OIDC ``sub`` and will be claimed
+    on first OIDC login by ``UserManager.get_user_by_sub_or_email``.
+    """
 
     def to_internal_value(self, data):
         """Convert UUID string or email to User instance."""
-        if isinstance(data, str):
-            if "@" in data:
-                # It's an email address, look up the user
-                try:
-                    return models.User.objects.get(email=data)
-                except models.User.DoesNotExist as e:
-                    raise serializers.ValidationError(
-                        f"No user found with email: {data}"
-                    ) from e
-            else:
-                # It's a UUID, use the parent method
-                return super().to_internal_value(data)
+        if isinstance(data, str) and "@" in data:
+            user = models.User.objects.filter(email=data).first()
+            if user is None:
+                user = models.User(email=data)
+                user.set_unusable_password()
+                user.save()
+            return user
         return super().to_internal_value(data)
 
 
@@ -960,7 +1111,7 @@ class MailboxAccessWriteSerializer(serializers.ModelSerializer):
     """
 
     role = IntegerChoicesField(choices_class=models.MailboxRoleChoices)
-    user = UserField(
+    user = UserAccessWriteField(
         queryset=models.User.objects.all(), help_text="User ID (UUID) or email address"
     )
 
@@ -1050,7 +1201,7 @@ class MaildomainAccessWriteSerializer(serializers.ModelSerializer):
     """
 
     role = IntegerChoicesField(choices_class=models.MailDomainAccessRoleChoices)
-    user = UserField(
+    user = UserAccessWriteField(
         queryset=models.User.objects.all(), help_text="User ID (UUID) or email address"
     )
 
@@ -1175,9 +1326,7 @@ class MailboxAdminSerializer(serializers.ModelSerializer):
 
         if metadata.get("type") == "personal":
             local_part = attrs.get("local_part", "")
-            denylist = getattr(
-                settings, "MESSAGES_MAILBOX_LOCALPART_DENYLIST_PERSONAL", []
-            )
+            denylist = settings.MESSAGES_MAILBOX_LOCALPART_DENYLIST_PERSONAL
             lower_value = local_part.lower()
             if any(lower_value == prefix.lower() for prefix in denylist):
                 raise serializers.ValidationError(
@@ -1470,12 +1619,17 @@ class ImportIMAPSerializer(ImportBaseSerializer):
     )
 
 
-class ChannelSerializer(serializers.ModelSerializer):
+class ChannelSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer):
     """Serialize Channel model."""
 
     # Explicitly mark nullable fields to fix OpenAPI schema
     mailbox = serializers.PrimaryKeyRelatedField(read_only=True, allow_null=True)
     maildomain = serializers.PrimaryKeyRelatedField(read_only=True, allow_null=True)
+    user = serializers.PrimaryKeyRelatedField(read_only=True, allow_null=True)
+    scope_level = serializers.ChoiceField(
+        choices=enums.ChannelScopeLevel.choices, read_only=True
+    )
+    last_used_at = serializers.DateTimeField(read_only=True, allow_null=True)
 
     class Meta:
         model = models.Channel
@@ -1483,13 +1637,60 @@ class ChannelSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "type",
+            "scope_level",
             "settings",
             "mailbox",
             "maildomain",
+            "user",
+            "last_used_at",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "mailbox", "maildomain", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "mailbox",
+            "maildomain",
+            "user",
+            "scope_level",
+            "last_used_at",
+            "created_at",
+            "updated_at",
+        ]
+        # ``type`` is writable on CREATE only — once a channel exists its
+        # type is frozen. PATCHing type=widget on an api_key channel
+        # would let a mailbox admin sneak around the create-time scope
+        # check (the new type wouldn't trip _validate_api_key_scopes) or
+        # strand encrypted_settings on a row whose type the auth class
+        # no longer recognizes. Lock it down via CreateOnlyFieldsMixin.
+        create_only_fields = ["type"]
+
+    # Per-type list of settings keys that are server-managed and must
+    # NEVER appear in caller-supplied ``settings``. Used by
+    # ``_reject_caller_supplied_encrypted_keys`` below — there is no
+    # automatic move-from-settings-to-encrypted shim, server-side
+    # generators write directly to ``encrypted_settings`` instead.
+    RESERVED_SETTINGS_KEYS = {
+        enums.ChannelTypes.API_KEY: ["api_key_hashes"],
+    }
+
+    def create(self, validated_data):
+        # For api_key channels, mint the secret on a transient instance so
+        # the resulting ``encrypted_settings`` rides through the normal
+        # ``super().create()`` save path. The plaintext is stashed on the
+        # saved row for ChannelViewSet.create() to surface exactly once,
+        # mirroring the ``_generated_password`` pattern at channel.py:68-74.
+        generated_api_key = None
+        if validated_data.get("type") == enums.ChannelTypes.API_KEY:
+            transient = models.Channel(**validated_data)
+            generated_api_key = transient.rotate_api_key(save=False)
+            validated_data["encrypted_settings"] = transient.encrypted_settings
+
+        instance = super().create(validated_data)
+
+        # pylint: disable=protected-access
+        if generated_api_key is not None:
+            instance._generated_api_key = generated_api_key  # noqa: SLF001
+        return instance
 
     def validate_settings(self, value):
         """Validate settings, including tags if present."""
@@ -1538,19 +1739,190 @@ class ChannelSerializer(serializers.ModelSerializer):
 
         return value
 
+    def _reject_caller_supplied_encrypted_keys(self, attrs):
+        """Refuse any request that puts ``RESERVED_SETTINGS_KEYS`` values
+        in ``settings``.
+
+        ``encrypted_settings`` itself is not in ``ChannelSerializer.fields``,
+        so callers can't write it directly. Reserved settings keys (e.g.
+        ``api_key_hashes``) are written by server-side generators and
+        must never originate from a request body. Without this check, a
+        mailbox admin could PATCH ``{"settings": {"scopes": [...],
+        "api_key_hashes": [<chosen>]}}`` and the row's settings JSON
+        would carry the attacker-chosen value alongside the legitimate
+        ones — confusing, even when not directly authenticatable.
+        """
+        settings_data = attrs.get("settings")
+        if not isinstance(settings_data, dict):
+            return
+        # Use the resolved type so this works on both CREATE and PATCH.
+        channel_type = attrs.get("type") or (
+            self.instance.type if self.instance else None
+        )
+        reserved = self.RESERVED_SETTINGS_KEYS.get(channel_type, [])
+        if any(k in settings_data for k in reserved):
+            raise serializers.ValidationError({"settings": "Invalid settings."})
+
+    def _resolve_type_and_settings(self, attrs):
+        """Compute (channel_type, settings_data, should_validate) for a
+        type-specific validator. The pair handles all three lifecycle paths:
+
+          - CREATE: ``type`` and ``settings`` come from ``attrs``.
+          - PATCH/PUT touching settings (or type): ``settings`` overrides
+            the instance's existing JSON; ``type`` falls back to the
+            instance.
+          - PATCH that doesn't touch ``type`` or ``settings`` (e.g. a
+            rename): the validator is skipped because the field being
+            validated isn't in play. ``should_validate`` is False.
+
+        This is the central fix for the PATCH-bypass escalation: the old
+        code returned early when ``attrs.get("type")`` was None, which is
+        the typical PATCH shape, allowing a mailbox admin to PATCH
+        ``{"settings": {"scopes": ["maildomains:create"]}}`` and have it
+        slip through unvalidated.
+        """
+        instance = self.instance
+        channel_type = attrs.get("type") or (instance.type if instance else None)
+        settings_in_attrs = "settings" in attrs
+
+        # If neither type nor settings are being introduced/changed, this
+        # validator has nothing to look at.
+        if not settings_in_attrs and "type" not in attrs:
+            return channel_type, None, False
+
+        if settings_in_attrs:
+            settings_data = attrs.get("settings") or {}
+        elif instance is not None:
+            # type was changed but settings weren't — fall back to the
+            # instance's existing settings so we validate the post-save
+            # combination.
+            settings_data = instance.settings or {}
+        else:
+            settings_data = {}
+
+        return channel_type, settings_data, True
+
+    def _validate_api_key_scopes(self, attrs):
+        """Validate the ``settings["scopes"]`` list on api_key channels.
+
+        Runs on every CREATE and on every PATCH/PUT that touches ``type``
+        or ``settings``. The validator looks at the EFFECTIVE post-save
+        state — explicit attrs win, instance state is the fallback —
+        which is the only way to airtight-block a mailbox admin from
+        granting themselves a global-only scope via a settings-only PATCH.
+
+        - Every value must be a member of ``ChannelApiKeyScope``.
+        - Global-only scopes (e.g. ``maildomains:create``) can only be
+          requested when the channel itself has ``scope_level=global``.
+          Since DRF clients cannot set scope_level, this always rejects
+          global-only scopes on the mailbox-nested and user-nested paths.
+        """
+        channel_type, settings_data, should_validate = self._resolve_type_and_settings(
+            attrs
+        )
+        if not should_validate or channel_type != enums.ChannelTypes.API_KEY:
+            return
+
+        raw_scopes = settings_data.get("scopes")
+        if raw_scopes is None:
+            raise serializers.ValidationError(
+                {
+                    "settings": "api_key channels require settings.scopes (a list of strings)."
+                }
+            )
+        if not isinstance(raw_scopes, list) or not all(
+            isinstance(s, str) for s in raw_scopes
+        ):
+            raise serializers.ValidationError(
+                {"settings": "settings.scopes must be a list of strings."}
+            )
+
+        valid_values = {choice.value for choice in enums.ChannelApiKeyScope}
+        unknown = [s for s in raw_scopes if s not in valid_values]
+        if unknown:
+            raise serializers.ValidationError(
+                {"settings": f"Unknown api_key scopes: {unknown}"}
+            )
+
+        # Any DRF path to this serializer is mailbox-nested or user-nested
+        # today, so the effective scope_level on save will be MAILBOX or
+        # USER. Global-only scopes are therefore never grantable via DRF.
+        # If that ever changes, the viewset must still pass scope_level
+        # explicitly on save.
+        global_only = enums.CHANNEL_API_KEY_SCOPES_GLOBAL_ONLY
+        if any(s in global_only for s in raw_scopes):
+            raise serializers.ValidationError(
+                {"settings": "One or more requested scopes are not permitted."}
+            )
+
+    def _validate_webhook_settings(self, attrs):
+        """Validate required fields on webhook channel settings.
+
+        Runs on CREATE and on every PATCH/PUT touching ``type`` or
+        ``settings``. Same airtight rule as ``_validate_api_key_scopes``:
+        a settings-only PATCH on an existing webhook channel must hit the
+        URL/events validators, otherwise a mailbox admin could PATCH
+        ``{"settings": {"url": "javascript:..."}}`` past the create-time
+        check.
+        """
+        channel_type, settings_data, should_validate = self._resolve_type_and_settings(
+            attrs
+        )
+        if not should_validate or channel_type != enums.ChannelTypes.WEBHOOK:
+            return
+
+        url = settings_data.get("url")
+        if not url or not isinstance(url, str):
+            raise serializers.ValidationError(
+                {"settings": "webhook channels require settings.url (a string)."}
+            )
+        if not url.startswith(("http://", "https://")):
+            raise serializers.ValidationError(
+                {"settings": "webhook settings.url must be http:// or https://"}
+            )
+
+        events = settings_data.get("events")
+        if not events or not isinstance(events, list):
+            raise serializers.ValidationError(
+                {
+                    "settings": "webhook channels require settings.events (a non-empty list)."
+                }
+            )
+        unknown = [e for e in events if e not in enums.WebhookEvents]
+        if unknown:
+            raise serializers.ValidationError(
+                {"settings": f"Unknown webhook events: {unknown}"}
+            )
+
     def validate(self, attrs):
         """Validate channel data.
 
-        When used in the nested mailbox context (via ChannelViewSet),
-        the mailbox is set from context and doesn't need to be validated here.
+        When used in the nested mailbox context (via ChannelViewSet) or the
+        user context (via UserChannelViewSet), the target FK is set by the
+        viewset and doesn't need to be validated here. Otherwise this is
+        the Django-admin / management-command path which still requires an
+        explicit mailbox or maildomain.
         """
-        # If we have a mailbox in context (from ChannelViewSet), validate channel type
-        # and skip mailbox/maildomain validation.
-        # This allows Django admin to create any channel type.
-        if self.context.get("mailbox"):
+        if self.context.get("mailbox") or self.context.get("user_channel"):
+            # On CREATE, ``type`` MUST be supplied explicitly. The model
+            # field used to default to "mta", which let a caller omit
+            # ``type`` from the body and bypass FEATURE_MAILBOX_ADMIN_CHANNELS
+            # even when "mta" was not in the allowlist. On UPDATE, ``type``
+            # is made read-only by ``CreateOnlyFieldsMixin`` so it's never
+            # in ``attrs`` — fall through to the other validators which
+            # read the instance's existing type.
+            if self.instance is None and "type" not in attrs:
+                raise serializers.ValidationError(
+                    {
+                        "type": (
+                            "Channel type is required for mailbox/user "
+                            "channel creation."
+                        )
+                    }
+                )
             channel_type = attrs.get("type")
             if channel_type:
-                allowed_types = settings.FEATURE_MAILBOX_ADMIN_CHANNELS
+                allowed_types = list(settings.FEATURE_MAILBOX_ADMIN_CHANNELS)
                 if channel_type not in allowed_types:
                     raise serializers.ValidationError(
                         {
@@ -1558,6 +1930,9 @@ class ChannelSerializer(serializers.ModelSerializer):
                             f"Allowed types: {', '.join(allowed_types)}"
                         }
                     )
+            self._reject_caller_supplied_encrypted_keys(attrs)
+            self._validate_api_key_scopes(attrs)
+            self._validate_webhook_settings(attrs)
             return attrs
 
         mailbox = attrs.get("mailbox")
@@ -1574,6 +1949,9 @@ class ChannelSerializer(serializers.ModelSerializer):
                 "Cannot specify both mailbox and maildomain."
             )
 
+        self._reject_caller_supplied_encrypted_keys(attrs)
+        self._validate_api_key_scopes(attrs)
+        self._validate_webhook_settings(attrs)
         return attrs
 
 
@@ -1593,6 +1971,8 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
     html_body = serializers.CharField(required=False)
     text_body = serializers.CharField(required=False)
     raw_body = serializers.CharField(required=False)
+    metadata = ObjectJSONField(required=False, default=dict)
+    signature_id = serializers.UUIDField(required=False, allow_null=True)
 
     class Meta:
         model = models.MessageTemplate
@@ -1606,6 +1986,8 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
             "is_active",
             "is_forced",
             "is_default",
+            "metadata",
+            "signature_id",
             "created_at",
             "updated_at",
         ]
@@ -1657,43 +2039,103 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
                 attrs.pop("html_body")
                 attrs.pop("text_body")
                 attrs.pop("raw_body")
-                return super().validate(attrs)
+            else:
+                _html, images = extract_base64_images_from_html(attrs["html_body"])
+                total_image_size = 0
+                for image in images:
+                    total_image_size += image["size"]
+                    if image["size"] > settings.MAX_TEMPLATE_IMAGE_SIZE:
+                        max_mb = settings.MAX_TEMPLATE_IMAGE_SIZE / (1024 * 1024)
+                        image_mb = image["size"] / (1024 * 1024)
+                        raise serializers.ValidationError(
+                            {
+                                "html_body": (
+                                    'Image "%(name)s" (%(size)s MB) exceeds'
+                                    " the %(max)s MB limit."
+                                )
+                                % {
+                                    "name": image["name"],
+                                    "size": f"{image_mb:.1f}",
+                                    "max": f"{max_mb:.0f}",
+                                }
+                            }
+                        )
+                    if total_image_size > settings.MAX_OUTGOING_ATTACHMENT_SIZE:
+                        max_mb = settings.MAX_OUTGOING_ATTACHMENT_SIZE / (1024 * 1024)
+                        total_mb = total_image_size / (1024 * 1024)
+                        raise serializers.ValidationError(
+                            {
+                                "html_body": (
+                                    "Total attachment size (%(total_size)s MB) exceeds the %(max_size)s MB limit. "
+                                    "Please remove or reduce attachments."
+                                )
+                                % {
+                                    "total_size": f"{total_mb:.1f}",
+                                    "max_size": f"{max_mb:.0f}",
+                                }
+                            }
+                        )
 
-            _html, images = extract_base64_images_from_html(attrs["html_body"])
-            total_image_size = 0
-            for image in images:
-                total_image_size += image["size"]
-                if image["size"] > settings.MAX_TEMPLATE_IMAGE_SIZE:
-                    max_mb = settings.MAX_TEMPLATE_IMAGE_SIZE / (1024 * 1024)
-                    image_mb = image["size"] / (1024 * 1024)
-                    raise serializers.ValidationError(
-                        {
-                            "html_body": (
-                                'Image "%(name)s" (%(size)s MB) exceeds'
-                                " the %(max)s MB limit."
-                            )
-                            % {
-                                "name": image["name"],
-                                "size": f"{image_mb:.1f}",
-                                "max": f"{max_mb:.0f}",
-                            }
-                        }
-                    )
-                if total_image_size > settings.MAX_OUTGOING_ATTACHMENT_SIZE:
-                    max_mb = settings.MAX_OUTGOING_ATTACHMENT_SIZE / (1024 * 1024)
-                    total_mb = total_image_size / (1024 * 1024)
-                    raise serializers.ValidationError(
-                        {
-                            "html_body": (
-                                "Total attachment size (%(total_size)s MB) exceeds the %(max_size)s MB limit. "
-                                "Please remove or reduce attachments."
-                            )
-                            % {
-                                "total_size": f"{total_mb:.1f}",
-                                "max_size": f"{max_mb:.0f}",
-                            }
-                        }
-                    )
+        # Autoreply-specific validation
+        template_type = attrs.get("type") or (
+            self.instance.type if self.instance else None
+        )
+        if template_type == enums.MessageTemplateTypeChoices.AUTOREPLY:
+            if attrs.get("is_forced"):
+                raise serializers.ValidationError(
+                    {"is_forced": "Autoreply templates cannot be forced."}
+                )
+            if attrs.get("is_default"):
+                raise serializers.ValidationError(
+                    {"is_default": "Autoreply templates cannot be default."}
+                )
+            metadata = attrs.get("metadata")
+            # Skip metadata validation on update
+            if not self.instance or metadata is not None:
+                try:
+                    models.MessageTemplate(
+                        type=template_type,
+                        metadata=metadata or {},
+                    ).validate_autoreply_metadata()
+                except DjangoValidationError as exc:
+                    raise serializers.ValidationError(exc.message_dict) from exc
+
+        # Validate and resolve signature_id
+        signature_id = attrs.pop("signature_id", None)
+        if signature_id:
+            mailbox = self.context.get("mailbox") or (
+                self.instance.mailbox if self.instance else None
+            )
+            domain = self.context.get("domain") or (
+                self.instance.maildomain if self.instance else None
+            )
+
+            # Build scope filter: signature must belong to the same mailbox or domain
+            scope_filter = Q()
+            if mailbox:
+                scope_filter |= Q(mailbox=mailbox) | Q(maildomain=mailbox.domain)
+            if domain:
+                scope_filter |= Q(maildomain=domain)
+
+            if not scope_filter:
+                raise serializers.ValidationError(
+                    {"signature_id": "Invalid or inaccessible signature."}
+                )
+
+            signature = models.MessageTemplate.objects.filter(
+                scope_filter,
+                id=signature_id,
+                type=enums.MessageTemplateTypeChoices.SIGNATURE,
+                is_active=True,
+            ).first()
+
+            if not signature:
+                raise serializers.ValidationError(
+                    {"signature_id": "Invalid or inaccessible signature."}
+                )
+            attrs["signature"] = signature
+        elif signature_id is None and "signature_id" in self.initial_data:
+            attrs["signature"] = None
 
         return super().validate(attrs)
 
@@ -1808,6 +2250,8 @@ class ProvisioningMailDomainSerializer(serializers.Serializer):
 
     domains = DomainsField()
     custom_attributes = serializers.JSONField(required=False, default=dict)
+    oidc_autojoin = serializers.BooleanField(required=False, default=True)
+    identity_sync = serializers.BooleanField(required=False, default=False)
 
     def create(self, validated_data):
         """This serializer is only used to validate the data, not to create or update."""

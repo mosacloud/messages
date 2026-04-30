@@ -2,12 +2,14 @@ import { TreeLabel, ThreadLabel, useLabelsList } from "@/features/api/gen";
 import { Icon, IconType, IconSize, Spinner } from "@gouvfr-lasuite/ui-kit";
 import { Button, Checkbox, Field, Input, LabelledBox, useModal } from "@gouvfr-lasuite/cunningham-react";
 import { useState, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import StringHelper from "@/features/utils/string-helper";
 import { LabelModal } from "@/features/layouts/components/mailbox-panel/components/mailbox-labels/components/label-form-modal";
 import { Badge } from "@/features/ui/components/badge";
 import { ColorHelper } from "@/features/utils/color-helper";
+import { usePopupPosition } from "@/hooks/use-popup-position";
 
 type TagsSelectorProps = {
     selectedTags: string[];
@@ -43,6 +45,15 @@ export const TagsSelector = ({ selectedTags, onTagsChange }: TagsSelectorProps) 
     const [searchQuery, setSearchQuery] = useState('');
     const [isPopupOpen, setIsPopupOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const position = usePopupPosition(containerRef, isPopupOpen, (rect) => {
+        const top = rect.bottom + 4;
+        const popupWidth = Math.min(400, window.innerWidth * 0.6);
+        return {
+            top,
+            left: Math.max(8, Math.min(rect.left, window.innerWidth - popupWidth - 8)),
+            maxHeight: Math.min(300, Math.max(0, window.innerHeight - top - 8)),
+        };
+    });
 
     const { data: labelsList, isLoading } = useLabelsList(
         { mailbox_id: selectedMailbox?.id ?? '' },
@@ -162,13 +173,17 @@ export const TagsSelector = ({ selectedTags, onTagsChange }: TagsSelectorProps) 
                 </LabelledBox>
             </div>
 
-            {isPopupOpen && (
+            {isPopupOpen && position && createPortal(
                 <>
-                    <div className="thread-labels-widget__popup tags-selector__popup">
-                        <header className="thread-labels-widget__popup__header">
+                    <div className="labels-widget__popup__overlay" onClick={() => setIsPopupOpen(false)}></div>
+                    <div
+                        className="labels-widget__popup"
+                        style={{ position: 'fixed', top: position.top, left: position.left, maxHeight: position.maxHeight }}
+                    >
+                        <header className="labels-widget__popup__header">
                             <h3><Icon type={IconType.OUTLINED} name="new_label" /> {t('Add tags')}</h3>
                             <Input
-                                className="thread-labels-widget__popup__search"
+                                className="labels-widget__popup__search"
                                 type="search"
                                 icon={<Icon type={IconType.OUTLINED} name="search" />}
                                 label={t('Search a tag')}
@@ -177,7 +192,7 @@ export const TagsSelector = ({ selectedTags, onTagsChange }: TagsSelectorProps) 
                                 fullWidth
                             />
                         </header>
-                        <ul className="thread-labels-widget__popup__content">
+                        <ul className="labels-widget__popup__content">
                             {labelsOptions.map((option) => (
                                 <li key={option.id}>
                                     <Checkbox
@@ -187,7 +202,7 @@ export const TagsSelector = ({ selectedTags, onTagsChange }: TagsSelectorProps) 
                                     />
                                 </li>
                             ))}
-                            <li className="thread-labels-widget__popup__content__empty">
+                            <li className="labels-widget__popup__content__empty">
                                 <Button
                                     type="button"
                                     color="brand"
@@ -196,7 +211,7 @@ export const TagsSelector = ({ selectedTags, onTagsChange }: TagsSelectorProps) 
                                     fullWidth
                                     icon={<Icon type={IconType.OUTLINED} name="add" />}
                                 >
-                                    <span className="thread-labels-widget__popup__content__empty__button-label">
+                                    <span className="labels-widget__popup__content__empty__button-label">
                                         {searchQuery && labelsOptions.length === 0
                                             ? t('Create the label "{{label}}"', { label: searchQuery })
                                             : t('Create a new label')}
@@ -211,8 +226,8 @@ export const TagsSelector = ({ selectedTags, onTagsChange }: TagsSelectorProps) 
                             </li>
                         </ul>
                     </div>
-                    <div className="thread-labels-widget__popup__overlay" onClick={() => setIsPopupOpen(false)}></div>
-                </>
+                </>,
+                document.body
             )}
         </Field>
     );

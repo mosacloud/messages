@@ -12,6 +12,7 @@ from sentry_sdk import capture_exception
 from core.mda.inbound import deliver_inbound_message
 from core.mda.rfc5322 import parse_email_message
 from core.models import Mailbox
+from core.utils import ThreadReindexDeferrer, ThreadStatsUpdateDeferrer
 
 from messages.celery_app import app as celery_app
 
@@ -90,10 +91,16 @@ def process_eml_file_task(self, file_key: str, recipient_id: str) -> Dict[str, A
 
         # Parse the email message
         parsed_email = parse_email_message(file_content)
-        # Deliver the message
-        success = deliver_inbound_message(
-            str(recipient), parsed_email, file_content, is_import=True
-        )
+        # Deliver the message. Deferrers batch OpenSearch indexing and
+        # thread-stats updates into a single bulk task at context exit,
+        # keeping behaviour consistent with the other import flows.
+        with (
+            ThreadReindexDeferrer.defer(),
+            ThreadStatsUpdateDeferrer.defer(),
+        ):
+            success = deliver_inbound_message(
+                str(recipient), parsed_email, file_content, is_import=True
+            )
 
         result = {
             "message_status": "Completed processing message",
