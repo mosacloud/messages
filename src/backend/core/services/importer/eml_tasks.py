@@ -12,6 +12,7 @@ from sentry_sdk import capture_exception
 from core.mda.inbound import deliver_inbound_message
 from core.mda.rfc5322 import parse_email_message
 from core.models import Mailbox
+from core.utils import ThreadReindexDeferrer, ThreadStatsUpdateDeferrer
 
 from messages.celery_app import app as celery_app
 
@@ -90,10 +91,30 @@ def process_eml_file_task(self, file_key: str, recipient_id: str) -> Dict[str, A
 
         # Parse the email message
         parsed_email = parse_email_message(file_content)
-        # Deliver the message
-        success = deliver_inbound_message(
-            str(recipient), parsed_email, file_content, is_import=True
-        )
+
+        # Treat the EML as a sent message when From matches the destination
+        # mailbox — the same heuristic IMAP uses against the account
+        # username. Without this flag, importing one's own sent mails would
+        # land them in the inbox view.
+        recipient_email = str(recipient)
+        sender_email = (parsed_email.get("from") or {}).get("email") or ""
+        # TODO: better heuristic to determine if the message is from the sender
+        is_import_sender = sender_email.lower() == recipient_email.lower()
+
+        # Deliver the message. Deferrers batch OpenSearch indexing and
+        # thread-stats updates into a single bulk task at context exit,
+        # keeping behaviour consistent with the other import flows.
+        with (
+            ThreadReindexDeferrer.defer(),
+            ThreadStatsUpdateDeferrer.defer(),
+        ):
+            success = deliver_inbound_message(
+                recipient_email,
+                parsed_email,
+                file_content,
+                is_import=True,
+                is_import_sender=is_import_sender,
+            )
 
         result = {
             "message_status": "Completed processing message",

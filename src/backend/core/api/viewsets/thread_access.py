@@ -1,13 +1,16 @@
 """API ViewSet for ThreadAccess model."""
 
+from django.db import transaction
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter,
     extend_schema,
 )
 from rest_framework import mixins, viewsets
+from rest_framework.exceptions import ValidationError
 
-from core import models
+from core import enums, models
 
 from .. import permissions, serializers
 
@@ -62,3 +65,27 @@ class ThreadAccessViewSet(
         """Create a new thread access."""
         request.data["thread"] = self.kwargs.get("thread_id")
         return super().create(request, *args, **kwargs)
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        """Prevent deletion of the last editor access on a thread.
+
+        Locks every editor row for the thread (including the one being
+        deleted) with FOR UPDATE in id order so concurrent deletions acquire
+        locks in the same sequence and cannot deadlock.
+        """
+        if instance.role == enums.ThreadAccessRoleChoices.EDITOR:
+            editor_ids = list(
+                models.ThreadAccess.objects.select_for_update()
+                .filter(
+                    thread=instance.thread,
+                    role=enums.ThreadAccessRoleChoices.EDITOR,
+                )
+                .order_by("id")
+                .values_list("id", flat=True)
+            )
+            if editor_ids == [instance.id]:
+                raise ValidationError(
+                    "Cannot delete the last editor access of a thread."
+                )
+        super().perform_destroy(instance)

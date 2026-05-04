@@ -1,6 +1,7 @@
 """Handles outbound email delivery logic: composing and sending messages."""
 # pylint: disable=broad-exception-caught
 
+import json
 import logging
 from typing import Any, Optional
 
@@ -455,11 +456,17 @@ def send_message(message: models.Message, force_mta_out: bool = False):
     This part is called asynchronously from the celery worker.
     """
 
-    # Refuse to send messages that are draft or not senders
+    # Refuse to send messages that are draft, not senders, or flagged spam.
+    # The spam guard is defence-in-depth: any code path that mints an
+    # is_sender=True message on a spam-flagged record (today none, but the
+    # invariant must hold for future paths) cannot exfiltrate it via the
+    # outbound pipeline.
     if message.is_draft:
         raise ValueError("Cannot send a draft message")
     if not message.is_sender:
         raise ValueError("Cannot send a message we are not sender of")
+    if message.is_spam:
+        raise ValueError("Cannot send a message flagged as spam")
 
     # Create a unique lock key for this message to prevent double sends
     lock_key = f"send_message_lock:{message.id}"
@@ -519,18 +526,24 @@ def send_message(message: models.Message, force_mta_out: bool = False):
                 error: Optional[str] = None,
                 retry: Optional[bool] = False,
                 smtp_host: Optional[str] = None,
+                proxy_host: Optional[str] = None,
             ) -> None:
                 status = "delivered" if delivered else "failed"
                 relay = smtp_host if not internal else "internal"
 
                 logger.info(
-                    "module=core.mda.outbound.send_message message_id=%s to=%s from=%s relay=%s status=%s error=(%s)",
+                    (
+                        "module=core.mda.outbound.send_message "
+                        "message_id=%s to=%s from=%s "
+                        "relay=%s socks=%s status=%s error=%s"
+                    ),
                     message.id,
                     recipient_email,
                     message.sender.email,
                     relay,
+                    proxy_host or "nil",
                     status,
-                    error or "nil",
+                    json.dumps(error or "nil"),
                 )
                 if delivered:
                     # TODO also update message.updated_at?
@@ -655,6 +668,7 @@ def send_message(message: models.Message, force_mta_out: bool = False):
                             status.get("error"),
                             status.get("retry", False),
                             status.get("smtp_host"),
+                            status.get("proxy_host"),
                         )
                 except Exception as e:  # pylint: disable=broad-exception-caught
                     logger.error(

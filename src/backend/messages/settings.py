@@ -78,11 +78,69 @@ class Base(Configuration):
     OPENSEARCH_TIMEOUT = values.PositiveIntegerValue(
         20, environ_name="OPENSEARCH_TIMEOUT", environ_prefix=None
     )
+    OPENSEARCH_BULK_TIMEOUT = values.PositiveIntegerValue(
+        60, environ_name="OPENSEARCH_BULK_TIMEOUT", environ_prefix=None
+    )
+    OPENSEARCH_BULK_MAX_BYTES = values.PositiveIntegerValue(
+        25 * 1024 * 1024,
+        environ_name="OPENSEARCH_BULK_MAX_BYTES",
+        environ_prefix=None,
+    )
+    # Number of thread documents (and their child message documents)
+    # accumulated before a bulk flush. Lower values reduce per-request
+    # cluster pressure (heap, queue depth) at the cost of more round-trips.
+    OPENSEARCH_BULK_CHUNK_SIZE = values.PositiveIntegerValue(
+        50,
+        environ_name="OPENSEARCH_BULK_CHUNK_SIZE",
+        environ_prefix=None,
+    )
+    # Transport-level retry budget for the OpenSearch client. The
+    # opensearch-py transport already retries on 502/503/504 (its
+    # ``DEFAULT_RETRY_ON_STATUS``) — this just exposes the count so we
+    # can lift it above the library default of 3 if needed. Whatever
+    # bubbles up through this budget is wrapped as
+    # ``TransientTransportError`` and handed to Celery autoretry.
+    OPENSEARCH_MAX_RETRIES = values.PositiveIntegerValue(
+        3,
+        environ_name="OPENSEARCH_MAX_RETRIES",
+        environ_prefix=None,
+    )
     OPENSEARCH_INDEX_THREADS = values.BooleanValue(
         True, environ_name="OPENSEARCH_INDEX_THREADS", environ_prefix=None
     )
     OPENSEARCH_CA_CERTS = values.Value(
         None, environ_name="OPENSEARCH_CA_CERTS", environ_prefix=None
+    )
+    # Interval (seconds) at which the Celery Beat task drains the Redis
+    # coalescing buffers (reindex + delete) and enqueues bulk thread tasks.
+    # Longer intervals reduce Celery/OpenSearch load at the cost of search
+    # result staleness for recent writes.
+    SEARCH_REINDEX_TASKS_INTERVAL = values.PositiveIntegerValue(
+        30,
+        environ_name="SEARCH_REINDEX_TASKS_INTERVAL",
+        environ_prefix=None,
+    )
+    # Maximum number of thread / message IDs handed to a single
+    # ``bulk_*_task`` call. Each batch becomes one Celery task, so the
+    # value is the unit of parallelism, retry granularity and worker
+    # occupation for catch-up flows. Lower means more, shorter tasks
+    # (better parallelism, cheaper retries); higher means fewer, longer
+    # tasks (less broker chatter but worse failure isolation).
+    SEARCH_FLUSH_BATCH_SIZE = values.PositiveIntegerValue(
+        1000,
+        environ_name="SEARCH_FLUSH_BATCH_SIZE",
+        environ_prefix=None,
+    )
+    # Maximum number of ``bulk_*_task`` calls a single Beat tick is
+    # allowed to enqueue, shared across the three handoffs (reindex /
+    # thread-delete / message-delete). Bounds catch-up bursts so a huge
+    # backlog is spread across several ticks rather than flooding the
+    # broker in one go. Effective per-tick capacity is roughly
+    # ``SEARCH_FLUSH_BATCH_SIZE * SEARCH_FLUSH_MAX_BATCHES`` IDs.
+    SEARCH_FLUSH_MAX_BATCHES = values.PositiveIntegerValue(
+        10,
+        environ_name="SEARCH_FLUSH_MAX_BATCHES",
+        environ_prefix=None,
     )
 
     # Upload limits
@@ -283,7 +341,16 @@ class Base(Configuration):
 
     # Spam filtering settings
 
-    # Default spam configuration for all mail domains, overrideable per mail domain in custom_settings
+    # Default spam configuration for all mail domains, overrideable per mail
+    # domain in custom_settings. Recognised keys include:
+    #   rspamd_url / rspamd_auth : rspamd /checkv2 endpoint + optional auth header
+    #   trusted_relays           : int, how many upstream Received blocks to trust
+    #                              for header-based rules (default 1)
+    #   rules                    : list of hardcoded header-match spam rules
+    #   inbound_auth             : sender authentication backend — one of
+    #                              "native", "rspamd", "authentication-results",
+    #                              or None/absent to disable. See
+    #                              core.mda.inbound_auth for semantics.
     SPAM_CONFIG = values.DictValue({}, environ_name="SPAM_CONFIG", environ_prefix=None)
 
     # MTA settings
@@ -1229,6 +1296,8 @@ class Test(Base):
 
     # Add a test encryption key for django-fernet-encrypted-fields
     SALT_KEY = ["test-salt-for-development-only"]
+
+    FEATURE_MAILBOX_ADMIN_CHANNELS = ["api_key", "widget"]
 
     SCHEMA_CUSTOM_ATTRIBUTES_USER = {}
     SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN = {}

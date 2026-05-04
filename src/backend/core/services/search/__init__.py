@@ -3,6 +3,7 @@
 from core.services.search.index import (
     create_index_if_not_exists,
     delete_index,
+    ensure_index_exists,
     get_opensearch_client,
     index_message,
     index_thread,
@@ -22,6 +23,7 @@ __all__ = [
     # Client & Index management
     "get_opensearch_client",
     "create_index_if_not_exists",
+    "ensure_index_exists",
     "delete_index",
     # Indexing
     "index_message",

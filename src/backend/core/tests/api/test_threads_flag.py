@@ -107,9 +107,14 @@ def test_api_flag_thread_viewer_should_not_update(api_client):
     assert thread.has_trashed is False
     assert thread.messages.first().is_trashed is False
 
-    # Elevate to EDITOR and verify flag change succeeds
+    # Elevate BOTH ThreadAccess and MailboxAccess to an edit role. Edit
+    # rights require both — a VIEWER mailbox role on a shared inbox
+    # cannot mutate thread state even when ThreadAccess is EDITOR.
     thread_access.role = enums.ThreadAccessRoleChoices.EDITOR
     thread_access.save()
+    models.MailboxAccess.objects.filter(user=user, mailbox=mailbox).update(
+        role=enums.MailboxRoleChoices.EDITOR
+    )
     response = api_client.post(FLAG_API_URL, data=data, format="json")
     assert response.status_code == status.HTTP_200_OK
     assert response.data["updated_threads"] == 1
@@ -124,7 +129,7 @@ def test_api_flag_trash_single_thread_success(api_client):
     """Test marking a single thread as trashed successfully via flag endpoint."""
     user = factories.UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = factories.MailboxFactory(users_read=[user])
+    mailbox = factories.MailboxFactory(users_admin=[user])
     thread = factories.ThreadFactory()
     factories.ThreadAccessFactory(
         mailbox=mailbox,
@@ -164,7 +169,7 @@ def test_api_flag_untrash_single_thread_success(api_client):
     """Test marking a single thread as untrashed successfully via flag endpoint."""
     user = factories.UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = factories.MailboxFactory(users_read=[user])
+    mailbox = factories.MailboxFactory(users_admin=[user])
     thread = factories.ThreadFactory()
     factories.ThreadAccessFactory(
         mailbox=mailbox,
@@ -208,7 +213,7 @@ def test_api_flag_trash_multiple_threads_success(api_client):
     """Test marking multiple threads as trashed successfully."""
     user = factories.UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = factories.MailboxFactory(users_read=[user])
+    mailbox = factories.MailboxFactory(users_admin=[user])
     thread1 = factories.ThreadFactory()
     factories.ThreadAccessFactory(
         mailbox=mailbox,
@@ -275,7 +280,7 @@ def test_api_flag_spam_single_thread_success(api_client):
     """Test marking a single thread as spam successfully via flag endpoint."""
     user = factories.UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = factories.MailboxFactory(users_read=[user])
+    mailbox = factories.MailboxFactory(users_admin=[user])
     thread = factories.ThreadFactory()
     factories.ThreadAccessFactory(
         mailbox=mailbox,
@@ -313,7 +318,7 @@ def test_api_flag_not_spam_single_thread_success(api_client):
     """Test marking a single thread as not spam successfully via flag endpoint."""
     user = factories.UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = factories.MailboxFactory(users_read=[user])
+    mailbox = factories.MailboxFactory(users_admin=[user])
     thread = factories.ThreadFactory()
     factories.ThreadAccessFactory(
         mailbox=mailbox,
@@ -350,7 +355,7 @@ def test_api_flag_spam_multiple_threads_success(api_client):
     """Test marking multiple threads as spam successfully."""
     user = factories.UserFactory()
     api_client.force_authenticate(user=user)
-    mailbox = factories.MailboxFactory(users_read=[user])
+    mailbox = factories.MailboxFactory(users_admin=[user])
     thread1 = factories.ThreadFactory()
     factories.ThreadAccessFactory(
         mailbox=mailbox,
@@ -406,3 +411,97 @@ def test_api_flag_spam_multiple_threads_success(api_client):
     assert thread2.messages.first().is_spam is True
     msg3.refresh_from_db()
     assert msg3.is_spam is True  # Remained spam
+
+
+# --- Tests for VIEWER MailboxAccess + EDITOR ThreadAccess combination ---
+#
+# These tests cover the previously-missed scenario where a user is a VIEWER
+# on a shared mailbox that has EDITOR ThreadAccess to threads that land in
+# it. The pre-fix code checked only the ThreadAccess role, so a mailbox
+# viewer could mutate threads despite having no edit right on the mailbox.
+
+
+@pytest.mark.parametrize(
+    "flag,field",
+    [
+        ("archived", "is_archived"),
+        ("spam", "is_spam"),
+        ("trashed", "is_trashed"),
+    ],
+)
+def test_api_flag_viewer_mailbox_with_editor_thread_access_forbidden(
+    api_client, flag, field
+):
+    """A user with VIEWER MailboxAccess cannot mutate shared-state flags
+    even when the mailbox itself has EDITOR ThreadAccess on the thread.
+    """
+    user = factories.UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = factories.MailboxFactory(users_read=[user])  # VIEWER mailbox role
+    thread = factories.ThreadFactory()
+    factories.ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread,
+        role=enums.ThreadAccessRoleChoices.EDITOR,  # Mailbox has edit on thread
+    )
+    factories.MessageFactory(thread=thread)
+
+    data = {"flag": flag, "value": True, "thread_ids": [str(thread.id)]}
+    response = api_client.post(FLAG_API_URL, data=data, format="json")
+
+    # The user should not be able to mutate the flag — 200 + 0 updates.
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["updated_threads"] == 0
+
+    thread.refresh_from_db()
+    message = thread.messages.first()
+    assert getattr(message, field) is False
+
+    # Elevating MailboxAccess to EDITOR lets the same request succeed.
+    models.MailboxAccess.objects.filter(user=user, mailbox=mailbox).update(
+        role=enums.MailboxRoleChoices.EDITOR
+    )
+    response = api_client.post(FLAG_API_URL, data=data, format="json")
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["updated_threads"] == 1
+
+
+def test_api_flag_viewer_mailbox_can_still_star_and_mark_unread(api_client):
+    """Regression guard: star and unread are personal-state actions and
+    remain available to viewers (both mailbox-viewer and thread-viewer).
+    """
+    user = factories.UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = factories.MailboxFactory(users_read=[user])  # VIEWER mailbox role
+    thread = factories.ThreadFactory()
+    thread_access = factories.ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread,
+        role=enums.ThreadAccessRoleChoices.VIEWER,  # VIEWER thread role too
+    )
+    factories.MessageFactory(thread=thread)
+
+    starred_data = {
+        "flag": "starred",
+        "value": True,
+        "thread_ids": [str(thread.id)],
+        "mailbox_id": str(mailbox.id),
+    }
+    response = api_client.post(FLAG_API_URL, data=starred_data, format="json")
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["updated_threads"] == 1
+    thread_access.refresh_from_db()
+    assert thread_access.starred_at is not None
+
+    unread_data = {
+        "flag": "unread",
+        "value": True,
+        "thread_ids": [str(thread.id)],
+        "mailbox_id": str(mailbox.id),
+        "read_at": None,
+    }
+    response = api_client.post(FLAG_API_URL, data=unread_data, format="json")
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["updated_threads"] == 1
+    thread_access.refresh_from_db()
+    assert thread_access.read_at is None

@@ -6,6 +6,7 @@ from typing import Any, Dict
 from celery.utils.log import get_task_logger
 
 from core.models import Mailbox
+from core.utils import ThreadReindexDeferrer, ThreadStatsUpdateDeferrer
 
 from messages.celery_app import app as celery_app
 
@@ -79,35 +80,49 @@ def import_imap_messages_task(
                         folder_messages[folder_name] = message_list
                         total_messages += len(message_list)
 
-            # Process each folder (reusing cached message lists)
-            for folder_to_process in folders_to_process:
-                if folder_to_process not in folder_messages:
-                    continue
+            # Process each folder (reusing cached message lists). The
+            # deferrers batch OpenSearch indexing and thread-stats updates
+            # into a single bulk task at context exit, avoiding per-row
+            # Celery saturation during large IMAP imports.
+            with (
+                ThreadReindexDeferrer.defer(),
+                ThreadStatsUpdateDeferrer.defer(),
+            ):
+                for folder_to_process in folders_to_process:
+                    if folder_to_process not in folder_messages:
+                        continue
 
-                display_name = folder_mapping.get(folder_to_process, folder_to_process)
-                message_list = folder_messages[folder_to_process]
-
-                # Re-select folder for processing
-                if not select_imap_folder(imap, folder_to_process):
-                    logger.warning(
-                        "Skipping folder %s - could not select it", folder_to_process
+                    display_name = folder_mapping.get(
+                        folder_to_process, folder_to_process
                     )
-                    continue
+                    message_list = folder_messages[folder_to_process]
 
-                # Process messages in this folder
-                success_count, failure_count, current_message = process_folder_messages(
-                    imap_connection=imap,
-                    folder=folder_to_process,
-                    display_name=display_name,
-                    message_list=message_list,
-                    recipient=recipient,
-                    username=username,
-                    task_instance=self,
-                    success_count=success_count,
-                    failure_count=failure_count,
-                    current_message=current_message,
-                    total_messages=total_messages,
-                )
+                    # Re-select folder for processing
+                    if not select_imap_folder(imap, folder_to_process):
+                        logger.warning(
+                            "Skipping folder %s - could not select it",
+                            folder_to_process,
+                        )
+                        continue
+
+                    # Process messages in this folder
+                    (
+                        success_count,
+                        failure_count,
+                        current_message,
+                    ) = process_folder_messages(
+                        imap_connection=imap,
+                        folder=folder_to_process,
+                        display_name=display_name,
+                        message_list=message_list,
+                        recipient=recipient,
+                        username=username,
+                        task_instance=self,
+                        success_count=success_count,
+                        failure_count=failure_count,
+                        current_message=current_message,
+                        total_messages=total_messages,
+                    )
 
         # Determine appropriate message status
         if len(folders_to_process) == 1:

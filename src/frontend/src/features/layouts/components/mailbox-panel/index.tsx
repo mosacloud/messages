@@ -5,7 +5,7 @@ import { useMailboxContext } from "@/features/providers/mailbox";
 import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { useRouter } from "next/router";
 import { useSearchParams } from "next/navigation";
-import { useLayoutContext } from "../main";
+import { useLayoutContext } from "@/features/layouts/components/layout-context";
 import { MailboxLabels } from "./components/mailbox-labels";
 import { useState } from "react";
 

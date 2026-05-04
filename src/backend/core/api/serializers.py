@@ -651,6 +651,30 @@ class ThreadSerializer(serializers.ModelSerializer):
     labels = serializers.SerializerMethodField()
     summary = serializers.CharField(read_only=True)
     events_count = serializers.IntegerField(read_only=True)
+    abilities = serializers.SerializerMethodField(read_only=True)
+
+    @extend_schema_field(serializers.DictField(child=serializers.BooleanField()))
+    def get_abilities(self, instance):
+        """Return the current user's abilities on the thread, scoped to
+        the mailbox context when provided. Frontend components use this
+        to hide mutating actions (archive, spam, delete, reply...) from
+        users with read-only access.
+
+        Prefers the ``_can_edit`` annotation set by the viewset queryset
+        (single SQL subquery for the whole page) and falls back to a
+        per-instance query for code paths that build threads outside the
+        annotated queryset (e.g. the split action).
+        """
+        can_edit = getattr(instance, "_can_edit", None)
+        if can_edit is not None:
+            return {enums.ThreadAbilities.CAN_EDIT: can_edit}
+
+        request = self.context.get("request")
+        if request is None:
+            return {}
+        return instance.get_abilities(
+            request.user, mailbox_id=self.context.get("mailbox_id")
+        )
 
     @extend_schema_field(serializers.BooleanField())
     def get_has_unread(self, instance):
@@ -750,6 +774,7 @@ class ThreadSerializer(serializers.ModelSerializer):
             "labels",
             "summary",
             "events_count",
+            "abilities",
         ]
         read_only_fields = fields  # Mark all as read-only for safety
 
@@ -1060,23 +1085,23 @@ class MailboxAccessReadSerializer(serializers.ModelSerializer):
         read_only_fields = fields  # All fields are effectively read-only from this serializer's perspective
 
 
-class UserField(serializers.PrimaryKeyRelatedField):
-    """Custom field that accepts either UUID or email address for user lookup."""
+class UserAccessWriteField(serializers.PrimaryKeyRelatedField):
+    """Custom field that accepts either UUID or email address for user lookup.
+
+    When an email is provided and no matching user exists, a passwordless
+    "stub" user is created. The stub has no OIDC ``sub`` and will be claimed
+    on first OIDC login by ``UserManager.get_user_by_sub_or_email``.
+    """
 
     def to_internal_value(self, data):
         """Convert UUID string or email to User instance."""
-        if isinstance(data, str):
-            if "@" in data:
-                # It's an email address, look up the user
-                try:
-                    return models.User.objects.get(email=data)
-                except models.User.DoesNotExist as e:
-                    raise serializers.ValidationError(
-                        f"No user found with email: {data}"
-                    ) from e
-            else:
-                # It's a UUID, use the parent method
-                return super().to_internal_value(data)
+        if isinstance(data, str) and "@" in data:
+            user = models.User.objects.filter(email=data).first()
+            if user is None:
+                user = models.User(email=data)
+                user.set_unusable_password()
+                user.save()
+            return user
         return super().to_internal_value(data)
 
 
@@ -1086,7 +1111,7 @@ class MailboxAccessWriteSerializer(serializers.ModelSerializer):
     """
 
     role = IntegerChoicesField(choices_class=models.MailboxRoleChoices)
-    user = UserField(
+    user = UserAccessWriteField(
         queryset=models.User.objects.all(), help_text="User ID (UUID) or email address"
     )
 
@@ -1176,7 +1201,7 @@ class MaildomainAccessWriteSerializer(serializers.ModelSerializer):
     """
 
     role = IntegerChoicesField(choices_class=models.MailDomainAccessRoleChoices)
-    user = UserField(
+    user = UserAccessWriteField(
         queryset=models.User.objects.all(), help_text="User ID (UUID) or email address"
     )
 

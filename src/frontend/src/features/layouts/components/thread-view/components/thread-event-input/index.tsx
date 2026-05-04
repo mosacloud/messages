@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon, IconSize, IconType, UserRow } from "@gouvfr-lasuite/ui-kit";
 import { useThreadsEventsCreate, useThreadsEventsPartialUpdate, useThreadsUsersList, UserWithoutAbilities, ThreadEventTypeEnum, ThreadEvent } from "@/features/api/gen";
@@ -8,29 +8,41 @@ import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { useAuth } from "@/features/auth";
 import { SuggestionInput } from "@/features/ui/components/suggestion-input";
+import { useThreadViewContext } from "../../provider";
+import { useIMInputVisibility } from "./use-im-input-visibility";
+import clsx from "clsx";
 
 type ThreadEventInputProps = {
     threadId: string;
     editingEvent?: ThreadEvent | null;
     onCancelEdit?: () => void;
     onEventCreated?: () => void;
+    containerRef: RefObject<HTMLDivElement | null>;
 };
 
 /**
  * Small fixed input bar at the bottom of the thread view for adding internal comments.
  * Also handles editing existing events when `editingEvent` is provided.
  */
-export const ThreadEventInput = ({ threadId, editingEvent, onCancelEdit, onEventCreated }: ThreadEventInputProps) => {
+export const ThreadEventInput = ({ threadId, editingEvent, onCancelEdit, onEventCreated, containerRef }: ThreadEventInputProps) => {
     const { t } = useTranslation();
     const { invalidateThreadEvents } = useMailboxContext();
     const { user: currentUser } = useAuth();
+    const { isMessageFormFocused } = useThreadViewContext();
+
+    const isEditing = !!editingEvent;
+
+    const { isVisible, onFocusChange } = useIMInputVisibility({
+        containerRef,
+        threadId,
+        isEditing,
+        isMessageFormFocused,
+    });
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [content, setContent] = useState("");
     const [mentions, setMentions] = useState<Array<{ id: string; name: string }>>([]);
     const [showMentionPopover, setShowMentionPopover] = useState(false);
     const [mentionFilter, setMentionFilter] = useState("");
-
-    const isEditing = !!editingEvent;
 
     const createEvent = useThreadsEventsCreate();
     const updateEvent = useThreadsEventsPartialUpdate();
@@ -226,8 +238,23 @@ export const ThreadEventInput = ({ threadId, editingEvent, onCancelEdit, onEvent
         }
     }, [editingEvent, resetInput]);
 
+    const handleFocus = useCallback(() => {
+        onFocusChange(true);
+    }, [onFocusChange]);
+
+    const handleBlur = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            onFocusChange(false);
+        }
+    }, [onFocusChange]);
+
     return (
-        <div className="thread-event-input">
+        <div
+            className={clsx("thread-event-input", { "thread-event-input--hidden": !isVisible })}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            inert={!isVisible}
+        >
             {isEditing && (
                 <div className="thread-event-input__edit-banner">
                     <Icon name="edit" type={IconType.OUTLINED} size={IconSize.SMALL} aria-hidden="true" />
@@ -275,7 +302,7 @@ export const ThreadEventInput = ({ threadId, editingEvent, onCancelEdit, onEvent
                     className="thread-event-input__submit-button"
                     size="small"
                     variant="tertiary"
-                    icon={<Icon name={isEditing ? "check" : "send"} type={IconType.OUTLINED} size={IconSize.MEDIUM} />}
+                    icon={<Icon name={isEditing ? "check" : "arrow_upward"} type={IconType.OUTLINED} size={IconSize.MEDIUM} />}
                     onClick={handleSubmit}
                     disabled={!content.trim() || isPending}
                     title={isEditing ? t("Save") : t("Send")}

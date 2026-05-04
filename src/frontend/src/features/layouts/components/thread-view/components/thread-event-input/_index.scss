@@ -5,6 +5,13 @@
     border-top: 1px solid var(--c--contextuals--border--default);
     padding: var(--c--globals--spacings--sm) var(--c--globals--spacings--base);
     z-index: 1;
+    transition: transform 0.2s ease-out, opacity 0.15s ease-out;
+}
+
+.thread-event-input--hidden {
+    transform: translateY(calc(100% + 1px));
+    opacity: 0;
+    pointer-events: none;
 }
 
 .thread-event-input__edit-banner {

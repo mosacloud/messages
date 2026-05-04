@@ -71,8 +71,15 @@ The application uses a new environment file structure with `.defaults` and `.loc
 | Variable | Default | Description | Required |
 |----------|---------|-------------|----------|
 | `OPENSEARCH_URL` | `["http://opensearch:9200"]` | OpenSearch hosts list | Optional |
-| `OPENSEARCH_TIMEOUT` | `20` | OpenSearch query timeout | Optional |
+| `OPENSEARCH_TIMEOUT` | `20` | OpenSearch query timeout (seconds) for unitary requests | Optional |
+| `OPENSEARCH_BULK_TIMEOUT` | `60` | OpenSearch request timeout (seconds) applied to bulk indexation calls. Raise it if full reindex (`make search-index`) hits timeouts on large payloads. | Optional |
+| `OPENSEARCH_BULK_MAX_BYTES` | `26_214_400` | Flush threshold (bytes) for bulk indexation payloads; default 25 MiB. Once accumulated actions exceed this, `opensearch-py` emits a sub-chunk HTTP request. Note: this is a batching threshold, not a per-document cap — a single oversized document is still sent as its own chunk. Keep well under the OpenSearch server `http.max_content_length` | Optional |
+| `OPENSEARCH_BULK_CHUNK_SIZE` | `50` | Number of thread documents (and their child message documents) accumulated before a bulk flush in `reindex_bulk_threads`. Lower values reduce per-request cluster pressure (heap, queue depth) at the cost of more round-trips. Lower this if you see 503s on bulk requests. | Optional |
+| `OPENSEARCH_MAX_RETRIES` | `3` | Transport-level retry budget on the OpenSearch client. The opensearch-py transport already retries on 502/503/504 (`DEFAULT_RETRY_ON_STATUS`); this just exposes the count so it can be raised above the library default. Whatever exhausts this budget is wrapped as `TransientTransportError` and handed to Celery autoretry (5 attempts, exponential backoff up to 600s). | Optional |
 | `OPENSEARCH_INDEX_THREADS` | `True` | Enable thread indexing | Optional |
+| `SEARCH_REINDEX_TASKS_INTERVAL` | `30` | Interval (seconds) between Celery Beat runs of `process_pending_reindex_task`, which drains the reindex and delete coalescing buffers and enqueues bulk thread tasks. Longer values cut Celery/OpenSearch load at the cost of search-result staleness. | Optional |
+| `SEARCH_FLUSH_BATCH_SIZE` | `1000` | Maximum number of thread / message IDs handed to a single `bulk_*_task` call. This is the unit of parallelism, retry granularity and worker occupation for catch-up flows. Lower means more, shorter tasks (better parallelism, cheaper retries on failure); higher means fewer, longer tasks (less broker chatter but worse failure isolation). | Optional |
+| `SEARCH_FLUSH_MAX_BATCHES` | `10` | Maximum number of `bulk_*_task` calls a single Beat tick is allowed to enqueue, shared across the three handoffs (reindex / thread-delete / message-delete). Bounds catch-up bursts so a huge backlog is spread across several ticks rather than flooding the broker in one go. Effective per-tick capacity is roughly `SEARCH_FLUSH_BATCH_SIZE × SEARCH_FLUSH_MAX_BATCHES` IDs. | Optional |
 
 ## Mail Processing Configuration
 
@@ -240,6 +247,7 @@ _Those settings are deprecated and will be removed in the future._
 | `NEXT_PUBLIC_API_ORIGIN` | `http://localhost:8901` | Frontend API origin | Dev |
 | `NEXT_PUBLIC_LANGUAGES` | `[["en-US","English"],["fr-FR","Français"],["nl-NL","Nederlands"]]` | Languages available for frontend | Optional |
 | `NEXT_PUBLIC_DEFAULT_LANGUAGE` | `en-US` | Default language for frontend | Optional |
+| `NEXT_PUBLIC_FORCED_DEFAULT_LANGUAGE` | `false` | When `true`, the default language fallback is `NEXT_PUBLIC_DEFAULT_LANGUAGE` instead of the browser language. | Optional |
 | `NEXT_PUBLIC_THEME_CONFIG` | `{theme: "white-label"}` | Theme configuration for frontend | Optional |
 | `NEXT_PUBLIC_FEEDBACK_WIDGET_API_URL` || Feedback widget API URL | Optional |
 | `NEXT_PUBLIC_FEEDBACK_WIDGET_PATH` || Feedback widget path | Optional |

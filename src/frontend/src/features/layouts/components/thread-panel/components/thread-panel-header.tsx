@@ -12,9 +12,12 @@ import useArchive from "@/features/message/use-archive";
 import useSpam from "@/features/message/use-spam";
 import useTrash from "@/features/message/use-trash";
 import useStarred from "@/features/message/use-starred";
+import useCanEditThreads from "@/features/message/use-can-edit-threads";
 import { ThreadPanelFilter } from "./thread-panel-filter";
 import { THREAD_PANEL_FILTER_PARAMS, useThreadPanelFilters } from "../hooks/use-thread-panel-filters";
 import { SelectionReadStatus, SelectionStarredStatus } from "@/features/providers/thread-selection";
+import { LabelsWidget } from "@/features/layouts/components/labels-widget";
+import useAbility, { Abilities } from "@/hooks/use-ability";
 
 type ThreadPanelTitleProps = {
     selectedThreadIds: Set<string>;
@@ -48,6 +51,12 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
     const isDraftsView = ViewHelper.isDraftsView();
 
     const { activeFilters } = useThreadPanelFilters();
+
+    // Whether at least one selected thread has full edit rights — gates
+    // shared-state mutations (archive, spam, trash). Star and read/unread
+    // are personal state on the user's ThreadAccess and remain available
+    // regardless.
+    const canEditSelection = useCanEditThreads(selectedThreadIds);
 
     const title = useMemo(() => {
         if (searchParams.has('search')) return t('folder.search', { defaultValue: 'Search' });
@@ -93,6 +102,14 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
 
     const starLabel = t('Star');
     const unstarLabel = t('Unstar');
+
+    const canArchive = canEditSelection && !isSpamView && !isTrashedView && !isDraftsView;
+    const canReportSpam = canEditSelection && !isTrashedView && !isSentView && !isDraftsView;
+    const canTrash = canEditSelection && !isDraftsView;
+    const canManageLabels = useAbility(Abilities.CAN_MANAGE_MAILBOX_LABELS, selectedMailbox);
+    const canAssignLabel = canManageLabels && !isSpamView && !isTrashedView && !isDraftsView;
+    const hasSelectionActions = canArchive || canReportSpam || canTrash || canAssignLabel;
+
     const countLabel = useMemo(() => {
         if (isSearch) {
             if (activeFilters.has_mention && activeFilters.has_unread && activeFilters.has_starred) {
@@ -184,8 +201,8 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                     </Tooltip>
                     {isSelectionMode && (
                         <>
-                            <VerticalSeparator withPadding={false} />
-                            {!isSpamView && !isTrashedView && !isDraftsView && (
+                            {hasSelectionActions && <VerticalSeparator withPadding={false} />}
+                            {canArchive && (
                                 <Tooltip content={archiveLabel} className={selectedThreadIds.size === 0 ? 'hidden' : ''}>
                                     <Button
                                         onClick={() => {
@@ -205,7 +222,7 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                                     />
                                 </Tooltip>
                             )}
-                            {!isTrashedView && !isSentView && !isDraftsView && (
+                            {canReportSpam && (
                                 <Tooltip content={spamLabel} className={selectedThreadIds.size === 0 ? 'hidden' : ''}>
                                     <Button
                                         onClick={() => {
@@ -225,28 +242,31 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                                     />
                                 </Tooltip>
                             )}
-                            {
-                                !isDraftsView && (
-                                    <Tooltip content={trashLabel} className={selectedThreadIds.size === 0 ? 'hidden' : ''}>
-                                        <Button
-                                            onClick={() => {
-                                                trashMutation({
-                                                    threadIds: threadIdsToMark,
-                                                    onSuccess: () => {
-                                                        unselectThread();
-                                                        onClearSelection();
-                                                    }
-                                                });
-                                            }}
-                                            disabled={selectedThreadIds.size === 0}
-                                            icon={<Icon name={trashIconName} type={IconType.OUTLINED} />}
-                                            variant="tertiary"
-                                            size="nano"
-                                            aria-label={trashLabel}
-                                        />
-                                    </Tooltip>
-                                )
-                            }
+                            {canTrash && (
+                                <Tooltip content={trashLabel} className={selectedThreadIds.size === 0 ? 'hidden' : ''}>
+                                    <Button
+                                        onClick={() => {
+                                            trashMutation({
+                                                threadIds: threadIdsToMark,
+                                                onSuccess: () => {
+                                                    unselectThread();
+                                                    onClearSelection();
+                                                }
+                                            });
+                                        }}
+                                        disabled={selectedThreadIds.size === 0}
+                                        icon={<Icon name={trashIconName} type={IconType.OUTLINED} />}
+                                        variant="tertiary"
+                                        size="nano"
+                                        aria-label={trashLabel}
+                                    />
+                                </Tooltip>
+                            )}
+                            {canAssignLabel && (
+                                <LabelsWidget
+                                    threadIds={Array.from(selectedThreadIds)}
+                                />
+                            )}
                             <VerticalSeparator withPadding={false} />
                         </>
                     )}

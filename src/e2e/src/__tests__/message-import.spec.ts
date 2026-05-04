@@ -116,13 +116,10 @@ test.describe("Import Message", () => {
       .click();
     await page.waitForLoadState("networkidle");
 
-    // The header settings menu should not contain the Import messages option
-    // as the user does not have admin rights to the shared mailbox
+    // The header settings button should be disabled because the user has no
+    // admin abilities on the shared mailbox, so no menu option is available.
     const header = page.locator(".c__header");
     const settingsButton = header.getByRole("button", { name: "More options" });
-    await settingsButton.click();
-    await expect(
-      page.getByRole("menuitem", { name: "Import messages" })
-    ).not.toBeVisible();
+    await expect(settingsButton).toBeDisabled();
   });
 });

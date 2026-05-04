@@ -291,11 +291,18 @@ class LabelViewSet(
                 {"detail": "No thread IDs provided"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Labels are a mailbox-local organizational tool: the caller's
+        # EDITOR/SENDER/ADMIN role on the label's mailbox (verified by
+        # `check_mailbox_permissions` above) is sufficient to attach the
+        # label. We don't require per-thread EDITOR rights, so a viewer
+        # of a shared thread can still organize it within their own
+        # mailbox. We still require the thread to belong to the label's
+        # mailbox — otherwise a caller could attach a label to any
+        # thread ID they happen to know.
         accessible_threads = models.Thread.objects.filter(
             Exists(
                 models.ThreadAccess.objects.filter(
-                    mailbox__accesses__user=request.user,
-                    thread=OuterRef("pk"),
+                    mailbox_id=label.mailbox_id, thread=OuterRef("pk")
                 )
             ),
             id__in=thread_ids,
@@ -350,11 +357,13 @@ class LabelViewSet(
                 {"detail": "No thread IDs provided"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Mirrors `add_threads`: mailbox-level permission is sufficient
+        # for mailbox-local label organization; we only require the
+        # thread to belong to the label's mailbox.
         accessible_threads = models.Thread.objects.filter(
             Exists(
                 models.ThreadAccess.objects.filter(
-                    mailbox__accesses__user=request.user,
-                    thread=OuterRef("pk"),
+                    mailbox_id=label.mailbox_id, thread=OuterRef("pk")
                 )
             ),
             id__in=thread_ids,

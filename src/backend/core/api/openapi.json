@@ -9055,9 +9055,17 @@
                     "events_count": {
                         "type": "integer",
                         "readOnly": true
+                    },
+                    "abilities": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "boolean"
+                        },
+                        "readOnly": true
                     }
                 },
                 "required": [
+                    "abilities",
                     "accesses",
                     "active_messaged_at",
                     "archived_messaged_at",

@@ -1,4 +1,5 @@
-import { TreeLabel, ThreadsStatsRetrieveStatsFields, useLabelsDestroy, useLabelsList, useThreadsStatsRetrieve, ThreadsStatsRetrieve200, useLabelsAddThreadsCreate, useLabelsRemoveThreadsCreate, useLabelsPartialUpdate } from "@/features/api/gen";
+import { TreeLabel, ThreadsStatsRetrieveStatsFields, useLabelsDestroy, useLabelsList, useThreadsStatsRetrieve, ThreadsStatsRetrieve200, useLabelsAddThreadsCreate, useLabelsRemoveThreadsCreate, useLabelsPartialUpdate, useFlagCreate } from "@/features/api/gen";
+import { FlagEnum } from "@/features/api/gen/models";
 import { getThreadsStatsQueryKey, useMailboxContext } from "@/features/providers/mailbox";
 import { DropdownMenu, Icon, IconSize, IconType } from "@gouvfr-lasuite/ui-kit";
 import { Button, useModals } from "@gouvfr-lasuite/cunningham-react";
@@ -8,7 +9,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
-import { useLayoutContext } from "@/features/layouts/components/main";
+import { useLayoutDragContext } from "@/features/layouts/components/layout-context";
 import router from "next/router";
 import { MAILBOX_FOLDERS } from "../../../mailbox-list";
 import { addToast, ToasterItem } from "@/features/ui/components/toaster";
@@ -16,6 +17,7 @@ import { toast } from "react-toastify";
 import { useFold } from "@/features/providers/fold";
 import { SubLabelCreation } from "../label-form-modal";
 import { handle } from "@/features/utils/errors";
+import ViewHelper from "@/features/utils/view-helper";
 
 export type LabelTransferData = {
   type: 'label';
@@ -48,7 +50,7 @@ export const LabelItem = ({ level = 0, onEdit, canManage, defaultFoldState, ...l
     }
   });
   const unreadCount = (stats?.data as ThreadsStatsRetrieve200)?.all_unread ?? 0;
-  const { closeLeftPanel } = useLayoutContext();
+  const { closeLeftPanel, setDragAction, getIsShiftHeld } = useLayoutDragContext();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { t } = useTranslation();
@@ -58,6 +60,9 @@ export const LabelItem = ({ level = 0, onEdit, canManage, defaultFoldState, ...l
   const foldKey = useMemo(() => `label-item-${label.display_name}${label.children.length > 0 ? `-with-children` : ''}`, [label.display_name, label.children.length]);
   const { isFolded, toggle, setFoldState } = useFold(foldKey, isFoldedByDefault);
   const foldTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const shouldAutoArchive = !ViewHelper.isArchivedView() && !ViewHelper.isSpamView() && !ViewHelper.isTrashedView() && !ViewHelper.isDraftsView();
+
+  const { mutate: flagMutate } = useFlagCreate();
 
   const unfoldIfNeeded = useEffectEvent(() => {
     if (isFolded) {
@@ -106,32 +111,9 @@ export const LabelItem = ({ level = 0, onEdit, canManage, defaultFoldState, ...l
 
   const addThreadMutation = useLabelsAddThreadsCreate({
     mutation: {
-      onSuccess: (_, variables) => {
-        // Invalidate relevant queries to refresh the UI
+      onSuccess: () => {
         invalidateThreadMessages();
         invalidateThreadsStats();
-
-        // Show success toast
-        const threadCount = variables.data.thread_ids!.length;
-
-          addToast(
-            <ToasterItem
-              type="info"
-              actions={[{
-                label: t('Undo'), onClick: () => deleteThreadMutation.mutate(variables)
-              }]}
-            >
-              <Icon name="label" type={IconType.OUTLINED} />
-              <span>{t('Label "{{label}}" assigned to {{count}} threads.', {
-                count: threadCount,
-                label: label.name,
-                defaultValue_one: "Label \"{{label}}\" assigned to this thread.",
-                defaultValue_other: "Label \"{{label}}\" assigned to {{count}} threads.",
-              })}</span>
-            </ToasterItem>, {
-            toastId: JSON.stringify(variables),
-          }
-          );
       },
     },
   });
@@ -145,14 +127,29 @@ export const LabelItem = ({ level = 0, onEdit, canManage, defaultFoldState, ...l
         name: label.name
       }
     } as LabelTransferData));
-    e.dataTransfer.effectAllowed = 'link'
   }
 
   const handleDragOver = (e: React.DragEvent<HTMLAnchorElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    e.dataTransfer.dropEffect = 'link';
     setIsDragOver(true);
+
+    if (e.dataTransfer.types.includes('text/thread-drag')) {
+      // Safari doesn't expose `e.shiftKey` on drag events, fall back to the
+      // globally-tracked ref.
+      const shiftHeld = e.shiftKey || getIsShiftHeld();
+      // Auto-archive also requires at least one editable thread in the
+      // dragged selection — archive is a shared-state mutation. The
+      // source advertises this via `text/thread-editable`. Labelling
+      // alone only needs mailbox-level `manage_labels` (enforced by
+      // `canManage` on the drop handlers below).
+      const hasEditable = e.dataTransfer.types.includes('text/thread-editable');
+      const action = !shiftHeld && shouldAutoArchive && hasEditable
+        ? t('Assign this label and archive')
+        : t('Assign this label');
+      setDragAction(action);
+    }
+
     if (!foldTimeoutRef.current) {
       foldTimeoutRef.current = setTimeout(() => {
         if (isFolded === true) toggle();
@@ -162,24 +159,125 @@ export const LabelItem = ({ level = 0, onEdit, canManage, defaultFoldState, ...l
 
   const handleDragLeave = () => {
     setIsDragOver(false);
+    setDragAction(null);
     if (foldTimeoutRef.current) {
       clearTimeout(foldTimeoutRef.current);
       foldTimeoutRef.current = null;
     }
   };
 
-  const handleDropThread = (transferData: { threadIds?: string[], labels: string[] }) => {
+  const handleDropThread = (transferData: { threadIds?: string[], labels: string[], hasEditable?: boolean }, shiftKeyHeld: boolean = false) => {
     const canBeAssigned = !transferData.labels.includes(label.id);
     if (!canBeAssigned) return;
 
-    if (transferData.threadIds && transferData.threadIds.length > 0) {
-        addThreadMutation.mutate({
-          id: label.id,
-          data: {
-            thread_ids: transferData.threadIds,
-          },
-        });
-    }
+    if (!transferData.threadIds || transferData.threadIds.length === 0) return;
+
+    const threadIds = transferData.threadIds;
+    // Archive is gated on per-thread edit rights; without any editable
+    // thread we fall back to assign-only.
+    const doArchive = !shiftKeyHeld && shouldAutoArchive && transferData.hasEditable === true;
+    const toastId = `label-assign-${label.id}-${Date.now()}`;
+
+    addThreadMutation.mutate({
+      id: label.id,
+      data: { thread_ids: threadIds },
+    }, {
+      onSuccess: () => {
+        if (doArchive) {
+          flagMutate({
+            data: { flag: FlagEnum.archived, value: true, thread_ids: threadIds },
+          }, {
+            onSuccess: (response) => {
+              invalidateThreadMessages();
+              invalidateThreadsStats();
+
+              // Mirror the `useFlag` toast pattern: label assignment is
+              // fully successful under the current permission model (we
+              // relaxed the per-thread edit check; all dragged threads
+              // belong to the label's mailbox), so partial/none status
+              // is driven by the archive mutation alone.
+              const responseData = response.data as Record<string, unknown>;
+              const archivedCount = typeof responseData.updated_threads === 'number'
+                ? responseData.updated_threads
+                : threadIds.length;
+              const submittedCount = threadIds.length;
+              const isNone = archivedCount === 0;
+              const isPartial = archivedCount > 0 && archivedCount < submittedCount;
+              const toastType = isNone ? 'error' : isPartial ? 'warning' : 'info';
+
+              const undo = () => {
+                deleteThreadMutation.mutate({
+                  id: label.id,
+                  data: { thread_ids: threadIds },
+                });
+                if (archivedCount > 0) {
+                  flagMutate({
+                    data: { flag: FlagEnum.archived, value: false, thread_ids: threadIds },
+                  }, {
+                    onSuccess: () => {
+                      invalidateThreadMessages();
+                      invalidateThreadsStats();
+                      toast.dismiss(toastId);
+                    },
+                  });
+                } else {
+                  toast.dismiss(toastId);
+                }
+              };
+
+              const mainMessage = isNone
+                ? t('Label "{{label}}" assigned, but no threads could be archived.', { label: label.name })
+                : isPartial
+                  ? t('Label "{{label}}" assigned. {{count}} of {{total}} threads archived.', {
+                      count: archivedCount,
+                      total: submittedCount,
+                      label: label.name,
+                    })
+                  : t('Label "{{label}}" assigned and {{count}} threads archived.', {
+                      count: archivedCount,
+                      label: label.name,
+                      defaultValue_one: 'Label "{{label}}" assigned and thread archived.',
+                      defaultValue_other: 'Label "{{label}}" assigned and {{count}} threads archived.',
+                    });
+
+              addToast(
+                <ToasterItem type={toastType} actions={[{ label: t('Undo'), onClick: undo }]}>
+                  <Icon name="label" type={IconType.OUTLINED} />
+                  <div>
+                    <p>{mainMessage}</p>
+                    {(isPartial || isNone) && (
+                      <p>{t('You may not have sufficient permissions for all selected threads.')}</p>
+                    )}
+                  </div>
+                </ToasterItem>,
+                { toastId }
+              );
+            },
+          });
+        } else {
+          const undo = () => {
+            deleteThreadMutation.mutate({
+              id: label.id,
+              data: { thread_ids: threadIds },
+            });
+            toast.dismiss(toastId);
+          };
+
+          addToast(
+            <ToasterItem type="info" actions={[{ label: t('Undo'), onClick: undo }]}>
+              <Icon name="label" type={IconType.OUTLINED} />
+              <span>{t('Label "{{label}}" assigned to {{count}} threads.', {
+                count: threadIds.length,
+                label: label.name,
+                defaultValue_one: 'Label "{{label}}" assigned to this thread.',
+                defaultValue_other: 'Label "{{label}}" assigned to {{count}} threads.',
+              })}</span>
+            </ToasterItem>,
+            { toastId }
+          );
+        }
+      },
+    });
   }
 
   const handleDropLabel = (transferData: LabelTransferData) => {
@@ -206,13 +304,14 @@ export const LabelItem = ({ level = 0, onEdit, canManage, defaultFoldState, ...l
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);
+    setDragAction(null);
     const rawData = e.dataTransfer.getData('application/json');
     if (!rawData) return;
 
     try {
       const data = JSON.parse(rawData);
 
-      if (data.type === 'thread') handleDropThread(data);
+      if (data.type === 'thread') handleDropThread(data, e.shiftKey || getIsShiftHeld());
       else if (data.type === 'label') handleDropLabel(data);
     } catch (error) {
       handle(new Error('Error parsing drag data.'), { extra: { error } });

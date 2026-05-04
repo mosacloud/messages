@@ -215,17 +215,17 @@ test.describe("Thread read / unread", () => {
     await page
       .getByRole("heading", { name: "Inbox thread alpha", level: 2 })
       .waitFor({ state: "visible" });
-    await page.waitForLoadState("networkidle");
 
-    // Close the thread view to go back to the list
-    await page.getByRole("button", { name: "Close this thread" }).click();
-
-    // Verify the thread is now read (no unread indicator)
+    // Wait for auto-read to propagate: the sidebar reflects the read state
+    // once the flag mutation succeeds and the thread list cache is updated.
     await expect(
       page.locator('[data-unread="false"]', {
         hasText: "Inbox thread alpha",
       }),
     ).toBeVisible();
+
+    // Close the thread view to go back to the list
+    await page.getByRole("button", { name: "Close this thread" }).click();
 
     // Click the filter button to apply unread filter (default selected filter)
     await page.getByRole("button", { name: "Filter threads" }).click();

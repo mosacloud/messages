@@ -14,15 +14,37 @@ from core.services.identity.keycloak import (
     sync_mailbox_to_keycloak_user,
     sync_maildomain_to_keycloak_group,
 )
-from core.services.search import MESSAGE_INDEX, get_opensearch_client
-from core.services.search.tasks import (
-    index_message_task,
-    reindex_thread_task,
-    update_threads_mailbox_flags_task,
+from core.services.search.coalescer import (
+    enqueue_message_delete,
+    enqueue_thread_delete,
+    enqueue_thread_reindex,
 )
-from core.utils import ThreadStatsUpdateDeferrer
+from core.utils import ThreadReindexDeferrer, ThreadStatsUpdateDeferrer
 
 logger = logging.getLogger(__name__)
+
+
+def _schedule_thread_reindex(thread_id):
+    """Route a thread reindex through the active deferrer, or the Redis queue.
+
+    Thread reindexing has two modes depending on the call context:
+
+    - Inside a `ThreadReindexDeferrer.defer()` scope (bulk flows like imports
+      or migrations), the ID is collected and a single batched
+      `bulk_reindex_threads_task` is enqueued at scope exit — avoiding one
+      Celery task per row.
+    - Outside that scope, the ID is pushed to the coalescing buffer drained
+      by `process_pending_reindex_task`. The enqueue is wrapped in
+      `transaction.on_commit` so a rolled-back save never leaves a phantom
+      reindex pointing at a row that was never persisted.
+    """
+    if not settings.OPENSEARCH_INDEX_THREADS:
+        return
+
+    if ThreadReindexDeferrer.defer_item(thread_id):
+        return
+
+    transaction.on_commit(lambda tid=thread_id: enqueue_thread_reindex(tid))
 
 
 @receiver(post_save, sender=models.MailDomain)
@@ -54,42 +76,24 @@ def sync_mailbox_to_keycloak(sender, instance, created, **kwargs):
 
 @receiver(post_save, sender=models.Message)
 def index_message_post_save(sender, instance, created, **kwargs):
-    """Index a message after it's saved."""
-    if not settings.OPENSEARCH_INDEX_THREADS:
-        return
-
-    try:
-        # Schedule the indexing task asynchronously
-        index_message_task.delay(str(instance.id))
-        # reindex_thread_task.delay(str(instance.thread.id))
-
-    # pylint: disable=broad-exception-caught
-    except Exception as e:
-        logger.exception(
-            "Error scheduling message indexing for message %s: %s",
-            instance.id,
-            e,
-        )
+    """Schedule a reindex for the parent thread when a message is saved."""
+    _schedule_thread_reindex(instance.thread_id)
 
 
 @receiver(post_save, sender=models.MessageRecipient)
 def index_message_recipient_post_save(sender, instance, created, **kwargs):
-    """Index a message recipient after it's saved."""
-    if not settings.OPENSEARCH_INDEX_THREADS:
+    """Reindex the parent thread when a recipient is updated after creation.
+
+    On create, ``index_message_post_save`` already covers the new message —
+    triggering here would schedule a redundant reindex per recipient. On
+    update (e.g. delivery_status change after send), recipient data is
+    denormalized into the Message document, so the parent thread needs a
+    refresh.
+    """
+    if created:
         return
 
-    try:
-        # Schedule the indexing task asynchronously
-        # TODO: deduplicate the indexing of the message!
-        index_message_task.delay(str(instance.message.id))
-
-    # pylint: disable=broad-exception-caught
-    except Exception as e:
-        logger.exception(
-            "Error scheduling message indexing for message %s: %s",
-            instance.message.id,
-            e,
-        )
+    _schedule_thread_reindex(instance.message.thread_id)
 
 
 @receiver(post_save, sender=models.MessageRecipient)
@@ -100,7 +104,7 @@ def update_thread_stats_on_delivery_status_change(sender, instance, **kwargs):
     Only triggers for outbound messages (is_sender=True) that are not drafts
     or trashed, since only those affect thread delivery stats.
 
-    Supports batching via defer_thread_stats_update() context manager.
+    Supports batching via ThreadStatsUpdateDeferrer.defer() context manager.
     """
     update_fields = kwargs.get("update_fields")
 
@@ -119,7 +123,7 @@ def update_thread_stats_on_delivery_status_change(sender, instance, **kwargs):
     thread = message.thread
 
     # If deferring is active, mark thread for later update
-    if ThreadStatsUpdateDeferrer.defer_for(thread):
+    if ThreadStatsUpdateDeferrer.defer_item(thread.id):
         return
 
     # Otherwise update immediately
@@ -132,21 +136,8 @@ def update_thread_stats_on_delivery_status_change(sender, instance, **kwargs):
 
 @receiver(post_save, sender=models.Thread)
 def index_thread_post_save(sender, instance, created, **kwargs):
-    """Index a thread after it's saved."""
-    if not settings.OPENSEARCH_INDEX_THREADS:
-        return
-
-    try:
-        # Schedule the indexing task asynchronously
-        reindex_thread_task.delay(str(instance.id))
-
-    # pylint: disable=broad-exception-caught
-    except Exception as e:
-        logger.exception(
-            "Error scheduling thread indexing for thread %s: %s",
-            instance.id,
-            e,
-        )
+    """Schedule a reindex for the thread after it's saved."""
+    _schedule_thread_reindex(instance.id)
 
 
 @receiver(pre_delete, sender=models.Message)
@@ -167,60 +158,41 @@ def delete_message_blobs(sender, instance, **kwargs):
 
 @receiver(post_delete, sender=models.Message)
 def delete_message_from_index(sender, instance, **kwargs):
-    """Remove a message from the index after it's deleted."""
+    """Enqueue a targeted OpenSearch delete for the message child document.
+
+    Pushes ``(thread_id, message_id)`` to the dedicated delete-message set
+    so ``bulk_delete_messages_task`` can later issue a ``bulk delete by
+    _id`` (with the parent ``thread_id`` as routing). Replaces the
+    previous behaviour of scheduling a thread reindex and relying on a
+    ``delete_by_query`` orphan purge — far cheaper for the cluster, and
+    correct because Django fires ``post_delete`` for both direct and
+    cascaded message deletions.
+    """
     if not settings.OPENSEARCH_INDEX_THREADS:
         return
 
-    try:
-        es = get_opensearch_client()
-        # pylint: disable=unexpected-keyword-arg
-        es.delete(
-            index=MESSAGE_INDEX,
-            id=str(instance.id),
-            ignore=[404],  # Ignore if document doesn't exist or is already deleted
-        )
-
-    # pylint: disable=broad-exception-caught
-    except Exception as e:
-        logger.exception(
-            "Error removing message %s from index: %s",
-            instance.id,
-            e,
-        )
+    thread_id = str(instance.thread_id)
+    message_id = str(instance.id)
+    transaction.on_commit(
+        lambda tid=thread_id, mid=message_id: enqueue_message_delete(tid, mid)
+    )
 
 
 @receiver(post_delete, sender=models.Thread)
 def delete_thread_from_index(sender, instance, **kwargs):
-    """Remove a thread and its messages from the index after it's deleted."""
+    """Enqueue an async OpenSearch delete for the thread parent document.
+
+    Only the parent doc is queued here — child message docs are picked up
+    by ``delete_message_from_index`` via the cascaded ``post_delete``
+    signal Django fires for each child. Splitting the two paths replaces
+    the previous all-in-one ``delete_by_query`` on ``thread_id`` with two
+    cheap ``bulk delete by _id`` requests.
+    """
     if not settings.OPENSEARCH_INDEX_THREADS:
         return
 
-    try:
-        es = get_opensearch_client()
-
-        # Delete the thread document
-        # pylint: disable=unexpected-keyword-arg
-        es.delete(
-            index=MESSAGE_INDEX,
-            id=str(instance.id),
-            ignore=[404],  # Ignore if document doesn't exist
-        )
-
-        # Delete all child message documents using a query
-        # pylint: disable=unexpected-keyword-arg
-        es.delete_by_query(
-            index=MESSAGE_INDEX,
-            body={"query": {"term": {"thread_id": str(instance.id)}}},
-            ignore=[404, 409],  # Ignore if no documents match
-            conflicts="proceed",
-        )
-    # pylint: disable=broad-exception-caught
-    except Exception as e:
-        logger.exception(
-            "Error removing thread %s and its messages from index: %s",
-            instance.id,
-            e,
-        )
+    thread_id = str(instance.id)
+    transaction.on_commit(lambda tid=thread_id: enqueue_thread_delete(tid))
 
 
 @receiver(pre_delete, sender=models.Message)
@@ -245,48 +217,25 @@ def delete_orphan_draft_attachments(sender, instance, **kwargs):
 
 @receiver(post_save, sender=models.ThreadAccess)
 def update_mailbox_flags_on_access_save(sender, instance, created, **kwargs):
-    """Update mailbox flags in OpenSearch when ThreadAccess read/starred state changes."""
-    if not settings.OPENSEARCH_INDEX_THREADS:
-        return
+    """Schedule a thread reindex when ThreadAccess read/starred state changes.
 
+    The thread document carries ``unread_mailboxes`` / ``starred_mailboxes``
+    fields derived from ``ThreadAccess`` rows; a full thread reindex via the
+    coalescer keeps them consistent without a dedicated partial-update task.
+    """
     update_fields = kwargs.get("update_fields")
     if update_fields is not None and not (
         {"read_at", "starred_at"} & set(update_fields)
     ):
         return
 
-    thread_id = str(instance.thread_id)
-    try:
-        transaction.on_commit(
-            lambda tid=thread_id: update_threads_mailbox_flags_task.delay([tid])
-        )
-    # pylint: disable=broad-exception-caught
-    except Exception as e:
-        logger.exception(
-            "Error scheduling unread_mailboxes update for thread %s: %s",
-            instance.thread_id,
-            e,
-        )
+    _schedule_thread_reindex(instance.thread_id)
 
 
 @receiver(post_delete, sender=models.ThreadAccess)
 def update_unread_mailboxes_on_access_delete(sender, instance, **kwargs):
-    """Update unread_mailboxes in OpenSearch when a ThreadAccess is deleted."""
-    if not settings.OPENSEARCH_INDEX_THREADS:
-        return
-
-    thread_id = str(instance.thread_id)
-    try:
-        transaction.on_commit(
-            lambda tid=thread_id: update_threads_mailbox_flags_task.delay([tid])
-        )
-    # pylint: disable=broad-exception-caught
-    except Exception as e:
-        logger.exception(
-            "Error scheduling unread_mailboxes update for thread %s: %s",
-            instance.thread_id,
-            e,
-        )
+    """Schedule a thread reindex when a ThreadAccess is deleted."""
+    _schedule_thread_reindex(instance.thread_id)
 
 
 @receiver(pre_delete, sender=models.User)

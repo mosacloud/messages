@@ -16,7 +16,7 @@ import { MessageTemplateTypeChoices, StatusEnum, useMailboxesMessageTemplatesLis
 import { CircularProgress } from "@/features/ui/components/circular-progress";
 import { TaskImportCacheHelper } from "@/features/utils/task-import-cache";
 import { useTheme } from "@/features/providers/theme";
-import { useLayoutContext } from "..";
+import { useLayoutContext } from "@/features/layouts/components/layout-context";
 
 
 type AuthenticatedHeaderProps = HeaderProps & {
@@ -152,6 +152,7 @@ const ApplicationMenu = () => {
   }, [isDropdownOpen, selectedMailbox?.id]);
 
   const taskStatus = useImportTaskStatus(taskId, { enabled: canImportMessages && isDropdownOpen });
+  const hasOptions = canAccessDomainAdmin || canImportMessages || canManageMessageTemplates || canManageIntegrations;
   const importMessageOption = useMemo(() => {
     let label = t("Import messages");
     let icon = <Icon name="archive" type={IconType.OUTLINED} />;
@@ -168,7 +169,7 @@ const ApplicationMenu = () => {
       }
       if (taskStatus.state === StatusEnum.FAILURE) {
         label = t("Import failed");
-        icon = <Icon name="error" type={IconType.OUTLINED} />;
+          icon = <Icon name="error" type={IconType.OUTLINED} style={{ color: "var(--c--contextuals--content--semantic--error--primary)" }} />;
       }
     }
 
@@ -180,6 +181,21 @@ const ApplicationMenu = () => {
       }
     }
   }, [t, taskStatus]);
+
+  if (!hasOptions) {
+    return (
+      <Tooltip content={t("No action available for this mailbox")}>
+        <Button
+          disabled
+          onClick={(e) => e.preventDefault()}
+          icon={<Icon name="settings" type={IconType.OUTLINED} />}
+          aria-label={t("More options (none available for this mailbox)")}
+          color="neutral"
+          variant="tertiary"
+        />
+      </Tooltip>
+    );
+  }
 
   return (
     <DropdownMenu

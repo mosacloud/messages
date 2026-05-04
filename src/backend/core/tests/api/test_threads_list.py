@@ -254,12 +254,73 @@ def test_delete_thread_viewer_should_be_forbidden(api_client):
     assert response.status_code == status.HTTP_403_FORBIDDEN
     assert Thread.objects.filter(pk=thread.pk).exists()
 
-    # Elevate to EDITOR and verify delete succeeds
+    # Elevate BOTH ThreadAccess and MailboxAccess to EDITOR — full edit
+    # rights on a thread require both roles.
     thread_access.role = enums.ThreadAccessRoleChoices.EDITOR
     thread_access.save()
+    MailboxAccess.objects.filter(user=user, mailbox=mailbox).update(
+        role=enums.MailboxRoleChoices.EDITOR
+    )
     response = api_client.delete(url)
     assert response.status_code == status.HTTP_204_NO_CONTENT
     assert not Thread.objects.filter(pk=thread.pk).exists()
+
+
+def test_delete_thread_viewer_mailbox_with_editor_thread_access_forbidden(api_client):
+    """Previously-missed scenario: VIEWER MailboxAccess + EDITOR ThreadAccess.
+
+    A shared inbox grants EDITOR ThreadAccess to every incoming thread,
+    but a user with only VIEWER MailboxAccess on that inbox must not be
+    able to delete those threads. `HasThreadEditAccess` previously
+    checked only the ThreadAccess role and missed this case.
+    """
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])  # VIEWER mailbox role
+    thread = ThreadFactory()
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread,
+        role=enums.ThreadAccessRoleChoices.EDITOR,  # Mailbox has edit on thread
+    )
+    MessageFactory(thread=thread)
+
+    url = reverse("threads-detail", kwargs={"pk": str(thread.id)})
+    response = api_client.delete(url)
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert Thread.objects.filter(pk=thread.pk).exists()
+
+    # Elevating MailboxAccess to EDITOR unblocks the destroy action.
+    MailboxAccess.objects.filter(user=user, mailbox=mailbox).update(
+        role=enums.MailboxRoleChoices.EDITOR
+    )
+    response = api_client.delete(url)
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert not Thread.objects.filter(pk=thread.pk).exists()
+
+
+def test_refresh_summary_viewer_forbidden(api_client):
+    """A viewer cannot trigger the AI summary regeneration — it mutates
+    `thread.summary`. The endpoint is covered by `HasThreadEditAccess`
+    via `ThreadViewSet.get_permissions`.
+    """
+    user = UserFactory()
+    api_client.force_authenticate(user=user)
+    mailbox = MailboxFactory(users_read=[user])  # VIEWER mailbox role
+    thread = ThreadFactory(summary="initial")
+    ThreadAccessFactory(
+        mailbox=mailbox,
+        thread=thread,
+        role=enums.ThreadAccessRoleChoices.EDITOR,
+    )
+    MessageFactory(thread=thread)
+
+    url = reverse("threads-refresh-summary", kwargs={"pk": str(thread.id)})
+    response = api_client.post(url)
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    thread.refresh_from_db()
+    assert thread.summary == "initial"  # untouched
 
 
 def test_list_threads_success(api_client):

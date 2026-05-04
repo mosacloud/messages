@@ -11,8 +11,16 @@ const useArchive = () => {
 
     const { mark, unmark, status } = useFlag('archived', {
         toastMessages: {
-            thread: (count: number) => t('{{count}} threads have been archived.', { count: count, defaultValue_one: 'The thread has been archived.' }),
-            message: (count: number) => t('{{count}} messages have been archived.', { count: count, defaultValue_one: 'The message has been archived.' }),
+            thread: (updatedCount, submittedCount) => {
+                if (updatedCount === 0) return t('No thread could be archived.');
+                if (updatedCount < submittedCount) return t('{{count}} out of {{total}} threads have been archived.', { count: updatedCount, total: submittedCount, defaultValue_one: '{{count}} out of {{total}} thread has been archived.' });
+                return t('{{count}} threads have been archived.', { count: updatedCount, defaultValue_one: 'The thread has been archived.' });
+            },
+            message: (updatedCount, submittedCount) => {
+                if (updatedCount === 0) return t('No message could be archived.');
+                if (updatedCount < submittedCount) return t('{{count}} out of {{total}} messages have been archived.', { count: updatedCount, total: submittedCount, defaultValue_one: '{{count}} out of {{total}} message has been archived.' });
+                return t('{{count}} messages have been archived.', { count: updatedCount, defaultValue_one: 'The message has been archived.' });
+            },
         },
         onSuccess: (data) => {
             invalidateThreadMessages({

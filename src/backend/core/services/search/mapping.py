@@ -15,6 +15,13 @@ MESSAGE_MAPPING = {
     "settings": {
         "number_of_shards": 1,
         "number_of_replicas": 0,
+        # OpenSearch defaults to 1s — too aggressive under sustained
+        # indexing load because every refresh rebuilds segment-level
+        # caches (notably the join-field global ordinal). Test fixtures
+        # call ``indices.refresh()`` explicitly so this does not slow
+        # them down. To change on an existing index, push a settings
+        # update via ``PUT /<index>/_settings``.
+        "refresh_interval": "5s",
         "analysis": {
             "analyzer": {
                 "email_analyzer": {

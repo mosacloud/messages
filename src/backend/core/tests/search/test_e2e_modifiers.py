@@ -27,6 +27,7 @@ from core.services.search import (
     delete_index,
     get_opensearch_client,
 )
+from core.services.search.coalescer import process_pending_reindex
 from core.services.search.mapping import MESSAGE_INDEX
 
 
@@ -88,7 +89,14 @@ def fixture_wait_for_indexing():
     """Fixture to create a function that waits for indexing to complete."""
 
     def _wait(max_retries=10, delay=0.5):
-        """Wait for indexing to complete by refreshing the index."""
+        """Wait for indexing to complete by refreshing the index.
+
+        Drains the coalescing buffers (reindex + delete) first so any thread
+        IDs queued by signal handlers are handed off to the bulk tasks. Under
+        ``CELERY_TASK_ALWAYS_EAGER=True`` the tasks run synchronously, which
+        makes the documents visible as soon as OpenSearch refreshes.
+        """
+        process_pending_reindex()
         es = get_opensearch_client()
         for _ in range(max_retries):
             try:

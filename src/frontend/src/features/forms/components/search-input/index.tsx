@@ -4,7 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { SearchFiltersForm } from "../search-filters-form";
-import { useLayoutContext } from "@/features/layouts/components/main";
+import { useLayoutContext } from "@/features/layouts/components/layout-context";
 import { MAILBOX_FOLDERS } from "@/features/layouts/components/mailbox-panel/components/mailbox-list";
 import { Icon } from "@gouvfr-lasuite/ui-kit";
 

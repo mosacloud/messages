@@ -25,6 +25,13 @@ enum MaildomainAbilities {
   CAN_MANAGE_MAILDOMAIN_ACCESSES = "manage_accesses",
 }
 
+// Thread abilities computed by the backend `Thread.get_abilities(user, mailbox)`.
+// These read the `abilities` dict exposed on the serialized Thread — single
+// source of truth, no role logic duplicated on the frontend.
+enum ThreadAbilities {
+  CAN_EDIT_THREAD = "edit",
+}
+
 enum ThreadAccessAbilities {
   CAN_MANAGE_THREAD_ACCESS = "manage_thread_access",
   CAN_MANAGE_THREAD_DELIVERY_STATUSES = "manage_thread_delivery_statuses",
@@ -34,6 +41,7 @@ export const Abilities = {
   ...UserAbilities,
   ...MailboxAbilities,
   ...MaildomainAbilities,
+  ...ThreadAbilities,
   ...ThreadAccessAbilities,
 };
 
@@ -51,6 +59,10 @@ function useAbility(
 function useAbility(
   ability: MaildomainAbilities,
   resource: MailDomainAdmin | null
+): boolean;
+function useAbility(
+  ability: ThreadAbilities,
+  resource: Thread | null
 ): boolean;
 function useAbility(
   ability: ThreadAccessAbilities,
@@ -81,6 +93,7 @@ function useAbility(
     case Abilities.CAN_MANAGE_MAILDOMAIN_MAILBOXES:
     case Abilities.CAN_MANAGE_MAILDOMAIN_ACCESSES:
     case Abilities.CAN_MANAGE_SOME_MAILDOMAIN_ACCESSES:
+    case Abilities.CAN_EDIT_THREAD:
       return (resource as ResourceWithAbilities).abilities[ability] === true;
     case Abilities.CAN_MANAGE_THREAD_DELIVERY_STATUSES:
     case Abilities.CAN_MANAGE_THREAD_ACCESS:

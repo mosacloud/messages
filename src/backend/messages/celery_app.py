@@ -45,4 +45,9 @@ if not settings.DISABLE_CELERY_BEAT_SCHEDULE:
             "schedule": 300.0,  # Every 5 minutes
             "options": {"queue": "inbound"},
         },
+        "process-pending-reindex": {
+            "task": "core.services.search.tasks.process_pending_reindex_task",
+            "schedule": settings.SEARCH_REINDEX_TASKS_INTERVAL,
+            "options": {"queue": "reindex"},
+        },
     }
