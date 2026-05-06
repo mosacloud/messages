@@ -80,7 +80,7 @@ class CompressionTypeChoices(models.IntegerChoices):
 
 
 def parse_compression_spec(spec: str) -> tuple["CompressionTypeChoices", int | None]:
-    """Parse a ``MESSAGES_BLOB_COMPRESS`` spec like ``"zstd"`` or ``"zstd:3"``.
+    """Parse a ``MESSAGES_BLOBS_COMPRESS`` spec like ``"zstd"`` or ``"zstd:3"``.
 
     Returns ``(algorithm, level)`` where ``level`` is ``None`` when no level
     is specified (or when the algorithm doesn't take one). Raises

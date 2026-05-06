@@ -1,7 +1,7 @@
 # Tiered blob storage
 
 Blobs (raw RFC822 email bodies and attachments) live in PostgreSQL by
-default. Once a blob is older than `TIERED_STORAGE_OFFLOAD_AFTER_DAYS`,
+default. Once a blob is older than `MESSAGES_BLOBS_OFFLOAD_AFTER_DAYS`,
 a periodic celery task moves its bytes to S3 and clears the PG row's
 `raw_content`. Reads transparently fetch from whichever location the
 row points at — application code only ever calls `blob.get_content()`.
@@ -13,17 +13,77 @@ row points at — application code only ever calls `blob.get_content()`.
   (essential for crash-safe online key rotation). The 3-char sha
   prefix shards each key into 4096 sub-prefixes for S3 request-rate
   balance.
-- **Deduplication**: blobs sharing the same SHA-256 share the same S3
-  object. The DB is the source of truth; the existence check on S3 is
-  a defensive guard against external deletions.
+- **Deduplication**: identical content always lands as exactly ONE
+  ``Blob`` row, regardless of how many mailboxes / messages /
+  attachments reference it. ``BlobManager.create_blob`` hashes the
+  input first and short-circuits on a sha-match — no compress, no
+  encrypt, no insert. Multiple ``Message`` / ``Attachment`` /
+  ``MessageTemplate`` rows can FK the same Blob; cleanup is governed
+  by the reference graph + GC sweep below. After offload, the single
+  Blob row maps to one S3 object. The DB is the sole source of
+  truth; drift between DB and bucket (external deletion, lifecycle
+  expiry) is detected offline by
+  ``verify_tiered_storage --mode=db-to-storage``, not on the hot path.
 - **Concurrency**: a Postgres transaction-scoped advisory lock keyed
   on the first 8 bytes of sha256 serializes offload, cleanup, and
   re-encrypt for any one content. Different shas run in parallel.
-- **Encryption**: optional AES-256-GCM. Configured keys are arbitrary
-  high-entropy strings, hashed to 32 bytes via SHA-256 (same pattern
-  as `encrypted-fields`'s `SALT_KEY`). Storage layout per object:
-  `nonce(12) || ciphertext+tag(16)`. Total overhead: 28 bytes,
-  no base64.
+- **Encryption**: optional AEAD (currently AES-256-GCM; the algo is
+  named per-key in config so future additions don't require a format
+  change). Configured secrets are hashed to 32 bytes via SHA-256
+  (same pattern as `encrypted-fields`'s `SALT_KEY`). The hash adds
+  no entropy — its strength is whatever entropy the operator put
+  into the input string. Storage layout per object:
+  `nonce(12) || ct+tag(16)`, total overhead 28 bytes, no base64. The
+  blob's SHA-256 is bound as AAD on the auth tag, so ciphertext is
+  non-portable: copying bytes between blob paths fails decrypt with
+  `InvalidTag`.
+- **Read-time hash verification (optional)**: set
+  `MESSAGES_BLOBS_VERIFY_HASH=True` to re-hash decompressed plaintext
+  on every read. Adds one SHA-256 per read. Most useful for
+  `key_id=0` (plaintext-stored) blobs — encrypted blobs already get
+  the AAD-bound auth tag for free.
+
+## Blob lifetime: reference graph + GC sweep
+
+Blobs are **not owned by a Mailbox/MailDomain** at the schema level.
+A Blob is alive as long as any of these references it:
+
+- ``Message.blob`` (the raw RFC822 MIME) or ``Message.draft_blob``
+  (the body of a draft being composed)
+- ``Attachment.blob`` (per-attachment during draft composition)
+- ``MessageTemplate.blob`` (signatures, autoreply bodies)
+
+Plus a short-lived **upload reservation** in Redis covering the JMAP
+two-step upload-then-attach window: ``mailbox.create_blob`` (used by
+the API upload endpoint and inbound delivery paths) registers the
+blob's id under ``messages_blobs:upload:{blob_id}`` with a 1h TTL so
+the blob doesn't get GC'd before the user's attach call lands. The
+attach flow (``draft.py::attach_blob_to_message``) drops the
+reservation once an Attachment row exists.
+
+When a reference source is deleted (Message, Attachment,
+MessageTemplate ``post_delete``), the affected blob_id is pushed
+into a Redis candidate set. A periodic Celery task —
+``gc_orphan_blobs_task`` in ``core/services/blob_gc.py`` — drains the
+set, re-checks the reference graph under the per-sha advisory lock,
+deletes the row if no references remain, and cleans up the S3
+object inline. No per-blob celery fan-out; one task processes the
+whole backlog within a 55-minute wall-clock budget per hourly tick.
+
+Two modes:
+
+- ``mode="fast"`` (default, beat-scheduled hourly): drain the Redis
+  candidate set, GC anything that's actually orphaned.
+- ``mode="full"``: walk every Blob row. Use as a periodic safety net
+  (weekly cron) to catch anything dropped by a Redis outage or a
+  signal that didn't fire. Invoke manually with
+  ``celery call core.services.blob_gc.gc_orphan_blobs_task --kwargs '{"mode": "full"}'``.
+
+The GC-driven model fixes a latent bug from the FK-cascade era: when
+two mailboxes shared a thread, deleting one mailbox would CASCADE
+through ``Blob.mailbox`` and break content access for the other
+mailbox. Without the FK, the blob is alive as long as any thread
+access still references it.
 
 ## Enabling offload
 
@@ -31,54 +91,88 @@ By default everything runs in PostgreSQL with `raw_content` populated.
 To start moving cold blobs to S3:
 
 1. Provision a bucket and credentials.
-2. Set the `STORAGE_MESSAGE_BLOBS_*` env vars (see [env.md](env.md)).
+2. Set the `STORAGE_MESSAGES_BLOBS_*` env vars (see [env.md](env.md)).
 3. `make create-buckets` (or the production equivalent).
-4. Set `TIERED_STORAGE_OFFLOAD_ENABLED=True`.
+4. Set `MESSAGES_BLOBS_OFFLOAD_ENABLED=True`.
 
-The next celery beat tick (default hourly) starts queuing eligible
-blobs. Each blob is offloaded by a single worker holding its
-per-sha advisory lock; the operation is atomic at the row level.
+A single celery beat task fires hourly and processes eligible blobs
+sequentially within a 55-minute wall-clock budget — no per-blob
+fan-out. Each row is offloaded under the per-sha advisory lock, so
+the row flip is atomic. Whatever isn't done in one tick is picked up
+by the next.
 
 ## Encryption
 
 To enable encryption-at-rest for blobs:
 
-1. Generate a random secret string (≥ 32 chars):
+1. Generate a random secret string. Use `openssl rand` or equivalent
+   so the input is genuinely high-entropy:
    ```sh
    openssl rand -base64 32
    ```
-2. Add it to `MESSAGES_BLOB_ENCRYPTION_KEYS` as a JSON dict:
+   Startup emits a warning if any configured secret is shorter than
+   32 characters. The warning is a length check, not an entropy
+   measurement — `"a" * 32` passes silently. Treat the floor as a
+   tripwire for typos, not a security guarantee.
+2. Add it to `MESSAGES_BLOBS_ENCRYPT_KEYS` as a JSON dict. Every
+   entry must spell out `algo` and `secret`. Add `"active": true`
+   to the entry whose key new blobs should be encrypted with:
    ```sh
-   MESSAGES_BLOB_ENCRYPTION_KEYS='{"1": "<the secret>"}'
-   MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID=1
+   MESSAGES_BLOBS_ENCRYPT_KEYS='{"1": {"algo": "aes-gcm", "secret": "<the secret>", "active": true}}'
    ```
+   Entries without `active` (or with `active: false`) stay readable
+   for legacy ciphertext but no longer encrypt new blobs. At most
+   one entry may be active. The `algo` value is a complete spec —
+   picking a new cipher in the future means adding a new algo
+   identifier, not changing what the current one means. Unknown
+   algos are rejected at boot and at use time.
 3. Restart. New blobs are encrypted; existing unencrypted blobs
    (`encryption_key_id=0`) keep working until they're rotated.
 
 `manage.py check` validates the config at startup and refuses to
-boot if the active key isn't in the dict.
+boot if more than one entry is active, or any algo is unknown.
 
 **Lose the key dict, lose the data.** Back it up alongside your DB.
 
-## Key rotation runbook
+## Reconciling state: `--re-store`
 
-To rotate from key 1 to key 2:
+`verify_tiered_storage --re-store` makes every blob's state match the
+current configuration. Two operations, applied based on settings:
 
-1. Add the new key alongside the old one, set it active:
+- **Key rotation** (always). Every row whose `encryption_key_id`
+  differs from the entry currently flagged `active=true` in
+  `MESSAGES_BLOBS_ENCRYPT_KEYS` is re-encrypted under that key.
+- **Restore** (only when `MESSAGES_BLOBS_OFFLOAD_ENABLED=False`).
+  Every `OBJECT_STORAGE` row is pulled back into PostgreSQL.
+
+Two runbooks below use this command.
+
+### Key rotation runbook
+
+To rotate from key 1 to key 2 while keeping tiered storage enabled:
+
+1. Add the new key alongside the old one, with `active=true` only on
+   the new entry:
    ```sh
-   MESSAGES_BLOB_ENCRYPTION_KEYS='{"1": "<old>", "2": "<new>"}'
-   MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID=2
+   MESSAGES_BLOBS_ENCRYPT_KEYS='{"1": {"algo": "aes-gcm", "secret": "<old>"}, "2": {"algo": "aes-gcm", "secret": "<new>", "active": true}}'
    ```
    New blobs encrypt under key 2 immediately; existing blobs stay on
-   key 1.
+   key 1 until rotated.
 2. **Pause offload to avoid a race**:
    ```sh
-   TIERED_STORAGE_OFFLOAD_ENABLED=False
+   MESSAGES_BLOBS_OFFLOAD_ENABLED=False
    ```
    Wait for in-flight tasks to drain.
+
+   ⚠️ Note: with offload disabled, `--re-store` will *also* pull
+   OBJECT_STORAGE blobs back into PostgreSQL. If you only want to
+   rotate keys and keep blobs in S3, leave `MESSAGES_BLOBS_OFFLOAD_ENABLED=True`
+   and accept that an offload task could race the rotation (both
+   take the per-sha advisory lock, so the worst case is a few
+   re-tries — no corruption).
 3. Run the rotation:
    ```sh
-   python manage.py verify_tiered_storage --re-encrypt
+   python manage.py verify_tiered_storage --re-store
    ```
    For each blob with `encryption_key_id != 2`, the command
    - writes the new ciphertext to `blobs/2/...` (atomic S3),
@@ -97,46 +191,126 @@ To rotate from key 1 to key 2:
 5. Re-enable offload, then drop key 1 from the dict in a follow-up
    deploy:
    ```sh
-   TIERED_STORAGE_OFFLOAD_ENABLED=True
-   MESSAGES_BLOB_ENCRYPTION_KEYS='{"2": "<new>"}'
+   MESSAGES_BLOBS_OFFLOAD_ENABLED=True
+   MESSAGES_BLOBS_ENCRYPT_KEYS='{"2": {"algo": "aes-gcm", "secret": "<new>", "active": true}}'
    ```
 
-## Verification
+### Rolling tiered storage back
 
-`python manage.py verify_tiered_storage` runs three read-only checks:
+To bring every offloaded blob back into PostgreSQL:
 
-- **`--mode=db-to-storage`** — every blob row marked `OBJECT_STORAGE`
-  has its expected S3 object (HEAD per row).
-- **`--mode=storage-to-db`** — every S3 object under `blobs/` has a
-  matching DB row (LIST + DB lookup per object).
-- **`--verify-hashes`** — additionally downloads each object,
-  decrypts, decompresses, and recomputes SHA-256. Slow; use after
-  storage incidents.
+1. Disable offload so no new blobs leave PG:
+   ```sh
+   MESSAGES_BLOBS_OFFLOAD_ENABLED=False
+   ```
+   Wait for in-flight offload tasks to drain (next beat tick is
+   the kill switch — already-running tasks finish their current
+   blob, then the loop's `disabled` check makes the next tick a
+   no-op).
+2. Verify your PG has room. Each row that comes back from S3
+   carries its own copy of the (compressed, encrypted) bytes —
+   dedup that was sharing a single S3 object becomes one PG row
+   per blob. Check `pg_total_relation_size('messages_blob')` ahead
+   of time.
+3. Run the restore. Bucket creds must still be configured so
+   ciphertext can be read on the way home:
+   ```sh
+   python manage.py verify_tiered_storage --re-store
+   ```
+   For every `OBJECT_STORAGE` row the command:
+   - downloads the ciphertext, decrypts under its current key,
+     re-encrypts under the active key,
+   - writes `raw_content` and flips `storage_location=POSTGRES`
+     (atomic DB),
+   - opportunistically deletes the S3 object once the cohort
+     empties out.
+4. Confirm the bucket is empty:
+   ```sh
+   aws s3 ls s3://msg-blobs/blobs/ --recursive
+   ```
+   Anything still there is an orphan — `verify_tiered_storage --mode=storage-to-db`
+   lists them.
+5. (Optional) Tear down bucket creds. Once
+   ```sh
+   SELECT count(*) FROM messages_blob WHERE storage_location=2;
+   ```
+   returns 0, you can safely unset `STORAGE_MESSAGES_BLOBS_*` —
+   no read path will need them.
 
-The command never deletes; it only reports. Use the output to drive
-manual recovery (re-upload a missing blob from PG if `raw_content`
-still exists, or `aws s3 rm` an orphan after confirming nothing
-references it).
+## The `verify_tiered_storage` command
+
+`python manage.py verify_tiered_storage` has two distinct surfaces:
+**read-only verification** (default — never mutates) and
+**mutating reconciliation** under `--re-store` (described above).
+Mixing them in one command is convenient but easy to misread; below
+is the complete option list.
+
+### Read-only verification (default)
+
+Choose a mode with `--mode=<name>`. The default is `full` which
+runs both checks. Nothing is mutated; output drives manual recovery.
+
+- **`--mode=db-to-storage`** — for every blob row marked
+  `OBJECT_STORAGE`, HEAD the expected S3 object. Reports `MISSING`
+  for any drift (DB says present, bucket says absent).
+- **`--mode=storage-to-db`** — LIST every object under `blobs/` and
+  look up the matching DB row. Reports `ORPHAN` for any S3 object
+  not referenced by any row, and `INVALID PATH` for objects whose
+  key doesn't match the `blobs/{key_id}/{sha[:3]}/{sha}` shape.
+- **`--mode=full`** (default) — runs `db-to-storage` then
+  `storage-to-db` back-to-back.
+- **`--verify-hashes`** — additional flag. When combined with
+  `storage-to-db` or `full`, downloads each S3 object, decrypts,
+  decompresses, and recomputes SHA-256. Reports `HASH MISMATCH` on
+  divergence. Slow; use after a storage incident or as periodic
+  paranoia. Silently no-op when used with `--mode=db-to-storage`.
+
+Common flags: `--limit=N` caps the number of items checked (useful
+for sampling on large buckets).
+
+### Mutating reconciliation: `--re-store`
+
+See [the section above](#reconciling-state---re-store). Unlike the
+verify modes, `--re-store` writes to both the DB and the bucket: it
+re-encrypts, flips `storage_location`, writes new ciphertext, and
+best-effort deletes old paths. The `--dry-run` flag prints the
+intended actions without applying them.
 
 ## Recovery scenarios
 
 | Symptom | Detection | Fix |
 |---|---|---|
-| DB row says `OBJECT_STORAGE` but S3 object missing | `verify --mode=db-to-storage` reports `MISSING` | If another row with the same sha is `POSTGRES`, dedup will repair on next offload. Otherwise the blob is lost — restore from backup. |
+| DB row says `OBJECT_STORAGE` but S3 object missing | `verify --mode=db-to-storage` reports `MISSING` | The blob is unreadable. If a same-sha sibling row still has `raw_content` in PG, restore by setting the missing row to `storage_location=POSTGRES` with that `raw_content`. Otherwise restore from backup. |
 | S3 object with no DB row | `verify --mode=storage-to-db` reports `ORPHAN` | After confirming, `aws s3 rm` the object. |
-| Hash mismatch | `verify --verify-hashes` reports `HASH MISMATCH` | The S3 object is corrupted. Treat as data loss; restore from backup. |
-| Old key_id prefix non-empty after rotation | `aws s3 ls blobs/<old>/` | Re-run `--re-encrypt`; it's idempotent. |
+| Hash mismatch | `verify --verify-hashes` reports `HASH MISMATCH` | The S3 object is corrupted (or AAD-bound integrity has been broken — same effect). Treat as data loss; restore from backup. |
+| Old key_id prefix non-empty after rotation | `aws s3 ls blobs/<old>/` | Re-run `--re-store`; it's idempotent. |
+| `--re-store` reports errors on a subset of blobs | command exit summary lists `Errors: N` | The loop already skipped them and continued; failed blobs stay in their pre-run state. Re-run after fixing the underlying cause (key missing, S3 5xx, etc.); the command is idempotent. |
+| Suspect orphan Blob rows accumulating (e.g. after a Redis outage) | `SELECT count(*) FROM messages_blob` significantly higher than the sum of ``Message.blob``, ``Message.draft_blob``, ``Attachment.blob``, ``MessageTemplate.blob`` distinct ids | Run the full GC: ``celery call core.services.blob_gc.gc_orphan_blobs_task --kwargs '{"mode": "full"}'``. It walks every Blob row and deletes anything without a remaining reference. Idempotent. |
 
 ## Operational notes
 
-- **Initial rollout** on a populated DB will queue one celery task per
-  eligible blob in a single beat tick. To avoid a queue burst, ramp
-  `TIERED_STORAGE_OFFLOAD_AFTER_DAYS` down gradually (e.g. 365 → 90 →
-  30 → 3 across multiple cycles).
+- **Initial rollout on a populated DB.** The offload task processes
+  eligible blobs sequentially within a 55-minute wall-clock budget per
+  hourly tick. There is no per-blob celery fan-out, so a backlog of
+  millions doesn't queue-bomb the broker. Ramping
+  `MESSAGES_BLOBS_OFFLOAD_AFTER_DAYS` down gradually (e.g. 365 → 90 →
+  30 → 3) still helps spread the load over several days, especially if
+  bandwidth to the bucket is the bottleneck. Run `--mode=db-to-storage`
+  periodically afterwards to confirm everything that flipped to
+  `OBJECT_STORAGE` is actually in the bucket.
 - **Reading offloaded blobs** triggers a synchronous S3 GET in the
   request path. Old messages are rarely re-opened, so this is
   generally invisible — but expect 50–500 ms latency when it does
   happen.
-- **Bulk deletes** (e.g. mailbox cascade) fire one cleanup task per
-  blob via `transaction.on_commit`. For very large mailboxes this is
-  a queue spike, not a hot-path problem.
+- **Bulk deletes** (e.g. mailbox cascade, `QuerySet.delete()`) push
+  the affected blob_ids into the GC candidate set via post_delete
+  signals on the *reference sources* (Message, Attachment, Template).
+  No per-blob celery task is enqueued — the periodic GC drains the
+  set in a single bounded task per tick. Cascade of 100k attachments
+  produces 100k Redis SADDs (~1-2s total), not 100k Celery messages.
+- **Drift between DB and bucket.** Offload trusts the DB on dedup
+  (no S3 HEAD), so a missing-S3-but-DB-says-OBJECT_STORAGE row will
+  not auto-repair. Run `verify_tiered_storage --mode=db-to-storage`
+  on a schedule (weekly, monthly — workload-dependent) to catch
+  drift; the recovery scenarios table above maps each symptom to a
+  fix.

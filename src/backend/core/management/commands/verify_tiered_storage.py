@@ -3,12 +3,14 @@ Django management command to verify tiered storage integrity.
 
 This command checks the consistency between the Blob database records
 and the object storage backend, and can optionally fix issues or
-re-encrypt blobs with a new key (key rotation).
+re-store blobs to match the current configuration (key rotation +
+optional rollback from object storage to PostgreSQL).
 """
 
 import hashlib
 from typing import Iterator
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
@@ -51,15 +53,18 @@ class Command(BaseCommand):
             help="Limit number of items to check or re-encrypt (0=unlimited)",
         )
         parser.add_argument(
-            "--re-encrypt",
+            "--re-store",
             action="store_true",
-            help="Re-encrypt all blobs with the active encryption key (MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID). "
-            "Use this for key rotation after adding a new key to MESSAGES_BLOB_ENCRYPTION_KEYS.",
+            help="Reconcile every blob with the current configuration: "
+            "re-encrypt under whichever entry in MESSAGES_BLOBS_ENCRYPT_KEYS "
+            "is flagged active=true, and (when MESSAGES_BLOBS_OFFLOAD_ENABLED "
+            "is False) pull OBJECT_STORAGE blobs back into PostgreSQL. Use "
+            "for key rotation, and for rolling tiered storage back.",
         )
         parser.add_argument(
             "--dry-run",
             action="store_true",
-            help="Show what would be done without making changes (use with --re-encrypt)",
+            help="Show what would be done without making changes (use with --re-store)",
         )
 
     def handle(self, *args, **options):
@@ -68,9 +73,10 @@ class Command(BaseCommand):
         self.limit = options["limit"]
         self.dry_run = options["dry_run"]
 
-        # Re-encrypt doesn't require object storage to be enabled (works for PostgreSQL too)
-        if options["re_encrypt"]:
-            self.re_encrypt_blobs()
+        # --re-store doesn't require object storage to be enabled
+        # (works for PostgreSQL-only re-encryption too).
+        if options["re_store"]:
+            self.re_store_blobs()
             return
 
         # Verification modes require object storage
@@ -237,7 +243,7 @@ class Command(BaseCommand):
         try:
             with self.service.storage.open(obj_name, "rb") as f:
                 encrypted = f.read()
-            decrypted = self.service.decrypt(encrypted, key_id)
+            decrypted = self.service.decrypt(encrypted, key_id, expected_sha_bytes)
 
             if compression == CompressionTypeChoices.ZSTD:
                 original = pyzstd.decompress(decrypted)
@@ -259,84 +265,128 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"VERIFY ERROR: {obj_name} - {e}"))
             return False
 
-    def re_encrypt_blobs(self):
-        """
-        Re-encrypt all blobs with the active encryption key.
+    def re_store_blobs(self):
+        """Reconcile every blob with the current configuration.
 
-        This is used for key rotation:
-        1. Add new key to MESSAGES_BLOB_ENCRYPTION_KEYS dict: {"1": "old", "2": "new"}
-        2. Set MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID=2 (the new key)
-        3. Run this command to re-encrypt all blobs with the new key
-        4. Once complete, old keys can be removed from the dict
+        Two operations, applied based on settings:
+
+        - **Key rotation** (always): every row whose
+          ``encryption_key_id`` differs from the entry currently
+          flagged ``active=true`` in ``MESSAGES_BLOBS_ENCRYPT_KEYS``
+          is re-encrypted under the active key.
+
+        - **Restore** (only when ``MESSAGES_BLOBS_OFFLOAD_ENABLED`` is
+          False): every ``OBJECT_STORAGE`` row is pulled back into
+          PostgreSQL — the ciphertext is downloaded, decrypted under
+          its original key, re-encrypted under the active key, and
+          written to ``raw_content``. The S3 object is deleted once
+          no rows reference it.
+
+        Use cases:
+
+        1. Key rotation. Add the new key alongside the old (with
+           ``active=true`` on the new entry, omitted/false on the
+           old), run this command (offload still on).
+        2. Tiered-storage rollback. Set
+           ``MESSAGES_BLOBS_OFFLOAD_ENABLED=False`` so new offloads
+           stop, then run this command — every offloaded blob comes
+           back into PG.
         """
         self.stdout.write(
-            self.style.MIGRATE_HEADING("\n=== Re-encryption (Key Rotation) ===")
+            self.style.MIGRATE_HEADING("\n=== Re-store (rotation + optional restore) ===")
         )
 
-        if not self.service.encryption_keys:
-            self.stderr.write(
-                self.style.ERROR(
-                    "No encryption keys configured. Set MESSAGES_BLOB_ENCRYPTION_KEYS to enable encryption."
+        target_key_id = self.service.active_key_id
+        offload_enabled = bool(settings.MESSAGES_BLOBS_OFFLOAD_ENABLED)
+        restore_to_pg = not offload_enabled
+
+        self.stdout.write(f"Target encryption key_id: {target_key_id}")
+        if self.service.encryption_keys:
+            self.stdout.write(
+                f"Available keys: {list(self.service.encryption_keys.keys())}"
+            )
+        if restore_to_pg:
+            self.stdout.write(
+                self.style.WARNING(
+                    "MESSAGES_BLOBS_OFFLOAD_ENABLED is False — "
+                    "OBJECT_STORAGE blobs will be restored to PostgreSQL."
                 )
             )
-            return
-
-        current_key_id = self.service.active_key_id
-        self.stdout.write(f"Target encryption key_id: {current_key_id}")
-        self.stdout.write(
-            f"Available keys: {list(self.service.encryption_keys.keys())}"
-        )
-
-        # Validate that active_key_id exists in encryption_keys
-        if current_key_id > 0:
-            key_id_str = str(current_key_id)
-            if key_id_str not in self.service.encryption_keys:
+            if not self.service.enabled:
+                # Need bucket access to read ciphertext on the way home.
                 self.stderr.write(
                     self.style.ERROR(
-                        f"Active key_id {current_key_id} not found in MESSAGES_BLOB_ENCRYPTION_KEYS. "
-                        f"Available keys: {list(self.service.encryption_keys.keys())}"
+                        "Object storage is not configured but OBJECT_STORAGE "
+                        "rows exist. Configure STORAGE_MESSAGES_BLOBS_* to "
+                        "let restore download them, or accept that those "
+                        "blobs cannot be reached."
                     )
                 )
                 return
 
+        # Active key must be in the dict if it's non-zero (passthrough at 0).
+        if target_key_id > 0 and str(target_key_id) not in self.service.encryption_keys:
+            self.stderr.write(
+                self.style.ERROR(
+                    f"Active key_id {target_key_id} not found in MESSAGES_BLOBS_ENCRYPT_KEYS. "
+                    f"Available keys: {list(self.service.encryption_keys.keys())}"
+                )
+            )
+            return
+
         if self.dry_run:
             self.stdout.write(self.style.WARNING("DRY RUN - no changes will be made"))
 
-        # Build a worklist of unique re-encryption work-units.
-        # POSTGRES rows each carry their own ciphertext, so each row is a
-        # unit. OBJECT_STORAGE rows sharing the same (sha256,
-        # encryption_key_id) share a single stored object and rotate as a
-        # cohort — represented here by one chosen blob.id per cohort.
-        # Applying --limit to this worklist (rather than the raw queryset)
-        # makes "rotate N units" mean N actual rotations regardless of
-        # cohort sizes.
-        needs_rotate = Blob.objects.exclude(encryption_key_id=current_key_id)
+        # Worklist construction.
+        # - POSTGRES rows: every row not at the active key needs row-level
+        #   rotation. One unit per row.
+        # - OBJECT_STORAGE rows:
+        #   * Restore mode: every row needs to be pulled back to PG with
+        #     its own raw_content, so each row is a unit.
+        #   * Rotation only: rows sharing (sha256, encryption_key_id)
+        #     share one stored object and rotate as a cohort — one rep
+        #     per cohort suffices.
+        # --limit applies to the resulting worklist so "N units" means N
+        # actual operations regardless of cohort sizes.
         postgres_ids = list(
-            needs_rotate.filter(
-                storage_location=BlobStorageLocationChoices.POSTGRES
-            ).values_list("id", flat=True)
-        )
-        object_storage_ids = list(
-            needs_rotate.filter(
-                storage_location=BlobStorageLocationChoices.OBJECT_STORAGE
+            Blob.objects.filter(
+                storage_location=BlobStorageLocationChoices.POSTGRES,
             )
-            .order_by("sha256", "encryption_key_id", "id")
-            .distinct("sha256", "encryption_key_id")
+            .exclude(encryption_key_id=target_key_id)
             .values_list("id", flat=True)
         )
+
+        if restore_to_pg:
+            object_storage_ids = list(
+                Blob.objects.filter(
+                    storage_location=BlobStorageLocationChoices.OBJECT_STORAGE
+                ).values_list("id", flat=True)
+            )
+        else:
+            object_storage_ids = list(
+                Blob.objects.filter(
+                    storage_location=BlobStorageLocationChoices.OBJECT_STORAGE,
+                )
+                .exclude(encryption_key_id=target_key_id)
+                .order_by("sha256", "encryption_key_id", "id")
+                .distinct("sha256", "encryption_key_id")
+                .values_list("id", flat=True)
+            )
+
         worklist = postgres_ids + object_storage_ids
         if self.limit > 0:
             worklist = worklist[: self.limit]
         total_count = len(worklist)
-        self.stdout.write(f"Work units to re-encrypt: {total_count}")
+        self.stdout.write(f"Work units to re-store: {total_count}")
 
         if total_count == 0:
             self.stdout.write(
-                self.style.SUCCESS("All blobs already use the current encryption key")
+                self.style.SUCCESS("Nothing to do — all blobs already match config")
             )
             return
 
-        success_count = 0
+        rotated_count = 0
+        restored_count = 0
         error_count = 0
         skipped_count = 0
 
@@ -344,55 +394,80 @@ class Command(BaseCommand):
             try:
                 blob = Blob.objects.get(id=blob_id)
             except Blob.DoesNotExist:
-                # Concurrently deleted between worklist build and rotation.
+                # Concurrently deleted between worklist build and processing.
                 skipped_count += 1
                 continue
             try:
-                rotated = self._rotate_one(blob, current_key_id)
-                if rotated:
-                    success_count += 1
+                op = self._process_one(blob, target_key_id, restore_to_pg)
+                if op == "rotated":
+                    rotated_count += 1
+                elif op == "restored":
+                    restored_count += 1
                 else:
                     skipped_count += 1
             except Exception as e:  # pylint: disable=broad-except
                 error_count += 1
                 self.stderr.write(
-                    self.style.ERROR(f"ERROR re-encrypting blob {blob.id}: {e}")
+                    self.style.ERROR(f"ERROR re-storing blob {blob.id}: {e}")
                 )
 
-            done = success_count + error_count + skipped_count
+            done = rotated_count + restored_count + error_count + skipped_count
             if done % 100 == 0:
                 self.stdout.write(f"  Progress: {done}/{total_count}")
 
         self.stdout.write("")
-        self.stdout.write(f"Re-encrypted: {success_count}")
+        self.stdout.write(f"Re-encrypted (rotation): {rotated_count}")
+        self.stdout.write(f"Restored to PostgreSQL: {restored_count}")
         self.stdout.write(f"Skipped: {skipped_count}")
         self.stdout.write(f"Errors: {error_count}")
 
         if error_count == 0:
-            self.stdout.write(self.style.SUCCESS("Key rotation completed successfully"))
+            self.stdout.write(self.style.SUCCESS("Re-store completed successfully"))
         else:
             self.stdout.write(
-                self.style.WARNING(f"Key rotation completed with {error_count} errors")
+                self.style.WARNING(f"Re-store completed with {error_count} errors")
             )
 
-    def _rotate_one(self, blob: Blob, target_key_id: int) -> bool:
-        """Rotate one blob under transaction + per-sha lock. Returns rotated?"""
+    def _process_one(
+        self, blob: Blob, target_key_id: int, restore_to_pg: bool
+    ) -> str:
+        """Process one blob under transaction + per-sha lock.
+
+        Returns one of: ``"rotated"``, ``"restored"``, ``"skipped"``.
+        """
         sha256 = bytes(blob.sha256)
+        will_restore = (
+            restore_to_pg
+            and blob.storage_location == BlobStorageLocationChoices.OBJECT_STORAGE
+        )
+
         if self.dry_run:
+            verb = "restore to PG" if will_restore else "re-encrypt"
             self.stdout.write(
-                f"  Would re-encrypt blob {blob.id} "
+                f"  Would {verb} blob {blob.id} "
                 f"({blob.get_storage_location_display()}): "
                 f"key_id {blob.encryption_key_id} -> {target_key_id}"
             )
-            return True
+            return "restored" if will_restore else "rotated"
 
         with transaction.atomic(), sha256_advisory_lock(sha256):
             blob.refresh_from_db()
-            rotated = self.service.rotate_blob(blob, target_key_id)
-
-        if rotated:
-            self.stdout.write(
-                f"  Re-encrypted blob {blob.id} "
-                f"({blob.get_storage_location_display()}) -> key_id {target_key_id}"
+            # Re-check storage_location after refresh — a concurrent
+            # actor could have changed it.
+            will_restore = (
+                restore_to_pg
+                and blob.storage_location == BlobStorageLocationChoices.OBJECT_STORAGE
             )
-        return rotated
+            if will_restore:
+                done = self.service.re_store_blob_in_database(blob, target_key_id)
+                op = "restored" if done else "skipped"
+            else:
+                done = self.service.rotate_blob(blob, target_key_id)
+                op = "rotated" if done else "skipped"
+
+        if op != "skipped":
+            verb = "Restored" if op == "restored" else "Re-encrypted"
+            self.stdout.write(
+                f"  {verb} blob {blob.id} -> key_id {target_key_id}"
+            )
+        return op

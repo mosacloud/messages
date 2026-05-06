@@ -23,9 +23,9 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from core.enums import BlobStorageLocationChoices
 
-# AES-GCM nonce size — 12 bytes is the NIST-recommended size and the only
-# one accepted without performance/security caveats. Stored ciphertext is
-# laid out as ``nonce(12) || aes_ciphertext_with_tag(N+16)``.
+# AEAD nonce size — 12 bytes is the standard for both AES-GCM and
+# ChaCha20-Poly1305 (RFC 7539); both ``cryptography`` AEAD primitives
+# share this layout. Stored ciphertext: ``nonce(12) || ct+tag(16)``.
 _NONCE_SIZE = 12
 
 # Minimum length for a configured key string. SHA-256 spreads bits
@@ -34,9 +34,17 @@ _NONCE_SIZE = 12
 # 32 chars chosen as a sane floor (the system check warns below this).
 _MIN_KEY_LEN = 32
 
+# AEAD algorithm identifiers. Each value is a complete spec — cipher,
+# nonce size, tag size, and the AAD policy (currently: AAD = blob.sha256
+# binds ciphertext to its content cohort, so a swap of bytes between two
+# blob paths fails the auth tag). A new spec needs a new identifier;
+# never repurpose an existing one.
+ALGO_AES_GCM = "aes-gcm"
+_KNOWN_ALGOS = frozenset({ALGO_AES_GCM})
+
 
 def _decode_key(secret: str) -> bytes:
-    """Derive a 32-byte AES-256 key from an arbitrary operator-supplied secret.
+    """Derive a 32-byte AEAD key from an arbitrary operator-supplied secret.
 
     We accept any string (passphrase, base64, hex, …) and SHA-256 it to a
     fixed 32-byte key. The hash provides domain separation and uniform
@@ -46,6 +54,70 @@ def _decode_key(secret: str) -> bytes:
     if not isinstance(secret, str) or not secret:
         raise ValueError("encryption key must be a non-empty string")
     return hashlib.sha256(secret.encode("utf-8")).digest()
+
+
+def normalize_key_entry(entry):
+    """Validate an operator-configured key entry.
+
+    Accepted shape:
+        ``{"algo": "<name>", "secret": "<secret>", "active": <bool>}``
+
+    ``algo`` and ``secret`` are required and must always be explicit (no
+    shorthand) so switching algos later doesn't re-bind any keys silently.
+    ``active`` is optional (defaults to False); set it to True on exactly
+    one entry to make that key the one new blobs are encrypted with.
+    Inactive entries stay readable for legacy ciphertext.
+
+    Raises ``ValueError`` on bad shapes, unknown algos, or non-bool
+    ``active``.
+    """
+    if not isinstance(entry, dict) or "algo" not in entry or "secret" not in entry:
+        raise ValueError(
+            "encryption key entry must be "
+            '{"algo": "...", "secret": "...", "active": <bool>} dict'
+        )
+    algo = entry["algo"]
+    if algo not in _KNOWN_ALGOS:
+        raise ValueError(
+            f"unknown encryption algo {algo!r}; "
+            f"supported: {sorted(_KNOWN_ALGOS)}"
+        )
+    active = entry.get("active", False)
+    if not isinstance(active, bool):
+        raise ValueError(
+            f"'active' must be a bool, got {type(active).__name__}"
+        )
+    return {"algo": algo, "secret": entry["secret"], "active": active}
+
+
+def find_active_key_id(encryption_keys: dict) -> int:
+    """Return the key_id of the entry flagged ``active=true``, else 0.
+
+    Returns 0 if no entry is marked active or more than one is — the
+    system check will surface the >1 case as an error at boot.
+    Silently coerces (returns 0) outside that path so callers don't
+    need to repeat the system-check logic at runtime.
+    """
+    active_ids = []
+    for key_id_str, entry in encryption_keys.items():
+        if isinstance(entry, dict) and entry.get("active") is True:
+            try:
+                active_ids.append(int(key_id_str))
+            except (TypeError, ValueError):
+                pass
+    return active_ids[0] if len(active_ids) == 1 else 0
+
+
+def _build_aead(algo: str, key_bytes: bytes):
+    """Construct the AEAD primitive for an algo identifier.
+
+    Add a branch here when introducing a new algo; ``cryptography``'s
+    AEAD classes share an ``encrypt(nonce, data, aad) / decrypt(...)``
+    interface so callers don't need to know which one they got.
+    """
+    if algo == ALGO_AES_GCM:
+        return AESGCM(key_bytes)
+    raise ValueError(f"unknown encryption algo {algo!r}")
 
 
 if TYPE_CHECKING:
@@ -88,16 +160,18 @@ class TieredStorageService:
         ``message-blobs`` is always present in ``STORAGES`` because the
         Configuration class can't conditionally drop entries; we infer
         "actually configured" from the resolved options instead. An
-        endpoint_url indicates a custom S3-compatible backend (MinIO,
-        rustfs); an access_key indicates explicit credentials (AWS).
+        endpoint_url indicates a custom S3-compatible object storage
+        backend; an access_key indicates explicit credentials (AWS).
         IAM-role-only setups need to set a dummy access_key to opt in.
         """
         self._storage = None
         opts = settings.STORAGES.get("message-blobs", {}).get("OPTIONS", {})
         self.enabled = bool(opts.get("endpoint_url") or opts.get("access_key"))
-        # encryption_keys is a dict: {"1": "key1", "2": "key2"}
-        self.encryption_keys = settings.MESSAGES_BLOB_ENCRYPTION_KEYS or {}
-        self.active_key_id = settings.MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID
+        # encryption_keys: dict of key_id -> {"algo", "secret", "active"}.
+        # active_key_id: derived from whichever entry has active=true (0
+        # if none — encryption disabled).
+        self.encryption_keys = settings.MESSAGES_BLOBS_ENCRYPT_KEYS or {}
+        self.active_key_id = find_active_key_id(self.encryption_keys)
 
     @property
     def storage(self):
@@ -131,38 +205,45 @@ class TieredStorageService:
         """Convenience wrapper around ``compute_storage_key`` for a Blob row."""
         return cls.compute_storage_key(bytes(blob.sha256), blob.encryption_key_id)
 
-    def _aesgcm(self, key_id: int) -> AESGCM:
-        """Build an AESGCM cipher for the given key_id (raises if missing)."""
+    def _aead(self, key_id: int):
+        """Build the AEAD primitive for ``key_id`` (raises if missing/unknown)."""
         key_id_str = str(key_id)
         if key_id_str not in self.encryption_keys:
             raise ValueError(
-                f"Encryption key_id {key_id} not found in MESSAGES_BLOB_ENCRYPTION_KEYS"
+                f"Encryption key_id {key_id} not found in MESSAGES_BLOBS_ENCRYPT_KEYS"
             )
-        return AESGCM(_decode_key(self.encryption_keys[key_id_str]))
+        entry = normalize_key_entry(self.encryption_keys[key_id_str])
+        return _build_aead(entry["algo"], _decode_key(entry["secret"]))
 
-    def encrypt(self, data: bytes) -> tuple[bytes, int]:
-        """Encrypt with AES-256-GCM under the active key.
+    def encrypt(self, data: bytes, sha256: bytes) -> tuple[bytes, int]:
+        """Encrypt under the active key, binding ``sha256`` as AAD.
 
         Returns ``(nonce(12) || ciphertext+tag(16), key_id)``. ``key_id=0``
         means encryption is disabled and the bytes pass through unchanged.
+
+        ``sha256`` must be the 32-byte digest of the (uncompressed) blob
+        content. Binding it as AAD makes the ciphertext non-portable
+        across blobs: copying these bytes onto a different blob's storage
+        path causes ``decrypt`` to fail with ``InvalidTag``.
         """
         if not self.encryption_keys or self.active_key_id == 0:
             return data, 0
         nonce = os.urandom(_NONCE_SIZE)
-        ciphertext = self._aesgcm(self.active_key_id).encrypt(nonce, data, None)
+        ciphertext = self._aead(self.active_key_id).encrypt(nonce, data, sha256)
         return nonce + ciphertext, self.active_key_id
 
-    def decrypt(self, data: bytes, key_id: int) -> bytes:
-        """Decrypt an AES-256-GCM token produced by ``encrypt``.
+    def decrypt(self, data: bytes, key_id: int, sha256: bytes) -> bytes:
+        """Decrypt a token produced by ``encrypt``, verifying ``sha256`` as AAD.
 
         ``key_id=0`` is the passthrough sentinel. Raises ``ValueError`` if
         the key is unknown, ``InvalidTag`` if the ciphertext or tag is
-        corrupted / decrypted with the wrong key.
+        corrupted, decrypted with the wrong key, or paired with a
+        different ``sha256`` than was supplied at encrypt time.
         """
         if key_id == 0:
             return data
         nonce, ciphertext = data[:_NONCE_SIZE], data[_NONCE_SIZE:]
-        return self._aesgcm(key_id).decrypt(nonce, ciphertext, None)
+        return self._aead(key_id).decrypt(nonce, ciphertext, sha256)
 
     def get_existing_sibling(self, sha256_bytes: bytes) -> "tuple[int, int] | None":
         """Return ``(encryption_key_id, compression)`` of any OBJECT_STORAGE
@@ -200,10 +281,11 @@ class TieredStorageService:
         whichever copy hit the bucket first, regardless of what the
         configured defaults are at upload time.
 
-        The storage existence check guards against the DB row pointing
-        at a missing/expired object — if the sibling's stored bytes are
-        gone (manual deletion, lifecycle expiry), we fall through to a
-        real upload of the new blob's own raw_content.
+        We trust the DB: if a sibling row exists, we dedup unconditionally.
+        Drift between DB and S3 (external deletion, lifecycle expiry, etc.)
+        is detected offline by ``verify_tiered_storage --mode=db-to-storage``;
+        we don't pay an S3 HEAD per dedup hit to guard the cluster against
+        a misuse that's already an operator-fix scenario.
         """
         if not self.enabled:
             raise RuntimeError("Object storage is not configured")
@@ -214,15 +296,15 @@ class TieredStorageService:
         sibling = self.get_existing_sibling(sha256_bytes)
         if sibling is not None:
             existing_key_id, existing_compression = sibling
-            existing_path = self.compute_storage_key(sha256_bytes, existing_key_id)
-            if self.storage.exists(existing_path):
-                logger.debug(
-                    "Blob %s deduped against existing %s", blob.id, existing_path
-                )
-                return existing_key_id, existing_compression
+            logger.debug(
+                "Blob %s deduped against existing sibling at key_id=%d",
+                blob.id,
+                existing_key_id,
+            )
+            return existing_key_id, existing_compression
 
         key = self.compute_storage_key_for_blob(blob)
-        self.storage.save(key, ContentFile(bytes(blob.raw_content)))
+        self.storage.save(key, ContentFile(blob.raw_content))
         logger.info("Uploaded blob %s to object storage", blob.id)
         return blob.encryption_key_id, blob.compression
 
@@ -234,7 +316,7 @@ class TieredStorageService:
         key = self.compute_storage_key_for_blob(blob)
         with self.storage.open(key, "rb") as f:
             encrypted = f.read()
-        return self.decrypt(encrypted, blob.encryption_key_id)
+        return self.decrypt(encrypted, blob.encryption_key_id, bytes(blob.sha256))
 
     def rotate_blob(self, blob: "Blob", target_key_id: int) -> bool:
         """Re-encrypt a blob (and its OBJECT_STORAGE cohort) with target_key_id.
@@ -271,8 +353,8 @@ class TieredStorageService:
         if blob.storage_location == BlobStorageLocationChoices.POSTGRES:
             if blob.raw_content is None:
                 return False
-            decrypted = self.decrypt(bytes(blob.raw_content), old_key_id)
-            encrypted, new_id = self.encrypt(decrypted)
+            decrypted = self.decrypt(blob.raw_content, old_key_id, sha256)
+            encrypted, new_id = self.encrypt(decrypted, sha256)
             blob.raw_content = encrypted
             blob.encryption_key_id = new_id
             blob.save(
@@ -290,8 +372,8 @@ class TieredStorageService:
 
         with self.storage.open(old_path, "rb") as f:
             old_encrypted = f.read()
-        decrypted = self.decrypt(old_encrypted, old_key_id)
-        encrypted, new_id = self.encrypt(decrypted)
+        decrypted = self.decrypt(old_encrypted, old_key_id, sha256)
+        encrypted, new_id = self.encrypt(decrypted, sha256)
 
         self.storage.save(new_path, ContentFile(encrypted))
 
@@ -311,6 +393,67 @@ class TieredStorageService:
 
         return True
 
+    def re_store_blob_in_database(self, blob: "Blob", target_key_id: int) -> bool:
+        """Pull an OBJECT_STORAGE blob back into PostgreSQL.
+
+        Downloads the ciphertext, decrypts under its current key,
+        re-encrypts under ``target_key_id`` (which MUST equal the active
+        key — same constraint as ``rotate_blob``; passthrough when
+        active_key_id=0), writes ``raw_content`` and flips
+        ``storage_location`` to POSTGRES atomically. Then opportunistically
+        deletes the S3 object if no rows still reference it (the
+        last re-stored row in a cohort triggers the deletion; earlier
+        ones see ``refs > 0`` and no-op).
+
+        Returns True if re-stored, False if already POSTGRES / unrestorable.
+
+        Caller must hold ``transaction.atomic()`` and the per-sha256
+        advisory lock for the duration.
+        """
+        if target_key_id != self.active_key_id:
+            raise ValueError(
+                f"re_store_blob_in_database target_key_id={target_key_id} must match "
+                f"active_key_id={self.active_key_id}"
+            )
+        if blob.storage_location != BlobStorageLocationChoices.OBJECT_STORAGE:
+            return False
+        if not self.enabled:
+            raise RuntimeError("Object storage is not configured")
+
+        sha256 = bytes(blob.sha256)
+        old_key_id = blob.encryption_key_id
+        old_path = self.compute_storage_key(sha256, old_key_id)
+
+        with self.storage.open(old_path, "rb") as f:
+            old_encrypted = f.read()
+        decrypted = self.decrypt(old_encrypted, old_key_id, sha256)
+        encrypted, new_id = self.encrypt(decrypted, sha256)
+
+        blob.raw_content = encrypted
+        blob.encryption_key_id = new_id
+        blob.storage_location = BlobStorageLocationChoices.POSTGRES
+        blob.save(
+            update_fields=[
+                "raw_content",
+                "encryption_key_id",
+                "storage_location",
+                "size_compressed",
+            ]
+        )
+
+        # Best-effort cleanup of the S3 object once the cohort empties.
+        # delete_if_orphaned counts referencing rows under the same lock
+        # we already hold, so this is a no-op until the last cohort
+        # member is restored.
+        try:
+            self.delete_if_orphaned(sha256, old_key_id)
+        except Exception as e:  # pylint: disable=broad-except
+            logger.warning(
+                "Failed to clean restored-from path %s: %s", old_path, e
+            )
+
+        return True
+
     def delete_if_orphaned(self, sha256_bytes: bytes, key_id: int) -> bool:
         """Delete the storage object at ``path(sha, key_id)`` if no blob row
         references it.
@@ -319,7 +462,7 @@ class TieredStorageService:
         ``(sha256, encryption_key_id)`` pair matches can possibly need
         this object — a sibling at a different key_id has its own path,
         and compression is shared across the whole cohort (set at first
-        upload). Counting rows at this exact pair is sufficient.
+        upload). An ``.exists()`` probe at this exact pair is sufficient.
         """
         if not self.enabled:
             return False
@@ -327,13 +470,11 @@ class TieredStorageService:
         # pylint: disable-next=import-outside-toplevel
         from core.models import Blob
 
-        refs = Blob.objects.filter(
+        if Blob.objects.filter(
             sha256=sha256_bytes,
             storage_location=BlobStorageLocationChoices.OBJECT_STORAGE,
             encryption_key_id=key_id,
-        ).count()
-
-        if refs > 0:
+        ).exists():
             return False
 
         key = self.compute_storage_key(sha256_bytes, key_id)

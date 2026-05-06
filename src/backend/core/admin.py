@@ -3,13 +3,14 @@
 
 import json
 import logging
+import mimetypes
 
 from django import forms
 from django.contrib import admin, messages
 from django.contrib.auth import admin as auth_admin
 from django.core.files.storage import storages
 from django.db.models import JSONField, Q
-from django.http import HttpResponseNotAllowed
+from django.http import HttpResponse, HttpResponseNotAllowed
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import path
@@ -1065,7 +1066,6 @@ class BlobAdmin(admin.ModelAdmin):
 
     list_display = (
         "id",
-        "mailbox",
         "content_type",
         "size",
         "size_compressed",
@@ -1074,7 +1074,7 @@ class BlobAdmin(admin.ModelAdmin):
         "encryption_key_id",
         "created_at",
     )
-    search_fields = ("mailbox__local_part", "mailbox__domain__name", "content_type")
+    search_fields = ("id", "content_type")
     list_filter = (
         "content_type",
         "compression",
@@ -1083,16 +1083,49 @@ class BlobAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
     )
-    autocomplete_fields = ("mailbox",)
+    change_form_template = "admin/core/blob/change_form.html"
 
     def get_queryset(self, request):
-        """Optimize queryset with select_related and exclude large binary content"""
-        return (
-            super()
-            .get_queryset(request)
-            .select_related("mailbox", "mailbox__domain")
-            .defer("raw_content")  # Exclude large binary content from list view
+        """Exclude large binary content from list view."""
+        return super().get_queryset(request).defer("raw_content")
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                "<path:object_id>/download/",
+                self.admin_site.admin_view(self.download_view),
+                name="core_blob_download",
+            ),
+        ]
+        return custom_urls + urls
+
+    def download_view(self, request, object_id):
+        """Download the decompressed (and decrypted) blob content."""
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+
+        blob = self.get_object(request, object_id)
+        if blob is None:
+            messages.error(request, "Blob not found.")
+            return redirect("..")
+
+        try:
+            content = blob.get_content()
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logging.exception("Failed to fetch blob %s for admin download", blob.id)
+            capture_exception()
+            messages.error(request, f"Failed to download blob: {exc}")
+            return redirect(".")
+
+        extension = mimetypes.guess_extension(blob.content_type or "") or ""
+        filename = f"blob-{blob.id}{extension}"
+        response = HttpResponse(
+            content, content_type=blob.content_type or "application/octet-stream"
         )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response["Content-Length"] = str(len(content))
+        return response
 
 
 @admin.register(models.MailDomainAccess)

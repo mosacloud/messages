@@ -764,13 +764,29 @@ class Mailbox(BaseModel):
         content_type: str,
         **kwargs,
     ) -> "Blob":
-        """Create a new blob owned by this mailbox."""
-        return Blob.objects.create_blob(
+        """Create (or dedup against) a Blob and reserve it for this mailbox.
+
+        Blobs are no longer mailbox-owned at the schema level — their
+        lifetime is determined by Message / Attachment / MessageTemplate
+        references plus a short-lived upload reservation. This helper
+        wraps :meth:`BlobManager.create_blob` (which dedups by sha256)
+        and registers an upload reservation so the new blob can't be
+        GC'd in the window between upload and attach.
+        """
+        # Lazy import to avoid a top-of-module cycle: blob_gc imports
+        # from core.models for the Blob queryset, but this method is
+        # called *from* a model method, so by the time we run, the
+        # module has finished loading.
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.blob_gc import reserve_upload
+
+        blob = Blob.objects.create_blob(
             content=content,
             content_type=content_type,
-            mailbox=self,
             **kwargs,
         )
+        reserve_upload(blob.id, self.id)
+        return blob
 
     def get_abilities(self, user):
         """
@@ -2071,34 +2087,47 @@ class BlobManager(models.Manager):
         content_type: str,
         **kwargs,
     ) -> "Blob":
-        """
-        Create a new blob with automatic SHA256 calculation and compression.
+        """Hash-first create-or-dedup.
+
+        Computes SHA-256 of ``content`` first; if a Blob with that hash
+        already exists, returns it (no new row, no compress, no
+        encrypt). Otherwise compresses, encrypts under the active key
+        (with sha as AAD), and inserts a fresh row under the per-sha
+        advisory lock so concurrent inserts can't produce duplicates.
+
         Args:
-            content: Raw binary content to store
-            content_type: MIME type of the content
+            content: Raw binary content.
+            content_type: MIME type.
         Returns:
-            The created Blob instance
+            A ``Blob`` row (newly created or existing).
         Raises:
-            ValidationError: If content is empty or MESSAGES_BLOB_COMPRESS is invalid
+            ValidationError: empty content or invalid MESSAGES_BLOBS_COMPRESS.
         """
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.tiered_storage import sha256_advisory_lock
+
         if not content:
             raise ValidationError({"content": "Content cannot be empty"})
+
+        sha256_hash = hashlib.sha256(content).digest()
+
+        # Hot path: hash matches an existing row → return it. No lock,
+        # no compress, no encrypt. This handles the common dedup case
+        # (same email delivered to multiple mailboxes; same attachment
+        # uploaded twice) at minimal cost.
+        existing = self.filter(sha256=sha256_hash).first()
+        if existing is not None:
+            return existing
 
         # Resolve algorithm + level from the configured spec ("zstd:3" etc.).
         try:
             compression, zstd_level = parse_compression_spec(
-                settings.MESSAGES_BLOB_COMPRESS
+                settings.MESSAGES_BLOBS_COMPRESS
             )
         except ValueError as exc:
             raise ValidationError({"compression": str(exc)}) from exc
 
-        # Calculate SHA256 hash of the original content
-        sha256_hash = hashlib.sha256(content).digest()
-
-        # Store the original size
         original_size = len(content)
-
-        # Apply compression if requested
         if compression == CompressionTypeChoices.ZSTD:
             compressed_content = pyzstd.compress(content, level_or_option=zstd_level)
             logger.debug(
@@ -2110,20 +2139,32 @@ class BlobManager(models.Manager):
         else:
             compressed_content = content
 
-        # Encrypt content if encryption keys are configured
+        # Encrypt content if encryption keys are configured. ``sha256_hash``
+        # is bound as AAD so the ciphertext can't be substituted across
+        # blobs — a swap onto a different storage path will fail the auth
+        # tag at decrypt time.
         service = TieredStorageService()
-        encrypted_content, encryption_key_id = service.encrypt(compressed_content)
-
-        # Create the blob
-        blob = Blob.objects.create(
-            sha256=sha256_hash,
-            size=original_size,
-            content_type=content_type,
-            compression=compression,
-            raw_content=encrypted_content,
-            encryption_key_id=encryption_key_id,
-            **kwargs,
+        encrypted_content, encryption_key_id = service.encrypt(
+            compressed_content, sha256_hash
         )
+
+        # Re-check under the per-sha advisory lock so two concurrent
+        # callers can't both insert. The lock is the same one used by
+        # offload / re-store / GC; mutual exclusion across the whole
+        # blob lifecycle for a given sha.
+        with transaction.atomic(), sha256_advisory_lock(sha256_hash):
+            existing = self.filter(sha256=sha256_hash).first()
+            if existing is not None:
+                return existing
+            blob = self.create(
+                sha256=sha256_hash,
+                size=original_size,
+                content_type=content_type,
+                compression=compression,
+                raw_content=encrypted_content,
+                encryption_key_id=encryption_key_id,
+                **kwargs,
+            )
 
         logger.debug(
             "Created blob %s: %d bytes, %s compression, %s content type",
@@ -2134,6 +2175,69 @@ class BlobManager(models.Manager):
         )
 
         return blob
+
+    def is_referenced(self, blob_id) -> bool:
+        """True if any row in the schema FKs this blob, OR an upload
+        reservation is held for it.
+
+        Authoritative answer for "is this blob still alive". The GC
+        sweep consults this before deleting; the reservation lookup is
+        done by callers explicitly when they need to also surface
+        provenance to the API authz layer.
+        """
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.blob_gc import has_upload_reservation
+
+        if has_upload_reservation(blob_id):
+            return True
+        return (
+            Message.objects.filter(
+                models.Q(blob_id=blob_id) | models.Q(draft_blob_id=blob_id)
+            ).exists()
+            or Attachment.objects.filter(blob_id=blob_id).exists()
+            or MessageTemplate.objects.filter(blob_id=blob_id).exists()
+        )
+
+    def user_can_access(self, user, blob_id) -> bool:
+        """Authz: can ``user`` legitimately read this blob's content?
+
+        Replaces the old ``Blob.mailbox`` denormalization. A user can
+        access a blob if any of:
+
+        - They have an ``Attachment`` mailbox-access for an Attachment
+          referencing the blob.
+        - They have a ``MessageTemplate`` mailbox-access for a template
+          referencing the blob.
+        - They have ``ThreadAccess`` to the thread of any Message whose
+          ``blob`` or ``draft_blob`` is the blob.
+        - The blob has an upload reservation for a mailbox the user
+          can access (covers the JMAP upload-then-attach window).
+        """
+        if user is None or not getattr(user, "is_authenticated", False):
+            return False
+
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.blob_gc import get_upload_reservation
+
+        reserved_mailbox = get_upload_reservation(blob_id)
+        if reserved_mailbox:
+            if MailboxAccess.objects.filter(
+                mailbox_id=reserved_mailbox, user=user
+            ).exists():
+                return True
+
+        return (
+            Attachment.objects.filter(
+                blob_id=blob_id, mailbox__accesses__user=user
+            ).exists()
+            or MessageTemplate.objects.filter(
+                blob_id=blob_id, mailbox__accesses__user=user
+            ).exists()
+            or Message.objects.filter(
+                models.Q(blob_id=blob_id) | models.Q(draft_blob_id=blob_id),
+                thread__accesses__mailbox__accesses__user=user,
+            ).exists()
+        )
 
 
 class Blob(BaseModel):
@@ -2178,35 +2282,24 @@ class Blob(BaseModel):
         help_text="Compressed binary content of the blob (null if in object storage)",
     )
 
-    # Tiered storage fields
+    # Tiered storage fields. No db_index on storage_location — the
+    # only access pattern that filters on it is the periodic offload
+    # scan, served by the partial index ``blob_offload_scan_idx``
+    # below. A standalone btree on a smallint with two distinct
+    # values would not be selective enough for the planner anyway.
     storage_location = models.SmallIntegerField(
         "storage location",
         choices=BlobStorageLocationChoices.choices,
         default=BlobStorageLocationChoices.POSTGRES,
         help_text="Where the blob content is stored",
-        db_index=True,
     )
     encryption_key_id = models.SmallIntegerField(
         "encryption key ID",
         default=0,
-        help_text="Encryption key ID (0=none, >=1=encrypted with keys[key_id-1])",
-    )
-
-    mailbox = models.ForeignKey(
-        "Mailbox",
-        null=True,
-        blank=True,
-        on_delete=models.CASCADE,
-        related_name="blobs",
-        help_text="Mailbox that owns this blob",
-    )
-    maildomain = models.ForeignKey(
-        "MailDomain",
-        null=True,
-        blank=True,
-        on_delete=models.CASCADE,
-        related_name="blobs",
-        help_text="Mail domain that owns this blob",
+        help_text=(
+            "Encryption key ID (0 = no encryption, >=1 = encrypted with "
+            "MESSAGES_BLOBS_ENCRYPT_KEYS[str(key_id)])"
+        ),
     )
 
     objects = BlobManager()
@@ -2216,14 +2309,6 @@ class Blob(BaseModel):
         verbose_name = "blob"
         verbose_name_plural = "blobs"
         ordering = ["-created_at"]
-        constraints = [
-            models.CheckConstraint(
-                check=(
-                    models.Q(mailbox__isnull=False) | models.Q(maildomain__isnull=False)
-                ),
-                name="blob_has_owner",
-            ),
-        ]
         indexes = [
             # Hot-path partial index for the periodic offload scan
             # (storage_location=POSTGRES, created_at < cutoff, size >= min).
@@ -2250,31 +2335,51 @@ class Blob(BaseModel):
         Get the decompressed content of this blob.
 
         Transparently handles both PostgreSQL and object storage locations,
-        and decrypts if encrypted.
+        and decrypts if encrypted. When ``MESSAGES_BLOBS_VERIFY_HASH`` is
+        True, the decompressed plaintext is re-hashed and compared against
+        ``self.sha256`` as a final integrity gate (relevant mainly for
+        ``key_id=0`` blobs, since AAD already binds encrypted ones).
 
         Returns:
             The decompressed content
 
         Raises:
-            ValueError: If the blob compression type is not supported or content unavailable
+            ValueError: If the blob compression type is not supported,
+                content is unavailable, or (with verify-hash on) the
+                content's sha256 doesn't match ``self.sha256``.
         """
         service = TieredStorageService()
+        sha256_bytes = bytes(self.sha256)
 
         if self.storage_location == BlobStorageLocationChoices.POSTGRES:
             if self.raw_content is None:
                 raise ValueError(f"Blob {self.id} has no content in PostgreSQL")
-            encrypted = bytes(self.raw_content)
-            # Decrypt if encrypted (key_id > 0)
-            compressed = service.decrypt(encrypted, self.encryption_key_id)
+            # Pass raw_content (memoryview from psycopg) straight through:
+            # decrypt slices via buffer protocol, AESGCM accepts bytes-like,
+            # pyzstd.decompress accepts bytes-like. Avoids one full-blob
+            # copy on the read path. AAD = sha256.
+            compressed = service.decrypt(
+                self.raw_content, self.encryption_key_id, sha256_bytes
+            )
         else:
             # download_blob already handles decryption
             compressed = service.download_blob(self)
 
         if self.compression == CompressionTypeChoices.NONE:
-            return compressed
-        if self.compression == CompressionTypeChoices.ZSTD:
-            return pyzstd.decompress(compressed)
-        raise ValueError(f"Unsupported compression type: {self.compression}")
+            plaintext = compressed
+        elif self.compression == CompressionTypeChoices.ZSTD:
+            plaintext = pyzstd.decompress(compressed)
+        else:
+            raise ValueError(f"Unsupported compression type: {self.compression}")
+
+        if settings.MESSAGES_BLOBS_VERIFY_HASH:
+            if hashlib.sha256(plaintext).digest() != sha256_bytes:
+                raise ValueError(
+                    f"Blob {self.id} content hash mismatch "
+                    "(corruption or substitution)"
+                )
+
+        return plaintext
 
 
 class Attachment(BaseModel):

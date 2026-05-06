@@ -19,9 +19,20 @@ from core import factories, models
 from core.enums import MailboxRoleChoices, ThreadAccessRoleChoices
 
 
+@pytest.mark.redis
 @pytest.mark.django_db
 class TestDraftWithAttachments:
-    """Tests for creating and updating drafts with attachments."""
+    """Tests for creating and updating drafts with attachments.
+
+    Marked ``@pytest.mark.redis``: the draft attach flow consults the
+    upload reservation registered by ``Mailbox.create_blob`` to verify
+    blob provenance. Without ``redis_cache`` the reservation never
+    lands and ``draft.attachments`` ends up empty.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _redis_cache(self, redis_cache):  # noqa: ARG002 — fixture activation
+        pass
 
     @pytest.fixture
     def api_client(self):

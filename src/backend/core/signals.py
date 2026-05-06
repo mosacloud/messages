@@ -10,7 +10,7 @@ from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import receiver
 
 from core import enums, models
-from core.enums import BlobStorageLocationChoices
+from core.services.blob_gc import schedule_for_gc
 from core.services.identity.keycloak import (
     sync_mailbox_to_keycloak_user,
     sync_maildomain_to_keycloak_group,
@@ -141,41 +141,33 @@ def index_thread_post_save(sender, instance, created, **kwargs):
     _schedule_thread_reindex(instance.id)
 
 
-@receiver(post_delete, sender=models.Blob)
-def cleanup_blob_storage(sender, instance, **kwargs):
-    """Schedule object-storage cleanup after a blob row is deleted.
-
-    Uses ``post_delete`` so cleanup also runs during CASCADE and
-    ``QuerySet.delete()`` bulk deletes. Cleanup is queued through Celery
-    after the surrounding transaction commits — the task takes the same
-    per-sha256 advisory lock used by offload/re-encrypt, so storage
-    deletes never race with concurrent dedup.
-    """
-    if instance.storage_location != BlobStorageLocationChoices.OBJECT_STORAGE:
-        return
-
-    # pylint: disable-next=import-outside-toplevel
-    from core.services.tiered_storage_tasks import cleanup_orphaned_blob_task
-
-    sha_hex = bytes(instance.sha256).hex()
-    key_id = instance.encryption_key_id
-    transaction.on_commit(lambda: cleanup_orphaned_blob_task.delay(sha_hex, key_id))
+# Blob lifecycle is governed by the reference graph + GC sweep.
+# When a row that FKs a Blob is deleted, push the blob_id into the
+# Redis candidate set; the periodic ``gc_orphan_blobs_task`` reads
+# the set, re-checks references under the per-sha advisory lock, and
+# deletes the Blob row + cleans up S3 inline if no references remain.
+# This replaces the old per-row ``cleanup_orphaned_blob_task`` enqueue
+# (which queue-bombed the broker on cascade deletes) with a single
+# bounded periodic task.
 
 
-@receiver(pre_delete, sender=models.Message)
-def delete_message_blobs(sender, instance, **kwargs):
-    """Delete the blobs associated with a message."""
-    if instance.blob:
-        instance.blob.delete()
-    if instance.draft_blob:
-        instance.draft_blob.delete()
+@receiver(post_delete, sender=models.Message)
+def schedule_message_blobs_for_gc(sender, instance, **kwargs):
+    """Push ``Message.blob`` and ``Message.draft_blob`` ids into the GC set."""
+    schedule_for_gc(instance.blob_id)
+    schedule_for_gc(instance.draft_blob_id)
 
 
-# @receiver(post_delete, sender=models.Attachment)
-# def delete_attachments_blobs(sender, instance, **kwargs):
-#     """Delete the blob associated with an attachment."""
-#     if instance.blob:
-#         instance.blob.delete()
+@receiver(post_delete, sender=models.Attachment)
+def schedule_attachment_blob_for_gc(sender, instance, **kwargs):
+    """Push ``Attachment.blob`` id into the GC set."""
+    schedule_for_gc(instance.blob_id)
+
+
+@receiver(post_delete, sender=models.MessageTemplate)
+def schedule_template_blob_for_gc(sender, instance, **kwargs):
+    """Push ``MessageTemplate.blob`` id into the GC set."""
+    schedule_for_gc(instance.blob_id)
 
 
 @receiver(post_delete, sender=models.Message)
@@ -219,22 +211,23 @@ def delete_thread_from_index(sender, instance, **kwargs):
 
 @receiver(pre_delete, sender=models.Message)
 def delete_orphan_draft_attachments(sender, instance, **kwargs):
-    """Remove orphan attachments after a draft message is deleted."""
+    """When a draft message is deleted, drop attachments that are only
+    used by this message.
 
-    # Get all attachments that are not used by any other message
-    if instance.is_draft:
-        attachments = models.Attachment.objects.filter(messages=instance)
+    The Attachment's own ``post_delete`` signal then schedules its
+    ``blob_id`` for GC. We don't touch ``Blob`` rows directly — that's
+    the GC sweep's job; deleting Blob rows here would race with
+    concurrent offload / dedup paths and double-up the cleanup.
 
-        for attachment in attachments:
-            if attachment.messages.count() == 1:
-                attachment.blob.delete()  # this will cascade delete the attachment
-
-        if instance.draft_blob and instance.draft_blob.pk:
-            instance.draft_blob.delete()
-
-    if instance.blob and instance.blob.pk:
-        if instance.blob.messages.count() == 1:
-            instance.blob.delete()
+    The ``Message.blob`` and ``Message.draft_blob`` are handled
+    automatically by ``schedule_message_blobs_for_gc`` once the Message
+    itself is deleted.
+    """
+    if not instance.is_draft:
+        return
+    for attachment in models.Attachment.objects.filter(messages=instance):
+        if attachment.messages.count() == 1:
+            attachment.delete()
 
 
 @receiver(post_save, sender=models.ThreadAccess)

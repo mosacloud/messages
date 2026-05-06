@@ -184,7 +184,7 @@ def test_import_eml_file(admin_client, eml_file, mailbox):
 
 
 def _upload_to_s3(content, file_key="test-mbox-key"):
-    """Upload content to the message-imports S3 bucket (real MinIO)."""
+    """Upload content to the message-imports S3 bucket (real object storage)."""
     storage = storages["message-imports"]
     s3_client = storage.connection.meta.client
     s3_client.put_object(

@@ -12,7 +12,7 @@ from core import enums, factories
 class TestBlobCompression:
     """Test suite for blob compression functionality."""
 
-    @override_settings(MESSAGES_BLOB_COMPRESS="none")
+    @override_settings(MESSAGES_BLOBS_COMPRESS="none")
     def test_blob_no_compression(self):
         """Test blob creation without compression."""
         content = b"Hello World" * 1000  # Create some content to compress
@@ -28,7 +28,7 @@ class TestBlobCompression:
         assert blob.compression == enums.CompressionTypeChoices.NONE
         assert blob.get_content() == content  # Content should be unchanged
 
-    @override_settings(MESSAGES_BLOB_COMPRESS="zstd:3")
+    @override_settings(MESSAGES_BLOBS_COMPRESS="zstd:3")
     def test_blob_zstd_compression(self):
         """Test blob creation with ZSTD compression."""
         content = b"Hello World" * 1000  # Create some content that will compress well
@@ -52,7 +52,7 @@ class TestBlobCompression:
         with pytest.raises(ValidationError, match="Content cannot be empty"):
             mailbox.create_blob(content=b"", content_type="text/plain")
 
-    @override_settings(MESSAGES_BLOB_COMPRESS="zstd:3")
+    @override_settings(MESSAGES_BLOBS_COMPRESS="zstd:3")
     def test_blob_large_content_compression(self):
         """Test compression with large content."""
         # Create a large content that should compress well

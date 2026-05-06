@@ -12,30 +12,61 @@ from django.conf import settings
 from django.core.checks import Error, register
 from django.core.checks import Warning as CheckWarning
 
-from core.enums import parse_compression_spec
-from core.services.tiered_storage import _MIN_KEY_LEN, _decode_key
+from core.enums import CompressionTypeChoices, parse_compression_spec
+from core.services.tiered_storage import (
+    _MIN_KEY_LEN,
+    _decode_key,
+    normalize_key_entry,
+)
+
+# Valid zstd compression-level range. Negative levels (-7..-1) are
+# zstd's "fast" tier; 1..22 is the standard ladder, with 22 the
+# maximum-effort setting. Outside this range, pyzstd raises a cryptic
+# error at first blob write — so we surface it at boot as a warning
+# (not an Error: pyzstd is the source of truth and might widen its
+# range in a future version; we don't want to falsely block startup).
+_ZSTD_MIN_LEVEL = -7
+_ZSTD_MAX_LEVEL = 22
 
 
 @register()
 def check_blob_compression_config(app_configs, **kwargs):
-    """``MESSAGES_BLOB_COMPRESS`` must parse as ``"<algo>"`` or ``"<algo>:<level>"``."""
-    value = getattr(settings, "MESSAGES_BLOB_COMPRESS", "zstd:3")
+    """``MESSAGES_BLOBS_COMPRESS`` must parse as ``"<algo>"`` or ``"<algo>:<level>"``."""
+    value = settings.MESSAGES_BLOBS_COMPRESS
     issues = []
     try:
-        parse_compression_spec(value)
+        compression, level = parse_compression_spec(value)
     except (ValueError, AttributeError) as e:
         issues.append(
             Error(
-                f"MESSAGES_BLOB_COMPRESS={value!r} is invalid: {e}",
+                f"MESSAGES_BLOBS_COMPRESS={value!r} is invalid: {e}",
                 hint='Use "none", "zstd", or "zstd:<level>".',
                 id="core.E004",
             )
         )
-    if "MESSAGES_BLOB_ZSTD_LEVEL" in os.environ:
+    else:
+        if (
+            compression == CompressionTypeChoices.ZSTD
+            and level is not None
+            and not _ZSTD_MIN_LEVEL <= level <= _ZSTD_MAX_LEVEL
+        ):
+            issues.append(
+                CheckWarning(
+                    f"MESSAGES_BLOBS_COMPRESS={value!r}: zstd level {level} is "
+                    f"outside the valid range "
+                    f"[{_ZSTD_MIN_LEVEL}, {_ZSTD_MAX_LEVEL}]. "
+                    "pyzstd will reject it at the first blob write.",
+                    hint=f"Use a level in [{_ZSTD_MIN_LEVEL}, {_ZSTD_MAX_LEVEL}] "
+                    "(typical: 3 for fast, 7 for balanced, 22 for max).",
+                    id="core.W003",
+                )
+            )
+
+    if "MESSAGES_BLOBS_ZSTD_LEVEL" in os.environ:
         issues.append(
             CheckWarning(
-                "MESSAGES_BLOB_ZSTD_LEVEL is deprecated and ignored.",
-                hint='Set MESSAGES_BLOB_COMPRESS="zstd:<level>" instead.',
+                "MESSAGES_BLOBS_ZSTD_LEVEL is deprecated and ignored.",
+                hint='Set MESSAGES_BLOBS_COMPRESS="zstd:<level>" instead.',
                 id="core.W001",
             )
         )
@@ -46,55 +77,61 @@ def check_blob_compression_config(app_configs, **kwargs):
 def check_blob_encryption_config(app_configs, **kwargs):
     """Validate the tiered-storage blob encryption settings.
 
-    - ``MESSAGES_BLOB_ENCRYPTION_KEYS`` must be a dict (or empty/None).
-    - Every value must decode to a 32-byte AES-256 key (Fernet-format
-      base64 is accepted for operator continuity).
-    - If ``MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID`` is non-zero, it must
-      reference an entry in the keys dict.
+    - ``MESSAGES_BLOBS_ENCRYPT_KEYS`` must be a dict (or empty/None).
+    - Every entry must be the explicit
+      ``{"algo": ..., "secret": ..., "active": <bool>}`` shape with a
+      known algo and a decodeable secret.
+    - At most one entry may have ``active=true``. The active entry, if
+      any, is the key new blobs encrypt with; inactive entries remain
+      readable for legacy ciphertext.
     """
     errors = []
-    keys = getattr(settings, "MESSAGES_BLOB_ENCRYPTION_KEYS", None) or {}
-    active_id = getattr(settings, "MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID", 0)
+    keys = settings.MESSAGES_BLOBS_ENCRYPT_KEYS or {}
 
     if not isinstance(keys, dict):
         errors.append(
             Error(
-                "MESSAGES_BLOB_ENCRYPTION_KEYS must be a JSON object "
+                "MESSAGES_BLOBS_ENCRYPT_KEYS must be a JSON object "
                 f"(got {type(keys).__name__}).",
                 id="core.E001",
             )
         )
         return errors
 
+    active_ids = []
     for key_id, key_value in keys.items():
         try:
-            _decode_key(key_value)
+            entry = normalize_key_entry(key_value)
+            _decode_key(entry["secret"])
         except Exception as e:  # pylint: disable=broad-except
             errors.append(
                 Error(
-                    f"MESSAGES_BLOB_ENCRYPTION_KEYS[{key_id!r}] is invalid: {e}",
+                    f"MESSAGES_BLOBS_ENCRYPT_KEYS[{key_id!r}] is invalid: {e}",
                     id="core.E002",
                 )
             )
             continue
-        if isinstance(key_value, str) and len(key_value) < _MIN_KEY_LEN:
+        if entry["active"]:
+            active_ids.append(key_id)
+        secret = entry["secret"]
+        if isinstance(secret, str) and len(secret) < _MIN_KEY_LEN:
             errors.append(
                 CheckWarning(
-                    f"MESSAGES_BLOB_ENCRYPTION_KEYS[{key_id!r}] is shorter than "
-                    f"{_MIN_KEY_LEN} chars — likely low-entropy.",
+                    f"MESSAGES_BLOBS_ENCRYPT_KEYS[{key_id!r}] secret is shorter "
+                    f"than {_MIN_KEY_LEN} chars — likely low-entropy.",
                     hint="Generate with `openssl rand -base64 32` or similar.",
                     id="core.W002",
                 )
             )
 
-    if active_id and str(active_id) not in keys:
+    if len(active_ids) > 1:
         errors.append(
             Error(
-                f"MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID={active_id} but no "
-                f"matching entry in MESSAGES_BLOB_ENCRYPTION_KEYS "
-                f"(have keys: {sorted(keys)}).",
-                hint="Add the key to MESSAGES_BLOB_ENCRYPTION_KEYS or set "
-                "MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID=0 to disable encryption.",
+                f"MESSAGES_BLOBS_ENCRYPT_KEYS has {len(active_ids)} entries "
+                f"flagged active=true (key_ids: {sorted(active_ids)}). "
+                "Exactly one (or zero) entry may be active.",
+                hint="Set active=true on a single entry; remove the flag "
+                "(or set active=false) on the others.",
                 id="core.E003",
             )
         )

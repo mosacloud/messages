@@ -138,6 +138,9 @@ def _get_or_create_attachment_from_blob(
     name = attachment_data.get("name", "unnamed")
     cid = attachment_data.get("cid")
 
+    # pylint: disable-next=import-outside-toplevel
+    from core.services.blob_gc import get_upload_reservation, release_upload
+
     try:
         # Convert blob_id to UUID if it's a string
         if isinstance(blob_id, str):
@@ -145,9 +148,27 @@ def _get_or_create_attachment_from_blob(
 
         # Try to get the blob
         blob = models.Blob.objects.get(id=blob_id)
-        if blob.mailbox != mailbox:
+
+        # Provenance check: the user attaching this blob must have either
+        # an existing reference into it via this mailbox (an attachment
+        # already linked, a message they can read in a thread they have
+        # access to, etc.) OR an active upload reservation tied to this
+        # mailbox. The reservation covers the JMAP upload-then-attach
+        # window before any DB reference exists.
+        reserved_mailbox = get_upload_reservation(blob.id)
+        has_reservation = reserved_mailbox is not None and str(reserved_mailbox) == str(
+            mailbox.id
+        )
+        has_existing_link = (
+            models.Attachment.objects.filter(blob=blob, mailbox=mailbox).exists()
+            or models.Message.objects.filter(
+                models.Q(blob=blob) | models.Q(draft_blob=blob),
+                thread__accesses__mailbox=mailbox,
+            ).exists()
+        )
+        if not (has_reservation or has_existing_link):
             logger.warning(
-                "Blob %s is not associated with mailbox %s",
+                "Blob %s has no provenance for mailbox %s (no reservation, no existing link)",
                 blob_id,
                 mailbox.id,
             )
@@ -163,6 +184,9 @@ def _get_or_create_attachment_from_blob(
                 attachment.id,
                 blob_id,
             )
+            # Once the Attachment exists, the reference graph covers
+            # authz; we can drop the upload reservation.
+            release_upload(blob.id)
 
         return attachment
 
@@ -502,12 +526,15 @@ def update_draft(
 
     # Update draft body if provided
     if "draftBody" in update_data:
-        try:
-            if message.draft_blob:
-                message.draft_blob.delete()
-            message.draft_blob = None
-        except models.Blob.DoesNotExist:
-            pass
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.blob_gc import schedule_for_gc
+
+        old_draft_blob_id = message.draft_blob_id
+        message.draft_blob = None
+        if old_draft_blob_id:
+            # Old draft body may now be orphan; let the GC sweep collect
+            # it if no other row references the same content.
+            schedule_for_gc(old_draft_blob_id)
         if update_data["draftBody"]:
             draft_body_bytes = update_data["draftBody"].encode("utf-8")
 

@@ -342,7 +342,16 @@ def make_api_key_channel(
 
 
 class BlobFactory(factory.django.DjangoModelFactory):
-    """A factory to create blobs for testing purposes."""
+    """A factory to create blobs for testing purposes.
+
+    Blobs no longer carry a mailbox/maildomain FK — the ``mailbox=`` /
+    ``maildomain=`` kwargs (still accepted for back-compat in test
+    setups) only affect what an upload reservation gets registered for,
+    so test code that wants the new blob to be "owned by mailbox X for
+    upload-reservation purposes" can pass ``mailbox=X`` and the factory
+    will route through ``Mailbox.create_blob`` to register the
+    reservation.
+    """
 
     class Meta:
         model = models.Blob
@@ -352,19 +361,17 @@ class BlobFactory(factory.django.DjangoModelFactory):
 
     @classmethod
     def _create(cls, model_class, *args, **kwargs):
-        """Override _create to create a mailbox or maildomain if not provided and create_blob."""
-        if not kwargs.get("mailbox") and not kwargs.get("maildomain"):
-            kwargs["mailbox"] = MailboxFactory()
-
         content = kwargs.pop("content")
         content_type = kwargs.pop("content_type", "application/octet-stream")
+        # Legacy kwargs — accepted but only used to register an upload
+        # reservation. ``maildomain`` no longer maps to anything (the
+        # FK is gone); kept as a no-op for older test fixtures.
         mailbox = kwargs.pop("mailbox", None)
-        maildomain = kwargs.pop("maildomain", None)
+        kwargs.pop("maildomain", None)
+        if mailbox is not None:
+            return mailbox.create_blob(content=content, content_type=content_type)
         return models.Blob.objects.create_blob(
-            content=content,
-            content_type=content_type,
-            mailbox=mailbox,
-            maildomain=maildomain,
+            content=content, content_type=content_type
         )
 
 

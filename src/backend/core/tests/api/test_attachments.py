@@ -54,8 +54,18 @@ class TestBlobAPI:
         )
         return test_file
 
-    def test_upload_download_blob(self, api_client, api_client2, user_mailbox):
-        """Test uploading a file to create a blob and downloading it."""
+    @pytest.mark.redis
+    def test_upload_download_blob(
+        self, api_client, api_client2, user_mailbox, redis_cache  # noqa: ARG002
+    ):
+        """Test uploading a file to create a blob and downloading it.
+
+        Marked ``@pytest.mark.redis``: the upload endpoint registers an
+        upload reservation via ``reserve_upload`` (Redis-only) which the
+        download authz check then consumes. Without the ``redis_cache``
+        fixture, ``get_upload_reservation`` returns ``None`` and the
+        download is denied.
+        """
         client, _ = api_client
         client2, _ = api_client2
 
@@ -87,7 +97,13 @@ class TestBlobAPI:
         assert blob.content_type == "text/plain"
         assert blob.sha256.hex() == expected_hash
         assert blob.size == len(file_content)
-        assert blob.mailbox == user_mailbox
+        # Blobs no longer carry a mailbox FK; provenance lives in the
+        # short-lived upload reservation in Redis (consumed by the
+        # subsequent attach-by-id flow). The download authz check below
+        # exercises the reference-graph + reservation walk.
+        from core.services.blob_gc import get_upload_reservation
+
+        assert get_upload_reservation(blob.id) == str(user_mailbox.id)
 
         # Download via API
         url = reverse("blob-download", kwargs={"pk": uuid.uuid4()})

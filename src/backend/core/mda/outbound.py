@@ -373,14 +373,23 @@ def prepare_outbound_message(
         return False
 
     # compose_and_store_mime already DKIM-signed and stored the blob.
-    # Validate the final size — clean up the blob if it's too large.
+    # Validate the final size — drop our reference if it's too large.
+    # Direct ``Blob.delete()`` is unsafe in the new dedup'd world (other
+    # rows may share this blob); instead clear the FK and let the GC
+    # sweep collect if no references remain.
     try:
         validate_mime_size(message.blob.size, message.id)
     except drf.exceptions.ValidationError:
-        message.blob.delete()
+        # pylint: disable-next=import-outside-toplevel
+        from core.services.blob_gc import schedule_for_gc
+
+        orphan_blob_id = message.blob_id
+        message.blob = None
+        message.save(update_fields=["blob"])
+        schedule_for_gc(orphan_blob_id)
         raise
 
-    draft_blob = message.draft_blob
+    draft_blob_id = message.draft_blob_id
 
     message.sender_user = user
     # has_attachments is already set by compose_and_store_mime (includes
@@ -389,12 +398,18 @@ def prepare_outbound_message(
         mailbox_sender, message, extra_update_fields=("mime_id", "has_attachments")
     )
 
-    # Clean up the draft blob and the attachment blobs
-    if draft_blob:
-        draft_blob.delete()
+    # Drop draft body + attachment-row references now that the message
+    # has been finalized; the GC sweep will collect any orphan blobs.
+    # pylint: disable-next=import-outside-toplevel
+    from core.services.blob_gc import schedule_for_gc
+
+    if draft_blob_id:
+        message.draft_blob = None
+        message.save(update_fields=["draft_blob"])
+        schedule_for_gc(draft_blob_id)
+    # Deleting the Attachment row fires ``post_delete`` which schedules
+    # its blob_id for GC automatically.
     for attachment in message.attachments.all():
-        if attachment.blob:
-            attachment.blob.delete()
         attachment.delete()
 
     return True

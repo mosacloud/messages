@@ -337,24 +337,23 @@ class Base(Configuration):
             "BACKEND": "storages.backends.s3.S3Storage",
             "OPTIONS": {
                 "endpoint_url": values.Value(
-                    environ_name="STORAGE_MESSAGE_BLOBS_ENDPOINT_URL",
+                    environ_name="STORAGE_MESSAGES_BLOBS_ENDPOINT_URL",
                     environ_prefix=None,
                 ),
                 "bucket_name": values.Value(
-                    "msg-blobs",
-                    environ_name="STORAGE_MESSAGE_BLOBS_BUCKET_NAME",
+                    environ_name="STORAGE_MESSAGES_BLOBS_BUCKET_NAME",
                     environ_prefix=None,
                 ),
                 "access_key": values.Value(
-                    environ_name="STORAGE_MESSAGE_BLOBS_ACCESS_KEY",
+                    environ_name="STORAGE_MESSAGES_BLOBS_ACCESS_KEY",
                     environ_prefix=None,
                 ),
                 "secret_key": values.Value(
-                    environ_name="STORAGE_MESSAGE_BLOBS_SECRET_KEY",
+                    environ_name="STORAGE_MESSAGES_BLOBS_SECRET_KEY",
                     environ_prefix=None,
                 ),
                 "region_name": values.Value(
-                    environ_name="STORAGE_MESSAGE_BLOBS_REGION_NAME",
+                    environ_name="STORAGE_MESSAGES_BLOBS_REGION_NAME",
                     environ_prefix=None,
                 ),
             },
@@ -475,39 +474,56 @@ class Base(Configuration):
     )
 
     # Default compression for new blobs.
-    # Format: "<algo>" or "<algo>:<level>". Examples: "none", "zstd", "zstd:3".
-    MESSAGES_BLOB_COMPRESS = values.Value(
-        "zstd:3", environ_name="MESSAGES_BLOB_COMPRESS", environ_prefix=None
+    # Format: "<algo>" or "<algo>:<level>". Examples: "none", "zstd", "zstd:7".
+    MESSAGES_BLOBS_COMPRESS = values.Value(
+        "zstd:7", environ_name="MESSAGES_BLOBS_COMPRESS", environ_prefix=None
     )
 
-    # Blob encryption keys (dict mapping key_id -> arbitrary high-entropy
-    # secret, hashed to a 32-byte AES-256 key). Format: {"1": "<secret>"}.
-    # key_id=0 in DB means no encryption, key_id>=1 refers to dict key.
-    # Works for both PostgreSQL and object storage blobs.
-    MESSAGES_BLOB_ENCRYPTION_KEYS = JSONValue(
-        {}, environ_name="MESSAGES_BLOB_ENCRYPTION_KEYS", environ_prefix=None
+    # Blob encryption keys (dict mapping key_id -> entry). Each entry must
+    # be ``{"algo": "<name>", "secret": "<32+ chars>"}`` — no shorthand,
+    # so the operator's algo choice is always explicit. Add ``"active":
+    # true`` to exactly one entry to make it the key new blobs encrypt
+    # with; entries without ``active`` (or with ``active=false``) stay
+    # readable for legacy ciphertext but no longer encrypt. The secret is
+    # SHA-256'd into a 32-byte AEAD key; operators must supply
+    # high-entropy values (e.g. ``openssl rand -base64 32``).
+    # key_id=0 in DB means a row was never encrypted; key_id>=1 refers to
+    # a dict entry. Works for both PostgreSQL and object storage blobs.
+    # Examples:
+    #   {} — fully off (no keys, no decrypt either)
+    #   {"1": {"algo": "aes-gcm", "secret": "<...>"}} — read-only legacy
+    #     mode (decrypt key-1 blobs but encrypt new blobs as key_id=0)
+    #   {"1": {"algo": "aes-gcm", "secret": "<...>", "active": true}} —
+    #     encryption on, key 1 encrypts new blobs
+    MESSAGES_BLOBS_ENCRYPT_KEYS = JSONValue(
+        {}, environ_name="MESSAGES_BLOBS_ENCRYPT_KEYS", environ_prefix=None
     )
-    # Which key ID to use for new encryptions (must exist in MESSAGES_BLOB_ENCRYPTION_KEYS)
-    MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID = values.PositiveIntegerValue(
-        default=0,
-        environ_name="MESSAGES_BLOB_ENCRYPTION_ACTIVE_KEY_ID",
+    # When True, ``Blob.get_content`` re-hashes the decompressed plaintext
+    # and raises ``ValueError`` if it doesn't match ``blob.sha256``. Costs
+    # one SHA-256 over the plaintext per read. Defense-in-depth against
+    # storage-tier corruption and content substitution; for encrypted
+    # blobs the AAD-bound auth tag already catches swap attacks, so this
+    # is most useful for ``key_id=0`` (plaintext-stored) blobs.
+    MESSAGES_BLOBS_VERIFY_HASH = values.BooleanValue(
+        default=False,
+        environ_name="MESSAGES_BLOBS_VERIFY_HASH",
         environ_prefix=None,
     )
 
     # Tiered Storage offload settings
     # Master switch - must be explicitly enabled
-    TIERED_STORAGE_OFFLOAD_ENABLED = values.BooleanValue(
+    MESSAGES_BLOBS_OFFLOAD_ENABLED = values.BooleanValue(
         default=False,
-        environ_name="TIERED_STORAGE_OFFLOAD_ENABLED",
+        environ_name="MESSAGES_BLOBS_OFFLOAD_ENABLED",
         environ_prefix=None,
     )
     # Offload blobs older than N days (0 = immediately)
-    TIERED_STORAGE_OFFLOAD_AFTER_DAYS = values.PositiveIntegerValue(
-        default=3, environ_name="TIERED_STORAGE_OFFLOAD_AFTER_DAYS", environ_prefix=None
+    MESSAGES_BLOBS_OFFLOAD_AFTER_DAYS = values.PositiveIntegerValue(
+        default=3, environ_name="MESSAGES_BLOBS_OFFLOAD_AFTER_DAYS", environ_prefix=None
     )
     # Minimum blob size in bytes to offload (0 = all)
-    TIERED_STORAGE_OFFLOAD_MIN_SIZE = values.PositiveIntegerValue(
-        default=0, environ_name="TIERED_STORAGE_OFFLOAD_MIN_SIZE", environ_prefix=None
+    MESSAGES_BLOBS_OFFLOAD_MIN_SIZE = values.PositiveIntegerValue(
+        default=0, environ_name="MESSAGES_BLOBS_OFFLOAD_MIN_SIZE", environ_prefix=None
     )
 
     # Django fernet encrypted fields settings
@@ -1359,7 +1375,7 @@ class Test(Base):
     SCHEMA_CUSTOM_ATTRIBUTES_USER = {}
     SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN = {}
 
-    TIERED_STORAGE_OFFLOAD_ENABLED = True
+    MESSAGES_BLOBS_OFFLOAD_ENABLED = True
 
     ENABLE_PROMETHEUS = True
     PROMETHEUS_API_KEY = "test_api_key"

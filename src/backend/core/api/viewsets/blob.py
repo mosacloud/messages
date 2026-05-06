@@ -189,10 +189,10 @@ class BlobViewSet(ViewSet):
                 # Get the blob
                 blob = models.Blob.objects.get(id=pk)
 
-                # Check if user has access to the mailbox that owns this blob
-                if not models.MailboxAccess.objects.filter(
-                    mailbox=blob.mailbox, user=request.user
-                ).exists():
+                # Authz: walk the reference graph (Attachment, Message,
+                # MessageTemplate) plus any active upload reservation.
+                # See ``BlobManager.user_can_access`` for the union.
+                if not models.Blob.objects.user_can_access(request.user, blob.id):
                     return Response(
                         {"error": "You do not have permission to download this blob"},
                         status=status.HTTP_403_FORBIDDEN,
