@@ -121,7 +121,8 @@ class TestSendOutboundMessage:
             subject="Test Outbound",
         )
         # Create a blob with the raw MIME content
-        blob = mailbox.create_blob(
+        blob = factories.BlobFactory(
+            mailbox=mailbox,
             content=b"From: sender@sendtest.com\nTo: to@example.com\nSubject: Test Outbound\n\nTest body",
             content_type="message/rfc822",
         )
@@ -474,7 +475,8 @@ class TestSendMessageRedisLock(TransactionTestCase):
             subject="Test Lock",
         )
         # Create a blob with the raw MIME content
-        blob = self.mailbox.create_blob(
+        blob = factories.BlobFactory(
+            mailbox=self.mailbox,
             content=b"From: sender@sendtest.com\nTo: to@example.com\nSubject: Test Lock\n\nTest body",
             content_type="message/rfc822",
         )
@@ -931,8 +933,8 @@ class TestSendMessageDKIMVerification:
         signed_mime = signature_header + b"\r\n" + raw_mime
 
         # Create blob with signed message
-        blob = mailbox_sender.create_blob(
-            content=signed_mime, content_type="message/rfc822"
+        blob = factories.BlobFactory(
+            mailbox=mailbox_sender, content=signed_mime, content_type="message/rfc822"
         )
         message.blob = blob
         message.save()
@@ -1014,8 +1016,8 @@ class TestSendMessageDKIMVerification:
         signed_mime = signature_header + b"\r\n" + raw_mime
 
         # Create blob with signed message
-        blob = mailbox_sender.create_blob(
-            content=signed_mime, content_type="message/rfc822"
+        blob = factories.BlobFactory(
+            mailbox=mailbox_sender, content=signed_mime, content_type="message/rfc822"
         )
         message.blob = blob
         message.save()
@@ -1077,8 +1079,8 @@ class TestSendMessageDKIMVerification:
             + f"To: internal@{mailbox_sender.domain.name}\r\n"
             + "Subject: Test\r\n\r\nBody\r\n"
         ).encode()
-        blob = mailbox_sender.create_blob(
-            content=raw_mime, content_type="message/rfc822"
+        blob = factories.BlobFactory(
+            mailbox=mailbox_sender, content=raw_mime, content_type="message/rfc822"
         )
         message.blob = blob
         message.save()
@@ -1135,7 +1137,9 @@ def _create_spf_test_message(mailbox_sender):
         "To: external@other.com\r\n"
         "Subject: Test\r\n\r\nBody\r\n"
     ).encode()
-    blob = mailbox_sender.create_blob(content=raw_mime, content_type="message/rfc822")
+    blob = factories.BlobFactory(
+        mailbox=mailbox_sender, content=raw_mime, content_type="message/rfc822"
+    )
     message.blob = blob
     message.save()
 

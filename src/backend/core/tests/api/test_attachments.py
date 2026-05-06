@@ -13,6 +13,7 @@ from rest_framework.test import APIClient
 
 from core import factories, models
 from core.enums import MailboxRoleChoices
+from core.services.blob_gc import get_upload_reservation
 
 
 @pytest.mark.django_db
@@ -56,7 +57,11 @@ class TestBlobAPI:
 
     @pytest.mark.redis
     def test_upload_download_blob(
-        self, api_client, api_client2, user_mailbox, redis_cache  # noqa: ARG002
+        self,
+        api_client,
+        api_client2,
+        user_mailbox,
+        redis_cache,  # pylint: disable=unused-argument
     ):
         """Test uploading a file to create a blob and downloading it.
 
@@ -101,8 +106,6 @@ class TestBlobAPI:
         # short-lived upload reservation in Redis (consumed by the
         # subsequent attach-by-id flow). The download authz check below
         # exercises the reference-graph + reservation walk.
-        from core.services.blob_gc import get_upload_reservation
-
         assert get_upload_reservation(blob.id) == str(user_mailbox.id)
 
         # Download via API

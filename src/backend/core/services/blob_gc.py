@@ -24,7 +24,7 @@ but not yet referenced by any DB row. GC honors the reservation;
 re-uploading the same content on the JMAP path doesn't race.
 """
 
-# pylint: disable=import-outside-toplevel,broad-exception-caught
+# pylint: disable=broad-exception-caught
 
 from time import monotonic
 from typing import Any, Dict, Iterable, Iterator, Optional
@@ -35,6 +35,10 @@ from django.db import transaction
 
 from celery.utils.log import get_task_logger
 from redis.exceptions import RedisError
+
+from core.enums import BlobStorageLocationChoices
+from core.models import Blob
+from core.services.tiered_storage import TieredStorageService, sha256_advisory_lock
 
 from messages.celery_app import app as celery_app
 
@@ -80,6 +84,10 @@ def _is_redis_backend() -> bool:
 
 
 def _redis_client():
+    # Lazy import: django_redis is an optional dependency for environments
+    # that don't use Redis. The system check refuses to boot when blob
+    # lifecycle features are enabled without it.
+    # pylint: disable-next=import-outside-toplevel
     from django_redis import get_redis_connection
 
     return get_redis_connection("default")
@@ -94,9 +102,25 @@ def schedule_for_gc(blob_id) -> None:
     """Push a blob id into the GC candidate set.
 
     Called from ``post_delete`` on Message / Attachment / MessageTemplate
-    when they may have been the last reference to a Blob. The GC task
-    (later) re-checks the reference graph; producers don't need to be
-    accurate, just safe.
+    when they may have been the last reference to a Blob, and from a
+    handful of explicit "release this blob" sites in the MDA flows. The
+    GC task (later) re-checks the reference graph; producers don't need
+    to be accurate, just safe.
+
+    The Redis SADD is wrapped in ``transaction.on_commit`` so two
+    things happen automatically:
+
+    - if the surrounding transaction rolls back, no phantom candidate
+      is left behind (the row was never deleted, the blob is still
+      alive — no need to enqueue);
+    - the SADD never lands before the deletion is visible to other
+      transactions, which closes a "lost candidate" race where a GC
+      tick consumed the candidate, saw the row still alive (commit
+      hadn't happened yet), skipped it, and then the deletion
+      committed with nobody re-enqueuing it.
+
+    Outside any transaction, ``on_commit`` runs the callback
+    immediately, so ad-hoc usage stays correct.
 
     A Redis outage drops the id; the periodic ``--full`` sweep is the
     safety net for that case.
@@ -111,18 +135,22 @@ def schedule_for_gc(blob_id) -> None:
             value,
         )
         return
-    try:
-        _redis_client().sadd(_GC_CANDIDATES_KEY, value)
-    except RedisError as exc:
-        logger.error(
-            "Redis unavailable while enqueuing blob %s for GC (%s: %s); "
-            "id dropped — `--full` sweep will catch it eventually",
-            value,
-            type(exc).__name__,
-            exc,
-        )
-    except Exception:
-        logger.exception("Failed to enqueue %s for GC", value)
+
+    def _push():
+        try:
+            _redis_client().sadd(_GC_CANDIDATES_KEY, value)
+        except RedisError as exc:
+            logger.error(
+                "Redis unavailable while enqueuing blob %s for GC (%s: %s); "
+                "id dropped — `--full` sweep will catch it eventually",
+                value,
+                type(exc).__name__,
+                exc,
+            )
+        except Exception:
+            logger.exception("Failed to enqueue %s for GC", value)
+
+    transaction.on_commit(_push)
 
 
 def _drain_candidates(batch_size: int) -> list[str]:
@@ -137,8 +165,7 @@ def _drain_candidates(batch_size: int) -> list[str]:
         ]
     except RedisError as exc:
         logger.error(
-            "Redis unavailable while draining blob GC set (%s: %s); "
-            "skipping this tick",
+            "Redis unavailable while draining blob GC set (%s: %s); skipping this tick",
             type(exc).__name__,
             exc,
         )
@@ -198,6 +225,30 @@ def reserve_upload(blob_id, mailbox_id, ttl: int = _UPLOAD_RESERVATION_TTL) -> N
         )
 
 
+def upload_and_reserve_blob(mailbox, content: bytes, content_type: str, **kwargs):
+    """JMAP upload primitive: dedup-create a Blob and register an
+    upload reservation under ``mailbox``.
+
+    This is the only entry point that should set a reservation. The
+    reservation is load-bearing only for the JMAP two-step
+    upload-then-attach window (the client holds ``blob_id`` between
+    two HTTP calls); server-side flows that establish the FK in the
+    same transaction must use ``Blob.objects.create_blob`` directly
+    inside ``transaction.atomic`` instead — atomicity is the
+    protection there, not a Redis reservation.
+
+    Used by ``BlobViewSet.upload`` (the actual JMAP endpoint) and by
+    ``BlobFactory(mailbox=...)`` in tests that simulate uploads.
+    """
+    blob = Blob.objects.create_blob(
+        content=content,
+        content_type=content_type,
+        **kwargs,
+    )
+    reserve_upload(blob.id, mailbox.id)
+    return blob
+
+
 def release_upload(blob_id) -> None:
     """Drop the reservation for ``blob_id`` (no-op if none exists).
 
@@ -254,8 +305,6 @@ def has_upload_reservation(blob_id) -> bool:
 
 def _all_blob_ids_iterator() -> Iterator[str]:
     """Yield every Blob.id as a string. Used by ``--full`` mode."""
-    from core.models import Blob
-
     qs = Blob.objects.values_list("id", flat=True).order_by()
     for blob_id in qs.iterator(chunk_size=1000):
         yield str(blob_id)
@@ -267,10 +316,6 @@ def _gc_one_blob(blob_id_str: str, service) -> str:
     Returns one of ``"deleted"``, ``"skipped_reserved"``,
     ``"skipped_referenced"``, ``"not_found"``, ``"error"``.
     """
-    from core.enums import BlobStorageLocationChoices
-    from core.models import Blob
-    from core.services.tiered_storage import sha256_advisory_lock
-
     # Reservation check is a cheap Redis lookup; skip the lock if held.
     if has_upload_reservation(blob_id_str):
         return "skipped_reserved"
@@ -281,45 +326,91 @@ def _gc_one_blob(blob_id_str: str, service) -> str:
         logger.warning("GC: dropping non-UUID candidate %r", blob_id_str)
         return "error"
 
+    # Cheap pre-lock probes: is_referenced and a row-existence check.
+    # The authoritative answer comes from the under-lock select_for_update
+    # block below; these just avoid taking the advisory lock for blobs
+    # that are obviously still alive or already gone.
     try:
-        blob = Blob.objects.only(
-            "id", "sha256", "encryption_key_id", "storage_location"
-        ).get(id=blob_uuid)
+        sha_pre = bytes(Blob.objects.values_list("sha256", flat=True).get(id=blob_uuid))
     except Blob.DoesNotExist:
         return "not_found"
-
-    # Cheap pre-lock reference check.
     if Blob.objects.is_referenced(blob_uuid):
         return "skipped_referenced"
 
-    sha = bytes(blob.sha256)
-    key_id = blob.encryption_key_id
-    location = blob.storage_location
-
     try:
-        with transaction.atomic(), sha256_advisory_lock(sha):
-            # Re-check inside the lock: a Message / Attachment may have
-            # been created between the cheap check and this point.
+        with transaction.atomic(), sha256_advisory_lock(sha_pre):
+            # Take FOR UPDATE on the Blob row. Postgres takes a
+            # FOR KEY SHARE lock on the parent row whenever an FK
+            # INSERT references it (Attachment, Message,
+            # MessageTemplate); FOR UPDATE conflicts with FOR KEY
+            # SHARE, so this blocks any concurrent reference
+            # creation for the duration of the transaction. Without
+            # this, the is_referenced + delete sequence is a
+            # TOCTOU window: a concurrent Attachment / Message /
+            # Template insert can commit between the check and the
+            # delete, and the delete then CASCADEs / SET_NULLs the
+            # just-created reference. select_for_update + the
+            # second is_referenced check below close that window.
+            try:
+                blob = (
+                    Blob.objects.select_for_update()
+                    .only("id", "sha256", "encryption_key_id", "storage_location")
+                    .get(id=blob_uuid)
+                )
+            except Blob.DoesNotExist:
+                return "not_found"
+
+            # Re-check inside the lock: another GC tick or concurrent
+            # path may have already collected this candidate.
             if has_upload_reservation(blob_id_str):
                 return "skipped_reserved"
             if Blob.objects.is_referenced(blob_uuid):
                 return "skipped_referenced"
-            # Refresh in case storage_location flipped (offload could be
-            # in flight if our candidate sat in Redis a while).
-            blob.refresh_from_db()
+
+            sha = bytes(blob.sha256)
+            key_id = blob.encryption_key_id
             location = blob.storage_location
+
             blob.delete()
-            if location == BlobStorageLocationChoices.OBJECT_STORAGE and service.enabled:
-                # Best-effort S3 cleanup. ``delete_if_orphaned`` re-checks
-                # the row count; for an OBJECT_STORAGE blob that we just
-                # deleted, it'll see zero refs and remove the bucket
-                # object — unless another row is still pointing at the
-                # same path (different Blob row, but same sha + key_id).
-                service.delete_if_orphaned(sha, key_id)
+
+            if (
+                location == BlobStorageLocationChoices.OBJECT_STORAGE
+                and service.enabled
+            ):
+                # Defer the S3 cleanup to commit. Doing it inline
+                # would orphan the bucket object on a commit-time
+                # failure (deadlock retry, network blip, etc.):
+                # the row would roll back to alive while the S3
+                # bytes are gone — readers would then 404 on
+                # legitimate access. ``delete_if_orphaned`` re-checks
+                # the cohort count itself so a sibling row inserted
+                # between commit and on_commit firing keeps the
+                # bytes safe.
+                transaction.on_commit(
+                    lambda s=sha, k=key_id: _safe_delete_if_orphaned(service, s, k)
+                )
         return "deleted"
     except Exception:
         logger.exception("GC failed for blob %s", blob_id_str)
         return "error"
+
+
+def _safe_delete_if_orphaned(service, sha: bytes, key_id: int) -> None:
+    """Best-effort wrapper for on_commit callbacks: the row delete has
+    already committed at this point, so any S3 error must not propagate
+    (it would surface as an unhandled task error far from the original
+    transaction). Strays are detectable offline via
+    ``verify_tiered_storage --mode=storage-to-db``.
+    """
+    try:
+        service.delete_if_orphaned(sha, key_id)
+    except Exception:  # pylint: disable=broad-except
+        logger.exception(
+            "Post-commit S3 cleanup failed for sha=%s key_id=%d; "
+            "verify_tiered_storage --mode=storage-to-db will list strays",
+            sha.hex()[:8],
+            key_id,
+        )
 
 
 @celery_app.task
@@ -345,8 +436,6 @@ def gc_orphan_blobs_task(mode: str = "fast") -> Dict[str, Any]:
     - Do S3 cleanup inline (no per-blob celery fan-out) when the
       deleted row was at OBJECT_STORAGE.
     """
-    from core.services.tiered_storage import TieredStorageService
-
     if mode == "fast":
         candidate_iter: Iterable[str] = _drain_candidates(_GC_FAST_BATCH_SIZE)
     elif mode == "full":

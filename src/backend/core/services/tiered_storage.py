@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import storages
-from django.db import connection
+from django.db import connection, transaction
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -79,14 +79,11 @@ def normalize_key_entry(entry):
     algo = entry["algo"]
     if algo not in _KNOWN_ALGOS:
         raise ValueError(
-            f"unknown encryption algo {algo!r}; "
-            f"supported: {sorted(_KNOWN_ALGOS)}"
+            f"unknown encryption algo {algo!r}; supported: {sorted(_KNOWN_ALGOS)}"
         )
     active = entry.get("active", False)
     if not isinstance(active, bool):
-        raise ValueError(
-            f"'active' must be a bool, got {type(active).__name__}"
-        )
+        raise ValueError(f"'active' must be a bool, got {type(active).__name__}")
     return {"algo": algo, "secret": entry["secret"], "active": active}
 
 
@@ -386,10 +383,20 @@ class TieredStorageService:
             encryption_key_id=old_key_id,
         ).update(encryption_key_id=new_id)
 
-        try:
-            self.storage.delete(old_path)
-        except Exception as e:  # pylint: disable=broad-except
-            logger.warning("Failed to drop rotated-from path %s: %s", old_path, e)
+        # Defer the old-path delete until the surrounding transaction
+        # commits. If we ran it inline and the transaction rolled back
+        # (deadlock retry at commit, network blip, caller raises), the
+        # cohort would revert to old_key_id but the old path bytes
+        # would already be gone — readers would compute the old path
+        # and 404. Strays from a failed on_commit are detectable
+        # offline via ``verify_tiered_storage --mode=storage-to-db``.
+        def _drop_old_path(path=old_path):
+            try:
+                self.storage.delete(path)
+            except Exception as e:  # pylint: disable=broad-except
+                logger.warning("Failed to drop rotated-from path %s: %s", path, e)
+
+        transaction.on_commit(_drop_old_path)
 
         return True
 
@@ -441,16 +448,21 @@ class TieredStorageService:
             ]
         )
 
-        # Best-effort cleanup of the S3 object once the cohort empties.
-        # delete_if_orphaned counts referencing rows under the same lock
-        # we already hold, so this is a no-op until the last cohort
-        # member is restored.
-        try:
-            self.delete_if_orphaned(sha256, old_key_id)
-        except Exception as e:  # pylint: disable=broad-except
-            logger.warning(
-                "Failed to clean restored-from path %s: %s", old_path, e
-            )
+        # Defer S3 cleanup of the old cohort path until commit. Running
+        # it inline would delete the bucket object before the row's
+        # POSTGRES flip is durable; a commit-time failure (deadlock
+        # retry, network blip) would then leave the row pointing at
+        # OBJECT_STORAGE while the bytes are gone — irrecoverable.
+        # ``delete_if_orphaned`` re-checks the cohort count itself, so
+        # if a different row in the cohort is still OBJECT_STORAGE
+        # at on_commit time the bytes stay put.
+        def _cleanup(s=sha256, k=old_key_id, p=old_path):
+            try:
+                self.delete_if_orphaned(s, k)
+            except Exception as e:  # pylint: disable=broad-except
+                logger.warning("Failed to clean restored-from path %s: %s", p, e)
+
+        transaction.on_commit(_cleanup)
 
         return True
 

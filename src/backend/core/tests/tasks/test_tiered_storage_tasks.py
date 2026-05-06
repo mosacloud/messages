@@ -41,11 +41,13 @@ class TestOffloadBlobsTaskDisabled:
 
     @override_settings(MESSAGES_BLOBS_OFFLOAD_ENABLED=False)
     def test_task_disabled_by_setting(self):
+        """Setting ``MESSAGES_BLOBS_OFFLOAD_ENABLED=False`` short-circuits the task."""
         result = offload_blobs_task()
         assert result["status"] == "disabled"
         assert result["processed"] == 0
 
     def test_task_disabled_when_no_storage(self):
+        """No configured object storage = the task short-circuits as disabled."""
         with patch("core.services.tiered_storage.settings") as mock_settings:
             mock_settings.STORAGES = {}
             mock_settings.MESSAGES_BLOBS_ENCRYPT_KEYS = {}
@@ -71,12 +73,12 @@ class TestOffloadBlobsTaskE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
 
-        old_blob = mailbox.create_blob(
-            content=b"old content " * 5, content_type="text/plain"
+        old_blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"old content " * 5, content_type="text/plain"
         )
         self._age(old_blob)
-        new_blob = mailbox.create_blob(
-            content=b"new content " * 5, content_type="text/plain"
+        new_blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"new content " * 5, content_type="text/plain"
         )
 
         old_key = TieredStorageService.compute_storage_key_for_blob(old_blob)
@@ -87,7 +89,9 @@ class TestOffloadBlobsTaskE2E:
 
             old_blob.refresh_from_db()
             new_blob.refresh_from_db()
-            assert old_blob.storage_location == BlobStorageLocationChoices.OBJECT_STORAGE
+            assert (
+                old_blob.storage_location == BlobStorageLocationChoices.OBJECT_STORAGE
+            )
             assert new_blob.storage_location == BlobStorageLocationChoices.POSTGRES
         finally:
             if service.storage.exists(old_key):
@@ -100,12 +104,12 @@ class TestOffloadBlobsTaskE2E:
 
         # With MIN_SIZE > 0 the small blob is ineligible regardless of age.
         with override_settings(MESSAGES_BLOBS_OFFLOAD_MIN_SIZE=1000):
-            small_blob = mailbox.create_blob(
-                content=b"small", content_type="text/plain"
+            small_blob = factories.BlobFactory(
+                mailbox=mailbox, content=b"small", content_type="text/plain"
             )
             self._age(small_blob)
-            large_blob = mailbox.create_blob(
-                content=b"x" * 2000, content_type="text/plain"
+            large_blob = factories.BlobFactory(
+                mailbox=mailbox, content=b"x" * 2000, content_type="text/plain"
             )
             self._age(large_blob)
 
@@ -118,8 +122,7 @@ class TestOffloadBlobsTaskE2E:
                 small_blob.refresh_from_db()
                 large_blob.refresh_from_db()
                 assert (
-                    small_blob.storage_location
-                    == BlobStorageLocationChoices.POSTGRES
+                    small_blob.storage_location == BlobStorageLocationChoices.POSTGRES
                 )
                 assert (
                     large_blob.storage_location
@@ -135,7 +138,9 @@ class TestOffloadBlobsTaskE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         content = b"immediate offload test content" * 20
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
@@ -155,7 +160,9 @@ class TestOffloadBlobsTaskE2E:
         """A blob already at OBJECT_STORAGE is excluded from the queryset."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"test", content_type="text/plain"
+        )
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
@@ -181,13 +188,13 @@ class TestOffloadBlobsTaskE2E:
         blob is processed and we don't actually have to wait 55 min."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"never offloaded", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"never offloaded", content_type="text/plain"
+        )
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
-            with patch(
-                "core.services.tiered_storage_tasks._MAX_RUN_SECONDS", 0
-            ):
+            with patch("core.services.tiered_storage_tasks._MAX_RUN_SECONDS", 0):
                 result = offload_blobs_task()
             assert result["stop_reason"] == "deadline"
             assert result["processed"] == 0
@@ -203,8 +210,12 @@ class TestOffloadBlobsTaskE2E:
         mailbox = factories.MailboxFactory()
 
         # Two eligible blobs; the first one's upload will fail, the second succeeds.
-        bad = mailbox.create_blob(content=b"will fail" * 20, content_type="text/plain")
-        good = mailbox.create_blob(content=b"will work" * 20, content_type="text/plain")
+        bad = factories.BlobFactory(
+            mailbox=mailbox, content=b"will fail" * 20, content_type="text/plain"
+        )
+        good = factories.BlobFactory(
+            mailbox=mailbox, content=b"will work" * 20, content_type="text/plain"
+        )
         self._age(bad)
         self._age(good)
 
@@ -246,6 +257,7 @@ class TestOffloadOneBlob:
     """Direct unit tests for the per-blob helper."""
 
     def test_disabled_when_no_storage(self):
+        """A service with ``enabled=False`` returns immediately without DB access."""
         service = TieredStorageService()
         # ``enabled`` is a per-instance attribute set in __init__ from
         # the resolved ``STORAGES["message-blobs"]`` options.
@@ -254,14 +266,18 @@ class TestOffloadOneBlob:
         assert result["status"] == "disabled"
 
     def test_not_found(self):
+        """A non-existent blob_id returns ``not_found`` rather than raising."""
         service = TieredStorageService()
         result = offload_one_blob("00000000-0000-0000-0000-000000000000", service)
         assert result["status"] == "not_found"
 
     def test_already_offloaded(self):
+        """A blob already at ``OBJECT_STORAGE`` is reported as ``already_offloaded``."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"test", content_type="text/plain"
+        )
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
@@ -277,10 +293,13 @@ class TestOffloadOneBlob:
                 service.storage.delete(storage_key)
 
     def test_successful_offload(self):
+        """Happy path: a POSTGRES blob is moved to OBJECT_STORAGE and round-trips."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         original_content = b"test content for offload" * 20
-        blob = mailbox.create_blob(content=original_content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=original_content, content_type="text/plain"
+        )
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
@@ -297,9 +316,12 @@ class TestOffloadOneBlob:
                 service.storage.delete(storage_key)
 
     def test_no_content(self):
+        """A POSTGRES blob with NULL ``raw_content`` is reported as ``no_content``."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"test", content_type="text/plain"
+        )
         Blob.objects.filter(id=blob.id).update(raw_content=None)
 
         result = offload_one_blob(str(blob.id), service)
@@ -309,9 +331,13 @@ class TestOffloadOneBlob:
         """Per-blob failure is captured and returned, not raised."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"test", content_type="text/plain"
+        )
 
-        with patch.object(service.storage, "save", side_effect=Exception("Upload failed")):
+        with patch.object(
+            service.storage, "save", side_effect=Exception("Upload failed")
+        ):
             result = offload_one_blob(str(blob.id), service)
 
         assert result["status"] == "error"
@@ -333,10 +359,13 @@ class TestOffloadOneBlob:
         MESSAGES_BLOBS_ENCRYPT_KEYS={"1": {**_TEST_ENCRYPTION_KEY, "active": True}},
     )
     def test_offload_with_encryption(self):
+        """Encrypted blobs round-trip through offload (ciphertext stays untouched)."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         original_content = b"encrypted content for offload test" * 20
-        blob = mailbox.create_blob(content=original_content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=original_content, content_type="text/plain"
+        )
         assert blob.encryption_key_id > 0
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
@@ -356,7 +385,9 @@ class TestOffloadOneBlob:
         """Calling twice on the same blob: first succeeds, second returns already_offloaded."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test content", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"test content", content_type="text/plain"
+        )
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:

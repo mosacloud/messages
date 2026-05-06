@@ -137,3 +137,56 @@ def check_blob_encryption_config(app_configs, **kwargs):
         )
 
     return errors
+
+
+@register()
+def check_blob_lifecycle_redis(app_configs, **kwargs):
+    """Refuse to boot when blob lifecycle features need Redis but the
+    default cache isn't django_redis.
+
+    Blob GC and upload reservations rely on Redis SADD/SPOP atomicity
+    (and on a TTL for upload reservations) that the other Django cache
+    backends (LocMem, FileBased, Dummy) can't deliver across workers.
+    Without it:
+
+    - the upload-then-attach window is unprotected (a freshly uploaded
+      Blob with no DB reference can be reaped by ``--full`` GC sweep
+      before the user clicks "send");
+    - cascading deletes don't enqueue blob ids, so orphans accumulate
+      between manual ``--full`` runs.
+
+    With offload enabled the consequences are operational data loss,
+    so we hard-error. Without offload the failure mode is silent
+    accumulation, which we surface as a warning so dev / test
+    environments without Redis still boot.
+    """
+    backend = settings.CACHES.get("default", {}).get("BACKEND", "")
+    if "django_redis" in backend:
+        return []
+
+    if settings.MESSAGES_BLOBS_OFFLOAD_ENABLED:
+        return [
+            Error(
+                "MESSAGES_BLOBS_OFFLOAD_ENABLED=True requires django_redis "
+                f"as the default cache backend (got {backend!r}). Without it, "
+                "blob upload reservations are no-ops and the GC candidate set "
+                "drops every id, which loses freshly-uploaded blobs and "
+                "accumulates orphans in object storage.",
+                hint="Configure CACHES['default'] to use "
+                "'django_redis.cache.RedisCache'.",
+                id="core.E005",
+            )
+        ]
+
+    return [
+        CheckWarning(
+            f"CACHES['default'] is not django_redis ({backend!r}); blob GC "
+            "candidate set and upload reservations are no-ops. Orphan blobs "
+            "will accumulate; the upload-then-attach window is unprotected. "
+            "Acceptable in dev/test, never in production.",
+            hint="Configure CACHES['default'] to use "
+            "'django_redis.cache.RedisCache', or rely on periodic "
+            "`gc_orphan_blobs_task(mode='full')` runs to catch orphans.",
+            id="core.W004",
+        )
+    ]

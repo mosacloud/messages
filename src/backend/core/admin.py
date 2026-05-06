@@ -32,6 +32,28 @@ from .enums import MessageDeliveryStatusChoices
 from .forms import IMAPImportForm, MessageImportForm
 
 
+# Lock the entire Django admin to superusers.
+#
+# ``AdminSite.has_permission`` is the single gate every admin URL
+# passes through — model list / change / delete views, custom
+# ``admin_view``-wrapped endpoints (export, import, retry, DNS
+# provision, api-key regenerate), and the login redirect itself.
+# By default it returns ``request.user.is_active and is_staff``,
+# which lets any staff user touch raw mail content (mailbox
+# exports bundle every RFC822 blob; EML import injects mail into
+# arbitrary inboxes; the IMAP import form briefly handles a
+# third-party password). Tightening to ``is_superuser`` matches
+# the sensitivity of what's reachable through the admin and makes
+# the per-ModelAdmin ``has_*_permission`` overrides redundant.
+def _admin_superuser_only(self, request):  # pylint: disable=unused-argument
+    # ``self`` is required by Django's AdminSite.has_permission signature.
+    user = getattr(request, "user", None)
+    return bool(user and user.is_active and user.is_superuser)
+
+
+admin.AdminSite.has_permission = _admin_superuser_only
+
+
 class PrettyJSONWidget(forms.Textarea):
     """A textarea widget that pretty-prints JSON content."""
 
@@ -1062,7 +1084,13 @@ class LabelAdmin(admin.ModelAdmin):
 
 @admin.register(models.Blob)
 class BlobAdmin(admin.ModelAdmin):
-    """Admin class for the Blob model"""
+    """Admin class for the Blob model.
+
+    Restricted to superusers: a blob's decompressed content is the raw
+    body of someone's mail (or the raw RFC822 of an inbound message).
+    Default ``is_staff`` would let any operator with admin access
+    download any user's mail; superuser-only matches the sensitivity.
+    """
 
     list_display = (
         "id",

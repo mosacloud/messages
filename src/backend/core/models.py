@@ -57,7 +57,7 @@ from core.enums import (
 )
 from core.mda.rfc5322 import EmailParseError, parse_email_message
 from core.mda.signing import generate_dkim_key as _generate_dkim_key
-from core.services.tiered_storage import TieredStorageService
+from core.services.tiered_storage import TieredStorageService, sha256_advisory_lock
 
 logger = getLogger(__name__)
 
@@ -757,36 +757,6 @@ class Mailbox(BaseModel):
             accesses__mailbox=self,
             accesses__role=ThreadAccessRoleChoices.EDITOR,
         )
-
-    def create_blob(
-        self,
-        content: bytes,
-        content_type: str,
-        **kwargs,
-    ) -> "Blob":
-        """Create (or dedup against) a Blob and reserve it for this mailbox.
-
-        Blobs are no longer mailbox-owned at the schema level — their
-        lifetime is determined by Message / Attachment / MessageTemplate
-        references plus a short-lived upload reservation. This helper
-        wraps :meth:`BlobManager.create_blob` (which dedups by sha256)
-        and registers an upload reservation so the new blob can't be
-        GC'd in the window between upload and attach.
-        """
-        # Lazy import to avoid a top-of-module cycle: blob_gc imports
-        # from core.models for the Blob queryset, but this method is
-        # called *from* a model method, so by the time we run, the
-        # module has finished loading.
-        # pylint: disable-next=import-outside-toplevel
-        from core.services.blob_gc import reserve_upload
-
-        blob = Blob.objects.create_blob(
-            content=content,
-            content_type=content_type,
-            **kwargs,
-        )
-        reserve_upload(blob.id, self.id)
-        return blob
 
     def get_abilities(self, user):
         """
@@ -1904,10 +1874,20 @@ class Message(BaseModel):
         related_name="messages",
     )
 
-    # Stores the raw MIME message.
+    # Stores the raw MIME message. PROTECT, not SET_NULL: the GC
+    # sweep is the only authorised deleter and it always clears
+    # references first under select_for_update + the per-sha
+    # advisory lock. SET_NULL would let any future regression in
+    # the delete path silently turn a customer's message into a
+    # bodyless ghost; PROTECT raises instead. The legitimate
+    # "release this blob" flows (oversized MIME rollback in
+    # outbound.py, send-finalize draft cleanup) explicitly null
+    # the FK before scheduling GC, so PROTECT doesn't change any
+    # existing behaviour — it just hardens the failure mode of
+    # the unintended one.
     blob = models.ForeignKey(
         "Blob",
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name="messages",
@@ -1915,7 +1895,7 @@ class Message(BaseModel):
 
     draft_blob = models.OneToOneField(
         "Blob",
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name="draft",
@@ -2103,9 +2083,6 @@ class BlobManager(models.Manager):
         Raises:
             ValidationError: empty content or invalid MESSAGES_BLOBS_COMPRESS.
         """
-        # pylint: disable-next=import-outside-toplevel
-        from core.services.tiered_storage import sha256_advisory_lock
-
         if not content:
             raise ValidationError({"content": "Content cannot be empty"})
 
@@ -2115,6 +2092,14 @@ class BlobManager(models.Manager):
         # no compress, no encrypt. This handles the common dedup case
         # (same email delivered to multiple mailboxes; same attachment
         # uploaded twice) at minimal cost.
+        #
+        # Note: this lock-free SELECT is *intentional*. Two concurrent
+        # callers with the same content can both miss the hot path and
+        # fall through to the slow path below; the slow path
+        # re-checks under the per-sha advisory lock, so at most one of
+        # them inserts a row and the other returns the existing one.
+        # Correctness is bounded by the slow-path re-check; the hot
+        # path just avoids the lock for the common case.
         existing = self.filter(sha256=sha256_hash).first()
         if existing is not None:
             return existing
@@ -2368,15 +2353,32 @@ class Blob(BaseModel):
         if self.compression == CompressionTypeChoices.NONE:
             plaintext = compressed
         elif self.compression == CompressionTypeChoices.ZSTD:
-            plaintext = pyzstd.decompress(compressed)
+            # Bounded streaming decompression: cap output at the
+            # recorded ``size``. A correctly-stored blob always
+            # decompresses to exactly that many bytes, so anything
+            # past it is either corruption or a compression bomb (a
+            # tiny zstd frame engineered to expand to gigabytes —
+            # ``pyzstd.decompress(...)`` would allocate the full
+            # output buffer and OOM the worker before we got a
+            # chance to check). With ``ZstdDecompressor`` the
+            # decoder caps its allocation at ``max_length``; if the
+            # frame still has data buffered after we've read that
+            # cap (``not eof``), the input is over-budget and we
+            # refuse it.
+            dctx = pyzstd.ZstdDecompressor()
+            plaintext = dctx.decompress(compressed, max_length=self.size)
+            if not dctx.eof:
+                raise ValueError(
+                    f"Blob {self.id} decompresses past recorded size "
+                    f"of {self.size} bytes — possible compression bomb"
+                )
         else:
             raise ValueError(f"Unsupported compression type: {self.compression}")
 
         if settings.MESSAGES_BLOBS_VERIFY_HASH:
             if hashlib.sha256(plaintext).digest() != sha256_bytes:
                 raise ValueError(
-                    f"Blob {self.id} content hash mismatch "
-                    "(corruption or substitution)"
+                    f"Blob {self.id} content hash mismatch (corruption or substitution)"
                 )
 
         return plaintext
@@ -2393,7 +2395,16 @@ class Attachment(BaseModel):
 
     blob = models.ForeignKey(
         "Blob",
-        on_delete=models.CASCADE,
+        # PROTECT, not CASCADE: the GC sweep is the only authorised
+        # way to delete a Blob, and it always clears references first
+        # under select_for_update + per-sha advisory lock. PROTECT
+        # turns any code path that tries to delete a Blob with live
+        # attachments into an immediate, loud failure rather than a
+        # silent CASCADE that wipes out the customer's attachment
+        # row. Combined with select_for_update in ``_gc_one_blob``
+        # this gives two independent layers of safety against the
+        # is_referenced/delete TOCTOU window.
+        on_delete=models.PROTECT,
         related_name="attachments",
         help_text="Reference to the blob containing the attachment data",
     )
@@ -2545,7 +2556,14 @@ class MessageTemplate(BaseModel):
 
     blob = models.ForeignKey(
         "Blob",
-        on_delete=models.SET_NULL,
+        # PROTECT, not SET_NULL: a template's body silently turning
+        # into NULL is indistinguishable from an operator who never
+        # set one, and the GC sweep should never be able to wipe a
+        # template's body — references are always cleared first
+        # (e.g. via ``schedule_for_gc(old_blob_id)`` after the FK is
+        # repointed in the serializer's ``update``). PROTECT makes
+        # any future regression a loud error rather than data loss.
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name="message_templates",

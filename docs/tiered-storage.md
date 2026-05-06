@@ -134,6 +134,15 @@ boot if more than one entry is active, or any algo is unknown.
 
 **Lose the key dict, lose the data.** Back it up alongside your DB.
 
+**Rotate before you hit AES-GCM's safety limit.** With a random
+96-bit nonce per encryption, the standard guidance is to retire a
+key after 2^32 (≈ 4 billion) encryptions to keep the
+nonce-collision probability negligible. Plan a rotation at-or-below
+that count even if no key compromise is suspected; the
+[`--re-store` runbook](#key-rotation-runbook) below walks through
+the steps. (One blob = one encryption, regardless of how many DB
+rows reference it via dedup.)
+
 ## Reconciling state: `--re-store`
 
 `verify_tiered_storage --re-store` makes every blob's state match the
@@ -286,6 +295,19 @@ intended actions without applying them.
 | Old key_id prefix non-empty after rotation | `aws s3 ls blobs/<old>/` | Re-run `--re-store`; it's idempotent. |
 | `--re-store` reports errors on a subset of blobs | command exit summary lists `Errors: N` | The loop already skipped them and continued; failed blobs stay in their pre-run state. Re-run after fixing the underlying cause (key missing, S3 5xx, etc.); the command is idempotent. |
 | Suspect orphan Blob rows accumulating (e.g. after a Redis outage) | `SELECT count(*) FROM messages_blob` significantly higher than the sum of ``Message.blob``, ``Message.draft_blob``, ``Attachment.blob``, ``MessageTemplate.blob`` distinct ids | Run the full GC: ``celery call core.services.blob_gc.gc_orphan_blobs_task --kwargs '{"mode": "full"}'``. It walks every Blob row and deletes anything without a remaining reference. Idempotent. |
+
+## Schema migration is one-way
+
+Migration `0026` drops `Blob.mailbox` / `Blob.maildomain` and the
+`blob_has_owner` constraint, and flips `Attachment.blob` and
+`MessageTemplate.blob` to `on_delete=PROTECT`. The FK drop is
+intentionally **not reversible**: once those columns are gone,
+there is no way to repopulate them from the reference graph (a
+blob shared across mailboxes via dedup has no single "owner" to
+write back). The `on_delete=PROTECT` flip is reversible at the SQL
+level (just an FK metadata flip), but rolling back means
+re-introducing the data-loss races the change fixed. Treat the
+migration as one-way for production.
 
 ## Operational notes
 

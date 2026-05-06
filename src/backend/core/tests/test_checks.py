@@ -5,11 +5,18 @@ without DB or storage access, so the tests call the check functions
 directly with ``override_settings``.
 """
 
-# pylint: disable=protected-access
+# pylint: disable=protected-access,invalid-name
+# Function names embed the error/warning code (E001, W003, …) for
+# at-a-glance correlation with the check IDs they exercise; the
+# uppercase letters trip pylint's snake_case rule, but renaming
+# would lose that mapping.
+
+import traceback
+
+from django.core.exceptions import ImproperlyConfigured
+from django.test import override_settings
 
 import pytest
-
-from django.test import override_settings
 
 from core.checks import (
     _ZSTD_MAX_LEVEL,
@@ -17,9 +24,11 @@ from core.checks import (
     check_blob_compression_config,
     check_blob_encryption_config,
 )
+from core.utils import JSONValue
 
 
 def _ids(issues):
+    """Return the set of ``id`` strings on a list of system-check issues."""
     return {i.id for i in issues}
 
 
@@ -31,11 +40,12 @@ def _ids(issues):
 @override_settings(MESSAGES_BLOBS_ENCRYPT_KEYS={})
 def test_check_encryption_empty_dict_passes():
     """No keys configured = no errors (encryption fully off)."""
-    assert check_blob_encryption_config(None) == []
+    assert not check_blob_encryption_config(None)
 
 
 @override_settings(MESSAGES_BLOBS_ENCRYPT_KEYS=["not", "a", "dict"])
 def test_check_encryption_not_a_dict_yields_E001():
+    """A non-dict value must be rejected as core.E001."""
     issues = check_blob_encryption_config(None)
     assert _ids(issues) == {"core.E001"}
 
@@ -56,6 +66,7 @@ def test_check_encryption_bad_entry_shape_yields_E002():
     },
 )
 def test_check_encryption_unknown_algo_yields_E002():
+    """Unknown ``algo`` identifiers are rejected as core.E002."""
     issues = check_blob_encryption_config(None)
     assert "core.E002" in _ids(issues)
 
@@ -67,6 +78,7 @@ def test_check_encryption_unknown_algo_yields_E002():
     },
 )
 def test_check_encryption_two_active_yields_E003():
+    """Exactly one (or zero) entry may be active; >1 is core.E003."""
     issues = check_blob_encryption_config(None)
     assert "core.E003" in _ids(issues)
 
@@ -77,6 +89,7 @@ def test_check_encryption_two_active_yields_E003():
     },
 )
 def test_check_encryption_short_secret_yields_W002():
+    """Secrets shorter than the floor are flagged as core.W002."""
     issues = check_blob_encryption_config(None)
     assert "core.W002" in _ids(issues)
 
@@ -88,7 +101,7 @@ def test_check_encryption_short_secret_yields_W002():
 )
 def test_check_encryption_green_path_no_issues():
     """One active entry, valid algo, secret >= 32 chars → silent."""
-    assert check_blob_encryption_config(None) == []
+    assert not check_blob_encryption_config(None)
 
 
 @override_settings(
@@ -100,7 +113,7 @@ def test_check_encryption_green_path_no_issues():
 def test_check_encryption_passive_entry_is_fine():
     """Multi-key dict with exactly one active is allowed (rotation
     setup)."""
-    assert check_blob_encryption_config(None) == []
+    assert not check_blob_encryption_config(None)
 
 
 @override_settings(
@@ -122,46 +135,53 @@ def test_check_encryption_non_bool_active_yields_E002():
 
 @override_settings(MESSAGES_BLOBS_COMPRESS="zstd:7")
 def test_check_compression_default_passes():
-    assert check_blob_compression_config(None) == []
+    """The default ``zstd:7`` is silent."""
+    assert not check_blob_compression_config(None)
 
 
 @override_settings(MESSAGES_BLOBS_COMPRESS="none")
 def test_check_compression_none_passes():
-    assert check_blob_compression_config(None) == []
+    """Compression ``none`` is silent."""
+    assert not check_blob_compression_config(None)
 
 
 @override_settings(MESSAGES_BLOBS_COMPRESS="zstd")
 def test_check_compression_zstd_no_level_passes():
     """``zstd`` without a level — pyzstd uses default; check is silent."""
-    assert check_blob_compression_config(None) == []
+    assert not check_blob_compression_config(None)
 
 
 @override_settings(MESSAGES_BLOBS_COMPRESS="lz4:3")
 def test_check_compression_unknown_algo_yields_E004():
+    """Unknown algorithms are rejected as core.E004."""
     issues = check_blob_compression_config(None)
     assert "core.E004" in _ids(issues)
 
 
 @override_settings(MESSAGES_BLOBS_COMPRESS=f"zstd:{_ZSTD_MAX_LEVEL + 1}")
 def test_check_compression_level_above_max_yields_W003():
+    """A level above the supported zstd ladder triggers core.W003."""
     issues = check_blob_compression_config(None)
     assert "core.W003" in _ids(issues)
 
 
 @override_settings(MESSAGES_BLOBS_COMPRESS=f"zstd:{_ZSTD_MIN_LEVEL - 1}")
 def test_check_compression_level_below_min_yields_W003():
+    """A level below the supported zstd ladder triggers core.W003."""
     issues = check_blob_compression_config(None)
     assert "core.W003" in _ids(issues)
 
 
 @override_settings(MESSAGES_BLOBS_COMPRESS=f"zstd:{_ZSTD_MIN_LEVEL}")
 def test_check_compression_level_at_lower_boundary_passes():
-    assert check_blob_compression_config(None) == []
+    """The lower boundary is silent."""
+    assert not check_blob_compression_config(None)
 
 
 @override_settings(MESSAGES_BLOBS_COMPRESS=f"zstd:{_ZSTD_MAX_LEVEL}")
 def test_check_compression_level_at_upper_boundary_passes():
-    assert check_blob_compression_config(None) == []
+    """The upper boundary is silent."""
+    assert not check_blob_compression_config(None)
 
 
 def test_check_compression_legacy_env_yields_W001(monkeypatch):
@@ -184,12 +204,6 @@ def test_jsonvalue_malformed_does_not_leak_secret():
     failure mustn't surface the secret in tracebacks, Sentry breadcrumbs,
     or pod logs.
     """
-    import traceback
-
-    from django.core.exceptions import ImproperlyConfigured
-
-    from core.utils import JSONValue
-
     secret_marker = "TOPSECRET_DO_NOT_LEAK_42"
     malformed = '{"1": "' + secret_marker + " (unterminated string..."
     # Bypass django-configurations' Value() construction which auto-resolves

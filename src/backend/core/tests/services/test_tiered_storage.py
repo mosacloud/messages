@@ -4,7 +4,7 @@ These tests use real object storage when available.
 Unit tests only cover pure functions that don't require storage.
 """
 
-# pylint: disable=protected-access,import-outside-toplevel,no-value-for-parameter,unused-argument
+# pylint: disable=protected-access,import-outside-toplevel,no-value-for-parameter,unused-argument,too-many-lines
 
 import hashlib
 import secrets
@@ -17,7 +17,6 @@ import pytest
 from core import enums, factories
 from core.enums import BlobStorageLocationChoices, CompressionTypeChoices
 from core.services.tiered_storage import TieredStorageService, sha256_advisory_lock
-
 
 # Generate encryption keys at module level for decorators. Each is a
 # fully-formed config entry, so override_settings can drop them straight
@@ -100,7 +99,9 @@ class TestTieredStorageServiceUnit:
         from cryptography.exceptions import InvalidTag
 
         service = TieredStorageService()
-        service.encryption_keys = {"1": {"algo": "aes-gcm", "secret": secrets.token_hex(32)}}
+        service.encryption_keys = {
+            "1": {"algo": "aes-gcm", "secret": secrets.token_hex(32)}
+        }
         service.active_key_id = 1
 
         sha_a = hashlib.sha256(b"content A").digest()
@@ -138,7 +139,9 @@ class TestTieredStorageServiceUnit:
     def test_encrypt_with_missing_active_key(self):
         """Test that encrypt fails if active_key_id not in encryption_keys."""
         service = TieredStorageService()
-        service.encryption_keys = {"1": {"algo": "aes-gcm", "secret": secrets.token_hex(32)}}
+        service.encryption_keys = {
+            "1": {"algo": "aes-gcm", "secret": secrets.token_hex(32)}
+        }
         service.active_key_id = 99  # Not in keys
 
         with pytest.raises(ValueError, match="key_id 99 not found"):
@@ -149,7 +152,9 @@ class TestTieredStorageServiceUnit:
         from cryptography.exceptions import InvalidTag
 
         service = TieredStorageService()
-        service.encryption_keys = {"1": {"algo": "aes-gcm", "secret": secrets.token_hex(32)}}
+        service.encryption_keys = {
+            "1": {"algo": "aes-gcm", "secret": secrets.token_hex(32)}
+        }
         service.active_key_id = 1
 
         with pytest.raises(InvalidTag):
@@ -242,7 +247,8 @@ class TestTieredStorageDB:
     def test_blob_default_storage_location(self):
         """Test that new blobs default to POSTGRES storage location."""
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(
+        blob = factories.BlobFactory(
+            mailbox=mailbox,
             content=b"test content",
             content_type="text/plain",
         )
@@ -258,7 +264,9 @@ class TestTieredStorageDB:
 
         content = b"a" * 1024
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
 
         assert blob.compression == CompressionTypeChoices.ZSTD
         assert blob.size == 1024
@@ -274,7 +282,9 @@ class TestTieredStorageDB:
         """MESSAGES_BLOBS_COMPRESS=none stores plaintext bytes as-is."""
         content = b"a" * 1024
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
 
         assert blob.size == 1024
         assert blob.size_compressed == 1024
@@ -292,7 +302,9 @@ class TestTieredStorageDB:
         pure_compressed_len = len(pyzstd.compress(content, level_or_option=3))
 
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
 
         assert blob.encryption_key_id == 1
         assert blob.size_compressed == pure_compressed_len + 28
@@ -307,7 +319,9 @@ class TestTieredStorageDB:
         """With MESSAGES_BLOBS_COMPRESS=none: raw_content = plaintext_size + 28."""
         content = b"a" * 1024
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
 
         assert blob.encryption_key_id == 1
         assert blob.size_compressed == 1024 + 28
@@ -318,7 +332,9 @@ class TestTieredStorageDB:
         mailbox = factories.MailboxFactory()
         content = b"Hello World" * 100
 
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
 
         assert blob.storage_location == BlobStorageLocationChoices.POSTGRES
         assert blob.get_content() == content
@@ -328,7 +344,9 @@ class TestTieredStorageDB:
         """``MESSAGES_BLOBS_VERIFY_HASH=True`` round-trips a clean blob."""
         content = b"clean content for verify-hash" * 10
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
 
         assert blob.get_content() == content
 
@@ -341,11 +359,11 @@ class TestTieredStorageDB:
         attacker overwriting raw_content with a different blob's payload.
         """
         mailbox = factories.MailboxFactory()
-        good = mailbox.create_blob(
-            content=b"good content" * 20, content_type="text/plain"
+        good = factories.BlobFactory(
+            mailbox=mailbox, content=b"good content" * 20, content_type="text/plain"
         )
-        evil = mailbox.create_blob(
-            content=b"evil content" * 20, content_type="text/plain"
+        evil = factories.BlobFactory(
+            mailbox=mailbox, content=b"evil content" * 20, content_type="text/plain"
         )
         # No encryption (key_id=0): raw_content is plain compressed bytes.
         # Splat evil's bytes onto good's row; sha256 column unchanged.
@@ -358,11 +376,11 @@ class TestTieredStorageDB:
     def test_verify_hash_off_by_default(self):
         """Without the flag, plaintext substitution is undetected (today)."""
         mailbox = factories.MailboxFactory()
-        good = mailbox.create_blob(
-            content=b"good content" * 20, content_type="text/plain"
+        good = factories.BlobFactory(
+            mailbox=mailbox, content=b"good content" * 20, content_type="text/plain"
         )
-        evil = mailbox.create_blob(
-            content=b"evil content" * 20, content_type="text/plain"
+        evil = factories.BlobFactory(
+            mailbox=mailbox, content=b"evil content" * 20, content_type="text/plain"
         )
         good.raw_content = bytes(evil.raw_content)
         good.save(update_fields=["raw_content"])
@@ -374,7 +392,9 @@ class TestTieredStorageDB:
     def test_blob_get_content_raises_when_no_raw_content(self):
         """Test that get_content raises when raw_content is None for POSTGRES location."""
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"test", content_type="text/plain"
+        )
 
         blob.raw_content = None
         blob.save(update_fields=["raw_content"])
@@ -389,8 +409,12 @@ class TestTieredStorageDB:
         mailbox2 = factories.MailboxFactory()
         content = b"identical content for both blobs"
 
-        blob1 = mailbox1.create_blob(content=content, content_type="text/plain")
-        blob2 = mailbox2.create_blob(content=content, content_type="text/plain")
+        blob1 = factories.BlobFactory(
+            mailbox=mailbox1, content=content, content_type="text/plain"
+        )
+        blob2 = factories.BlobFactory(
+            mailbox=mailbox2, content=content, content_type="text/plain"
+        )
 
         assert blob1.sha256 == blob2.sha256
         assert blob1.id == blob2.id
@@ -405,7 +429,9 @@ class TestTieredStorageDB:
         """
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test content", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"test content", content_type="text/plain"
+        )
 
         assert service.get_existing_sibling(bytes(blob.sha256)) is None
 
@@ -432,7 +458,9 @@ class TestTieredStorageE2E:
         mailbox = factories.MailboxFactory()
         content = b"Hello, this is e2e test content for tiered storage!" * 10
 
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
@@ -457,7 +485,9 @@ class TestTieredStorageE2E:
         content = b"Encrypted content for e2e test" * 10
 
         # create_blob() should automatically encrypt when keys are configured
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
         assert blob.encryption_key_id > 0  # Should be encrypted
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
@@ -488,7 +518,9 @@ class TestTieredStorageE2E:
         mailbox = factories.MailboxFactory()
         content = b"Content for full offload workflow test" * 20
 
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
         assert blob.storage_location == enums.BlobStorageLocationChoices.POSTGRES
 
         try:
@@ -524,7 +556,9 @@ class TestTieredStorageE2E:
         original_content = b"Test content for encryption offload roundtrip" * 50
 
         # create_blob() should automatically encrypt when keys are configured
-        blob = mailbox.create_blob(content=original_content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=original_content, content_type="text/plain"
+        )
         assert blob.encryption_key_id > 0  # Should be encrypted
 
         try:
@@ -555,7 +589,9 @@ class TestTieredStorageE2E:
         """
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test content", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"test content", content_type="text/plain"
+        )
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
@@ -576,9 +612,7 @@ class TestTieredStorageE2E:
             # under the per-sha advisory lock). After the row is gone,
             # delete_if_orphaned actually deletes the S3 object.
             blob.delete()
-            assert (
-                service.delete_if_orphaned(sha, key_id) is True
-            )
+            assert service.delete_if_orphaned(sha, key_id) is True
             assert not service.storage.exists(storage_key)
         finally:
             if service.storage.exists(storage_key):
@@ -588,7 +622,9 @@ class TestTieredStorageE2E:
         """upload_blob writes to the (sha, key_id) path."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"test", content_type="text/plain"
+        )
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         assert not service.storage.exists(storage_key)
@@ -609,7 +645,9 @@ class TestTieredStorageE2E:
         """Test that download_blob raises FileNotFoundError for missing blob."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"test", content_type="text/plain"
+        )
 
         # Mark as in object storage but don't actually upload
         blob.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
@@ -622,7 +660,9 @@ class TestTieredStorageE2E:
         """Test that upload_blob raises ValueError when blob has no content."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"test", content_type="text/plain"
+        )
         blob.raw_content = None
         blob.save()
 
@@ -649,7 +689,9 @@ class TestTieredStorageE2E:
             },
         ):
             mailbox1 = factories.MailboxFactory()
-            blob1 = mailbox1.create_blob(content=content, content_type="text/plain")
+            blob1 = factories.BlobFactory(
+                mailbox=mailbox1, content=content, content_type="text/plain"
+            )
             assert blob1.encryption_key_id == 1
 
         # Switch to key 2 active. New ``create_blob`` of the same
@@ -661,8 +703,8 @@ class TestTieredStorageE2E:
             },
         ):
             mailbox2 = factories.MailboxFactory()
-            same_blob = mailbox2.create_blob(
-                content=content, content_type="text/plain"
+            same_blob = factories.BlobFactory(
+                mailbox=mailbox2, content=content, content_type="text/plain"
             )
             assert same_blob.id == blob1.id
             assert same_blob.encryption_key_id == 1  # NOT 2; row keeps original key
@@ -696,7 +738,7 @@ class TestBlobGarbageCollection:
     """
 
     @pytest.fixture(autouse=True)
-    def _redis_cache(self, redis_cache):  # noqa: ARG002 — fixture activation
+    def _redis_cache(self, redis_cache):
         pass
 
     def _drop_all_reservations(self, *blob_ids):
@@ -716,7 +758,9 @@ class TestBlobGarbageCollection:
         )
 
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"orphan", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"orphan", content_type="text/plain"
+        )
         self._drop_all_reservations(blob.id)
         schedule_for_gc(blob.id)
 
@@ -735,8 +779,8 @@ class TestBlobGarbageCollection:
 
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(
-            content=b"orphan in s3", content_type="text/plain"
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"orphan in s3", content_type="text/plain"
         )
         self._drop_all_reservations(blob.id)
 
@@ -768,7 +812,9 @@ class TestBlobGarbageCollection:
         )
 
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"referenced", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"referenced", content_type="text/plain"
+        )
         self._drop_all_reservations(blob.id)
         # Attach to keep the blob alive.
         factories.AttachmentFactory(blob=blob, mailbox=mailbox)
@@ -789,7 +835,9 @@ class TestBlobGarbageCollection:
 
         mailbox = factories.MailboxFactory()
         # ``mailbox.create_blob`` registers a reservation; don't drop it.
-        blob = mailbox.create_blob(content=b"reserved", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"reserved", content_type="text/plain"
+        )
 
         schedule_for_gc(blob.id)
         result = gc_orphan_blobs_task(mode="fast")
@@ -803,8 +851,8 @@ class TestBlobGarbageCollection:
         from core.services.blob_gc import gc_orphan_blobs_task
 
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(
-            content=b"orphan-no-redis-entry", content_type="text/plain"
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"orphan-no-redis-entry", content_type="text/plain"
         )
         self._drop_all_reservations(blob.id)
         # Note: NOT calling schedule_for_gc — simulates a Redis outage
@@ -824,8 +872,8 @@ class TestBlobGarbageCollection:
         thread = factories.ThreadFactory()
         factories.ThreadAccessFactory(mailbox=mailbox, thread=thread)
         contact = factories.ContactFactory(mailbox=mailbox)
-        blob = mailbox.create_blob(
-            content=b"message body" * 10, content_type="message/rfc822"
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"message body" * 10, content_type="message/rfc822"
         )
         self._drop_all_reservations(blob.id)
         message = factories.MessageFactory(thread=thread, sender=contact, blob=blob)
@@ -850,10 +898,16 @@ class TestBlobDedup:
 
         mailbox_a = factories.MailboxFactory()
         mailbox_b = factories.MailboxFactory()
-        eml = b"From: s@example.org\r\nTo: a@local, b@local\r\nSubject: same\r\n\r\nbody"
+        eml = (
+            b"From: s@example.org\r\nTo: a@local, b@local\r\nSubject: same\r\n\r\nbody"
+        )
 
-        blob_for_a = mailbox_a.create_blob(eml, "message/rfc822")
-        blob_for_b = mailbox_b.create_blob(eml, "message/rfc822")
+        blob_for_a = factories.BlobFactory(
+            mailbox=mailbox_a, content=eml, content_type="message/rfc822"
+        )
+        blob_for_b = factories.BlobFactory(
+            mailbox=mailbox_b, content=eml, content_type="message/rfc822"
+        )
 
         # One Blob row, two FKs from two Messages (in two different
         # mailboxes / threads). This is the cross-tenant dedup that the
@@ -871,8 +925,12 @@ class TestBlobDedup:
         mailbox_b = factories.MailboxFactory()
         content = b"identical-bytes-twice" * 20
 
-        first = mailbox_a.create_blob(content=content, content_type="text/plain")
-        second = mailbox_b.create_blob(content=content, content_type="text/plain")
+        first = factories.BlobFactory(
+            mailbox=mailbox_a, content=content, content_type="text/plain"
+        )
+        second = factories.BlobFactory(
+            mailbox=mailbox_b, content=content, content_type="text/plain"
+        )
 
         assert first.id == second.id
         assert bytes(first.raw_content) == bytes(second.raw_content)
@@ -904,8 +962,8 @@ class TestBlobDedup:
         # for A. Release it so it's not the thing keeping B_M alive.
         from core.services.blob_gc import release_upload
 
-        blob = mailbox_a.create_blob(
-            content=original_content, content_type="message/rfc822"
+        blob = factories.BlobFactory(
+            mailbox=mailbox_a, content=original_content, content_type="message/rfc822"
         )
         release_upload(blob.id)
         message = factories.MessageFactory(thread=thread, sender=contact, blob=blob)
@@ -939,7 +997,9 @@ class TestTieredStorageKeyRotation:
         original_content = b"Content for key rotation test" * 20
 
         # Create blob and encrypt with old key
-        blob = mailbox.create_blob(content=original_content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=original_content, content_type="text/plain"
+        )
         compressed = bytes(blob.raw_content)
         sha = bytes(blob.sha256)
 
@@ -951,7 +1011,9 @@ class TestTieredStorageKeyRotation:
         blob.save()
 
         # Verify we can decrypt with old key
-        decrypted = service.decrypt(bytes(blob.raw_content), blob.encryption_key_id, sha)
+        decrypted = service.decrypt(
+            bytes(blob.raw_content), blob.encryption_key_id, sha
+        )
         assert pyzstd.decompress(decrypted) == original_content
 
         # Add new key and set as active
@@ -959,7 +1021,9 @@ class TestTieredStorageKeyRotation:
         service.active_key_id = 2
 
         # Re-encrypt: decrypt with old key, encrypt with new key
-        decrypted = service.decrypt(bytes(blob.raw_content), blob.encryption_key_id, sha)
+        decrypted = service.decrypt(
+            bytes(blob.raw_content), blob.encryption_key_id, sha
+        )
         encrypted_new, new_key_id = service.encrypt(decrypted, sha)
         blob.raw_content = encrypted_new
         blob.encryption_key_id = new_key_id
@@ -968,11 +1032,24 @@ class TestTieredStorageKeyRotation:
         assert blob.encryption_key_id == 2
 
         # Verify content still accessible
-        decrypted = service.decrypt(bytes(blob.raw_content), blob.encryption_key_id, sha)
+        decrypted = service.decrypt(
+            bytes(blob.raw_content), blob.encryption_key_id, sha
+        )
         assert pyzstd.decompress(decrypted) == original_content
 
-    def test_key_rotation_object_storage_blob(self):
-        """rotate_blob moves the storage object from old path to new path."""
+    def test_key_rotation_object_storage_blob(self, django_capture_on_commit_callbacks):
+        """rotate_blob moves the storage object from old path to new path.
+
+        ``rotate_blob`` defers the old-path delete to
+        ``transaction.on_commit`` so a rollback can't strand readers
+        on a deleted S3 object. This test runs under
+        ``@pytest.mark.django_db`` (no transaction=True), so the
+        outer test transaction is rolled back and on_commit hooks
+        normally wouldn't fire — ``django_capture_on_commit_callbacks``
+        executes them at the with-block exit so the assertion still
+        observes the deferred S3 delete.
+        """
+        # pylint: disable-next=import-outside-toplevel
         import pyzstd
 
         service = TieredStorageService()
@@ -982,7 +1059,9 @@ class TestTieredStorageKeyRotation:
         mailbox = factories.MailboxFactory()
         original_content = b"Content for object storage key rotation" * 20
 
-        blob = mailbox.create_blob(content=original_content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=original_content, content_type="text/plain"
+        )
         compressed = bytes(blob.raw_content)
         sha = bytes(blob.sha256)
 
@@ -1005,8 +1084,9 @@ class TestTieredStorageKeyRotation:
             service.encryption_keys = {"1": old_key, "2": new_key}
             service.active_key_id = 2
 
-            with transaction.atomic(), sha256_advisory_lock(bytes(blob.sha256)):
-                assert service.rotate_blob(blob, 2) is True
+            with django_capture_on_commit_callbacks(execute=True):
+                with transaction.atomic(), sha256_advisory_lock(bytes(blob.sha256)):
+                    assert service.rotate_blob(blob, 2) is True
 
             blob.refresh_from_db()
             assert blob.encryption_key_id == 2
@@ -1029,9 +1109,7 @@ class TestDataSafetyEndToEnd:
     state combinations the rest of the suite covers only partially."""
 
     @override_settings(
-        MESSAGES_BLOBS_ENCRYPT_KEYS={
-            "1": {**_TEST_ENCRYPTION_KEY, "active": True}
-        },
+        MESSAGES_BLOBS_ENCRYPT_KEYS={"1": {**_TEST_ENCRYPTION_KEY, "active": True}},
     )
     def test_aad_swap_postgres_end_to_end(self):
         """Splice blob X's raw_content (its encrypted bytes) onto blob Y's
@@ -1041,11 +1119,11 @@ class TestDataSafetyEndToEnd:
         from cryptography.exceptions import InvalidTag
 
         mailbox = factories.MailboxFactory()
-        blob_x = mailbox.create_blob(
-            content=b"content X" * 50, content_type="text/plain"
+        blob_x = factories.BlobFactory(
+            mailbox=mailbox, content=b"content X" * 50, content_type="text/plain"
         )
-        blob_y = mailbox.create_blob(
-            content=b"content Y" * 50, content_type="text/plain"
+        blob_y = factories.BlobFactory(
+            mailbox=mailbox, content=b"content Y" * 50, content_type="text/plain"
         )
         # Sanity: both encrypted, distinct sha.
         assert blob_x.encryption_key_id == 1
@@ -1060,23 +1138,22 @@ class TestDataSafetyEndToEnd:
             blob_y.get_content()
 
     @override_settings(
-        MESSAGES_BLOBS_ENCRYPT_KEYS={
-            "1": {**_TEST_ENCRYPTION_KEY, "active": True}
-        },
+        MESSAGES_BLOBS_ENCRYPT_KEYS={"1": {**_TEST_ENCRYPTION_KEY, "active": True}},
     )
     def test_aad_swap_object_storage_end_to_end(self):
         """Same swap, but at the S3 layer: write blob X's ciphertext to
         blob Y's S3 path; Y.get_content() fails on AAD mismatch."""
-        from cryptography.exceptions import InvalidTag
         from django.core.files.base import ContentFile
+
+        from cryptography.exceptions import InvalidTag
 
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-        blob_x = mailbox.create_blob(
-            content=b"content X" * 50, content_type="text/plain"
+        blob_x = factories.BlobFactory(
+            mailbox=mailbox, content=b"content X" * 50, content_type="text/plain"
         )
-        blob_y = mailbox.create_blob(
-            content=b"content Y" * 50, content_type="text/plain"
+        blob_y = factories.BlobFactory(
+            mailbox=mailbox, content=b"content Y" * 50, content_type="text/plain"
         )
 
         # Get X's ciphertext, then offload Y so it has an S3 path.
@@ -1109,11 +1186,11 @@ class TestDataSafetyEndToEnd:
 
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-        blob_x = mailbox.create_blob(
-            content=b"content X" * 50, content_type="text/plain"
+        blob_x = factories.BlobFactory(
+            mailbox=mailbox, content=b"content X" * 50, content_type="text/plain"
         )
-        blob_y = mailbox.create_blob(
-            content=b"content Y" * 50, content_type="text/plain"
+        blob_y = factories.BlobFactory(
+            mailbox=mailbox, content=b"content Y" * 50, content_type="text/plain"
         )
         # Both unencrypted (no keys configured for these creates).
         assert blob_x.encryption_key_id == 0
@@ -1143,7 +1220,9 @@ class TestDataSafetyEndToEnd:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         content = b"legacy plain S3 content" * 30
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
         assert blob.encryption_key_id == 0  # no encryption configured
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
@@ -1164,9 +1243,8 @@ class TestDataSafetyEndToEnd:
         when ``rotate_blob`` runs. Critical because ``rotate_blob`` does
         a single ``UPDATE ... WHERE (sha, key_id)`` and we must trust
         that nothing in the cohort is left behind on the old key."""
+        # pylint: disable-next=import-outside-toplevel
         import pyzstd
-
-        from core.services.tiered_storage import sha256_advisory_lock
 
         service = TieredStorageService()
         old_key = {"algo": "aes-gcm", "secret": secrets.token_hex(32)}
@@ -1180,7 +1258,9 @@ class TestDataSafetyEndToEnd:
             MESSAGES_BLOBS_ENCRYPT_KEYS={**{"1": {**old_key, "active": True}}},
         ):
             blobs = [
-                mb.create_blob(content=content, content_type="text/plain")
+                factories.BlobFactory(
+                    mailbox=mb, content=content, content_type="text/plain"
+                )
                 for mb in mailboxes
             ]
         assert {b.encryption_key_id for b in blobs} == {1}
@@ -1194,9 +1274,7 @@ class TestDataSafetyEndToEnd:
             b.raw_content = None
             b.save()
 
-        new_path = TieredStorageService.compute_storage_key(
-            bytes(blobs[0].sha256), 2
-        )
+        new_path = TieredStorageService.compute_storage_key(bytes(blobs[0].sha256), 2)
         try:
             # Now active key flips to 2; rotate the cohort.
             with override_settings(
@@ -1206,9 +1284,7 @@ class TestDataSafetyEndToEnd:
                 },
             ):
                 service = TieredStorageService()
-                with transaction.atomic(), sha256_advisory_lock(
-                    bytes(blobs[0].sha256)
-                ):
+                with transaction.atomic(), sha256_advisory_lock(bytes(blobs[0].sha256)):
                     assert service.rotate_blob(blobs[0], 2) is True
 
                 # All three rows must now be at key_id=2.
@@ -1239,7 +1315,9 @@ class TestDataSafetyEndToEnd:
         # Step 1: create a plain blob (no keys configured at this point).
         mailbox = factories.MailboxFactory()
         content = b"legacy plain content offloaded later" * 20
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
         assert blob.encryption_key_id == 0
 
         # Step 2: encryption is enabled (key 1 active).
@@ -1257,7 +1335,9 @@ class TestDataSafetyEndToEnd:
 
                 blob.refresh_from_db()
                 assert blob.encryption_key_id == 0  # NOT encrypted by offload
-                assert blob.storage_location == BlobStorageLocationChoices.OBJECT_STORAGE
+                assert (
+                    blob.storage_location == BlobStorageLocationChoices.OBJECT_STORAGE
+                )
                 # Read still works (decrypt with key_id=0 is passthrough).
                 assert blob.get_content() == content
         finally:
@@ -1275,7 +1355,9 @@ class TestDataSafetyEndToEnd:
 
         # Step 1: plain blob (no encryption) goes to S3.
         mailbox_old = factories.MailboxFactory()
-        sibling = mailbox_old.create_blob(content=content, content_type="text/plain")
+        sibling = factories.BlobFactory(
+            mailbox=mailbox_old, content=content, content_type="text/plain"
+        )
         assert sibling.encryption_key_id == 0
         sibling_path = TieredStorageService.compute_storage_key_for_blob(sibling)
         try:
@@ -1292,8 +1374,8 @@ class TestDataSafetyEndToEnd:
                 },
             ):
                 mailbox_new = factories.MailboxFactory()
-                same_row = mailbox_new.create_blob(
-                    content=content, content_type="text/plain"
+                same_row = factories.BlobFactory(
+                    mailbox=mailbox_new, content=content, content_type="text/plain"
                 )
                 assert same_row.id == sibling.id
                 assert same_row.encryption_key_id == 0

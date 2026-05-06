@@ -108,7 +108,8 @@ class TestVerifyDbToStorageE2E:
 
         # Create 5 blobs in object storage
         for i in range(5):
-            blob = mailbox.create_blob(
+            blob = factories.BlobFactory(
+                mailbox=mailbox,
                 content=f"test content {i}".encode(),
                 content_type="text/plain",
             )
@@ -173,7 +174,15 @@ class TestVerifyStorageToDbE2E:
                 service.storage.delete(storage_key)
 
     def test_orphan_detected(self):
-        """Test storage-to-db when an orphan exists."""
+        """Test storage-to-db when an orphan exists.
+
+        The bucket is shared across the test session (and other test
+        classes that defer their S3 cleanup to ``on_commit`` won't
+        fire those hooks under ``@pytest.mark.django_db``), so we
+        scope the assertion to *our* orphan key rather than the
+        global orphan count.
+        """
+        # pylint: disable-next=import-outside-toplevel
         from django.core.files.base import ContentFile
 
         service = TieredStorageService()
@@ -194,8 +203,7 @@ class TestVerifyStorageToDbE2E:
             )
 
             output = stdout.getvalue()
-            assert "ORPHAN" in output
-            assert "Orphans: 1" in output
+            assert f"ORPHAN: {orphan_key}" in output
         finally:
             if service.storage.exists(orphan_key):
                 service.storage.delete(orphan_key)
@@ -205,7 +213,9 @@ class TestVerifyStorageToDbE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         content = b"Content for hash verification test" * 10
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
@@ -243,7 +253,9 @@ class TestVerifyHashesE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         content = b"Content that will be corrupted" * 10
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
@@ -285,7 +297,9 @@ class TestVerifyHashesE2E:
         content = b"Encrypted content for hash verification" * 10
 
         # create_blob() should automatically encrypt when keys are configured
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
         assert blob.encryption_key_id > 0  # Should be encrypted
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
@@ -349,7 +363,9 @@ class TestReStoreE2E:
         service.active_key_id = 1
 
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"test", content_type="text/plain"
+        )
 
         # Manually encrypt with key 1
         compressed = bytes(blob.raw_content)
@@ -390,7 +406,9 @@ class TestReStoreE2E:
         original_content = b"test content for re-encryption" * 20
 
         # Create blob and encrypt with old key (key_id=2)
-        blob = mailbox.create_blob(content=original_content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=original_content, content_type="text/plain"
+        )
         compressed = bytes(blob.raw_content)
         sha = bytes(blob.sha256)
 
@@ -430,7 +448,9 @@ class TestReStoreE2E:
         assert blob.encryption_key_id == 1
 
         # Verify content is still readable
-        decrypted = service.decrypt(bytes(blob.raw_content), blob.encryption_key_id, sha)
+        decrypted = service.decrypt(
+            bytes(blob.raw_content), blob.encryption_key_id, sha
+        )
         assert pyzstd.decompress(decrypted) == original_content
 
     @pytest.mark.django_db(transaction=True)
@@ -446,7 +466,9 @@ class TestReStoreE2E:
         original_content = b"test content for object storage re-encryption" * 20
 
         # Create blob and encrypt with old key (key_id=2)
-        blob = mailbox.create_blob(content=original_content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=original_content, content_type="text/plain"
+        )
         compressed = bytes(blob.raw_content)
         sha = bytes(blob.sha256)
 
@@ -513,7 +535,9 @@ class TestReStoreE2E:
         service.active_key_id = 1
 
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"test", content_type="text/plain"
+        )
         # key_id=0 means unencrypted, needs re-encryption
         blob.encryption_key_id = 0
         blob.save()
@@ -555,7 +579,8 @@ class TestReStoreE2E:
 
         # Create 3 blobs with key_id=0
         for i in range(3):
-            blob = mailbox.create_blob(
+            blob = factories.BlobFactory(
+                mailbox=mailbox,
                 content=f"test content {i}".encode(),
                 content_type="text/plain",
             )
@@ -593,7 +618,9 @@ class TestReStoreE2E:
         mailbox = factories.MailboxFactory()
         original = b"content to restore back to postgres" * 30
 
-        blob = mailbox.create_blob(content=original, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=original, content_type="text/plain"
+        )
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:
@@ -645,7 +672,9 @@ class TestReStoreE2E:
         service.active_key_id = 1
 
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"test", content_type="text/plain"
+        )
         blob.encryption_key_id = 0
         blob.raw_content = None  # Simulate missing content
         blob.save()
@@ -695,7 +724,9 @@ class TestReStoreE2E:
         with override_settings(MESSAGES_BLOBS_ENCRYPT_KEYS={}):
             mailbox = factories.MailboxFactory()
             content = b"legacy plain content awaiting encryption" * 20
-            blob = mailbox.create_blob(content=content, content_type="text/plain")
+            blob = factories.BlobFactory(
+                mailbox=mailbox, content=content, content_type="text/plain"
+            )
             assert blob.encryption_key_id == 0
             plain_service = TieredStorageService()
             plain_service.upload_blob(blob)
@@ -747,13 +778,13 @@ class TestReStoreE2E:
         import pyzstd
 
         with override_settings(
-            MESSAGES_BLOBS_ENCRYPT_KEYS={
-                "1": {**_TEST_ENCRYPTION_KEY, "active": True}
-            },
+            MESSAGES_BLOBS_ENCRYPT_KEYS={"1": {**_TEST_ENCRYPTION_KEY, "active": True}},
         ):
             mailbox = factories.MailboxFactory()
             content = b"encrypted content to be decrypted on rollback" * 20
-            blob = mailbox.create_blob(content=content, content_type="text/plain")
+            blob = factories.BlobFactory(
+                mailbox=mailbox, content=content, content_type="text/plain"
+            )
             assert blob.encryption_key_id == 1
             service = TieredStorageService()
             service.upload_blob(blob)
@@ -761,9 +792,7 @@ class TestReStoreE2E:
             blob.raw_content = None
             blob.save()
 
-        encrypted_path = TieredStorageService.compute_storage_key(
-            bytes(blob.sha256), 1
-        )
+        encrypted_path = TieredStorageService.compute_storage_key(bytes(blob.sha256), 1)
         try:
             assert service.storage.exists(encrypted_path)
 
@@ -797,9 +826,7 @@ class TestReStoreE2E:
     @pytest.mark.django_db(transaction=True)
     @override_settings(
         MESSAGES_BLOBS_OFFLOAD_ENABLED=False,
-        MESSAGES_BLOBS_ENCRYPT_KEYS={
-            "1": {**_TEST_ENCRYPTION_KEY, "active": True}
-        },
+        MESSAGES_BLOBS_ENCRYPT_KEYS={"1": {**_TEST_ENCRYPTION_KEY, "active": True}},
     )
     def test_re_store_partial_failure_continues(self):
         """One blob fails mid-loop; the command keeps going and reports
@@ -812,15 +839,14 @@ class TestReStoreE2E:
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
         blobs = [
-            mailbox.create_blob(
+            factories.BlobFactory(
+                mailbox=mailbox,
                 content=f"distinct content {i}".encode() * 30,
                 content_type="text/plain",
             )
             for i in range(3)
         ]
-        keys = [
-            TieredStorageService.compute_storage_key_for_blob(b) for b in blobs
-        ]
+        keys = [TieredStorageService.compute_storage_key_for_blob(b) for b in blobs]
         for b in blobs:
             service.upload_blob(b)
             b.storage_location = BlobStorageLocationChoices.OBJECT_STORAGE
@@ -830,10 +856,10 @@ class TestReStoreE2E:
         original_open = service.storage.open
         failing_path = TieredStorageService.compute_storage_key_for_blob(blobs[1])
 
-        def selective_open(name, mode="rb", *a, **kw):
+        def selective_open(name, *a, **kw):
             if name == failing_path:
                 raise RuntimeError("simulated download failure")
-            return original_open(name, mode, *a, **kw)
+            return original_open(name, *a, **kw)
 
         try:
             with patch.object(service.storage, "open", side_effect=selective_open):
@@ -861,9 +887,7 @@ class TestReStoreE2E:
             )
             for i in (0, 2):
                 blobs[i].refresh_from_db()
-                assert (
-                    blobs[i].storage_location == BlobStorageLocationChoices.POSTGRES
-                )
+                assert blobs[i].storage_location == BlobStorageLocationChoices.POSTGRES
         finally:
             for k in keys:
                 if service.storage.exists(k):
@@ -876,7 +900,9 @@ class TestReStoreE2E:
         defense. Confirm it surfaces as ``MISSING``."""
         service = TieredStorageService()
         mailbox = factories.MailboxFactory()
-        blob = mailbox.create_blob(content=b"test", content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=b"test", content_type="text/plain"
+        )
         storage_key = TieredStorageService.compute_storage_key_for_blob(blob)
 
         try:

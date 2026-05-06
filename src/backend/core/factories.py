@@ -14,6 +14,7 @@ from faker import Faker
 
 from core import enums, models
 from core.enums import UserEventTypeChoices
+from core.services.blob_gc import upload_and_reserve_blob
 
 fake = Faker()
 
@@ -206,8 +207,11 @@ class MessageFactory(factory.django.DjangoModelFactory):
         if not create or not extracted:
             return
 
-        # Create a blob with the raw MIME content using the sender's mailbox
-        self.blob = self.sender.mailbox.create_blob(  # pylint: disable=attribute-defined-outside-init
+        # Server-side test fixture: the FK on ``Message.blob`` is set
+        # in this factory call, so no upload reservation is needed —
+        # call ``Blob.objects.create_blob`` directly rather than the
+        # JMAP-flow ``upload_and_reserve_blob`` helper.
+        self.blob = models.Blob.objects.create_blob(  # pylint: disable=attribute-defined-outside-init
             content=extracted,
             content_type="message/rfc822",
         )
@@ -344,13 +348,11 @@ def make_api_key_channel(
 class BlobFactory(factory.django.DjangoModelFactory):
     """A factory to create blobs for testing purposes.
 
-    Blobs no longer carry a mailbox/maildomain FK — the ``mailbox=`` /
-    ``maildomain=`` kwargs (still accepted for back-compat in test
-    setups) only affect what an upload reservation gets registered for,
-    so test code that wants the new blob to be "owned by mailbox X for
-    upload-reservation purposes" can pass ``mailbox=X`` and the factory
-    will route through ``Mailbox.create_blob`` to register the
-    reservation.
+    Pass ``mailbox=X`` to simulate a JMAP upload (registers an upload
+    reservation under that mailbox); omit it for plain server-side
+    test fixtures (no reservation, just dedup-create). The
+    ``maildomain=`` kwarg is accepted but ignored — the FK was
+    dropped in migration 0026.
     """
 
     class Meta:
@@ -363,13 +365,10 @@ class BlobFactory(factory.django.DjangoModelFactory):
     def _create(cls, model_class, *args, **kwargs):
         content = kwargs.pop("content")
         content_type = kwargs.pop("content_type", "application/octet-stream")
-        # Legacy kwargs — accepted but only used to register an upload
-        # reservation. ``maildomain`` no longer maps to anything (the
-        # FK is gone); kept as a no-op for older test fixtures.
         mailbox = kwargs.pop("mailbox", None)
         kwargs.pop("maildomain", None)
         if mailbox is not None:
-            return mailbox.create_blob(content=content, content_type=content_type)
+            return upload_and_reserve_blob(mailbox, content, content_type)
         return models.Blob.objects.create_blob(
             content=content, content_type=content_type
         )

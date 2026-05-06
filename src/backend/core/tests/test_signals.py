@@ -1051,7 +1051,7 @@ class TestCoalescerRedisRoundtrip:
     def _enable_opensearch_indexing(self, settings):
         settings.OPENSEARCH_INDEX_THREADS = True
 
-    def test_enqueue_and_process_roundtrip_with_dedup(self, redis_cache):  # noqa: ARG002
+    def test_enqueue_and_process_roundtrip_with_dedup(self, redis_cache):  # pylint: disable=unused-argument
         """Enqueuing the same ID twice results in a single drain entry."""
         # pylint: disable-next=import-outside-toplevel
         from core.services.search.coalescer import (
@@ -1073,7 +1073,7 @@ class TestCoalescerRedisRoundtrip:
         (called_ids,) = mock_bulk.call_args[0]
         assert set(called_ids) == {"thread-a", "thread-b"}
 
-    def test_delete_wins_over_reindex_for_same_thread(self, redis_cache):  # noqa: ARG002
+    def test_delete_wins_over_reindex_for_same_thread(self, redis_cache):  # pylint: disable=unused-argument
         """A thread present in both sets is deleted, not reindexed."""
         # pylint: disable-next=import-outside-toplevel
         from core.services.search.coalescer import (
@@ -1105,7 +1105,10 @@ class TestCoalescerRedisRoundtrip:
         (called_reindex_ids,) = mock_reindex.call_args[0]
         assert set(called_reindex_ids) == {"thread-b"}
 
-    def test_process_skips_reindex_handoff_when_fully_shadowed_by_delete(self, redis_cache):  # noqa: ARG002
+    def test_process_skips_reindex_handoff_when_fully_shadowed_by_delete(
+        self,
+        redis_cache,  # pylint: disable=unused-argument
+    ):
         """If every reindex ID is already in the delete set, no reindex task is enqueued."""
         # pylint: disable-next=import-outside-toplevel
         from core.services.search.coalescer import (
@@ -1128,7 +1131,7 @@ class TestCoalescerRedisRoundtrip:
         assert result == {"deleted_threads": 1, "deleted_messages": 0, "reindexed": 0}
         mock_reindex.assert_not_called()
 
-    def test_process_noop_when_empty(self, redis_cache):  # noqa: ARG002
+    def test_process_noop_when_empty(self, redis_cache):  # pylint: disable=unused-argument
         """Empty buffers → no bulk task enqueued."""
         # pylint: disable-next=import-outside-toplevel
         from core.services.search.coalescer import process_pending_reindex
@@ -1492,9 +1495,7 @@ class TestCoalescerNonRedisGuard:
 
         with (
             patch("core.services.search.coalescer.logger") as mock_logger,
-            patch(
-                "core.services.search.coalescer._redis_client"
-            ) as mock_client,
+            patch("core.services.search.coalescer._redis_client") as mock_client,
         ):
             enqueue_thread_reindex("thread-a")
 

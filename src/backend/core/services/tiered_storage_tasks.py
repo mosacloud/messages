@@ -18,8 +18,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils.timezone import now
 
-from botocore.exceptions import BotoCoreError
-from celery.exceptions import Retry
+from botocore.exceptions import BotoCoreError, ClientError
 from celery.utils.log import get_task_logger
 
 from core.enums import BlobStorageLocationChoices
@@ -31,11 +30,29 @@ from messages.celery_app import app as celery_app
 logger = get_task_logger(__name__)
 
 # Transient exceptions worth recording but not crashing the loop on.
-# BotoCoreError covers connection-level errors (timeouts, DNS, etc.);
-# the affected blob stays POSTGRES and the next tick retries it. We
-# don't try to distinguish ClientError 5xx from 4xx here — log it,
-# skip, move on.
+# OSError + BotoCoreError cover connection-level errors (timeouts,
+# DNS, broken pipes). ClientError 5xx (S3 SlowDown, ServiceUnavailable,
+# InternalError, etc.) is also transient and self-resolves. ClientError
+# 4xx is persistent (NoSuchBucket, AccessDenied) and stays loud as a
+# hard error — see ``_is_transient_storage_error`` for the split.
 _TRANSIENT_EXCEPTIONS = (OSError, BotoCoreError)
+
+
+def _is_transient_storage_error(exc: BaseException) -> bool:
+    """Return True if ``exc`` should be classified as transient.
+
+    ClientError is split by HTTP status: 5xx is the AWS / MinIO server
+    saying "try again later" and is worth a retry next tick; 4xx
+    (config / auth / missing bucket) is persistent and we want it loud
+    in logs so an operator notices.
+    """
+    if isinstance(exc, _TRANSIENT_EXCEPTIONS):
+        return True
+    if isinstance(exc, ClientError):
+        status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0)
+        return status >= 500
+    return False
+
 
 # Wall-clock budget per beat tick. The schedule is hourly (3600s) and
 # we cap at 55 minutes so the task always returns to celery before the
@@ -167,10 +184,10 @@ def offload_one_blob(blob_id: str, service: TieredStorageService) -> Dict[str, A
             )
             return {"status": "success", "blob_id": blob_id, "key_id": key_id}
 
-    except _TRANSIENT_EXCEPTIONS as e:
-        logger.warning("Transient error offloading blob %s: %s", blob_id, e)
-        return {"status": "transient_error", "blob_id": blob_id, "error": str(e)}
     except Exception as e:  # pylint: disable=broad-except
+        if _is_transient_storage_error(e):
+            logger.warning("Transient error offloading blob %s: %s", blob_id, e)
+            return {"status": "transient_error", "blob_id": blob_id, "error": str(e)}
         logger.exception("Failed to offload blob %s", blob_id)
         return {"status": "error", "blob_id": blob_id, "error": str(e)}
 

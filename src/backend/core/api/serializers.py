@@ -16,6 +16,7 @@ from rest_framework.exceptions import PermissionDenied
 
 from core import enums, models
 from core.mda.rfc5322 import extract_base64_images_from_html
+from core.services.blob_gc import schedule_for_gc
 
 
 class CreateOnlyFieldsMixin:
@@ -2158,9 +2159,6 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         """Update template with relationships. Not allowed to change mailbox or maildomain."""
-        # pylint: disable-next=import-outside-toplevel
-        from core.services.blob_gc import schedule_for_gc
-
         has_body = any(
             field in validated_data for field in ["html_body", "text_body", "raw_body"]
         )

@@ -17,6 +17,7 @@ from rest_framework.viewsets import ViewSet
 
 from core import enums, models
 from core.api import permissions, utils
+from core.services.blob_gc import upload_and_reserve_blob
 
 # Define logger
 logger = logging.getLogger(__name__)
@@ -120,11 +121,17 @@ class BlobViewSet(ViewSet):
             # Read file content
             content = uploaded_file.read()
 
-            # Create the blob record using mailbox method
-            blob = mailbox.create_blob(
-                content=content,
-                content_type=content_type,
-            )
+            # JMAP-protocol entry point: ``upload_and_reserve_blob``
+            # dedup-creates the Blob and registers a short-lived
+            # upload reservation that protects the returned blob_id
+            # across the gap between this upload call and the
+            # follow-up "attach" call. Server-side blob creators
+            # (draft body, MIME compose, forwarded-attachment
+            # extraction) call ``Blob.objects.create_blob`` directly
+            # inside an atomic block instead — they don't need the
+            # reservation because the FK is established in the same
+            # transaction.
+            blob = upload_and_reserve_blob(mailbox, content, content_type)
 
             # Return a response with the blob details
             # Following JMAP endpoint response structure

@@ -1,19 +1,33 @@
-"""Blob tiered storage + drop of Blob.mailbox / Blob.maildomain / blob_has_owner.
+"""Blob tiered storage + lifecycle FK hardening.
 
 Adds ``encryption_key_id`` and ``storage_location`` to Blob, makes
 ``raw_content`` nullable for object-storage offload, and adds the
 ``blob_offload_scan_idx`` partial index used by the offload sweeper.
 
-Blob lifetime is now governed by the reference graph (Message,
+Drops ``Blob.mailbox`` / ``Blob.maildomain`` / ``blob_has_owner`` —
+blob lifetime is now governed by the reference graph (Message,
 Attachment, MessageTemplate) plus a Redis-backed upload reservation
-window. The old FK-based cascade is replaced by a periodic GC sweep
-(``gc_orphan_blobs_task``). See ``core/services/blob_gc.py`` and
-``docs/tiered-storage.md``.
+window, with a periodic GC sweep (``gc_orphan_blobs_task``). See
+``core/services/blob_gc.py`` and ``docs/tiered-storage.md``.
 
-Dropping the FKs is metadata-only on Postgres ≥ 11 — RemoveConstraint
-and RemoveField for FKs are catalog-only operations.
+Switches ``Attachment.blob``, ``MessageTemplate.blob``,
+``Message.blob`` and ``Message.draft_blob`` to ``on_delete=PROTECT``:
+the GC is the only authorised deleter of a Blob and always clears
+references first under ``select_for_update`` plus the per-sha
+advisory lock; PROTECT turns any other code path that tries to
+delete a referenced Blob into a loud, recoverable error rather
+than a silent CASCADE that destroys an Attachment row, or a
+SET_NULL that nulls out a MessageTemplate's body / a Message's
+MIME pointer and leaves the operator with bodyless ghosts.
+
+Dropping the FKs and flipping on_delete are both metadata-only on
+Postgres ≥ 11 — RemoveConstraint, RemoveField for FKs, and
+on_delete changes are catalog-only operations (Django enforces
+on_delete in Python during ``.delete()``; the DB-level FK clause
+stays at ``ON DELETE NO ACTION`` regardless).
 """
 
+import django.db.models.deletion
 from django.db import migrations, models
 
 
@@ -54,5 +68,52 @@ class Migration(migrations.Migration):
         migrations.RemoveField(
             model_name='blob',
             name='maildomain',
+        ),
+        migrations.AlterField(
+            model_name='attachment',
+            name='blob',
+            field=models.ForeignKey(
+                help_text='Reference to the blob containing the attachment data',
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name='attachments',
+                to='core.blob',
+            ),
+        ),
+        migrations.AlterField(
+            model_name='messagetemplate',
+            name='blob',
+            field=models.ForeignKey(
+                blank=True,
+                help_text=(
+                    'Reference to the blob containing template content as JSON: '
+                    '{html: str, text: str, raw: any}'
+                ),
+                null=True,
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name='message_templates',
+                to='core.blob',
+            ),
+        ),
+        migrations.AlterField(
+            model_name='message',
+            name='blob',
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name='messages',
+                to='core.blob',
+            ),
+        ),
+        migrations.AlterField(
+            model_name='message',
+            name='draft_blob',
+            field=models.OneToOneField(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name='draft',
+                to='core.blob',
+            ),
         ),
     ]

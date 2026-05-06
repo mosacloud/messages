@@ -32,6 +32,7 @@ class Command(BaseCommand):
         self.verify_hashes: bool = False
         self.limit: int = 0
         self.dry_run: bool = False
+        self.start_after_key: str = ""
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -66,12 +67,19 @@ class Command(BaseCommand):
             action="store_true",
             help="Show what would be done without making changes (use with --re-store)",
         )
+        parser.add_argument(
+            "--start-after-key",
+            default="",
+            help="Resume listing storage objects after this key (S3 lexicographic order). "
+            "Pair with --limit to chunk a multi-million-object bucket across runs.",
+        )
 
     def handle(self, *args, **options):
         self.service = TieredStorageService()
         self.verify_hashes = options["verify_hashes"]
         self.limit = options["limit"]
         self.dry_run = options["dry_run"]
+        self.start_after_key = options["start_after_key"]
 
         # --re-store doesn't require object storage to be enabled
         # (works for PostgreSQL-only re-encryption too).
@@ -223,10 +231,19 @@ class Command(BaseCommand):
             )
 
     def _list_storage_objects(self, prefix: str) -> Iterator[str]:
-        """List object keys under a prefix using boto3 pagination."""
+        """List object keys under a prefix using boto3 pagination.
+
+        Honors ``--start-after-key`` so a multi-million-object bucket
+        can be checked in chunks (S3 lists in lexicographic key order;
+        ``StartAfter`` resumes after the last key seen in a previous
+        run). Combine with ``--limit`` to cap each chunk's wall time.
+        """
         bucket = self.service.storage.bucket
         paginator = bucket.meta.client.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=bucket.name, Prefix=prefix):
+        kwargs = {"Bucket": bucket.name, "Prefix": prefix}
+        if self.start_after_key:
+            kwargs["StartAfter"] = self.start_after_key
+        for page in paginator.paginate(**kwargs):
             for obj in page.get("Contents", []):
                 yield obj["Key"]
 
@@ -293,7 +310,9 @@ class Command(BaseCommand):
            back into PG.
         """
         self.stdout.write(
-            self.style.MIGRATE_HEADING("\n=== Re-store (rotation + optional restore) ===")
+            self.style.MIGRATE_HEADING(
+                "\n=== Re-store (rotation + optional restore) ==="
+            )
         )
 
         target_key_id = self.service.active_key_id
@@ -428,9 +447,7 @@ class Command(BaseCommand):
                 self.style.WARNING(f"Re-store completed with {error_count} errors")
             )
 
-    def _process_one(
-        self, blob: Blob, target_key_id: int, restore_to_pg: bool
-    ) -> str:
+    def _process_one(self, blob: Blob, target_key_id: int, restore_to_pg: bool) -> str:
         """Process one blob under transaction + per-sha lock.
 
         Returns one of: ``"rotated"``, ``"restored"``, ``"skipped"``.
@@ -461,13 +478,19 @@ class Command(BaseCommand):
             if will_restore:
                 done = self.service.re_store_blob_in_database(blob, target_key_id)
                 op = "restored" if done else "skipped"
+            elif blob.encryption_key_id == target_key_id:
+                # Already at the active key — the worklist was built
+                # before we took the lock, and another run (or a
+                # concurrent re_store) may have rotated this row
+                # already. Skip explicitly so the contract is local
+                # to _process_one rather than relying on
+                # rotate_blob's internal short-circuit.
+                op = "skipped"
             else:
                 done = self.service.rotate_blob(blob, target_key_id)
                 op = "rotated" if done else "skipped"
 
         if op != "skipped":
             verb = "Restored" if op == "restored" else "Re-encrypted"
-            self.stdout.write(
-                f"  {verb} blob {blob.id} -> key_id {target_key_id}"
-            )
+            self.stdout.write(f"  {verb} blob {blob.id} -> key_id {target_key_id}")
         return op

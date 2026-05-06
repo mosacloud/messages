@@ -18,7 +18,9 @@ class TestBlobCompression:
         content = b"Hello World" * 1000  # Create some content to compress
         mailbox = factories.MailboxFactory()
 
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
 
         # Check sizes
         assert blob.size == len(content)  # Original size
@@ -34,7 +36,9 @@ class TestBlobCompression:
         content = b"Hello World" * 1000  # Create some content that will compress well
         mailbox = factories.MailboxFactory()
 
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
 
         # Check sizes
         assert blob.size == len(content)  # Original size
@@ -50,7 +54,9 @@ class TestBlobCompression:
 
         # Try to create blob with empty content
         with pytest.raises(ValidationError, match="Content cannot be empty"):
-            mailbox.create_blob(content=b"", content_type="text/plain")
+            factories.BlobFactory(
+                mailbox=mailbox, content=b"", content_type="text/plain"
+            )
 
     @override_settings(MESSAGES_BLOBS_COMPRESS="zstd:3")
     def test_blob_large_content_compression(self):
@@ -59,7 +65,9 @@ class TestBlobCompression:
         content = b"A" * 1000000  # 1MB of repeating data
         mailbox = factories.MailboxFactory()
 
-        blob = mailbox.create_blob(content=content, content_type="text/plain")
+        blob = factories.BlobFactory(
+            mailbox=mailbox, content=content, content_type="text/plain"
+        )
 
         # Verify compression ratio is significant
         compression_ratio = blob.size_compressed / blob.size

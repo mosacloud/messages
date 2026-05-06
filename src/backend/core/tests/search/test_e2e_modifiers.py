@@ -464,7 +464,7 @@ class TestSearchModifiersE2E:
     """
 
     @pytest.fixture(autouse=True)
-    def _redis_cache(self, redis_cache):  # noqa: ARG002 — fixture activation
+    def _redis_cache(self, redis_cache):
         pass
 
     def test_search_e2e_modifiers_basic_searches(
