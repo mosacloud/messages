@@ -22,13 +22,23 @@ from core.services.importer.mbox_tasks import process_mbox_file_task
 
 
 def mock_storage_open(content: bytes):
-    """Helper to create a mock storage that returns the given content."""
+    """Helper to create a mock storage that returns the given content.
+
+    Supports both ``storage.open(key)`` and the S3 client path
+    ``storage.connection.meta.client.get_object(...)`` used by the
+    EML import task to read at most ``MAX_INCOMING_EMAIL_SIZE+1`` bytes
+    via a Range header.
+    """
 
     def create_file(*args, **kwargs):
         return BytesIO(content)
 
     mock_storage = Mock()
     mock_storage.open = Mock(side_effect=create_file)
+    mock_storage.bucket_name = "test-bucket"
+    mock_storage.connection.meta.client.get_object = Mock(
+        side_effect=lambda *a, **kw: {"Body": BytesIO(content)}
+    )
     return mock_storage
 
 

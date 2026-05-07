@@ -1377,6 +1377,14 @@ class Test(Base):
 
     MESSAGES_BLOBS_OFFLOAD_ENABLED = True
 
+    # ``core.E005`` requires CACHES['default'] to use django_redis when
+    # offload is enabled. Tests that exercise Redis-backed primitives
+    # opt in via the ``redis_cache`` fixture (see core/tests/conftest.py),
+    # which swaps CACHES per-test; the boot-time check would block
+    # ``manage.py spectacular`` (and any non-Redis test invocation) for
+    # no real reason in the test environment.
+    SILENCED_SYSTEM_CHECKS = ["core.E005"]
+
     ENABLE_PROMETHEUS = True
     PROMETHEUS_API_KEY = "test_api_key"
 

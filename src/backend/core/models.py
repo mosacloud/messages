@@ -2083,6 +2083,9 @@ class BlobManager(models.Manager):
         Returns:
             A ``Blob`` row (newly created or existing).
         """
+        if not content:
+            raise ValidationError({"content": "Content cannot be empty"})
+
         sha256_hash = hashlib.sha256(content).digest()
 
         # Hot path: hash matches an existing row → return it (no
