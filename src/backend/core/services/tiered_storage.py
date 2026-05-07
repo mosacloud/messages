@@ -102,6 +102,16 @@ def find_active_key_id(encryption_keys: dict) -> int:
                 active_ids.append(int(key_id_str))
             except (TypeError, ValueError):
                 pass
+    if len(active_ids) > 1:
+        # The system check (core.E003) catches this at boot, but if the
+        # check was skipped or the dict was mutated at runtime (override_settings,
+        # live reconfig), we'd silently fall back to passthrough — log loud.
+        logger.error(
+            "MESSAGES_BLOBS_ENCRYPT_KEYS has %d entries flagged active=true "
+            "(key_ids: %s); coercing to 0 (encryption disabled). Fix the config.",
+            len(active_ids),
+            sorted(active_ids),
+        )
     return active_ids[0] if len(active_ids) == 1 else 0
 
 
@@ -123,6 +133,14 @@ if TYPE_CHECKING:
 logger = getLogger(__name__)
 
 
+# Advisory-lock namespace. Postgres has a single global keyspace for
+# ``pg_advisory_xact_lock(bigint)``; using the two-arg
+# ``(classid, objid)`` form reserves a 32-bit ``classid`` for blob-cohort
+# locks so any future advisory-lock user (third-party app, new feature)
+# can pick a different ``classid`` and never collide.
+_ADVISORY_LOCK_CLASSID_BLOB = 0x626C6F62  # 'blob' in ASCII
+
+
 @contextmanager
 def sha256_advisory_lock(sha256_bytes: bytes, *, blocking: bool = True):
     """Hold a Postgres advisory lock keyed on a blob's sha256 cohort.
@@ -136,15 +154,25 @@ def sha256_advisory_lock(sha256_bytes: bytes, *, blocking: bool = True):
     With ``blocking=False`` yields ``True`` if acquired, ``False`` if held
     elsewhere — caller is expected to retry.
     """
-    # First 8 bytes of sha256 as a signed 64-bit int — pg_advisory_lock
-    # takes a bigint. Collisions are 2^-64, irrelevant in practice.
-    key = int.from_bytes(sha256_bytes[:8], byteorder="big", signed=True)
+    # First 4 bytes of sha256 as a signed 32-bit int — the two-arg
+    # ``pg_advisory_xact_lock(classid, objid)`` form takes two int4s.
+    # Collisions within the blob namespace are 2^-32, large enough to
+    # be exceedingly rare in practice; combined with the per-cohort
+    # work being short, an occasional false-share is operationally
+    # invisible.
+    objid = int.from_bytes(sha256_bytes[:4], byteorder="big", signed=True)
     with connection.cursor() as cursor:
         if blocking:
-            cursor.execute("SELECT pg_advisory_xact_lock(%s)", [key])
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(%s, %s)",
+                [_ADVISORY_LOCK_CLASSID_BLOB, objid],
+            )
             yield True
         else:
-            cursor.execute("SELECT pg_try_advisory_xact_lock(%s)", [key])
+            cursor.execute(
+                "SELECT pg_try_advisory_xact_lock(%s, %s)",
+                [_ADVISORY_LOCK_CLASSID_BLOB, objid],
+            )
             yield cursor.fetchone()[0]
 
 
@@ -280,7 +308,7 @@ class TieredStorageService:
 
         We trust the DB: if a sibling row exists, we dedup unconditionally.
         Drift between DB and S3 (external deletion, lifecycle expiry, etc.)
-        is detected offline by ``verify_tiered_storage --mode=db-to-storage``;
+        is detected offline by ``verify_blobs --mode=db-to-storage``;
         we don't pay an S3 HEAD per dedup hit to guard the cluster against
         a misuse that's already an operator-fix scenario.
         """
@@ -389,7 +417,7 @@ class TieredStorageService:
         # cohort would revert to old_key_id but the old path bytes
         # would already be gone — readers would compute the old path
         # and 404. Strays from a failed on_commit are detectable
-        # offline via ``verify_tiered_storage --mode=storage-to-db``.
+        # offline via ``verify_blobs --mode=storage-to-db``.
         def _drop_old_path(path=old_path):
             try:
                 self.storage.delete(path)
@@ -456,15 +484,31 @@ class TieredStorageService:
         # ``delete_if_orphaned`` re-checks the cohort count itself, so
         # if a different row in the cohort is still OBJECT_STORAGE
         # at on_commit time the bytes stay put.
-        def _cleanup(s=sha256, k=old_key_id, p=old_path):
-            try:
-                self.delete_if_orphaned(s, k)
-            except Exception as e:  # pylint: disable=broad-except
-                logger.warning("Failed to clean restored-from path %s: %s", p, e)
-
-        transaction.on_commit(_cleanup)
+        self.defer_delete_if_orphaned(sha256, old_key_id)
 
         return True
+
+    def defer_delete_if_orphaned(self, sha256_bytes: bytes, key_id: int) -> None:
+        """Schedule a ``delete_if_orphaned(sha, key_id)`` for transaction commit.
+
+        Errors from the deferred call are swallowed and logged: the row
+        delete has already committed, so propagating the error would
+        surface it far from the original transaction. Strays are
+        detectable offline via ``verify_blobs --mode=storage-to-db``.
+        """
+
+        def _run(s=sha256_bytes, k=key_id):
+            try:
+                self.delete_if_orphaned(s, k)
+            except Exception:  # pylint: disable=broad-except
+                logger.exception(
+                    "Post-commit S3 cleanup failed for sha=%s key_id=%d; "
+                    "verify_blobs --mode=storage-to-db will list strays",
+                    s.hex()[:8],
+                    k,
+                )
+
+        transaction.on_commit(_run)
 
     def delete_if_orphaned(self, sha256_bytes: bytes, key_id: int) -> bool:
         """Delete the storage object at ``path(sha, key_id)`` if no blob row

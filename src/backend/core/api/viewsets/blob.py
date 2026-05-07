@@ -2,6 +2,7 @@
 
 import logging
 
+from django.conf import settings
 from django.http import HttpResponse
 from django.utils.decorators import method_decorator
 from django.utils.http import content_disposition_header
@@ -82,6 +83,9 @@ class BlobViewSet(ViewSet):
                 description="Forbidden - User does not have permission to upload to this mailbox"
             ),
             404: OpenApiResponse(description="Mailbox not found"),
+            413: OpenApiResponse(
+                description="Payload too large - exceeds MAX_OUTGOING_ATTACHMENT_SIZE"
+            ),
             500: OpenApiResponse(description="Internal server error"),
         },
         tags=["blob"],
@@ -118,19 +122,26 @@ class BlobViewSet(ViewSet):
             uploaded_file = request.FILES["file"]
             content_type = uploaded_file.content_type or "application/octet-stream"
 
+            # Cap before ``.read()`` so an oversize upload never lands
+            # in worker RAM. The draft-attach flow re-checks the
+            # cumulative size; this cap is per-blob, that one per-message.
+            if uploaded_file.size > settings.MAX_OUTGOING_ATTACHMENT_SIZE:
+                max_mb = settings.MAX_OUTGOING_ATTACHMENT_SIZE / (1024 * 1024)
+                return Response(
+                    {
+                        "error": (
+                            f"File too large: {uploaded_file.size} bytes "
+                            f"(max {max_mb:.0f} MB per attachment)."
+                        )
+                    },
+                    status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                )
+
             # Read file content
             content = uploaded_file.read()
 
-            # JMAP-protocol entry point: ``upload_and_reserve_blob``
-            # dedup-creates the Blob and registers a short-lived
-            # upload reservation that protects the returned blob_id
-            # across the gap between this upload call and the
-            # follow-up "attach" call. Server-side blob creators
-            # (draft body, MIME compose, forwarded-attachment
-            # extraction) call ``Blob.objects.create_blob`` directly
-            # inside an atomic block instead — they don't need the
-            # reservation because the FK is established in the same
-            # transaction.
+            # JMAP upload step: register a reservation so the blob_id
+            # survives until the follow-up attach call.
             blob = upload_and_reserve_blob(mailbox, content, content_type)
 
             # Return a response with the blob details

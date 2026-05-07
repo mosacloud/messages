@@ -141,24 +141,19 @@ def check_blob_encryption_config(app_configs, **kwargs):
 
 @register()
 def check_blob_lifecycle_redis(app_configs, **kwargs):
-    """Refuse to boot when blob lifecycle features need Redis but the
-    default cache isn't django_redis.
+    """Refuse to boot when the blob GC candidate set needs Redis but
+    the default cache isn't django_redis.
 
-    Blob GC and upload reservations rely on Redis SADD/SPOP atomicity
-    (and on a TTL for upload reservations) that the other Django cache
-    backends (LocMem, FileBased, Dummy) can't deliver across workers.
-    Without it:
+    The fast-mode GC drains a Redis set that ``post_delete`` signals
+    SADD blob_ids into. Other Django cache backends (LocMem,
+    FileBased, Dummy) can't deliver SADD/SPOP atomicity across
+    workers; without them the candidate set is a no-op and orphan
+    blobs accumulate between manual ``--full`` sweeps.
 
-    - the upload-then-attach window is unprotected (a freshly uploaded
-      Blob with no DB reference can be reaped by ``--full`` GC sweep
-      before the user clicks "send");
-    - cascading deletes don't enqueue blob ids, so orphans accumulate
-      between manual ``--full`` runs.
-
-    With offload enabled the consequences are operational data loss,
-    so we hard-error. Without offload the failure mode is silent
-    accumulation, which we surface as a warning so dev / test
-    environments without Redis still boot.
+    With offload enabled the consequences are operational data loss
+    (orphans in S3 keep growing), so we hard-error. Without offload
+    the failure mode is silent accumulation in PG, which we surface
+    as a warning so dev / test environments without Redis still boot.
     """
     backend = settings.CACHES.get("default", {}).get("BACKEND", "")
     if "django_redis" in backend:
@@ -169,9 +164,8 @@ def check_blob_lifecycle_redis(app_configs, **kwargs):
             Error(
                 "MESSAGES_BLOBS_OFFLOAD_ENABLED=True requires django_redis "
                 f"as the default cache backend (got {backend!r}). Without it, "
-                "blob upload reservations are no-ops and the GC candidate set "
-                "drops every id, which loses freshly-uploaded blobs and "
-                "accumulates orphans in object storage.",
+                "the GC candidate set drops every id and orphans accumulate "
+                "in object storage between manual `--full` sweeps.",
                 hint="Configure CACHES['default'] to use "
                 "'django_redis.cache.RedisCache'.",
                 id="core.E005",
@@ -180,9 +174,8 @@ def check_blob_lifecycle_redis(app_configs, **kwargs):
 
     return [
         CheckWarning(
-            f"CACHES['default'] is not django_redis ({backend!r}); blob GC "
-            "candidate set and upload reservations are no-ops. Orphan blobs "
-            "will accumulate; the upload-then-attach window is unprotected. "
+            f"CACHES['default'] is not django_redis ({backend!r}); the blob "
+            "GC candidate set is a no-op and orphan blobs will accumulate. "
             "Acceptable in dev/test, never in production.",
             hint="Configure CACHES['default'] to use "
             "'django_redis.cache.RedisCache', or rely on periodic "

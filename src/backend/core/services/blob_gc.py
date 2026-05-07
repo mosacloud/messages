@@ -2,15 +2,14 @@
 Blob lifecycle: candidate-set GC, upload reservations, and the periodic
 sweep task.
 
-Blobs are no longer owned by a Mailbox/MailDomain via a foreign key —
-their lifetime is determined by whichever Message / Attachment /
-MessageTemplate references them, plus a short-lived "upload
-reservation" for the JMAP-style two-step upload-then-attach flow.
-That means CASCADE delete can't clean blobs up; instead:
+Blobs are not owned by a Mailbox/MailDomain via a foreign key — their
+lifetime is determined by whichever ``Message`` / ``Attachment`` /
+``MessageTemplate`` / ``MailboxBlob`` row references them. CASCADE
+delete can't clean blobs up; instead:
 
-- Reference sources (Message, Attachment, MessageTemplate) push their
-  blob_ids into a Redis set on ``post_delete`` (cheap — O(1) SADD,
-  no per-blob celery task even when 100k cascade together).
+- Reference sources push their blob_ids into a Redis set on
+  ``post_delete`` (cheap — O(1) SADD, no per-blob celery task even
+  when 100k cascade together).
 - A periodic Celery task drains the set, checks each candidate for
   remaining references, and deletes orphans (with inline S3 cleanup
   under the per-sha advisory lock — same pattern as
@@ -18,26 +17,32 @@ That means CASCADE delete can't clean blobs up; instead:
 - A weekly "full" run walks every Blob row to catch anything that
   fell through (Redis outage, signal that didn't fire, etc.).
 
-The upload reservation gives the API upload-then-attach flow a window
-during which a freshly-uploaded blob is "owned" by a mailbox in Redis
-but not yet referenced by any DB row. GC honors the reservation;
-re-uploading the same content on the JMAP path doesn't race.
+The ``MailboxBlob`` model holds the JMAP upload reservation as a
+real DB row with an explicit ``expires_at``: ``upload_and_reserve_blob``
+creates one when the user uploads, ``release_upload`` drops it once
+an Attachment FK takes over, and the GC sweep drops stale rows
+(past ``expires_at``) before deleting the blob. Active rows (with
+``expires_at > now()``) count as references in
+``Blob.objects.is_referenced``, so a reserved blob is naturally
+excluded from collection — no Redis needed for the reservation
+itself.
 """
 
 # pylint: disable=broad-exception-caught
 
 from time import monotonic
-from typing import Any, Dict, Iterable, Iterator, Optional
+from typing import Any, Dict, Iterable, Iterator
 from uuid import UUID
 
 from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 
 from celery.utils.log import get_task_logger
 from redis.exceptions import RedisError
 
 from core.enums import BlobStorageLocationChoices
-from core.models import Blob
+from core.models import UPLOAD_RESERVATION_TTL, Blob, MailboxBlob
 from core.services.tiered_storage import TieredStorageService, sha256_advisory_lock
 
 from messages.celery_app import app as celery_app
@@ -49,33 +54,17 @@ logger = get_task_logger(__name__)
 # post_delete signals SADD here; the GC task SPOPs in batches.
 _GC_CANDIDATES_KEY = "messages_blobs:gc_candidates"
 
-# Per-blob upload reservation. Key: ``messages_blobs:upload:{blob_id}``,
-# value: mailbox_id. TTL caps the window during which a blob can sit in
-# the bucket without any DB reference.
-_UPLOAD_RESERVATION_PREFIX = "messages_blobs:upload:"
-_UPLOAD_RESERVATION_TTL = 3600  # 1h — sane window for compose-then-send
-
-# How many candidates to process per fast-mode tick. Conservative; the
-# task is wall-clock-bounded so the upper bound is the larger of these
-# two before the deadline fires.
 _GC_FAST_BATCH_SIZE = 1000
 
-# Wall-clock budget for one tick. Hourly schedule with a 55-minute cap
-# so the task always returns before the next beat tick could overlap.
-# Mirrors ``offload_blobs_task``'s pattern.
+# Wall-clock budget for one tick. Hourly schedule, capped at 55 min so
+# the task always returns before the next beat tick could overlap.
 _GC_MAX_RUN_SECONDS = 55 * 60
 
 
-# --------------------------------------------------------------------
-# Backend probe (mirrors ``coalescer.py``)
-# --------------------------------------------------------------------
-#
-# The candidate set and upload-reservation primitives need atomic
-# multi-process semantics that Django's pluggable cache layer can't
-# provide reliably. We therefore only support ``django_redis`` here;
-# any other backend (Dummy, LocMem, FileBased, …) skips with a warning.
-# Blob lifetime stays correct: the periodic ``--full`` sweep is the
-# safety net for environments without Redis.
+# The candidate set needs SADD/SPOP atomicity that Django's pluggable
+# cache layer can't deliver across workers, so we only support
+# ``django_redis`` here. Other backends skip with a warning; the
+# ``--full`` sweep is the safety net for those environments.
 
 
 def _is_redis_backend() -> bool:
@@ -176,126 +165,64 @@ def _drain_candidates(batch_size: int) -> list[str]:
 
 
 # --------------------------------------------------------------------
-# Upload reservations
+# Upload reservations (``MailboxBlob`` rows)
 # --------------------------------------------------------------------
 
 
-def reserve_upload(blob_id, mailbox_id, ttl: int = _UPLOAD_RESERVATION_TTL) -> None:
-    """Mark ``blob_id`` as reserved by ``mailbox_id`` for ``ttl`` seconds.
-
-    Called by the upload endpoint right after the Blob row is created
-    (or fetched on a dedup hit). The reservation:
-
-    - Tells the GC sweep to skip this blob even if it has no DB
-      references yet (the user hasn't completed the attach step).
-    - Stands in for the old ``Blob.mailbox`` FK as a provenance hint
-      for the attach-by-id authz check: the mailbox that uploaded a
-      blob is the only one allowed to attach it before any reference
-      exists.
-
-    Released by ``release_upload`` once an Attachment / Message /
-    MessageTemplate FKs the blob — at which point the reference-graph
-    authz takes over. Auto-expires after ``ttl`` seconds if the user
-    abandons the upload; the next GC sweep cleans up.
-    """
-    if blob_id is None or mailbox_id is None:
-        return
-    key = _UPLOAD_RESERVATION_PREFIX + str(blob_id)
-    if not _is_redis_backend():
-        logger.warning(
-            "Blob upload reservation requires Redis: blob %s "
-            "won't be protected during the upload-then-attach window.",
-            blob_id,
-        )
-        return
-    try:
-        _redis_client().setex(key, ttl, str(mailbox_id))
-    except RedisError as exc:
-        logger.error(
-            "Redis unavailable while reserving blob %s for mailbox %s "
-            "(%s: %s); blob is unprotected for the upload window",
-            blob_id,
-            mailbox_id,
-            type(exc).__name__,
-            exc,
-        )
-    except Exception:
-        logger.exception(
-            "Failed to reserve blob %s for mailbox %s", blob_id, mailbox_id
-        )
-
-
 def upload_and_reserve_blob(mailbox, content: bytes, content_type: str, **kwargs):
-    """JMAP upload primitive: dedup-create a Blob and register an
-    upload reservation under ``mailbox``.
+    """JMAP upload primitive: dedup-create a Blob and register a
+    ``MailboxBlob`` reservation row under ``mailbox``.
 
-    This is the only entry point that should set a reservation. The
-    reservation is load-bearing only for the JMAP two-step
+    The reservation is load-bearing only for the JMAP two-step
     upload-then-attach window (the client holds ``blob_id`` between
     two HTTP calls); server-side flows that establish the FK in the
     same transaction must use ``Blob.objects.create_blob`` directly
     inside ``transaction.atomic`` instead — atomicity is the
-    protection there, not a Redis reservation.
+    protection there, not the reservation row.
+
+    The whole create-then-reserve sequence runs inside one
+    ``transaction.atomic`` so the dedup hot-path SELECT in
+    ``BlobManager.create_blob`` can take ``select_for_update`` on the
+    matched row; this prevents a concurrent
+    ``gc_orphan_blobs_task`` from racing between the SELECT and the
+    ``MailboxBlob`` INSERT. The FK from ``MailboxBlob`` to ``Blob``
+    is ``PROTECT``, so once the row is in the DB the GC can't delete
+    the blob until the row's ``expires_at`` lapses.
+
+    A re-upload of the same content by the same mailbox refreshes
+    ``expires_at`` (UPSERT semantics via ``update_or_create``) rather
+    than creating a duplicate row.
 
     Used by ``BlobViewSet.upload`` (the actual JMAP endpoint) and by
     ``BlobFactory(mailbox=...)`` in tests that simulate uploads.
     """
-    blob = Blob.objects.create_blob(
-        content=content,
-        content_type=content_type,
-        **kwargs,
-    )
-    reserve_upload(blob.id, mailbox.id)
+    with transaction.atomic():
+        blob = Blob.objects.create_blob(
+            content=content,
+            content_type=content_type,
+            **kwargs,
+        )
+        MailboxBlob.objects.update_or_create(
+            blob=blob,
+            mailbox=mailbox,
+            defaults={"expires_at": timezone.now() + UPLOAD_RESERVATION_TTL},
+        )
     return blob
 
 
-def release_upload(blob_id) -> None:
-    """Drop the reservation for ``blob_id`` (no-op if none exists).
+def release_upload(blob, mailbox) -> None:
+    """Drop the upload reservation for ``(blob, mailbox)``, if any.
 
-    Call after an Attachment / Message / MessageTemplate has been
-    created referencing the blob — the reference-graph authz now
-    covers it. The TTL would clean up regardless; this just shortens
-    the unnecessary-protection window.
+    Call after an ``Attachment`` (or any other reference) is created
+    pointing at the blob — the reference graph now covers it; the
+    reservation row would just keep the blob in the GC's "skip"
+    bucket past its useful life. ``expires_at`` would clean up
+    regardless; this just shortens the unnecessary-protection
+    window.
     """
-    if blob_id is None:
+    if blob is None or mailbox is None:
         return
-    if not _is_redis_backend():
-        return
-    key = _UPLOAD_RESERVATION_PREFIX + str(blob_id)
-    try:
-        _redis_client().delete(key)
-    except RedisError:
-        # Best-effort. If the delete fails the TTL still cleans up.
-        pass
-    except Exception:
-        logger.exception("Failed to release reservation for %s", blob_id)
-
-
-def get_upload_reservation(blob_id) -> Optional[str]:
-    """Return the reserving mailbox_id (as str) or ``None``."""
-    if blob_id is None:
-        return None
-    if not _is_redis_backend():
-        return None
-    key = _UPLOAD_RESERVATION_PREFIX + str(blob_id)
-    try:
-        value = _redis_client().get(key)
-        if value is None:
-            return None
-        return value.decode() if isinstance(value, bytes) else str(value)
-    except RedisError:
-        # If we can't tell, fail closed: behave as if reserved so the GC
-        # doesn't delete a blob that may legitimately be in the upload
-        # window. Authz callers also fail closed via the same path.
-        return ""
-    except Exception:
-        logger.exception("Failed to read reservation for %s", blob_id)
-        return ""
-
-
-def has_upload_reservation(blob_id) -> bool:
-    """Cheap boolean variant of :func:`get_upload_reservation`."""
-    return get_upload_reservation(blob_id) is not None
+    MailboxBlob.objects.filter(blob=blob, mailbox=mailbox).delete()
 
 
 # --------------------------------------------------------------------
@@ -313,13 +240,14 @@ def _all_blob_ids_iterator() -> Iterator[str]:
 def _gc_one_blob(blob_id_str: str, service) -> str:
     """Process a single GC candidate.
 
-    Returns one of ``"deleted"``, ``"skipped_reserved"``,
-    ``"skipped_referenced"``, ``"not_found"``, ``"error"``.
+    Returns one of ``"deleted"``, ``"skipped_referenced"``,
+    ``"not_found"``, ``"error"``. (Active upload reservations are
+    handled inside ``Blob.objects.is_referenced``: a ``MailboxBlob``
+    row with ``expires_at > now()`` counts as a reference, so
+    reserved blobs naturally hit the ``skipped_referenced`` branch.
+    Stale reservation rows are deleted in the under-lock block below
+    before the blob delete itself.)
     """
-    # Reservation check is a cheap Redis lookup; skip the lock if held.
-    if has_upload_reservation(blob_id_str):
-        return "skipped_reserved"
-
     try:
         blob_uuid = UUID(blob_id_str)
     except (TypeError, ValueError):
@@ -342,15 +270,13 @@ def _gc_one_blob(blob_id_str: str, service) -> str:
             # Take FOR UPDATE on the Blob row. Postgres takes a
             # FOR KEY SHARE lock on the parent row whenever an FK
             # INSERT references it (Attachment, Message,
-            # MessageTemplate); FOR UPDATE conflicts with FOR KEY
-            # SHARE, so this blocks any concurrent reference
-            # creation for the duration of the transaction. Without
-            # this, the is_referenced + delete sequence is a
-            # TOCTOU window: a concurrent Attachment / Message /
-            # Template insert can commit between the check and the
-            # delete, and the delete then CASCADEs / SET_NULLs the
-            # just-created reference. select_for_update + the
-            # second is_referenced check below close that window.
+            # MessageTemplate, MailboxBlob); FOR UPDATE conflicts
+            # with FOR KEY SHARE, so this blocks any concurrent
+            # reference creation for the duration of the transaction.
+            # Without this, the is_referenced + delete sequence is a
+            # TOCTOU window: a concurrent reference insert can
+            # commit between the check and the delete. select_for_update
+            # plus the re-check below close that window.
             try:
                 blob = (
                     Blob.objects.select_for_update()
@@ -361,15 +287,23 @@ def _gc_one_blob(blob_id_str: str, service) -> str:
                 return "not_found"
 
             # Re-check inside the lock: another GC tick or concurrent
-            # path may have already collected this candidate.
-            if has_upload_reservation(blob_id_str):
-                return "skipped_reserved"
+            # path may have already collected this candidate, or a
+            # new ``MailboxBlob`` reservation could have been
+            # registered while we waited for the lock.
             if Blob.objects.is_referenced(blob_uuid):
                 return "skipped_referenced"
 
             sha = bytes(blob.sha256)
             key_id = blob.encryption_key_id
             location = blob.storage_location
+
+            # Drop any stale ``MailboxBlob`` rows for this blob.
+            # ``is_referenced`` already excluded the active ones
+            # (``expires_at > now()``), so anything still attached
+            # here is past its TTL. We clear them inline because
+            # ``MailboxBlob.blob`` is PROTECT — the subsequent
+            # ``blob.delete()`` would otherwise raise ProtectedError.
+            MailboxBlob.objects.filter(blob_id=blob_uuid).delete()
 
             blob.delete()
 
@@ -386,31 +320,11 @@ def _gc_one_blob(blob_id_str: str, service) -> str:
                 # the cohort count itself so a sibling row inserted
                 # between commit and on_commit firing keeps the
                 # bytes safe.
-                transaction.on_commit(
-                    lambda s=sha, k=key_id: _safe_delete_if_orphaned(service, s, k)
-                )
+                service.defer_delete_if_orphaned(sha, key_id)
         return "deleted"
     except Exception:
         logger.exception("GC failed for blob %s", blob_id_str)
         return "error"
-
-
-def _safe_delete_if_orphaned(service, sha: bytes, key_id: int) -> None:
-    """Best-effort wrapper for on_commit callbacks: the row delete has
-    already committed at this point, so any S3 error must not propagate
-    (it would surface as an unhandled task error far from the original
-    transaction). Strays are detectable offline via
-    ``verify_tiered_storage --mode=storage-to-db``.
-    """
-    try:
-        service.delete_if_orphaned(sha, key_id)
-    except Exception:  # pylint: disable=broad-except
-        logger.exception(
-            "Post-commit S3 cleanup failed for sha=%s key_id=%d; "
-            "verify_tiered_storage --mode=storage-to-db will list strays",
-            sha.hex()[:8],
-            key_id,
-        )
 
 
 @celery_app.task

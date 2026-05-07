@@ -190,9 +190,3 @@ def offload_one_blob(blob_id: str, service: TieredStorageService) -> Dict[str, A
             return {"status": "transient_error", "blob_id": blob_id, "error": str(e)}
         logger.exception("Failed to offload blob %s", blob_id)
         return {"status": "error", "blob_id": blob_id, "error": str(e)}
-
-
-# ``cleanup_orphaned_blob_task`` removed: blobs are now collected by
-# ``core.services.blob_gc.gc_orphan_blobs_task``, which deletes the row
-# AND cleans up S3 inline under the per-sha advisory lock — no per-blob
-# celery fan-out, no broker pressure on cascade deletes.

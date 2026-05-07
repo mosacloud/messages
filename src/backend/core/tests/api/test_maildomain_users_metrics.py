@@ -1063,8 +1063,7 @@ class TestMailDomainStorageUsedMetrics:
         )
 
         # Attachment on the draft
-        att = AttachmentFactory(mailbox=mailbox, blob_size=800)
-        att.messages.add(draft)
+        att = AttachmentFactory(mailbox=mailbox, message=draft, blob_size=800)
 
         expected = (
             2 * overhead

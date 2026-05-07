@@ -14,7 +14,7 @@ from django.test import override_settings
 
 import pytest
 
-from core import enums, factories
+from core import enums, factories, models
 from core.enums import BlobStorageLocationChoices, CompressionTypeChoices
 from core.services.tiered_storage import TieredStorageService, sha256_advisory_lock
 
@@ -536,6 +536,10 @@ class TestTieredStorageE2E:
             retrieved = blob.get_content()
             assert retrieved == content
         finally:
+            # Clear the MailboxBlob reservation row before deleting the
+            # Blob — its FK is PROTECT, so blob.delete() would raise
+            # ProtectedError otherwise.
+            models.MailboxBlob.objects.filter(blob=blob).delete()
             blob.delete()
 
     @override_settings(
@@ -576,6 +580,10 @@ class TestTieredStorageE2E:
             retrieved_content = blob.get_content()
             assert retrieved_content == original_content
         finally:
+            # Clear the MailboxBlob reservation row before deleting the
+            # Blob — its FK is PROTECT, so blob.delete() would raise
+            # ProtectedError otherwise.
+            models.MailboxBlob.objects.filter(blob=blob).delete()
             blob.delete()
 
     @pytest.mark.django_db(transaction=True)
@@ -608,9 +616,12 @@ class TestTieredStorageE2E:
 
             sha = bytes(blob.sha256)
             key_id = blob.encryption_key_id
-            # Delete the row directly (simulates what the GC task does
-            # under the per-sha advisory lock). After the row is gone,
-            # delete_if_orphaned actually deletes the S3 object.
+            # Drop the MailboxBlob reservation row first; ``Blob.delete()``
+            # would otherwise raise ProtectedError. Then delete the row
+            # (mirrors what the GC task does under the per-sha advisory
+            # lock). After the row is gone, delete_if_orphaned actually
+            # deletes the S3 object.
+            models.MailboxBlob.objects.filter(blob=blob).delete()
             blob.delete()
             assert service.delete_if_orphaned(sha, key_id) is True
             assert not service.storage.exists(storage_key)
@@ -678,7 +689,7 @@ class TestTieredStorageE2E:
         of which encryption key is currently active — the encryption
         key on the row stays as whatever was used on first insert.
         Re-encrypting old rows is a separate operation
-        (``verify_tiered_storage --re-store``).
+        (``re_store_blobs``).
         """
         content = b"Same content, different keys" * 20
 
@@ -742,12 +753,14 @@ class TestBlobGarbageCollection:
         pass
 
     def _drop_all_reservations(self, *blob_ids):
-        """Test helper: clear upload reservations registered by
-        ``Mailbox.create_blob`` so the GC isn't blocked by them."""
-        from core.services.blob_gc import release_upload
+        """Test helper: clear ``MailboxBlob`` rows for these blobs so
+        the GC isn't blocked by an active reservation. Mirrors what
+        ``release_upload`` does in production, but does it for every
+        mailbox at once since these tests don't care which mailbox
+        owned the upload."""
+        from core.models import MailboxBlob
 
-        for bid in blob_ids:
-            release_upload(bid)
+        MailboxBlob.objects.filter(blob_id__in=blob_ids).delete()
 
     def test_gc_deletes_orphan_blob_postgres(self):
         """A blob with no Message/Attachment/Template references is GC'd."""
@@ -816,7 +829,9 @@ class TestBlobGarbageCollection:
             mailbox=mailbox, content=b"referenced", content_type="text/plain"
         )
         self._drop_all_reservations(blob.id)
-        # Attach to keep the blob alive.
+        # Attach to keep the blob alive. AttachmentFactory autogenerates
+        # an owning draft Message via lazy_attribute; we don't care
+        # which Message it is — just that there is one.
         factories.AttachmentFactory(blob=blob, mailbox=mailbox)
 
         schedule_for_gc(blob.id)
@@ -826,7 +841,13 @@ class TestBlobGarbageCollection:
         assert Blob.objects.filter(id=blob.id).exists()
 
     def test_gc_skips_reserved_blob(self):
-        """GC must respect the upload reservation window (JMAP 2-step)."""
+        """GC must respect the upload reservation window (JMAP 2-step).
+
+        Reservations are now ``MailboxBlob`` rows, which the GC's
+        ``is_referenced`` walk includes (when ``expires_at > now()``).
+        So a reserved blob shows up under ``skipped_referenced`` —
+        the GC no longer reports a separate ``skipped_reserved`` count.
+        """
         from core.models import Blob
         from core.services.blob_gc import (
             gc_orphan_blobs_task,
@@ -834,7 +855,8 @@ class TestBlobGarbageCollection:
         )
 
         mailbox = factories.MailboxFactory()
-        # ``mailbox.create_blob`` registers a reservation; don't drop it.
+        # ``BlobFactory(mailbox=...)`` creates a MailboxBlob with the
+        # default 1h ``expires_at``; don't drop it.
         blob = factories.BlobFactory(
             mailbox=mailbox, content=b"reserved", content_type="text/plain"
         )
@@ -842,7 +864,7 @@ class TestBlobGarbageCollection:
         schedule_for_gc(blob.id)
         result = gc_orphan_blobs_task(mode="fast")
 
-        assert result["skipped_reserved"] >= 1
+        assert result["skipped_referenced"] >= 1
         assert Blob.objects.filter(id=blob.id).exists()
 
     def test_gc_full_mode_finds_orphan_not_in_redis(self):
@@ -958,14 +980,13 @@ class TestBlobDedup:
         # is specifically about the Blob lifecycle, not Contact cascade.
         contact = factories.ContactFactory(mailbox=mailbox_b)
         original_content = b"shared message body" * 30
-        # Blob created via Mailbox.create_blob registers a reservation
-        # for A. Release it so it's not the thing keeping B_M alive.
-        from core.services.blob_gc import release_upload
-
+        # ``BlobFactory(mailbox=A)`` creates a ``MailboxBlob``
+        # reservation row for A; release it so it's not the thing
+        # keeping B's view of the blob alive.
         blob = factories.BlobFactory(
             mailbox=mailbox_a, content=original_content, content_type="message/rfc822"
         )
-        release_upload(blob.id)
+        models.MailboxBlob.objects.filter(blob=blob, mailbox=mailbox_a).delete()
         message = factories.MessageFactory(thread=thread, sender=contact, blob=blob)
 
         # Pre-delete check: M.blob is readable (the blob is alive).

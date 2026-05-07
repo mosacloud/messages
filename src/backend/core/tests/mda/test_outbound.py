@@ -1356,13 +1356,14 @@ class TestPrepareOutboundMessageBase64Images:
         """Blob attachments + base64 images that together exceed the limit raise ValidationError."""
         message = self._make_message(mailbox_sender)
 
-        # Create a blob attachment of 150 bytes (under the 200 byte limit alone)
-        attachment = factories.AttachmentFactory(
+        # Create a blob attachment of 150 bytes (under the 200 byte limit alone),
+        # owned by this draft via the per-message FK.
+        factories.AttachmentFactory(
             mailbox=mailbox_sender,
+            message=message,
             blob_size=150,
             name="file.bin",
         )
-        attachment.messages.add(message)
 
         # The tiny PNG (~69 bytes) + 150 bytes blob > 200 byte limit
         html_body = f'<img src="data:image/png;base64,{TINY_PNG_B64}">'

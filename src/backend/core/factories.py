@@ -207,10 +207,6 @@ class MessageFactory(factory.django.DjangoModelFactory):
         if not create or not extracted:
             return
 
-        # Server-side test fixture: the FK on ``Message.blob`` is set
-        # in this factory call, so no upload reservation is needed —
-        # call ``Blob.objects.create_blob`` directly rather than the
-        # JMAP-flow ``upload_and_reserve_blob`` helper.
         self.blob = models.Blob.objects.create_blob(  # pylint: disable=attribute-defined-outside-init
             content=extracted,
             content_type="message/rfc822",
@@ -252,7 +248,12 @@ class LabelFactory(factory.django.DjangoModelFactory):
 
 
 class AttachmentFactory(factory.django.DjangoModelFactory):
-    """A factory to random attachments for testing purposes."""
+    """Factory for ``Attachment`` rows.
+
+    Each Attachment belongs to exactly one ``Message`` via FK, so
+    ``message=`` is required. Tests that don't care about the
+    specific draft can let the factory autogenerate one.
+    """
 
     class Meta:
         model = models.Attachment
@@ -266,6 +267,29 @@ class AttachmentFactory(factory.django.DjangoModelFactory):
         """Create a blob with specified size for the attachment."""
         content = b"x" * self.blob_size
         return BlobFactory(mailbox=self.mailbox, content=content)
+
+    @factory.lazy_attribute
+    def message(self):
+        """Default to a fresh draft Message owned by ``mailbox``.
+
+        Tests that already have a draft handy should pass it
+        explicitly: ``AttachmentFactory(message=draft, ...)``.
+        """
+        sender_email = f"{self.mailbox.local_part}@{self.mailbox.domain.name}"
+        sender, _ = models.Contact.objects.get_or_create(
+            email=sender_email,
+            mailbox=self.mailbox,
+            defaults={"name": self.mailbox.local_part, "email": sender_email},
+        )
+        thread = ThreadFactory()
+        ThreadAccessFactory(
+            thread=thread,
+            mailbox=self.mailbox,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        return MessageFactory(
+            thread=thread, sender=sender, is_draft=True, is_sender=True
+        )
 
     @classmethod
     def _adjust_kwargs(cls, **kwargs):
@@ -350,9 +374,7 @@ class BlobFactory(factory.django.DjangoModelFactory):
 
     Pass ``mailbox=X`` to simulate a JMAP upload (registers an upload
     reservation under that mailbox); omit it for plain server-side
-    test fixtures (no reservation, just dedup-create). The
-    ``maildomain=`` kwarg is accepted but ignored — the FK was
-    dropped in migration 0026.
+    fixtures (no reservation, just dedup-create).
     """
 
     class Meta:
@@ -366,7 +388,6 @@ class BlobFactory(factory.django.DjangoModelFactory):
         content = kwargs.pop("content")
         content_type = kwargs.pop("content_type", "application/octet-stream")
         mailbox = kwargs.pop("mailbox", None)
-        kwargs.pop("maildomain", None)
         if mailbox is not None:
             return upload_and_reserve_blob(mailbox, content, content_type)
         return models.Blob.objects.create_blob(

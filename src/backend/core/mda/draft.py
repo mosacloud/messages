@@ -6,16 +6,13 @@ from typing import Optional
 
 from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 
 import rest_framework as drf
 
 from core import enums, models
 from core.api.utils import get_attachment_from_blob_id
-from core.services.blob_gc import (
-    get_upload_reservation,
-    release_upload,
-    schedule_for_gc,
-)
+from core.services.blob_gc import release_upload, schedule_for_gc
 
 logger = logging.getLogger(__name__)
 
@@ -74,14 +71,18 @@ def _get_or_create_attachment_from_message_blob(
     mailbox: models.Mailbox,
     attachment_data: dict,
     user: models.User,
+    message: models.Message,
 ) -> Optional[models.Attachment]:
     """
     Get or create an attachment from message raw data (msg_* format blobId).
+
+    The Attachment is owned by ``message`` (per-message FK).
 
     Args:
         mailbox: The mailbox to associate the attachment with
         attachment_data: Dictionary containing blobId, name, and optional cid
         user: The user making the request
+        message: The draft Message that will own the Attachment
 
     Returns:
         The created Attachment or None if processing failed
@@ -104,15 +105,10 @@ def _get_or_create_attachment_from_message_blob(
 
         # Atomic: the Blob INSERT and the Attachment INSERT must be
         # visible together so the GC sweep never sees the blob row
-        # without its referencing FK row. We call
-        # ``Blob.objects.create_blob`` directly (not the
-        # reservation-registering ``mailbox.create_blob``) because
-        # the FK is established in this same transaction —
-        # atomicity is the protection here, not the JMAP upload
-        # reservation. ``BlobManager.create_blob`` opens its own
-        # atomic for the blob INSERT; nesting inside this outer
-        # atomic turns it into a savepoint that only commits with
-        # the outer block.
+        # without its referencing FK row. ``BlobManager.create_blob``
+        # opens its own atomic for the blob INSERT; nesting inside
+        # this outer atomic turns it into a savepoint that only
+        # commits with the outer block.
         with transaction.atomic():
             blob = models.Blob.objects.create_blob(
                 content=parsed_attachment["content"],
@@ -120,7 +116,10 @@ def _get_or_create_attachment_from_message_blob(
             )
 
             attachment, created = models.Attachment.objects.get_or_create(
-                blob=blob, mailbox=mailbox, defaults={"name": name, "cid": cid}
+                blob=blob,
+                mailbox=mailbox,
+                message=message,
+                defaults={"name": name, "cid": cid},
             )
 
         if created:
@@ -140,13 +139,20 @@ def _get_or_create_attachment_from_message_blob(
 def _get_or_create_attachment_from_blob(
     mailbox: models.Mailbox,
     attachment_data: dict,
+    message: models.Message,
 ) -> Optional[models.Attachment]:
     """
     Get or create an attachment from a blobId.
 
+    The Attachment is owned by ``message`` (per-message FK). If the
+    same blob is attached to two different drafts, each draft gets
+    its own ``Attachment`` row — sending or deleting one doesn't
+    affect the other.
+
     Args:
         mailbox: The mailbox to associate the attachment with
         attachment_data: Dictionary containing blobId, name, and optional cid
+        message: The draft Message that will own the Attachment
 
     Returns:
         The created/existing Attachment or None if processing failed
@@ -167,7 +173,9 @@ def _get_or_create_attachment_from_blob(
         # either an active upload reservation tied to this mailbox
         # (the JMAP upload-then-attach window) or an existing
         # Attachment in this mailbox already referencing the blob
-        # (re-attaching a known file).
+        # (re-attaching a known file — the row may be on a different
+        # draft, but proves the mailbox already has authz to this
+        # blob).
         #
         # Deliberately NOT accepted as provenance: ``Message.blob`` /
         # ``Message.draft_blob`` matches via shared thread access. A
@@ -181,10 +189,9 @@ def _get_or_create_attachment_from_blob(
         # (``_get_or_create_attachment_from_message_blob``), which
         # re-parses the MIME and creates a fresh Blob owned by the
         # forwarding mailbox.
-        reserved_mailbox = get_upload_reservation(blob.id)
-        has_reservation = reserved_mailbox is not None and str(reserved_mailbox) == str(
-            mailbox.id
-        )
+        has_reservation = models.MailboxBlob.objects.filter(
+            blob=blob, mailbox=mailbox, expires_at__gt=timezone.now()
+        ).exists()
         has_existing_link = models.Attachment.objects.filter(
             blob=blob, mailbox=mailbox
         ).exists()
@@ -197,7 +204,10 @@ def _get_or_create_attachment_from_blob(
             return None
 
         attachment, created = models.Attachment.objects.get_or_create(
-            blob=blob, mailbox=mailbox, defaults={"name": name, "cid": cid}
+            blob=blob,
+            mailbox=mailbox,
+            message=message,
+            defaults={"name": name, "cid": cid},
         )
 
         if created:
@@ -207,8 +217,8 @@ def _get_or_create_attachment_from_blob(
                 blob_id,
             )
             # Once the Attachment exists, the reference graph covers
-            # authz; we can drop the upload reservation.
-            release_upload(blob.id)
+            # authz; drop the upload reservation row.
+            release_upload(blob, mailbox)
 
         return attachment
 
@@ -226,6 +236,12 @@ def _update_message_attachments(
     """
     Update message attachments based on provided attachment data.
 
+    Per-message FK semantics: each ``Attachment`` row belongs to
+    exactly one ``Message`` via ``Attachment.message``. The
+    ``_get_or_create_attachment_from_blob`` helpers create rows
+    already linked to ``message``; this function only needs to
+    delete the ones that fell out of the new list.
+
     Args:
         message: The message to update attachments for
         mailbox: The mailbox making the update
@@ -235,12 +251,9 @@ def _update_message_attachments(
     if not message.pk:
         return
 
-    # Get the current attachment IDs
     current_attachment_ids = set(message.attachments.values_list("id", flat=True))
 
-    # Process the new attachments
     new_attachment_ids = []
-
     for attachment_data in attachments_data:
         if not attachment_data:  # Skip empty values
             continue
@@ -258,66 +271,46 @@ def _update_message_attachments(
                 )
                 continue
             attachment = _get_or_create_attachment_from_message_blob(
-                mailbox, attachment_data, user
+                mailbox, attachment_data, user, message
             )
         else:
-            attachment = _get_or_create_attachment_from_blob(mailbox, attachment_data)
+            attachment = _get_or_create_attachment_from_blob(
+                mailbox, attachment_data, message
+            )
 
         if attachment:
             new_attachment_ids.append(attachment.id)
 
-    # Combine all valid attachment IDs
     new_attachments = set(new_attachment_ids)
-
-    # Add new attachments and remove old ones
-    to_add = new_attachments - current_attachment_ids
     to_remove = current_attachment_ids - new_attachments
+    just_added = new_attachments - current_attachment_ids
 
-    # Validate total attachment size before adding
-    if to_add:
-        # Calculate current total (excluding attachments about to be removed)
-        current_attachments = message.attachments.exclude(id__in=to_remove)
-        current_total_size = sum(
-            att.blob.size for att in current_attachments.select_related("blob")
+    # Validate the post-change total size. ``to_remove`` rows are
+    # dropped; everything else (existing-and-kept + just-created)
+    # contributes to the limit.
+    if just_added:
+        kept = message.attachments.exclude(id__in=to_remove).exclude(id__in=just_added)
+        kept_size = sum(att.blob.size for att in kept.select_related("blob"))
+        added_size = sum(
+            att.blob.size
+            for att in models.Attachment.objects.filter(
+                id__in=just_added
+            ).select_related("blob")
         )
+        validate_attachment_size(kept_size, added_size)
 
-        # Calculate size of new attachments being added
-        new_attachments_objs = models.Attachment.objects.filter(
-            id__in=to_add
-        ).select_related("blob")
-        new_total_size = sum(att.blob.size for att in new_attachments_objs)
-
-        # Check if adding these would exceed the attachment limit
-        validate_attachment_size(current_total_size, new_total_size)
-
-    # Remove attachments no longer in the list
+    # Remove attachments no longer in the list. Filtering by
+    # ``message=message`` is belt-and-braces — the FK guarantees
+    # rows in ``current_attachment_ids`` belong to this message —
+    # but it makes the intent obvious and limits damage if a caller
+    # ever passes a stale id set. The Attachment post_delete
+    # signal schedules each blob_id for GC.
     if to_remove:
-        message.attachments.remove(*to_remove)
-
-        # Delete attachments no longer linked to any message. The
-        # Attachment ``post_delete`` signal pushes its blob_id into
-        # the GC candidate set; the blob itself is reaped by
-        # ``gc_orphan_blobs_task`` under the per-sha advisory lock
-        # plus ``select_for_update`` on the Blob row.
         deleted_attachments, _ = models.Attachment.objects.filter(
-            id__in=to_remove,
-            messages__isnull=True,
+            id__in=to_remove, message=message
         ).delete()
-
         if deleted_attachments:
             logger.debug("Deleted %d orphan attachment(s)", deleted_attachments)
-
-    # Add new attachments
-    if to_add:
-        valid_attachments = models.Attachment.objects.filter(id__in=to_add)
-        message.attachments.add(*valid_attachments)
-
-        # Log if some attachments weren't found
-        if len(valid_attachments) != len(to_add):
-            logger.warning(
-                "Some attachments were not found: %s",
-                set(to_add) - {a.id for a in valid_attachments},
-            )
 
 
 def create_draft(
@@ -397,14 +390,9 @@ def create_draft(
     # Validate and get signature if provided
     signature = mailbox.get_validated_signature(signature_id)
 
-    # Validate and prepare draft body, then create the Message in a
-    # single atomic block: the Blob INSERT (savepoint inside
-    # ``BlobManager.create_blob``) and the Message INSERT must commit
-    # together so the GC sweep never sees the Blob row without its
-    # referencing FK on ``Message.draft_blob``. ``Blob.objects.create_blob``
-    # is the right primitive here (not ``upload_and_reserve_blob``) —
-    # the FK is established in the same transaction, no JMAP-style
-    # upload reservation needed.
+    # The Blob INSERT and the Message INSERT must commit together
+    # so the GC sweep never sees the Blob row without its
+    # referencing FK on ``Message.draft_blob`` — atomic wraps both.
     draft_body_bytes = None
     if draft_body:
         draft_body_bytes = draft_body.encode("utf-8")
@@ -565,10 +553,6 @@ def update_draft(
                 # collect it if no other row references the same content.
                 schedule_for_gc(old_draft_blob_id)
             if new_draft_body_bytes is not None:
-                # Server-side flow: ``Blob.objects.create_blob``
-                # directly (not ``mailbox.create_blob``) — the FK
-                # is established in this transaction, no upload
-                # reservation needed.
                 message.draft_blob = models.Blob.objects.create_blob(
                     content=new_draft_body_bytes,
                     content_type="application/json",

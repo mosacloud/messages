@@ -21,7 +21,7 @@ from django.contrib.auth import models as auth_models
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.core import validators
 from django.core.exceptions import ValidationError
-from django.db import models, transaction
+from django.db import connection, models, transaction
 from django.db.models import Case, Exists, F, Q, Value, When
 from django.db.models.fields import BooleanField
 from django.utils import timezone
@@ -1875,16 +1875,13 @@ class Message(BaseModel):
     )
 
     # Stores the raw MIME message. PROTECT, not SET_NULL: the GC
-    # sweep is the only authorised deleter and it always clears
-    # references first under select_for_update + the per-sha
-    # advisory lock. SET_NULL would let any future regression in
-    # the delete path silently turn a customer's message into a
-    # bodyless ghost; PROTECT raises instead. The legitimate
-    # "release this blob" flows (oversized MIME rollback in
-    # outbound.py, send-finalize draft cleanup) explicitly null
-    # the FK before scheduling GC, so PROTECT doesn't change any
-    # existing behaviour — it just hardens the failure mode of
-    # the unintended one.
+    # sweep is the only authorised deleter and clears references
+    # first under select_for_update + the per-sha advisory lock.
+    # PROTECT turns any other code path that tries to delete a
+    # referenced Blob into a loud failure rather than silently
+    # nulling the FK and leaving the user with a bodyless message.
+    # Callers that legitimately want to "release" the blob must
+    # null the FK themselves and then schedule_for_gc.
     blob = models.ForeignKey(
         "Blob",
         on_delete=models.PROTECT,
@@ -1893,12 +1890,17 @@ class Message(BaseModel):
         related_name="messages",
     )
 
-    draft_blob = models.OneToOneField(
+    draft_blob = models.ForeignKey(
         "Blob",
+        # FK, not OneToOne: sha-based blob dedup means two drafts
+        # with identical body content share one Blob row; a
+        # uniqueness constraint on ``draft_blob_id`` would reject
+        # the second draft's INSERT. ``on_delete=PROTECT`` matches
+        # ``Message.blob`` above.
         on_delete=models.PROTECT,
         null=True,
         blank=True,
-        related_name="draft",
+        related_name="drafts",
     )
     signature = models.ForeignKey(
         "MessageTemplate",
@@ -2080,27 +2082,35 @@ class BlobManager(models.Manager):
             content_type: MIME type.
         Returns:
             A ``Blob`` row (newly created or existing).
-        Raises:
-            ValidationError: empty content or invalid MESSAGES_BLOBS_COMPRESS.
         """
-        if not content:
-            raise ValidationError({"content": "Content cannot be empty"})
-
         sha256_hash = hashlib.sha256(content).digest()
 
-        # Hot path: hash matches an existing row → return it. No lock,
-        # no compress, no encrypt. This handles the common dedup case
-        # (same email delivered to multiple mailboxes; same attachment
-        # uploaded twice) at minimal cost.
+        # Hot path: hash matches an existing row → return it (no
+        # compress, no encrypt, no INSERT).
         #
-        # Note: this lock-free SELECT is *intentional*. Two concurrent
-        # callers with the same content can both miss the hot path and
-        # fall through to the slow path below; the slow path
-        # re-checks under the per-sha advisory lock, so at most one of
-        # them inserts a row and the other returns the existing one.
-        # Correctness is bounded by the slow-path re-check; the hot
-        # path just avoids the lock for the common case.
-        existing = self.filter(sha256=sha256_hash).first()
+        # When called inside ``transaction.atomic()`` we take
+        # ``select_for_update`` on the matched row so a concurrent
+        # ``gc_orphan_blobs_task`` can't ``select_for_update + delete``
+        # the same row between our SELECT and the caller's next
+        # write (FK insert or MailboxBlob INSERT). Without the
+        # lock, GC could race in that window and the caller would
+        # end up with a dangling blob_id.
+        #
+        # If GC already holds the row lock, our SELECT blocks; when
+        # GC commits its delete we get back zero rows and fall
+        # through to the slow path, which INSERTs a fresh row under
+        # the per-sha advisory lock — different blob id, same
+        # content. Either branch is correct.
+        #
+        # Outside an atomic block ``select_for_update`` is illegal
+        # (Django raises). Such callers also have no FK race to
+        # worry about — no transaction, no cross-statement
+        # consistency guarantee anything else can rely on — so the
+        # unlocked SELECT is correct there too.
+        if connection.in_atomic_block:
+            existing = self.select_for_update().filter(sha256=sha256_hash).first()
+        else:
+            existing = self.filter(sha256=sha256_hash).first()
         if existing is not None:
             return existing
 
@@ -2162,21 +2172,20 @@ class BlobManager(models.Manager):
         return blob
 
     def is_referenced(self, blob_id) -> bool:
-        """True if any row in the schema FKs this blob, OR an upload
-        reservation is held for it.
+        """True if any row in the schema FKs this blob, OR an active
+        upload reservation (``MailboxBlob`` with ``expires_at > now()``)
+        is held for it.
 
         Authoritative answer for "is this blob still alive". The GC
-        sweep consults this before deleting; the reservation lookup is
-        done by callers explicitly when they need to also surface
-        provenance to the API authz layer.
+        sweep consults this before deleting; stale ``MailboxBlob``
+        rows (past ``expires_at``) are excluded here so the GC can
+        reap them along with the blob.
         """
-        # pylint: disable-next=import-outside-toplevel
-        from core.services.blob_gc import has_upload_reservation
-
-        if has_upload_reservation(blob_id):
-            return True
         return (
-            Message.objects.filter(
+            MailboxBlob.objects.filter(
+                blob_id=blob_id, expires_at__gt=timezone.now()
+            ).exists()
+            or Message.objects.filter(
                 models.Q(blob_id=blob_id) | models.Q(draft_blob_id=blob_id)
             ).exists()
             or Attachment.objects.filter(blob_id=blob_id).exists()
@@ -2186,8 +2195,7 @@ class BlobManager(models.Manager):
     def user_can_access(self, user, blob_id) -> bool:
         """Authz: can ``user`` legitimately read this blob's content?
 
-        Replaces the old ``Blob.mailbox`` denormalization. A user can
-        access a blob if any of:
+        A user can access a blob if any of:
 
         - They have an ``Attachment`` mailbox-access for an Attachment
           referencing the blob.
@@ -2195,24 +2203,20 @@ class BlobManager(models.Manager):
           referencing the blob.
         - They have ``ThreadAccess`` to the thread of any Message whose
           ``blob`` or ``draft_blob`` is the blob.
-        - The blob has an upload reservation for a mailbox the user
+        - The blob has an active upload reservation
+          (``MailboxBlob.expires_at > now()``) on a mailbox the user
           can access (covers the JMAP upload-then-attach window).
         """
         if user is None or not getattr(user, "is_authenticated", False):
             return False
 
-        # pylint: disable-next=import-outside-toplevel
-        from core.services.blob_gc import get_upload_reservation
-
-        reserved_mailbox = get_upload_reservation(blob_id)
-        if reserved_mailbox:
-            if MailboxAccess.objects.filter(
-                mailbox_id=reserved_mailbox, user=user
-            ).exists():
-                return True
-
         return (
-            Attachment.objects.filter(
+            MailboxBlob.objects.filter(
+                blob_id=blob_id,
+                mailbox__accesses__user=user,
+                expires_at__gt=timezone.now(),
+            ).exists()
+            or Attachment.objects.filter(
                 blob_id=blob_id, mailbox__accesses__user=user
             ).exists()
             or MessageTemplate.objects.filter(
@@ -2385,7 +2389,28 @@ class Blob(BaseModel):
 
 
 class Attachment(BaseModel):
-    """Attachment model to link messages with blobs."""
+    """Attachment row — bridges a draft Message to a Blob during composition.
+
+    Lifecycle: draft-only. A row exists for the period a Message is
+    a draft; once the draft is sent the attachment content is
+    embedded in the outgoing MIME blob and the row is deleted.
+    Inbound and sent messages serialize their attachments by parsing
+    the MIME on demand (see ``DraftMessageSerializer.get_attachments``)
+    — they don't carry Attachment rows.
+
+    Strict per-message ownership: the ``message`` FK with
+    ``on_delete=CASCADE`` means each Attachment belongs to exactly
+    one draft. Deleting a Message deletes its Attachments; each
+    Attachment's ``post_delete`` signal then schedules its blob_id
+    for the GC sweep.
+
+    Why the row exists at all (rather than denormalising into
+    Message): it's the JMAP-protocol bridge between the
+    upload-then-attach client flow and the eventual MIME blob, and
+    it carries the per-draft ``name`` / optional inline ``cid``
+    that are only known at attach time and can differ between two
+    drafts sharing the same blob content.
+    """
 
     name = models.CharField(
         "file name",
@@ -2416,10 +2441,16 @@ class Attachment(BaseModel):
         help_text="Mailbox that owns this attachment",
     )
 
-    messages = models.ManyToManyField(
+    message = models.ForeignKey(
         "Message",
+        # CASCADE: an Attachment row exists only for the lifetime of
+        # its draft Message. When the Message is deleted, the
+        # Attachment is deleted; the post_delete signal then
+        # schedules its blob_id for the GC sweep. See the model
+        # docstring for the design rationale.
+        on_delete=models.CASCADE,
         related_name="attachments",
-        help_text="Messages that use this attachment",
+        help_text="The draft Message this attachment belongs to",
     )
 
     cid = models.CharField(
@@ -2453,6 +2484,90 @@ class Attachment(BaseModel):
     def sha256(self):
         """Return the SHA-256 hash of the associated blob."""
         return self.blob.sha256
+
+
+# How long an upload reservation stays valid before the GC sweep is
+# allowed to consider the blob orphan-able. 1h is the JMAP-style
+# "compose, attach, send" window.
+UPLOAD_RESERVATION_TTL = timedelta(hours=1)
+
+
+def _default_upload_expiry():
+    """Default value for ``MailboxBlob.expires_at``: now + TTL."""
+    return timezone.now() + UPLOAD_RESERVATION_TTL
+
+
+class MailboxBlob(BaseModel):
+    """Marks a Blob as freshly uploaded by a Mailbox, pending attach.
+
+    The JMAP two-step protocol returns a ``blob_id`` to the client and
+    only later receives an "attach" call referencing it. Between those
+    two HTTP calls the Blob has no FK reference yet — we hold a
+    ``MailboxBlob`` row to:
+
+    1. Keep the GC from collecting the Blob (its FK is PROTECT, and
+       the row is included in ``Blob.objects.is_referenced`` while
+       ``expires_at > now()``).
+    2. Prove provenance to the attach-by-id authz check
+       (``_get_or_create_attachment_from_blob``): only the mailbox
+       that uploaded the blob may attach it before any other FK
+       reference exists.
+    3. Authorise the upload-window download
+       (``BlobManager.user_can_access``): the same mailbox may also
+       fetch the bytes back during the window.
+
+    ``expires_at`` is set explicitly per-row (default
+    ``now() + UPLOAD_RESERVATION_TTL``) so individual rows can be
+    extended (e.g. long-running drafts) or shortened. After
+    ``expires_at`` passes, the row stops counting as a reference;
+    the GC sweep then deletes both the row and the blob in the same
+    atomic block (under the per-sha advisory lock).
+    """
+
+    blob = models.ForeignKey(
+        "Blob",
+        # PROTECT, like every other Blob FK: the GC sweep is the only
+        # authorised deleter and clears MailboxBlob rows first under
+        # ``select_for_update`` + per-sha advisory lock. Combined with
+        # the ``expires_at`` filter in ``is_referenced``, this keeps
+        # active uploads safe but lets stale ones be reaped.
+        on_delete=models.PROTECT,
+        related_name="mailbox_uploads",
+        help_text="The blob whose upload reservation this row holds.",
+    )
+    mailbox = models.ForeignKey(
+        "Mailbox",
+        on_delete=models.CASCADE,
+        related_name="blob_uploads",
+        help_text="The mailbox that uploaded the blob.",
+    )
+    expires_at = models.DateTimeField(
+        default=_default_upload_expiry,
+        help_text=(
+            "When this reservation stops protecting the blob from GC. "
+            "After this timestamp, the row is treated as stale and the "
+            "GC sweep deletes both it and the blob (if no other "
+            "reference exists)."
+        ),
+    )
+
+    class Meta:
+        db_table = "messages_mailboxblob"
+        verbose_name = "mailbox blob"
+        verbose_name_plural = "mailbox blobs"
+        # One reservation per (blob, mailbox). A re-upload of the same
+        # content by the same mailbox should refresh ``expires_at``,
+        # not duplicate the row.
+        unique_together = [("blob", "mailbox")]
+        indexes = [
+            # Hot-path filter: ``expires_at > now()`` for is_referenced
+            # / user_can_access checks; ``expires_at <= now()`` for the
+            # GC stale-row sweep. The single index serves both.
+            models.Index(fields=["expires_at"], name="mailboxblob_expires_idx"),
+        ]
+
+    def __str__(self):
+        return f"MailboxBlob({self.blob_id} for {self.mailbox_id})"
 
 
 class MailDomainAccess(BaseModel):

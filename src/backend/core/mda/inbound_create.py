@@ -348,12 +348,10 @@ def _create_message_from_inbound(  # pylint: disable=too-many-arguments
             or (sender_email == recipient_email)
         )
 
-        # Atomic: the Blob INSERT (savepoint inside
-        # ``BlobManager.create_blob``) and the Message INSERT must be
-        # visible together so the GC sweep never sees the blob row
-        # without its referencing FK on ``Message.blob``. Outbound
-        # messages have no blob yet — ``prepare_outbound_message``
-        # composes / DKIM-signs and stores it later.
+        # The Blob INSERT and the Message INSERT must commit together
+        # so the GC sweep never sees the Blob row without its
+        # referencing FK on ``Message.blob``. Outbound messages have
+        # no blob yet — ``prepare_outbound_message`` adds it later.
         with transaction.atomic():
             blob = None
             if not is_outbound:

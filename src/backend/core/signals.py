@@ -141,14 +141,10 @@ def index_thread_post_save(sender, instance, created, **kwargs):
     _schedule_thread_reindex(instance.id)
 
 
-# Blob lifecycle is governed by the reference graph + GC sweep.
 # When a row that FKs a Blob is deleted, push the blob_id into the
-# Redis candidate set; the periodic ``gc_orphan_blobs_task`` reads
-# the set, re-checks references under the per-sha advisory lock, and
-# deletes the Blob row + cleans up S3 inline if no references remain.
-# This replaces the old per-row ``cleanup_orphaned_blob_task`` enqueue
-# (which queue-bombed the broker on cascade deletes) with a single
-# bounded periodic task.
+# GC candidate set; ``gc_orphan_blobs_task`` re-checks references
+# under the per-sha advisory lock and deletes the Blob row + cleans
+# up S3 inline if no references remain.
 
 
 @receiver(post_delete, sender=models.Message)
@@ -207,27 +203,6 @@ def delete_thread_from_index(sender, instance, **kwargs):
 
     thread_id = str(instance.id)
     transaction.on_commit(lambda tid=thread_id: enqueue_thread_delete(tid))
-
-
-@receiver(pre_delete, sender=models.Message)
-def delete_orphan_draft_attachments(sender, instance, **kwargs):
-    """When a draft message is deleted, drop attachments that are only
-    used by this message.
-
-    The Attachment's own ``post_delete`` signal then schedules its
-    ``blob_id`` for GC. We don't touch ``Blob`` rows directly — that's
-    the GC sweep's job; deleting Blob rows here would race with
-    concurrent offload / dedup paths and double-up the cleanup.
-
-    The ``Message.blob`` and ``Message.draft_blob`` are handled
-    automatically by ``schedule_message_blobs_for_gc`` once the Message
-    itself is deleted.
-    """
-    if not instance.is_draft:
-        return
-    for attachment in models.Attachment.objects.filter(messages=instance):
-        if attachment.messages.count() == 1:
-            attachment.delete()
 
 
 @receiver(post_save, sender=models.ThreadAccess)

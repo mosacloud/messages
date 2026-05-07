@@ -64,13 +64,6 @@ class TestDraftWithAttachments:
             content_type="text/plain",
         )
 
-    @pytest.fixture
-    def attachment(self, user_mailbox, blob):
-        """Create a test attachment linked to a blob."""
-        return models.Attachment.objects.create(
-            mailbox=user_mailbox, name="test_attachment.txt", blob=blob
-        )
-
     def test_draft_create_with_blob(
         self, api_client, user_mailbox, blob, django_capture_on_commit_callbacks
     ):
@@ -598,12 +591,8 @@ class TestDraftWithAttachments:
                 content_type="text/plain",
             )
 
-            # Create attachment
-            attachment = models.Attachment.objects.create(
-                mailbox=user_mailbox, name="large_file.txt", blob=blob
-            )
-
-            # Create a draft thread and message
+            # Create a draft thread and message first; the per-message
+            # FK on Attachment requires the owning Message to exist.
             thread = factories.ThreadFactory()
             factories.ThreadAccessFactory(
                 thread=thread,
@@ -620,8 +609,15 @@ class TestDraftWithAttachments:
                 thread=thread, sender=sender, is_draft=True, subject="Test draft"
             )
 
-            # Manually add the attachment (bypassing the validation in draft.py)
-            draft.attachments.add(attachment)
+            # Create the attachment directly on the draft (bypassing
+            # the validation in draft.py, which is what this test
+            # asserts about).
+            models.Attachment.objects.create(
+                mailbox=user_mailbox,
+                message=draft,
+                name="large_file.txt",
+                blob=blob,
+            )
 
             # Try to send the draft
             send_response = client.post(
