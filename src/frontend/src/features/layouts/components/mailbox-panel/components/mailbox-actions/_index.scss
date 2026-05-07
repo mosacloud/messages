@@ -1,3 +1,8 @@
+@keyframes mailbox-panel-actions__spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 .mailbox-panel-actions {
     display: flex;
     justify-content: space-between;
@@ -5,45 +10,19 @@
     padding: var(--c--globals--spacings--sm);
     gap: var(--c--globals--spacings--4xs);
 
-    &__refresh-wrapper {
-        position: relative;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 24px;
-        height: 24px;
-    }
-
-    &__refresh-icon,
-    &__refresh-spinner {
-        transition: opacity 150ms ease-out;
-    }
-
     &__refresh-icon {
-        opacity: 1;
-
-        &--hidden {
-            opacity: 0;
-        }
-    }
-
-    &__refresh-spinner {
-        position: absolute;
-        inset: 0;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        opacity: 0;
 
-        &--visible {
-            opacity: 1;
+        &--spinning {
+            animation: mailbox-panel-actions__spin 700ms ease-in-out infinite;
         }
     }
 
     @media (prefers-reduced-motion: reduce) {
-        &__refresh-icon,
-        &__refresh-spinner {
-            transition: none;
+        &__refresh-icon--spinning {
+            animation: none;
         }
     }
 }

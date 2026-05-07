@@ -4,8 +4,12 @@ import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { useLayoutContext } from "@/features/layouts/components/layout-context";
 import useAbility, { Abilities } from "@/hooks/use-ability";
-import { Icon, IconType, Spinner } from "@gouvfr-lasuite/ui-kit";
-import { useState } from "react";
+import { Icon, IconType } from "@gouvfr-lasuite/ui-kit";
+import { useEffect, useRef, useState } from "react";
+import { TransientTooltip } from "@/features/ui/components/transient-tooltip";
+import clsx from "clsx";
+
+const MIN_ANIMATION_MS = 700;
 
 export const MailboxPanelActions = () => {
     const { t } = useTranslation();
@@ -13,14 +17,37 @@ export const MailboxPanelActions = () => {
     const { selectedMailbox, refetchMailboxes } = useMailboxContext();
     const { closeLeftPanel } = useLayoutContext();
     const canWriteMessages = useAbility(Abilities.CAN_WRITE_MESSAGES, selectedMailbox);
-    const [showSpinner, setShowSpinner] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [feedback, setFeedback] = useState<string | null>(null);
+    // Snapshot of count_unread_threads at click-time. Read by the effect below
+    // once isRefreshing flips back to false AND React has committed the new
+    // mailbox data — at that point we know the delta.
+    const baselineUnreadCountRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        if (isRefreshing || baselineUnreadCountRef.current === null) return;
+        const currentCount = selectedMailbox?.count_unread_threads ?? 0;
+        const delta = currentCount - baselineUnreadCountRef.current;
+        baselineUnreadCountRef.current = null;
+        setFeedback(
+            delta > 0
+                ? t("{{count}} new message", { count: delta })
+                : t("Up to date"),
+        );
+    }, [isRefreshing, selectedMailbox?.count_unread_threads, t]);
 
     const handleRefresh = async () => {
-        setShowSpinner(true);
+        if (isRefreshing) return;
+        baselineUnreadCountRef.current = selectedMailbox?.count_unread_threads ?? 0;
+        setFeedback(null);
+        setIsRefreshing(true);
         try {
-            await refetchMailboxes();
+            await Promise.all([
+                refetchMailboxes(),
+                new Promise<void>((resolve) => window.setTimeout(resolve, MIN_ANIMATION_MS)),
+            ]);
         } finally {
-            setShowSpinner(false);
+            setIsRefreshing(false);
         }
     };
 
@@ -29,14 +56,13 @@ export const MailboxPanelActions = () => {
         if (!canWriteMessages) return;
         closeLeftPanel();
         router.push(`/mailbox/${selectedMailbox!.id}/new`);
-    }
+    };
 
     if (!selectedMailbox) return null;
 
     return (
         <div className="mailbox-panel-actions">
             <div>
-            {
                 <Button
                     onClick={goToNewMessageForm}
                     href={`/mailbox/${selectedMailbox.id}/new`}
@@ -45,24 +71,31 @@ export const MailboxPanelActions = () => {
                 >
                     {t("New message")}
                 </Button>
-            }
             </div>
             <div className="mailbox-panel-actions__extra">
-                <Button
-                    icon={
-                        <span className="mailbox-panel-actions__refresh-wrapper">
-                            <span className={`material-icons mailbox-panel-actions__refresh-icon${showSpinner ? ' mailbox-panel-actions__refresh-icon--hidden' : ''}`}>autorenew</span>
-                            <span className={`mailbox-panel-actions__refresh-spinner${showSpinner ? ' mailbox-panel-actions__refresh-spinner--visible' : ''}`}>
-                                <Spinner size="sm" />
-                            </span>
-                        </span>
-                    }
-                    variant="tertiary"
-                    aria-label={showSpinner ? t('Loading…') : t('Refresh')}
-                    onClick={handleRefresh}
-                    disabled={showSpinner}
-                />
+                <TransientTooltip
+                    message={feedback}
+                    onHide={() => setFeedback(null)}
+                    placement="bottom"
+                >
+                    <Button
+                        icon={
+                            <Icon
+                                name="autorenew"
+                                className={clsx(
+                                    "mailbox-panel-actions__refresh-icon",
+                                    { "mailbox-panel-actions__refresh-icon--spinning": isRefreshing }
+                                )}
+                                aria-hidden="true"
+                            />
+                        }
+                        variant="tertiary"
+                        aria-label={isRefreshing ? t("Loading…") : t("Refresh")}
+                        onClick={handleRefresh}
+                        disabled={isRefreshing}
+                    />
+                </TransientTooltip>
             </div>
         </div>
-    )
-}
+    );
+};
