@@ -3,23 +3,25 @@
     flex-direction: column;
     height: 100%;
     max-height: 100%;
-    overflow: auto;
     font-size: var(--c--globals--font--sizes--sm);
     position: relative;
 }
 
 .mailbox-panel__header {
-    position: sticky;
-    top: 0;
-    z-index: 10;
     flex-shrink: 0;
     background: var(--c--contextuals--background--surface--secondary);
+    z-index: 10;
+}
+
+.mailbox-panel__body {
+    flex: 1;
+    min-height: 0;
 }
 
 .mailbox-panel__mailbox-title {
     margin: 0;
     flex-shrink: 0;
-    padding-block: var(--c--globals--spacings--sm);
+    padding-bottom: var(--c--globals--spacings--xs);
 
     & > .c__dropdown-menu-trigger {
         justify-content: flex-start;
@@ -50,14 +52,4 @@
             color: inherit;
         }
     }
-}
-
-.mailbox-panel .mailbox-list {
-    flex-shrink: 0;
-    margin-bottom: var(--c--globals--spacings--sm);
-}
-
-.mailbox-panel .mailbox-labels {
-    border-top: 1px solid var(--c--contextuals--border--surface--primary);
-    flex: 1;
 }

@@ -3,7 +3,7 @@ import { Portal } from "@/features/ui/components/portal";
 
 const DEFAULT_DURATION_MS = 2000;
 
-export type TransientTooltipPlacement = "top" | "bottom";
+export type TransientTooltipPlacement = "top" | "bottom" | "left" | "right";
 
 export type TransientTooltipProps = {
     message: string | null;
@@ -31,6 +31,12 @@ export const TransientTooltip = ({
     const [position, setPosition] = useState<Position | null>(null);
     const [internalMessage, setInternalMessage] = useState<string | null>(null);
     const [isExiting, setIsExiting] = useState(false);
+    // Latest-ref so the auto-hide timer below doesn't reset on every parent
+    // re-render when `onHide` is passed as an inline arrow function.
+    const onHideRef = useRef(onHide);
+    useEffect(() => {
+        onHideRef.current = onHide;
+    });
 
     // Delayed-unmount pattern: when the parent clears `message`, we keep the
     // bubble mounted under `c__tooltip--exiting` so its exit animation can
@@ -54,10 +60,16 @@ export const TransientTooltip = ({
         const updatePosition = () => {
             const rect = wrapperRef.current?.getBoundingClientRect();
             if (!rect) return;
-            setPosition({
-                top: placement === "bottom" ? rect.bottom : rect.top,
-                left: rect.left + rect.width / 2,
-            });
+
+            let top: number, left: number;
+            if (["left", "right"].includes(placement)) {
+                top = rect.top + rect.height / 2;
+                left = placement === "left" ? rect.left : rect.right;
+            } else {
+                top = placement === "bottom" ? rect.bottom : rect.top;
+                left = rect.left + rect.width / 2;
+            }
+            setPosition({ top, left });
         };
         updatePosition();
         window.addEventListener("resize", updatePosition);
@@ -66,9 +78,9 @@ export const TransientTooltip = ({
 
     useEffect(() => {
         if (!message) return;
-        const timer = window.setTimeout(onHide, duration);
+        const timer = window.setTimeout(() => onHideRef.current(), duration);
         return () => window.clearTimeout(timer);
-    }, [message, duration, onHide]);
+    }, [message, duration]);
 
     return (
         <span ref={wrapperRef} className="transient-tooltip__wrapper">

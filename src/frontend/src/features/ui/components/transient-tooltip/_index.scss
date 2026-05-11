@@ -6,14 +6,19 @@
 // so we can place it at viewport coordinates from JS, mark non-interactive,
 // and centre horizontally on the trigger's mid-axis.
 .transient-tooltip {
+    --offset: 8px;
     position: fixed;
     z-index: 1000;
     pointer-events: none;
-    transform: translateX(-50%);
+    transform: translate(-50%, calc(-1 * var(--offset)));
 
     &--top {
-        // For top placement, the inline `top` is the trigger's top edge, so
-        // we lift the bubble by its own height to sit above the trigger.
-        transform: translate(-50%, -100%);
+        transform: translate(-50%, calc(-100% + var(--offset)));
+    }
+    &--left {
+        transform: translate(calc(-100% + var(--offset)), -50%);
+    }
+    &--right {
+        transform: translate(calc(-1 * var(--offset)), -50%);
     }
 }

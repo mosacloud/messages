@@ -1,8 +1,3 @@
-@keyframes mailbox-panel-actions__spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
 .mailbox-panel-actions {
     display: flex;
     justify-content: space-between;
@@ -15,8 +10,16 @@
         align-items: center;
         justify-content: center;
 
+        @keyframes refreshIconSpin {
+            0% { transform: rotate(0deg); filter: blur(0px); }
+            33% { filter: blur(1px); }
+            50% { filter: blur(2px); }
+            66% { filter: blur(1px); }
+            100% { transform: rotate(360deg); filter: blur(0px); }
+        }
+
         &--spinning {
-            animation: mailbox-panel-actions__spin 700ms ease-in-out infinite;
+            animation: refreshIconSpin 700ms var(--c--globals--transitions--ease-in-out) infinite;
         }
     }
 
