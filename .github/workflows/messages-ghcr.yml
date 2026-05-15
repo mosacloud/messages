@@ -21,19 +21,19 @@ jobs:
       - name: Extract versions
         id: versions
         run: |
-          # Only emit a versioned tag for main and v* tag pushes.
-          # Feature branches get only the branch-slug tag (via
-          # type=ref,event=branch in docker-publish.yml) so their builds
-          # never look like an official release.
+          FRONTEND_VERSION=$(jq -r .version src/frontend/package.json)
+          BACKEND_VERSION=$(grep '^version' src/backend/pyproject.toml | cut -d'"' -f2)
+          # Main and v* tag pushes get the production-style suffix
+          # (mosa.<run_number>). Feature branches get a branch-slug
+          # suffix so the tag clearly identifies the source branch
+          # and cannot be mistaken for a release.
           if [[ "$GITHUB_REF" == "refs/heads/main" || "$GITHUB_REF" == refs/tags/v* ]]; then
-            FRONTEND_VERSION=$(jq -r .version src/frontend/package.json)
-            BACKEND_VERSION=$(grep '^version' src/backend/pyproject.toml | cut -d'"' -f2)
-            echo "frontend_version=${FRONTEND_VERSION}-mosa.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-            echo "backend_version=${BACKEND_VERSION}-mosa.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            SUFFIX="mosa.${{ github.run_number }}"
           else
-            echo "frontend_version=" >> "$GITHUB_OUTPUT"
-            echo "backend_version=" >> "$GITHUB_OUTPUT"
+            SUFFIX=$(echo "${GITHUB_REF_NAME}" | tr '/' '-')
           fi
+          echo "frontend_version=${FRONTEND_VERSION}-${SUFFIX}" >> "$GITHUB_OUTPUT"
+          echo "backend_version=${BACKEND_VERSION}-${SUFFIX}" >> "$GITHUB_OUTPUT"
 
   docker-publish-mta-in:
     needs: get-version
