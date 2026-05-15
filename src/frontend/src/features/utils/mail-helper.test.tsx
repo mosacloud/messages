@@ -1,8 +1,19 @@
 import { vi } from 'vitest';
 import MailHelper, { SUPPORTED_IMAP_DOMAINS, ATTACHMENT_SEPARATORS } from './mail-helper';
 import DetectionMap from '@/features/i18n/attachments-detection-map.json';
+import i18n from '@/features/i18n/initI18n';
 
 vi.mock('./errors', () => ({ handle: vi.fn() }));
+
+const withLanguage = (lng: string, fn: () => void) => {
+  const previous = i18n.language;
+  i18n.language = lng;
+  try {
+    fn();
+  } finally {
+    i18n.language = previous;
+  }
+};
 
 describe('MailHelper', () => {
   describe('markdownToHtml', () => {
@@ -870,6 +881,82 @@ describe('MailHelper', () => {
       for (const pattern of regexPatterns) {
         expect(() => new RegExp(pattern.slice(1, -1), 'i')).not.toThrowError();
       }
+    });
+  });
+
+  describe('localized attachment separator', () => {
+    const attachments = [
+      { id: '1', name: 'test.pdf', url: 'https://example.com/test.pdf', type: 'application/pdf', size: 100, created_at: '2021-01-01' }
+    ];
+
+    it('should use the French separator when i18n language is fr-FR', () => {
+      withLanguage('fr-FR', () => {
+        const draft = MailHelper.attachDriveAttachmentsToDraft('Bonjour', attachments);
+        expect(draft).toContain('---------- Fichiers joints ----------');
+        expect(draft).not.toContain('---------- Drive attachments ----------');
+      });
+    });
+
+    it('should use the Dutch separator when i18n language is nl-NL', () => {
+      withLanguage('nl-NL', () => {
+        const text = MailHelper.attachDriveAttachmentsToTextBody('Hallo', attachments);
+        expect(text).toContain('---------- Drive-bijlagen ----------');
+      });
+    });
+
+    it('should use the English separator when i18n language is en-US', () => {
+      withLanguage('en-US', () => {
+        const html = MailHelper.attachDriveAttachmentsToHtmlBody('<p>Hi</p>', attachments);
+        expect(html).toContain('---------- Drive attachments ----------');
+      });
+    });
+
+    it('should fall back to the legacy English separator for an unknown language', () => {
+      withLanguage('xx-XX', () => {
+        const draft = MailHelper.attachDriveAttachmentsToDraft('Hello', attachments);
+        expect(draft).toContain('---------- Drive attachments ----------');
+      });
+    });
+
+    it('should round-trip a French-localized text body regardless of the reader language', () => {
+      let text = '';
+      withLanguage('fr-FR', () => {
+        text = MailHelper.attachDriveAttachmentsToTextBody('Bonjour', attachments);
+      });
+      expect(text).toContain('---------- Fichiers joints ----------');
+
+      withLanguage('en-US', () => {
+        const result = MailHelper.extractDriveAttachmentsFromTextBody(text);
+        expect(result).toEqual([
+          'Bonjour',
+          [{ name: 'test.pdf', url: 'https://example.com/test.pdf' }]
+        ]);
+      });
+    });
+
+    it('should round-trip a Dutch-localized html body regardless of the reader language', () => {
+      let html = '';
+      withLanguage('nl-NL', () => {
+        html = MailHelper.attachDriveAttachmentsToHtmlBody('<h1>Hallo</h1>', attachments);
+      });
+      expect(html).toContain('---------- Drive-bijlagen ----------');
+
+      withLanguage('fr-FR', () => {
+        const [body, extracted] = MailHelper.extractDriveAttachmentsFromHtmlBody(html);
+        expect(body).toBe('<h1>Hallo</h1>');
+        expect(extracted).toHaveLength(1);
+        expect(extracted[0].name).toBe('test.pdf');
+      });
+    });
+
+    it('should expose every localized separator in ATTACHMENT_SEPARATORS for parsing', () => {
+      // Guards against accidentally adding a localized separator without
+      // appending it to ATTACHMENT_SEPARATORS, which would break parsing.
+      expect(ATTACHMENT_SEPARATORS).toEqual(expect.arrayContaining([
+        '---------- Drive attachments ----------',
+        '---------- Fichiers joints ----------',
+        '---------- Drive-bijlagen ----------',
+      ]));
     });
   });
 });

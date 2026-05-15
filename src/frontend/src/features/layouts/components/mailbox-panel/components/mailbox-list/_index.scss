@@ -3,7 +3,8 @@
     flex-direction: column;
     margin-inline: var(--c--globals--spacings--sm);
     gap: var(--c--globals--spacings--4xs);
-    flex-shrink: 0;
+    height: 100%;
+    overflow-y: auto;
 }
 
 // Wraps a folder link together with its disclosure chevron button. The

@@ -57,9 +57,12 @@ const ThreadMessageActions = ({
     const toggleReadStateFrom = useCallback((is_unread: boolean) => {
         if (!selectedThread) return;
         if (is_unread) {
-            // Mark as unread from here: subtract 1ms so this message becomes unread
+            // Mark as unread from here: subtract 1ms so this message becomes unread.
+            // Unmount the thread view before the mutation so the visibility observer
+            // cannot debounce a mark-as-read request on the newly-unread messages.
             const readAt = new Date(new Date(message.created_at!).getTime() - 1).toISOString();
-            markAsReadAt({ threadIds: [selectedThread.id], readAt, onSuccess: unselectThread });
+            unselectThread();
+            markAsReadAt({ threadIds: [selectedThread.id], readAt });
         } else {
             // Mark as read from here: read up to this message's created_at
             markAsReadAt({ threadIds: [selectedThread.id], readAt: message.created_at! });
@@ -105,7 +108,7 @@ const ThreadMessageActions = ({
         }] : []),
         ...(message.is_unread ? [{
             label: hasSiblingMessages ? t('Mark as read from here') : t('Mark as read'),
-            icon: <Icon type={IconType.FILLED} name="mark_email_read" />,
+            icon: <Icon type={IconType.FILLED} name="drafts" />,
             callback: () => toggleReadStateFrom(false)
         }] :
         [{

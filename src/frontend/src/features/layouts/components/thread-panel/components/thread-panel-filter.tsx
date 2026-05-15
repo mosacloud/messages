@@ -98,7 +98,11 @@ export const ThreadPanelFilter = () => {
         callback: () => handleSelectFilter(type),
       }))}
     >
-      <Tooltip content={getTooltipContent()} className={isDisabled ? "hidden" : ""}>
+    <Tooltip
+        placement="right"
+        content={getTooltipContent()}
+        className={isDisabled ? "hidden" : ""}
+      >
         <Button
           onClick={handleToggleClick}
           disabled={isDisabled}

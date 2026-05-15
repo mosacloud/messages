@@ -1,6 +1,7 @@
 import { useSearchParams } from "next/navigation";
 import { findRootFolder } from "../../mailbox-panel/components/mailbox-list";
 import { useLabelsList } from "@/features/api/gen";
+import type { TreeLabel } from "@/features/api/gen/models";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { useTranslation } from "react-i18next";
 import { useMemo, useState } from "react";
@@ -58,16 +59,25 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
     // regardless.
     const canEditSelection = useCanEditThreads(selectedThreadIds);
 
+    const findLabelBySlug = (labels: readonly TreeLabel[], slug: string): TreeLabel | undefined => {
+        for (const label of labels) {
+            if (label.slug === slug) return label;
+            const found = findLabelBySlug(label.children, slug);
+            if (found) return found;
+        }
+        return undefined;
+    };
+
     const title = useMemo(() => {
         if (searchParams.has('search')) return t('folder.search', { defaultValue: 'Search' });
-        if (searchParams.has('label_slug')) return (labelsQuery.data?.data || []).find((label) => label.slug === searchParams.get('label_slug'))?.name;
+        if (searchParams.has('label_slug')) return findLabelBySlug(labelsQuery.data?.data || [], searchParams.get('label_slug')!)?.display_name;
         // Thread panel filters stack on top of the folder filter — strip them
         // so the matching resolves to the underlying folder.
         const folderParams = new URLSearchParams(searchParams.toString());
         THREAD_PANEL_FILTER_PARAMS.forEach((param) => folderParams.delete(param));
         const activeFolder = findRootFolder((folder) => new URLSearchParams(folder.filter).toString() === folderParams.toString());
         return activeFolder?.name;
-    }, [searchParams, labelsQuery.data?.data, selectedMailbox, t])
+    }, [searchParams, labelsQuery.data?.data, t, findLabelBySlug])
 
     const handleSelectAllToggle = () => {
         if (isAllSelected) {
@@ -184,16 +194,18 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                     <Tooltip content={mainReadTooltip}>
                         <Button
                             onClick={() => {
+                                // Close the open thread before firing the mutation. Waiting for
+                                // onSuccess would let the visibility observer re-observe the
+                                // newly-unread messages and debounce a mark-as-read that silently
+                                // reverts the action.
+                                unselectThread();
+                                onClearSelection();
                                 markAsReadAt({
                                     threadIds: threadIdsToMark,
                                     readAt: selectionReadStatus === SelectionReadStatus.READ ? null : new Date().toISOString(),
-                                    onSuccess: () => {
-                                        unselectThread();
-                                        onClearSelection();
-                                    }
                                 });
                             }}
-                            icon={<Icon name={selectionReadStatus === SelectionReadStatus.READ ? 'mark_email_unread' : 'mark_email_read'} type={IconType.OUTLINED} />}
+                            icon={<Icon name={selectionReadStatus === SelectionReadStatus.READ ? 'mark_email_unread' : 'drafts'} type={IconType.OUTLINED} />}
                             variant="tertiary"
                             size="nano"
                             aria-label={mainReadTooltip}
@@ -288,7 +300,7 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                             },
                             ...([SelectionReadStatus.MIXED, SelectionReadStatus.UNREAD].includes(selectionReadStatus) ? [{
                                 label: markAllTooltip,
-                                icon: <span className="material-icons">mark_email_read</span>,
+                                icon: <span className="material-icons">drafts</span>,
                                 callback: () => {
                                     markAsReadAt({
                                         threadIds: threadIdsToMark,
@@ -304,13 +316,13 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                                 label: markAllUnreadLabel,
                                 icon: <span className="material-icons">mark_email_unread</span>,
                                 callback: () => {
+                                    // Close the open thread before the mutation so the visibility
+                                    // observer cannot re-mark the newly-unread messages as read.
+                                    unselectThread();
+                                    onClearSelection();
                                     markAsReadAt({
                                         threadIds: threadIdsToMark,
                                         readAt: null,
-                                        onSuccess: () => {
-                                            unselectThread();
-                                            onClearSelection();
-                                        }
                                     });
                                 },
                             }] : []),

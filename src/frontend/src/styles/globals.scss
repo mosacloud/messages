@@ -32,18 +32,16 @@ body {
 }
 
 // Customize resize handle to add an hover effect to explicit that
-// this component is interactive.
+// this component is interactive. Orientation is driven by the
+// `aria-orientation` attribute set by react-resizable-panels:
+// "vertical" → vertical line (horizontal Group, drag left/right)
+// "horizontal" → horizontal line (vertical Group, drag up/down)
 .panel__resize-handle {
-  width: 1px;
   background-color: var(--c--contextuals--border--surface--primary);
   position: relative;
 
   &:before {
     content: '';
-    width: 3px;
-    left: -1px;
-    top: 0;
-    bottom: 0;
     background: var(--c--contextuals--border--surface--primary);
     position: absolute;
     opacity: 0;
@@ -51,18 +49,50 @@ body {
     z-index: 10;
   }
 
-  // Little tricks to expand the area to catch hover
+  // Expand the hover catch zone.
   &:after {
     content: '';
-    width: 11px;
-    left: -5px;
-    top:0;
-    bottom: 0;
     position: absolute;
   }
 
   &:hover:before {
     opacity: 1;
+  }
+
+  &[aria-orientation="vertical"] {
+    width: 1px;
+
+    &:before {
+      width: 3px;
+      left: -1px;
+      top: 0;
+      bottom: 0;
+    }
+
+    &:after {
+      width: 11px;
+      left: -5px;
+      top: 0;
+      bottom: 0;
+    }
+  }
+
+  &[aria-orientation="horizontal"] {
+    height: 1px;
+
+    &:before {
+      height: 3px;
+      top: -1px;
+      left: 0;
+      right: 0;
+    }
+
+    &:after {
+      height: 11px;
+      top: -5px;
+      left: 0;
+      right: 0;
+    }
   }
 }
 

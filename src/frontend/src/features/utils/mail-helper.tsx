@@ -1,6 +1,7 @@
 import { renderToString, renderToStaticMarkup } from "react-dom/server";
 import { Markdown } from "@react-email/components";
 import DetectionMap from "@/features/i18n/attachments-detection-map.json";
+import i18n from "@/features/i18n/initI18n";
 import z from "zod";
 import { DriveFile } from "../forms/components/message-form/drive-attachment-picker";
 import { handle } from "./errors";
@@ -42,8 +43,22 @@ export const SUPPORTED_IMAP_DOMAINS = new Map<string, ImapConfig>([
    If you want to change the separator, you must add a new value in the array
    Otherwise, previous messages will not be able to be parsed correctly
    /!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\ */
-export const ATTACHMENT_SEPARATORS = ['---------- Drive attachments ----------'];
-const ATTACHMENT_SEPARATOR = ATTACHMENT_SEPARATORS[ATTACHMENT_SEPARATORS.length - 1];
+export const ATTACHMENT_SEPARATORS = [
+    '---------- Drive attachments ----------',
+    '---------- Fichiers joints ----------',
+    '---------- Drive-bijlagen ----------',
+];
+
+// Active separator used when sending a new message, keyed by i18n language code.
+// Unknown languages fall back to the legacy English value (first entry above).
+const ATTACHMENT_SEPARATORS_BY_LANG: Record<string, string> = {
+    'en-US': '---------- Drive attachments ----------',
+    'fr-FR': '---------- Fichiers joints ----------',
+    'nl-NL': '---------- Drive-bijlagen ----------',
+};
+
+const getAttachmentSeparator = (): string =>
+    ATTACHMENT_SEPARATORS_BY_LANG[i18n.language] ?? ATTACHMENT_SEPARATORS[0];
 
 /** An helper which aims to gather all utils related write and send a message */
 class MailHelper {
@@ -174,7 +189,7 @@ class MailHelper {
     static attachDriveAttachmentsToDraft(draft: string = '', attachments: DriveFile[] = []) {
         if (attachments.length === 0) return draft;
         return draft
-        + ATTACHMENT_SEPARATOR
+        + getAttachmentSeparator()
         + JSON.stringify(attachments);
     }
 
@@ -185,7 +200,7 @@ class MailHelper {
     static attachDriveAttachmentsToTextBody(textBody: string = '', attachments: DriveFile[] = []) {
         if (attachments.length === 0) return textBody;
         return textBody
-        + `\n${ATTACHMENT_SEPARATOR}\n`
+        + `\n${getAttachmentSeparator()}\n`
         + attachments.map(a =>
             `- [${a.name}](${a.url})`
         ).join('\n')
@@ -199,7 +214,7 @@ class MailHelper {
     static attachDriveAttachmentsToHtmlBody(htmlBody: string = '', attachments: DriveFile[] = []) {
         if (attachments.length === 0) return htmlBody;
         return htmlBody
-        + `\n${ATTACHMENT_SEPARATOR}\n`
+        + `\n${getAttachmentSeparator()}\n`
         + renderToStaticMarkup(
             <ul>
                 {attachments.map((a) => (
