@@ -4,6 +4,7 @@ name: Build and publish OCI images
   push:
     branches:
       - main
+      - 'feature/**'
     tags:
       - 'v*'
 
