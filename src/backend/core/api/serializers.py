@@ -8,7 +8,7 @@ import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Q
 
 from drf_spectacular.utils import PolymorphicProxySerializer, extend_schema_field
 from rest_framework import serializers
@@ -17,6 +17,7 @@ from rest_framework.exceptions import PermissionDenied
 from core import enums, models
 from core.mda.rfc5322 import extract_base64_images_from_html
 from core.services.blob_gc import schedule_for_gc
+from core.services.identity import keycloak as keycloak_service
 
 
 class CreateOnlyFieldsMixin:
@@ -1370,16 +1371,7 @@ class MailDomainAdminSerializer(AbilitiesModelSerializer):
     """Serialize mail domains for admin view."""
 
     expected_dns_records = serializers.SerializerMethodField(read_only=True)
-
-    def get_expected_dns_records(self, instance):
-        """Return the expected DNS records for the mail domain, only in detail views."""
-
-        # Only include DNS records in detail views, not in list views
-        view = self.context.get("view")
-        if view and hasattr(view, "action") and view.action == "retrieve":
-            return instance.get_expected_dns_records()
-
-        return None
+    mailbox_count = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = models.MailDomain
@@ -1389,6 +1381,7 @@ class MailDomainAdminSerializer(AbilitiesModelSerializer):
             "created_at",
             "updated_at",
             "expected_dns_records",
+            "mailbox_count",
             "identity_sync",
         ]
         read_only_fields = fields
@@ -1410,6 +1403,27 @@ class MailDomainAdminSerializer(AbilitiesModelSerializer):
     def get_abilities(self, instance):
         """Return the abilities for the mail domain."""
         return super().get_abilities(instance)
+
+    def get_expected_dns_records(self, instance):
+        """Return the expected DNS records for the mail domain, only in detail views."""
+
+        # Only include DNS records in detail views, not in list views
+        view = self.context.get("view")
+        if view and hasattr(view, "action") and view.action == "retrieve":
+            return instance.get_expected_dns_records()
+
+        return None
+
+    def get_mailbox_count(self, instance):
+        """Return the number of mailboxes for the mail domain.
+
+        Relies on the `mailbox_count` annotation provided by the viewset queryset
+        to avoid an N+1 COUNT query per domain when listing.
+        """
+        annotated = getattr(instance, "mailbox_count", None)
+        if annotated is not None:
+            return annotated
+        return instance.mailbox_set.count()
 
 
 class MaildomainAccessReadSerializer(serializers.ModelSerializer):
@@ -1502,6 +1516,49 @@ class MailboxAdminSerializer(serializers.ModelSerializer):
     alias_of = serializers.PrimaryKeyRelatedField(
         required=False, allow_null=True, queryset=models.Mailbox.objects.none()
     )
+    last_accessed_at = serializers.SerializerMethodField(
+        help_text="Most recent ``accessed_at`` across all mailbox accesses."
+    )
+    has_mandatory_totp = serializers.SerializerMethodField(
+        help_text=(
+            "Whether the Keycloak user backing this mailbox carries the "
+            "KEYCLOAK_TOTP_ROLE_ID realm role. ``null`` when the feature is "
+            "disabled or the role id isn't configured."
+        )
+    )
+
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_last_accessed_at(self, obj):
+        """Prefers the ``last_accessed_at`` annotation set by the admin list
+        viewset (single SQL aggregate). Falls back to a per-instance query so
+        the field still resolves on create/retrieve/update responses where the
+        annotation isn't present."""
+        if hasattr(obj, "last_accessed_at"):
+            return obj.last_accessed_at
+        return obj.accesses.aggregate(value=Max("accessed_at"))["value"]
+
+    @extend_schema_field(serializers.BooleanField(allow_null=True))
+    def get_has_mandatory_totp(self, obj):
+        """Whether the mailbox user has the configured TOTP realm role.
+
+        Returns ``None`` when the feature is disabled, prerequisites aren't
+        met (no role configured, identity sync off, not a personal mailbox),
+        or the serializer is rendering outside the admin list flow — the
+        field is only populated when the viewset pre-resolves it for the
+        whole page (one pipelined Redis call) and stashes the result in
+        ``context["mandatory_totp_membership"]``.
+        """
+        if (
+            not keycloak_service.is_mandatory_totp_enabled()
+            or not obj.is_identity
+            or not obj.domain.identity_sync
+        ):
+            return None
+
+        membership = self.context.get("mandatory_totp_membership")
+        if membership is None:
+            return None
+        return membership.get(str(obj))
 
     class Meta:
         model = models.Mailbox
@@ -1516,6 +1573,8 @@ class MailboxAdminSerializer(serializers.ModelSerializer):
             "updated_at",
             "can_reset_password",
             "contact",
+            "last_accessed_at",
+            "has_mandatory_totp",
         ]
         read_only_fields = [
             "id",
@@ -1526,6 +1585,8 @@ class MailboxAdminSerializer(serializers.ModelSerializer):
             "updated_at",
             "can_reset_password",
             "contact",
+            "last_accessed_at",
+            "has_mandatory_totp",
         ]
 
     def __init__(self, *args, **kwargs):
