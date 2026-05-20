@@ -2123,6 +2123,20 @@ class InboundMessage(BaseModel):
 class BlobManager(models.Manager):
     """Custom Manager for Blob model."""
 
+    def get_queryset(self):
+        """Defer the rollback-safety ``_deprecated_*`` FKs.
+
+        The columns have already been dropped in some deployed databases
+        but the model fields are intentionally retained for rollback
+        (see ``_deprecated_mailbox`` / ``_deprecated_maildomain``). A
+        default SELECT must not reference the missing columns.
+        """
+        return (
+            super()
+            .get_queryset()
+            .defer("_deprecated_mailbox", "_deprecated_maildomain")
+        )
+
     def create_blob(
         self,
         content: bytes,

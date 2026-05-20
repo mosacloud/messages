@@ -10,7 +10,7 @@ from django.contrib import admin, messages
 from django.contrib.auth import admin as auth_admin
 from django.core.files.storage import storages
 from django.db import transaction
-from django.db.models import JSONField, Q
+from django.db.models import Exists, JSONField, OuterRef, Q
 from django.http import HttpResponse, HttpResponseNotAllowed
 from django.shortcuts import redirect
 from django.template.response import TemplateResponse
@@ -90,8 +90,13 @@ class RecipientDeliveryStatusFilter(admin.SimpleListFilter):
         """Filter queryset by recipient delivery status."""
         if self.value():
             return queryset.filter(
-                recipients__delivery_status=int(self.value())
-            ).distinct()
+                Exists(
+                    models.MessageRecipient.objects.filter(
+                        message_id=OuterRef("pk"),
+                        delivery_status=int(self.value()),
+                    )
+                )
+            )
         return queryset
 
 
@@ -303,6 +308,9 @@ class MailDomainAccessInline(admin.TabularInline):
     model = models.MailDomainAccess
     autocomplete_fields = ("user",)
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("user")
+
 
 @admin.register(models.MailDomain)
 class MailDomainAdmin(admin.ModelAdmin):
@@ -391,6 +399,9 @@ class MailboxAccessInline(admin.TabularInline):
 
     model = models.MailboxAccess
     autocomplete_fields = ("user",)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("user")
 
 
 @admin.register(models.Mailbox)
@@ -512,6 +523,7 @@ class ChannelAdmin(admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("type", "scope_level", "created_at")
+    list_select_related = ("mailbox", "maildomain", "user")
     search_fields = ("name", "type")
     readonly_fields = ("created_at", "updated_at", "last_used_at")
     autocomplete_fields = ("mailbox", "maildomain", "user")
@@ -619,6 +631,7 @@ class MailboxAccessAdmin(admin.ModelAdmin):
     """
 
     list_display = ("id", "mailbox", "user", "role")
+    list_select_related = ("mailbox", "user")
     search_fields = ("mailbox__local_part", "mailbox__domain__name", "user__email")
     autocomplete_fields = ("mailbox", "user")
 
@@ -689,6 +702,7 @@ class ThreadAccessAdmin(admin.ModelAdmin):
     """
 
     list_display = ("id", "thread", "mailbox", "role")
+    list_select_related = ("thread", "mailbox")
     search_fields = (
         "thread__subject",
         "mailbox__local_part",
@@ -760,6 +774,9 @@ class ThreadAccessInline(admin.TabularInline):
     autocomplete_fields = ("mailbox",)
     readonly_fields = ("read_at", "starred_at")
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("mailbox")
+
 
 class ThreadEventInline(admin.TabularInline):
     """Inline class for the ThreadEvent model.
@@ -788,6 +805,11 @@ class ThreadEventInline(admin.TabularInline):
     def has_add_permission(self, request, obj=None):
         return False
 
+    def get_queryset(self, request):
+        return (
+            super().get_queryset(request).select_related("author", "channel", "message")
+        )
+
 
 class UserEventInline(admin.TabularInline):
     """Inline class for the UserEvent model.
@@ -812,6 +834,13 @@ class UserEventInline(admin.TabularInline):
 
     def has_add_permission(self, request, obj=None):
         return False
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("user", "thread", "thread_event")
+        )
 
 
 @transaction.atomic
@@ -931,6 +960,9 @@ class ThreadAdmin(admin.ModelAdmin):
             _cleanup_thread_access_formset(formset)
             return
         super().save_formset(request, form, formset, change)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related("labels")
 
     list_display = (
         "id",
@@ -1058,12 +1090,16 @@ class MessageRecipientInline(admin.TabularInline):
         "retry_count",
     )
 
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("contact")
+
 
 @admin.register(models.Attachment)
 class AttachmentAdmin(admin.ModelAdmin):
     """Admin class for the Attachment model"""
 
     list_display = ("id", "name", "mailbox", "message", "created_at")
+    list_select_related = ("mailbox", "message")
     search_fields = ("name", "mailbox__local_part", "mailbox__domain__name")
     autocomplete_fields = ("mailbox",)
     raw_id_fields = ("blob", "message")
@@ -1112,7 +1148,7 @@ class MessageAdmin(admin.ModelAdmin):
     change_list_template = "admin/core/message/change_list.html"
     change_form_template = "admin/core/message/change_form.html"
     raw_id_fields = ("thread", "blob", "draft_blob", "parent", "channel")
-    autocomplete_fields = ("sender", "signature")
+    autocomplete_fields = ("sender", "sender_user", "signature")
     readonly_fields = ("mime_id", "created_at", "updated_at")
 
     def get_queryset(self, request):
@@ -1283,6 +1319,7 @@ class ContactAdmin(admin.ModelAdmin):
     """Admin class for the Contact model"""
 
     list_display = ("id", "name", "email", "mailbox")
+    list_select_related = ("mailbox",)
     ordering = ("-created_at", "email")
     search_fields = ("name", "email")
     autocomplete_fields = ("mailbox",)
@@ -1332,6 +1369,7 @@ class LabelAdmin(admin.ModelAdmin):
         "parent_name",
     )
     search_fields = ("name", "mailbox__local_part", "mailbox__domain__name")
+    list_select_related = ("mailbox",)
     readonly_fields = ("slug",)
     autocomplete_fields = ("mailbox",)
     raw_id_fields = ("threads",)
@@ -1431,6 +1469,7 @@ class MailDomainAccessAdmin(admin.ModelAdmin):
     """Admin class for the MailDomainAccess model"""
 
     list_display = ("id", "maildomain", "user", "role")
+    list_select_related = ("maildomain", "user")
     search_fields = ("maildomain__name", "user__email")
     list_filter = ("role",)
     autocomplete_fields = ("maildomain", "user")
@@ -1451,6 +1490,7 @@ class DKIMKeyAdmin(admin.ModelAdmin):
     )
     search_fields = ("selector", "domain__name")
     list_filter = ("algorithm", "is_active")
+    list_select_related = ("domain",)
     readonly_fields = ("public_key", "created_at", "updated_at")
     autocomplete_fields = ("domain",)
     fieldsets = (
@@ -1536,6 +1576,7 @@ class MessageTemplateAdmin(admin.ModelAdmin):
         "is_default",
         "created_at",
     )
+    list_select_related = ("mailbox", "maildomain")
     autocomplete_fields = ("mailbox", "maildomain")
     search_fields = ("name",)
     readonly_fields = (
