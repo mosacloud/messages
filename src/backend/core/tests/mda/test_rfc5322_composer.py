@@ -1720,6 +1720,32 @@ class TestComposerSecurityAndHardening:
         # Non-reserved prepend_headers entries pass through.
         assert parsed["X-Allowed"] == "kept"
 
+    def test_t1_prepend_headers_cannot_inject_threading_headers(self):
+        """prepend_headers must not bypass _validate_msg_id /
+        _validate_references_chain on In-Reply-To / References.
+
+        A malformed id smuggled through prepend_headers would otherwise reach
+        UnstructuredHeader verbatim and fold mid-id on the receiver side,
+        silently corrupting the thread.
+        """
+        jmap = self._minimal_jmap(
+            headers={
+                "In-Reply-To": "<clean@example.com>",
+                "References": "<a@example.com>",
+            }
+        )
+        _, parsed = self._compose_and_parse(
+            jmap,
+            prepend_headers=[
+                ("In-Reply-To", "<smuggled bad@example.com>"),
+                ("References", "<also smuggled@example.com>"),
+            ],
+        )
+        # Only the validated values from set_basic_headers survive; the
+        # prepend_headers entries are dropped before reaching the header block.
+        assert parsed.get_all("In-Reply-To") == ["<clean@example.com>"]
+        assert parsed.get_all("References") == ["<a@example.com> <clean@example.com>"]
+
     # --- T2: Content-ID injection ---------------------------------------
 
     def test_t2_cid_with_crlf_is_sanitized(self):
@@ -2309,16 +2335,83 @@ class TestComposerRFCAudit:  # pylint: disable=too-many-public-methods
         with pytest.raises(EmailComposeError, match="Message-ID"):
             compose_email(self._minimal(messageId="foo bar"))
 
-    def test_in_reply_to_with_whitespace_is_rejected(self):
-        """Same contract as Message-ID: invalid In-Reply-To must not silently
-        truncate."""
-        with pytest.raises(EmailComposeError, match="In-Reply-To"):
-            compose_email(self._minimal(), in_reply_to="foo bar")
-
     def test_message_id_without_at_sign_is_rejected(self):
         """msg-id is <local@domain>; missing @ means parsers will mis-handle."""
         with pytest.raises(EmailComposeError, match="Message-ID"):
             compose_email(self._minimal(messageId="just-an-id"))
+
+    # In-Reply-To values we must preserve verbatim on the wire. Anything that
+    # passes _validate_msg_id reaches UnstructuredHeader and goes out as-is —
+    # so this list locks the regex's "permissive but safe" surface against
+    # silent narrowing. Each entry is a real-world shape; the comment says
+    # which client / use case it covers.
+    _PRESERVED_IN_REPLY_TO_VALUES = [
+        # 1. Canonical RFC 5322 single-@ id
+        "<abc123@example.com>",
+        # 2. Outlook / MAPI obs-id-left form with '$' in local + extra '@'
+        "<002501dce856$b85cc030$29164090$@ducret@example.local>",
+        # 3. Gmail-style long base64-ish id (atext: '=', '-', '_')
+        "<CAO3HoF3b6uvc7Gb0R3_b=qg-t=EoJWC7AuSQmxJAP-ZfwOy3mg@mail.gmail.com>",
+        # 4. Three '@' (real Exchange forms occasionally do this)
+        "<a@b@c@example.com>",
+        # 5. Plus-addressed local part (atext: '+', '=')
+        "<bug+report=12345@tracker.example>",
+        # 6. Digits-only id (legal dot-atom-text)
+        "<1234567890@9876543210.example>",
+        # 7. Punctuation-heavy id from automated mailers
+        "<msg.id-2026.05.21~v3+notif@mailer.example>",
+        # 8. Mixed-case (preserved as-is, no case folding on wire)
+        "<ABC.DEF.123@Mail.Example.COM>",
+    ]
+
+    @pytest.mark.parametrize("value", _PRESERVED_IN_REPLY_TO_VALUES)
+    def test_in_reply_to_real_world_values_preserved_on_wire(self, value):
+        """Regression lock: every accepted In-Reply-To shape must reach the
+        wire intact. We parse with Compat32 (email.message_from_bytes
+        default) on purpose: it unfolds headers but does not tokenize the
+        msg-id grammar, so a long id legitimately folded at 78 octets
+        round-trips, while an obs-id-left id is not re-mangled the way
+        policy.default's MsgIDListHeader would do it on Python 3.14."""
+        raw = compose_email(self._minimal(), in_reply_to=value)
+        msg = email.message_from_bytes(raw)
+        assert msg["In-Reply-To"] == value
+        assert msg["References"] == value
+
+    # In-Reply-To values the composer must refuse to emit and silently drop.
+    # Each is a header value that would either:
+    #   - corrupt downstream parsing (whitespace folds, then truncates at fold)
+    #   - inject extra headers (CR/LF, though _sanitize_header_value strips
+    #     those first; the residue then fails the regex)
+    #   - violate the <local@domain> shape entirely (no '@', nested brackets)
+    _DROPPED_IN_REPLY_TO_VALUES = [
+        # 1. Whitespace inside the id — folds mid-id ⇒ receiver truncates
+        "<foo bar@example.com>",
+        # 2. Tab is whitespace too
+        "<foo\tbar@example.com>",
+        # 3. Missing '@' entirely
+        "<just-an-id-no-at>",
+        # 4. Empty angle-bracketed value
+        "<>",
+        # 5. Nested angle brackets (double-wrapped from sloppy concat)
+        "<<doubly@wrapped.example>>",
+        # 6. Stray closing bracket inside (would also nest on the wire)
+        "<a>b@example.com>",
+        # 7. CR/LF injection attempt — sanitize strips control chars, leaving
+        #    "<a@b.comX-Injected: bad>" which then trips the whitespace ban
+        "<a@b.com\r\nX-Injected: bad>",
+        # 8. Plain text with no msg-id shape
+        "just some words",
+    ]
+
+    @pytest.mark.parametrize("value", _DROPPED_IN_REPLY_TO_VALUES)
+    def test_in_reply_to_malformed_values_dropped_not_raised(self, value):
+        """The composer must never 500 the send because the *parent* of the
+        thread had a malformed Message-ID. Drop the threading headers, log
+        a warning, deliver the message anyway."""
+        raw = compose_email(self._minimal(), in_reply_to=value)
+        parsed = BytesParser(policy=policy.default).parsebytes(raw)
+        assert "In-Reply-To" not in parsed
+        assert "References" not in parsed
 
     # --- T. Reply builder validates inbound Message-ID ---------------------
 
@@ -2351,6 +2444,120 @@ class TestComposerRFCAudit:  # pylint: disable=too-many-public-methods
         assert reply["headers"]["In-Reply-To"] == "<abc@example.com>"
         assert "<a@x.com>" in reply["headers"]["References"]
         assert "<abc@example.com>" in reply["headers"]["References"]
+
+    def test_create_reply_message_filters_malformed_references(self):
+        """An inbound chain may itself carry whitespace ids or other malformed
+        entries (real PST archives do). create_reply_message must filter them
+        out per-id rather than concatenating the chain raw — otherwise our
+        outbound reply re-emits the corruption."""
+        orig = {
+            "subject": "Hi",
+            "from": {"name": "X", "email": "x@example.com"},
+            "messageId": "<abc@example.com>",
+            "references": "<good@x.com> <bad id@x.com> not-an-id <also@x.com>",
+        }
+        reply = create_reply_message(orig, "r")
+        refs = reply["headers"]["References"]
+        assert "<good@x.com>" in refs
+        assert "<also@x.com>" in refs
+        assert "<abc@example.com>" in refs
+        assert "bad id" not in refs
+        assert "not-an-id" not in refs
+
+    # --- T2. References chain hygiene -------------------------------------
+
+    def test_references_picked_up_from_lowercase_headers_key(self):
+        """Our own parser emits jmap_data['headers'] keys in lowercase
+        ('references'), while create_reply_message / PST importer use
+        'References'. The composer must read both casings — otherwise the
+        chain is silently dropped here AND skipped by _filter_user_headers
+        below."""
+        raw = compose_email(
+            self._minimal(headers={"references": "<a@x.com> <b@x.com>"}),
+            in_reply_to="<new@example.com>",
+        )
+        parsed = BytesParser(policy=policy.default).parsebytes(raw)
+        refs = parsed["References"]
+        assert "<a@x.com>" in refs
+        assert "<b@x.com>" in refs
+        assert "<new@example.com>" in refs
+
+    def test_references_inherited_malformed_ids_are_dropped(self):
+        """Inherited References ride the same UnstructuredHeader path as
+        In-Reply-To; if we let an id with internal whitespace through, the
+        receiver folds and truncates it. Apply the same validation we use
+        for In-Reply-To: drop the bad ones, keep the good ones, append the
+        new one."""
+        raw = compose_email(
+            self._minimal(
+                references="<good1@x.com> <bad id@x.com> <good2@x.com> no-at-here"
+            ),
+            in_reply_to="<new@example.com>",
+        )
+        parsed = BytesParser(policy=policy.default).parsebytes(raw)
+        refs = parsed["References"]
+        assert "<good1@x.com>" in refs
+        assert "<good2@x.com>" in refs
+        assert "<new@example.com>" in refs
+        assert "bad id" not in refs
+        assert "no-at-here" not in refs
+
+    # --- T3. jmap_data["headers"] threading path goes through validation --
+
+    def test_in_reply_to_via_headers_dict_validates_and_emits_references(self):
+        """A caller passing In-Reply-To via jmap_data["headers"] (no
+        in_reply_to= parameter) must hit the same validation/emission path as
+        the parameter route: the value is validated, In-Reply-To is emitted,
+        and References is rebuilt to include it. Prior to the fix the value
+        rode _filter_user_headers untouched and References was never set."""
+        raw = compose_email(
+            self._minimal(headers={"In-Reply-To": "<parent@example.com>"})
+        )
+        parsed = BytesParser(policy=policy.default).parsebytes(raw)
+        assert parsed["In-Reply-To"] == "<parent@example.com>"
+        assert parsed["References"] == "<parent@example.com>"
+
+    def test_in_reply_to_via_headers_dict_malformed_is_dropped(self):
+        """The lacuna: a malformed In-Reply-To smuggled in via
+        jmap_data["headers"] (no parameter) would, before the fix, reach
+        UnstructuredHeader and fold on the embedded whitespace ⇒ thread
+        corruption. Drop it the same way the parameter path does."""
+        raw = compose_email(
+            self._minimal(headers={"In-Reply-To": "<bad id@example.com>"})
+        )
+        parsed = BytesParser(policy=policy.default).parsebytes(raw)
+        assert "In-Reply-To" not in parsed
+        assert "References" not in parsed
+
+    def test_references_via_headers_dict_without_in_reply_to_is_validated(self):
+        """References supplied via jmap_data["headers"] with no In-Reply-To
+        (parameter or header) must still be filtered per-id. Previously this
+        chain went through _filter_user_headers untouched, so a whitespace
+        id silently broke the entire chain on the wire."""
+        raw = compose_email(
+            self._minimal(
+                headers={"References": "<good@x.com> <bad id@x.com> <also-good@x.com>"}
+            )
+        )
+        parsed = BytesParser(policy=policy.default).parsebytes(raw)
+        refs = parsed["References"]
+        assert "<good@x.com>" in refs
+        assert "<also-good@x.com>" in refs
+        assert "bad id" not in refs
+        assert "In-Reply-To" not in parsed
+
+    def test_in_reply_to_parameter_overrides_headers_dict(self):
+        """Both routes set In-Reply-To; the parameter wins. Locks the
+        precedence so a caller that already validated upstream can override
+        a stale value in jmap_data["headers"]."""
+        raw = compose_email(
+            self._minimal(headers={"In-Reply-To": "<stale@example.com>"}),
+            in_reply_to="<fresh@example.com>",
+        )
+        parsed = BytesParser(policy=policy.default).parsebytes(raw)
+        assert parsed["In-Reply-To"] == "<fresh@example.com>"
+        assert "stale" not in parsed["References"]
+        assert "<fresh@example.com>" in parsed["References"]
 
     # --- U. Refold preserves quotes around tricky display names -----------
 

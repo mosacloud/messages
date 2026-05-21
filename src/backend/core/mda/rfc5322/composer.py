@@ -6,6 +6,7 @@ compliant output from caller-controlled JMAP data. Lenient parsing of
 real-world inbound MIME lives in parser.py, which is intentionally separate.
 See README.md for the strict-compose / lenient-parse split.
 """
+# pylint: disable=too-many-lines
 
 import base64
 import binascii
@@ -15,6 +16,7 @@ import logging
 import re
 from email.errors import MessageError
 from email.generator import BytesGenerator
+from email.headerregistry import HeaderRegistry, UnstructuredHeader
 from email.message import MIMEPart
 from email.policy import SMTP as email_policy_smtp
 from email.utils import format_datetime, parsedate_to_datetime
@@ -25,6 +27,21 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
+# Python 3.14 routes In-Reply-To and References through MsgIDListHeader, which
+# parses the value as a list of strict RFC 5322 msg-ids and re-emits them on
+# fold. Real-world Outlook/MAPI mail carries obs-id-left ids with multiple
+# '@' (e.g. <foo$@local@domain>); MsgIDListHeader truncates these at the first
+# '@' on serialize ⇒ silent thread corruption. The pre-stdlib flanker composer
+# used to write the raw header bytes through unchanged, preserving threading
+# on any payload — we match that contract by routing both headers to
+# UnstructuredHeader instead. The registry must be a dedicated instance:
+# policy.clone() shares header_factory by reference with policy.SMTP and
+# policy.default, so mutating it in place would silently change parsing
+# behavior process-wide.
+_HEADER_FACTORY = HeaderRegistry()
+_HEADER_FACTORY.map_to_type("in-reply-to", UnstructuredHeader)
+_HEADER_FACTORY.map_to_type("references", UnstructuredHeader)
+
 # Stdlib's SMTP policy folds headers at 78 octets (RFC 5322 §2.1.1 SHOULD)
 # and uses CRLF line separators. We override cte_type from the stdlib default
 # of '8bit' to '7bit' — outbound SMTP is 7-bit-clean by default per RFC 5321,
@@ -32,7 +49,7 @@ logger = logging.getLogger(__name__)
 # Under cte_type='7bit', stdlib promotes any non-ASCII text/* body to QP or
 # base64 instead of emitting raw 8-bit octets that a non-8BITMIME relay would
 # either reject or silently mangle.
-_POLICY = email_policy_smtp.clone(cte_type="7bit")
+_POLICY = email_policy_smtp.clone(cte_type="7bit", header_factory=_HEADER_FACTORY)
 
 
 class EmailComposeError(Exception):
@@ -113,11 +130,16 @@ def _sanitize_header_value(value: str) -> str:
     return value.translate(_HEADER_INJECTION_TABLE)
 
 
-# Conservative msg-id shape: <local@domain> with no internal whitespace,
-# no nested angle brackets, at least one '@'. Real RFC 5322 addr-spec is
-# baroque (quoted-string locals, domain-literals); we reject everything we
-# can't be sure stdlib won't silently mangle on serialize.
-_MSG_ID_RE = re.compile(r"^<[^\s<>@]+@[^\s<>@]+>$")
+# Permissive msg-id shape: <local@domain> with no internal whitespace
+# and no nested angle brackets; at least one '@'. Multiple '@' are
+# accepted because real-world Outlook/MAPI clients emit obs-id-left ids
+# like <foo$@local@domain>. We can't route those through stdlib's
+# _MessageIDHeader (it truncates them at the first '@' on 3.14), so the
+# composer policy maps In-Reply-To/References to UnstructuredHeader —
+# which just emits the value verbatim, the way flanker used to. The
+# whitespace ban stays critical: UnstructuredHeader would fold at a
+# space mid-id, and downstream MID parsers truncate folded ids.
+_MSG_ID_RE = re.compile(r"^<[^\s<>]+@[^\s<>]+>$")
 
 
 def _validate_msg_id(value: str, *, field: str) -> str:
@@ -215,6 +237,48 @@ def _validate_field_name(name: str) -> str:
     return name
 
 
+def _extract_threading_header(jmap_data: Dict[str, Any], header_name: str) -> str:
+    """Read a threading header (In-Reply-To / References) from
+    jmap_data["headers"] case-insensitively. References additionally falls
+    back to jmap_data["references"] (snake_case alias used by
+    create_reply_message and a few legacy paths). Returns "" if absent.
+    """
+    target = header_name.lower()
+    for key, value in (jmap_data.get("headers") or {}).items():
+        if isinstance(key, str) and key.lower() == target:
+            return str(value or "")
+    if target == "references":
+        return str(jmap_data.get("references", "") or "")
+    return ""
+
+
+def _validate_references_chain(raw_refs: str, *, append: Optional[str] = None) -> str:
+    """Split a whitespace-separated References chain, validate each id
+    individually, drop the malformed ones (with a warning), and optionally
+    append a trailing id. Returns the space-joined chain or "".
+
+    Per-id validation is mandatory: References rides UnstructuredHeader (see
+    _HEADER_FACTORY) which folds at whitespace, so a single id containing an
+    internal space would corrupt the entire chain on the receiver side.
+
+    `append` is skipped when the chain already ends with that id. Callers
+    reconstructing existing wire bytes (PST import, replay of an inbound
+    EML) hand us a References that already includes the parent Message-ID;
+    blind-appending In-Reply-To would duplicate the tail.
+    """
+    validated: List[str] = []
+    for candidate in raw_refs.split():
+        try:
+            validated.append(_validate_msg_id(candidate, field="References"))
+        except EmailComposeError:
+            logger.warning(
+                "Dropping malformed References entry (length=%d)", len(candidate)
+            )
+    if append and (not validated or validated[-1] != append):
+        validated.append(append)
+    return " ".join(validated)
+
+
 def _filter_user_headers(items, *, source: str, also_skip: tuple = ()):
     """Yield (name, sanitized_value) for caller-supplied headers that pass
     safety checks.
@@ -222,10 +286,11 @@ def _filter_user_headers(items, *, source: str, also_skip: tuple = ()):
     Reserved names — From/To/Cc/Bcc/Subject/Date/Message-ID — are skipped
     with a warning; they're owned by set_basic_headers, and silently
     shadowing them would let a caller spoof identity. Names listed in
-    `also_skip` are dropped silently (used to elide In-Reply-To/References
-    when the caller passed in_reply_to= as a parameter — those are owned
-    by set_basic_headers in that mode). Invalid field names raise
-    EmailComposeError.
+    `also_skip` are dropped silently (used to elide In-Reply-To/References:
+    set_basic_headers owns those headers and validates them through
+    _validate_msg_id / _validate_references_chain regardless of whether the
+    value comes from the in_reply_to= parameter or jmap_data["headers"]).
+    Invalid field names raise EmailComposeError.
     """
     for k, v in items:
         if not isinstance(k, str):
@@ -297,27 +362,50 @@ def set_basic_headers(  # pylint: disable=too-many-branches
     if message_id:
         message_part["Message-ID"] = _validate_msg_id(message_id, field="Message-ID")
 
-    if in_reply_to:
-        in_reply_to = _validate_msg_id(in_reply_to, field="In-Reply-To")
-        message_part["In-Reply-To"] = in_reply_to
-
-        existing_references = jmap_data.get("headers", {}).get("References", "")
-        if not existing_references:
-            existing_references = jmap_data.get("references", "")
-        if existing_references:
-            message_part["References"] = _sanitize_header_value(
-                f"{existing_references.strip()} {in_reply_to}"
+    # Threading headers: In-Reply-To and References.
+    # We OWN these no matter where they come from — the in_reply_to=
+    # parameter OR jmap_data["headers"]["In-Reply-To"] / ["References"].
+    # Both routes must go through _validate_msg_id, otherwise an unvalidated
+    # value with whitespace inside <> would reach UnstructuredHeader (see
+    # _HEADER_FACTORY at module top) and fold mid-id ⇒ silent thread
+    # corruption. The parameter takes precedence over the headers dict. On a
+    # malformed id we drop the threading headers instead of raising — the
+    # parent message we did not write is the typical source of malformed
+    # ids, and failing the whole send would make replies impossible
+    # (create_reply_message already follows the same contract).
+    raw_in_reply_to = in_reply_to or _extract_threading_header(jmap_data, "In-Reply-To")
+    validated_in_reply_to: Optional[str] = None
+    if raw_in_reply_to:
+        try:
+            validated_in_reply_to = _validate_msg_id(
+                raw_in_reply_to, field="In-Reply-To"
             )
-        else:
-            message_part["References"] = _sanitize_header_value(in_reply_to)
+        except EmailComposeError:
+            logger.warning(
+                "Dropping malformed In-Reply-To (length=%d); threading will be lost",
+                len(raw_in_reply_to),
+            )
 
+    if validated_in_reply_to:
+        message_part["In-Reply-To"] = validated_in_reply_to
+
+    # Rebuild References from the validated chain even when In-Reply-To was
+    # dropped or absent — a clean References history can still travel without
+    # an immediate parent reference.
+    raw_references = _extract_threading_header(jmap_data, "References")
+    references_chain = _validate_references_chain(
+        raw_references, append=validated_in_reply_to
+    )
+    if references_chain:
+        message_part["References"] = _sanitize_header_value(references_chain)
+
+    # In-Reply-To/References are owned above; always skip them in
+    # jmap_data["headers"] so they never sneak past validation.
     custom_headers = jmap_data.get("headers", {})
-    # When in_reply_to is set as a parameter, set_basic_headers already
-    # emitted In-Reply-To and References just above; skip any same-named
-    # entries in jmap_data["headers"] so we don't double-emit.
-    skip = ("in-reply-to", "references") if in_reply_to else ()
     for name, value in _filter_user_headers(
-        custom_headers.items(), source="jmap_data['headers']", also_skip=skip
+        custom_headers.items(),
+        source="jmap_data['headers']",
+        also_skip=("in-reply-to", "references"),
     ):
         message_part[name] = value
 
@@ -610,11 +698,18 @@ def compose_email(
             # does today, but defense-in-depth) could prepend a duplicate
             # Subject / From / To / etc., and many MUAs render the FIRST
             # occurrence — visually masquerading as a different sender.
+            # In-Reply-To / References are also skipped here: set_basic_headers
+            # validates them through _validate_msg_id /
+            # _validate_references_chain, and an unvalidated value containing
+            # whitespace would fold mid-id on UnstructuredHeader ⇒ silent
+            # thread corruption.
             store_parse = msg.policy.header_store_parse
             new_entries = [
                 store_parse(name, value)
                 for name, value in _filter_user_headers(
-                    prepend_headers, source="prepend_headers"
+                    prepend_headers,
+                    source="prepend_headers",
+                    also_skip=("in-reply-to", "references"),
                 )
             ]
             msg._headers[0:0] = new_entries  # noqa: SLF001  # pylint: disable=protected-access
@@ -814,7 +909,14 @@ def create_reply_message(
     reply_html: Optional[str] = None,
     include_quote: bool = True,
 ) -> Dict[str, Any]:
-    """Create a JMAP reply message to an existing email."""
+    """Create a JMAP reply message to an existing email.
+
+    Threading contract: emits In-Reply-To and a per-id-validated References
+    chain when the parent Message-ID parses cleanly; emits neither when the
+    parent id is malformed (better to lose threading than relay corruption).
+    The inherited References chain is filtered per-id before the parent is
+    appended — same rules as set_basic_headers.
+    """
     orig_subject = original_message.get("subject") or ""
     orig_from = original_message.get("from", {})
     orig_message_id = original_message.get(
@@ -831,12 +933,14 @@ def create_reply_message(
         original_message, reply_text, reply_html, include_quote, is_forward=False
     )
 
-    # Skip threading headers entirely if the inbound Message-ID is malformed.
-    # Real-world inbound mail occasionally has unparseable msg-ids (whitespace
-    # inside the angle brackets, missing '@', etc.); silently propagating one
-    # produces wire bytes that stdlib's ReferencesHeader truncates on parse,
-    # which is silent thread corruption. Better to lose threading than emit
-    # a garbage header.
+    # Threading headers are gated on a parseable parent Message-ID. Real-world
+    # inbound mail occasionally carries unparseable ids (whitespace inside <>,
+    # missing '@'); propagating one produces wire bytes that downstream
+    # parsers truncate on parse ⇒ silent thread corruption. When the parent
+    # is malformed we drop both In-Reply-To and References. When it's clean
+    # we still filter the inherited References per-id via
+    # _validate_references_chain, because the chain itself may carry bad
+    # entries that would re-corrupt the reply.
     reply_headers: Dict[str, str] = {}
     if orig_message_id:
         try:
@@ -850,12 +954,11 @@ def create_reply_message(
             )
         else:
             reply_headers["In-Reply-To"] = orig_message_id_formatted
-            if orig_references:
-                reply_headers["References"] = (
-                    f"{orig_references} {orig_message_id_formatted}"
-                )
-            else:
-                reply_headers["References"] = orig_message_id_formatted
+            references_chain = _validate_references_chain(
+                orig_references, append=orig_message_id_formatted
+            )
+            if references_chain:
+                reply_headers["References"] = references_chain
 
     reply: Dict[str, Any] = {
         "subject": reply_subject,

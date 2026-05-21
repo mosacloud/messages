@@ -841,21 +841,22 @@ def _apply_recipient_fallback_chain(message, jmap_data: dict) -> None:
             jmap_data[key] = display_recipients[key]
 
 
-# Strict shape mirror of compose_email's _MSG_ID_RE, applied to the
-# bracket-stripped value. PST archives routinely carry Message-IDs that
-# would crash strict composition (empty, missing '@', embedded whitespace,
-# nested brackets) — pre-validating here lets us fall back to MAPI/synth
-# instead of failing the entire message reconstruction.
-_VALID_MSG_ID_INNER_RE = re.compile(r"^[^\s<>@]+@[^\s<>@]+$")
+# Shape mirror of compose_email's _MSG_ID_RE, applied to the bracket-stripped
+# value. PST archives routinely carry Message-IDs that would crash strict
+# composition (empty, missing '@', embedded whitespace, nested brackets) —
+# pre-validating here lets us fall back to MAPI/synth instead of failing the
+# entire message reconstruction. Multiple '@' are accepted (Outlook/MAPI emit
+# obs-id-left ids like `foo$@local@domain`); the composer routes In-Reply-To /
+# References through UnstructuredHeader so those preserve on the wire.
+_VALID_MSG_ID_INNER_RE = re.compile(r"^[^\s<>]+@[^\s<>]+$")
 
 
 def _sanitize_message_id(raw: Optional[str]) -> Optional[str]:
     """Return ``raw`` stripped of brackets/whitespace if it's a valid msg-id.
 
     Returns None for anything compose_email would reject (empty, no '@',
-    multiple '@', whitespace, nested brackets…). Keeps the importer
-    "lenient parse, strict compose" contract from collapsing on malformed
-    archives.
+    whitespace, nested brackets…). Keeps the importer "lenient parse,
+    strict compose" contract from collapsing on malformed archives.
     """
     if not raw:
         return None
