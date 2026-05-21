@@ -100,8 +100,8 @@ bootstrap: ## Prepare the project for local development
 update:  ## Update the project with latest changes
 	@$(MAKE) data/media
 	@$(MAKE) data/static
-	@$(MAKE) create-buckets
 	@$(MAKE) create-env-files
+	@$(MAKE) create-buckets
 	@$(MAKE) build
 	@$(MAKE) collectstatic
 	@$(MAKE) migrate
