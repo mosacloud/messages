@@ -6,7 +6,6 @@
  * OpenAPI spec version: 1.0.0 (v1.0)
  */
 
-export type PatchedThreadEventRequestDataOneOfMentionsItem = {
-  id: string;
-  name: string;
-};
+export interface MailboxAdminMandatoryTotpResponse {
+  enabled: boolean;
+}

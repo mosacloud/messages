@@ -33,6 +33,11 @@ MAILBOX_ROLES_CAN_SEND = [
     MailboxRoleChoices.SENDER,
     MailboxRoleChoices.ADMIN,
 ]
+MAILBOX_ROLES_CAN_BE_ASSIGNED = [
+    MailboxRoleChoices.EDITOR,
+    MailboxRoleChoices.SENDER,
+    MailboxRoleChoices.ADMIN,
+]
 
 
 class ThreadAccessRoleChoices(models.IntegerChoices):
@@ -79,6 +84,35 @@ class CompressionTypeChoices(models.IntegerChoices):
     ZSTD = 1, "Zstd"
 
 
+def parse_compression_spec(spec: str) -> tuple["CompressionTypeChoices", int | None]:
+    """Parse a ``MESSAGES_BLOBS_COMPRESS`` spec like ``"zstd"`` or ``"zstd:3"``.
+
+    Returns ``(algorithm, level)`` where ``level`` is ``None`` when no level
+    is specified (or when the algorithm doesn't take one). Raises
+    ``ValueError`` on an unknown algorithm or a level on ``none``.
+    """
+    algo, sep, level = spec.partition(":")
+    try:
+        compression = CompressionTypeChoices[algo.upper()]
+    except KeyError as exc:
+        raise ValueError(f"unknown compression algorithm {algo!r} in {spec!r}") from exc
+    if not sep:
+        return compression, None
+    if compression == CompressionTypeChoices.NONE:
+        raise ValueError(f"'none' takes no level (got {spec!r})")
+    try:
+        return compression, int(level)
+    except ValueError as exc:
+        raise ValueError(f"compression level must be an integer in {spec!r}") from exc
+
+
+class BlobStorageLocationChoices(models.IntegerChoices):
+    """Defines where blob content is stored (tiered storage)."""
+
+    POSTGRES = 1, "PostgreSQL"
+    OBJECT_STORAGE = 2, "Object Storage"
+
+
 class DKIMAlgorithmChoices(models.IntegerChoices):
     """Defines the possible DKIM signing algorithms."""
 
@@ -93,6 +127,8 @@ THREAD_STATS_FIELDS_MAP = {
     "has_delivery_failed": "has_delivery_failed",
     "has_unread_mention": "has_unread_mention",
     "has_mention": "has_mention",
+    "has_assigned_to_me": "has_assigned_to_me",
+    "has_unassigned": "has_unassigned",
 }
 
 
@@ -149,6 +185,8 @@ class ThreadEventTypeChoices(models.TextChoices):
     """Defines the possible types of thread events."""
 
     IM = "im", "Instant message"
+    ASSIGN = "assign", "Assign"
+    UNASSIGN = "unassign", "Unassign"
 
 
 class ChannelScopeLevel(models.TextChoices):
@@ -278,6 +316,7 @@ class UserEventTypeChoices(models.TextChoices):
     """Defines the possible types of user events."""
 
     MENTION = "mention", "Mention"
+    ASSIGN = "assign", "Assign"
 
 
 def user_event_type_choices():

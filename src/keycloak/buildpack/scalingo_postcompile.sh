@@ -15,6 +15,9 @@ rm keycloak.tgz
 # Copy themes
 cp -r themes/* keycloak/providers/
 
+# Copy custom provider JARs (committed pre-built; rebuild via `make build-keycloak`)
+cp bulk-role-membership/bulk-role-membership.jar keycloak/providers/
+
 # Package scripts
 # if variable SCRIPT_GROUP_ATTRIBUTE_WHITELIST if defined, replace it in the .js file
 if [ -n "$SCRIPT_GROUP_ATTRIBUTE_WHITELIST" ]; then
@@ -23,4 +26,4 @@ fi
 cd scripts && zip -r ../keycloak/providers/custom-scripts.jar META-INF *.js && cd ..
 
 echo "-----> Building Keycloak"
-PATH=$HOME/.scalingo/with_jstack/bin:$PATH ./keycloak/bin/kc.sh build
+PATH=$HOME/.jdk/bin:$PATH ./keycloak/bin/kc.sh build

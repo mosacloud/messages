@@ -8,11 +8,31 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any
 
+from django.core.exceptions import ImproperlyConfigured, ValidationError
+
+import jsonschema
 from configurations import values
 
 logger = logging.getLogger(__name__)
 
 SNIPPET_MAX_LENGTH = 140
+
+
+def get_redis_client():
+    """Return the django-redis client bound to the ``default`` cache.
+
+    The single accessor for ``get_redis_connection("default")`` across the
+    project — every module that wants raw Redis primitives (SADD/SPOP/…)
+    routes through here so we have one place to swap the backend or wrap
+    instrumentation. Raises if django_redis isn't configured for the
+    default cache (e.g. ``NotImplementedError`` on a LocMem backend);
+    callers are expected to gate with ``settings.CACHES`` checks or to
+    catch broadly in their own error path.
+    """
+    # pylint: disable-next=import-outside-toplevel
+    from django_redis import get_redis_connection
+
+    return get_redis_connection("default")
 
 
 def extract_snippet(parsed_data: dict[str, Any], fallback: str = "") -> str:
@@ -31,6 +51,20 @@ def extract_snippet(parsed_data: dict[str, Any], fallback: str = "") -> str:
         return " ".join(html.unescape(clean_text).strip().split())[:SNIPPET_MAX_LENGTH]
 
     return fallback[:SNIPPET_MAX_LENGTH]
+
+
+def validate_json_schema(value, schema, *, field):
+    """Validate ``value`` against ``schema`` and raise a Django ValidationError
+    keyed by ``field`` when it does not match.
+
+    A ``FormatChecker`` is always supplied so JSON Schema ``format`` keywords
+    (e.g. ``uuid``) are actually enforced — without it they are annotation-only
+    and invalid values slip through silently.
+    """
+    try:
+        jsonschema.validate(value, schema, format_checker=jsonschema.FormatChecker())
+    except jsonschema.ValidationError as exception:
+        raise ValidationError({field: exception.message}) from exception
 
 
 class AbstractBatchingDeferrer:
@@ -199,10 +233,18 @@ class JSONValue(values.Value):
     """
 
     def to_python(self, value):
+        """Return the python representation of the JSON string.
+
+        On parse failure, the original input is suppressed (``raise
+        ... from None``) so its contents — which may be a secret, e.g.
+        ``MESSAGES_BLOBS_ENCRYPT_KEYS`` — never surface in
+        tracebacks, Sentry breadcrumbs, or pod logs.
         """
-        Return the python representation of the JSON string.
-        """
-        return json.loads(value)
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            name = getattr(self, "environ_name", None) or "<JSONValue>"
+            raise ImproperlyConfigured(f"{name} is not valid JSON") from None
 
 
 class ThrottleRateValue(values.Value):

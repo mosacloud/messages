@@ -76,7 +76,7 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
         const folderParams = new URLSearchParams(searchParams.toString());
         THREAD_PANEL_FILTER_PARAMS.forEach((param) => folderParams.delete(param));
         const activeFolder = findRootFolder((folder) => new URLSearchParams(folder.filter).toString() === folderParams.toString());
-        return activeFolder?.name;
+        return activeFolder?.name ?? t('Messages');
     }, [searchParams, labelsQuery.data?.data, t, findLabelBySlug])
 
     const handleSelectAllToggle = () => {
@@ -143,6 +143,9 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
             if (activeFilters.has_starred) {
                 return t('{{count}} starred results', { count: threads?.count, defaultValue_one: '{{count}} starred result' });
             }
+            if (activeFilters.has_assigned_to_me) {
+                return t('{{count}} results assigned to you', { count: threads?.count, defaultValue_one: '{{count}} result assigned to you' });
+            }
             return t('{{count}} results', { count: threads?.count, defaultValue_one: '{{count}} result' });
         }
         else {
@@ -166,6 +169,9 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
             }
             if (activeFilters.has_starred) {
                 return t('{{count}} starred messages', { count: threads?.count, defaultValue_one: '{{count}} starred message' });
+            }
+            if (activeFilters.has_assigned_to_me) {
+                return t('{{count}} messages assigned to you', { count: threads?.count, defaultValue_one: '{{count}} message assigned to you' });
             }
             return t('{{count}} messages', { count: threads?.count, defaultValue_one: '{{count}} message' });
         }

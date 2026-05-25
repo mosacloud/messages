@@ -121,7 +121,8 @@ class TestSendOutboundMessage:
             subject="Test Outbound",
         )
         # Create a blob with the raw MIME content
-        blob = mailbox.create_blob(
+        blob = factories.BlobFactory(
+            mailbox=mailbox,
             content=b"From: sender@sendtest.com\nTo: to@example.com\nSubject: Test Outbound\n\nTest body",
             content_type="message/rfc822",
         )
@@ -482,7 +483,8 @@ class TestSendMessageRedisLock(TransactionTestCase):
             subject="Test Lock",
         )
         # Create a blob with the raw MIME content
-        blob = self.mailbox.create_blob(
+        blob = factories.BlobFactory(
+            mailbox=self.mailbox,
             content=b"From: sender@sendtest.com\nTo: to@example.com\nSubject: Test Lock\n\nTest body",
             content_type="message/rfc822",
         )
@@ -639,9 +641,12 @@ class TestPrepareOutboundMessageSignature:
         message.refresh_from_db()
         content = message.blob.get_content().decode()
         assert "Hello world!" in content
+        # Drop quoted-printable soft line breaks before searching, since stdlib
+        # may fold long HTML lines with =\r\n.
+        unfolded = content.replace("=\r\n", "")
         assert (
             "Best regards,<br>John Doe<br>Software Engineer<br>Engineering</p>"
-            in content
+            in unfolded
         )
 
     @override_settings(SCHEMA_CUSTOM_ATTRIBUTES_USER=SCHEMA_CUSTOM_ATTRIBUTES)
@@ -818,9 +823,12 @@ class TestPrepareOutboundMessageSignature:
         assert (
             "Best regards,\r\nJohn Doe\r\nSoftware Engineer\r\nEngineering" in content
         )
+        # Drop quoted-printable soft line breaks before searching, since stdlib
+        # may fold long HTML lines with =\r\n.
+        unfolded = content.replace("=\r\n", "")
         assert (
             "Best regards,<br>John Doe<br>Software Engineer<br>Engineering</p>"
-            in content
+            in unfolded
         )
 
         # Same with empty text and html bodies
@@ -834,9 +842,12 @@ class TestPrepareOutboundMessageSignature:
         assert (
             "Best regards,\r\nJohn Doe\r\nSoftware Engineer\r\nEngineering" in content
         )
+        # Drop quoted-printable soft line breaks before searching, since stdlib
+        # may fold long HTML lines with =\r\n.
+        unfolded = content.replace("=\r\n", "")
         assert (
             "Best regards,<br>John Doe<br>Software Engineer<br>Engineering</p>"
-            in content
+            in unfolded
         )
 
 
@@ -939,8 +950,8 @@ class TestSendMessageDKIMVerification:
         signed_mime = signature_header + b"\r\n" + raw_mime
 
         # Create blob with signed message
-        blob = mailbox_sender.create_blob(
-            content=signed_mime, content_type="message/rfc822"
+        blob = factories.BlobFactory(
+            mailbox=mailbox_sender, content=signed_mime, content_type="message/rfc822"
         )
         message.blob = blob
         message.save()
@@ -1022,8 +1033,8 @@ class TestSendMessageDKIMVerification:
         signed_mime = signature_header + b"\r\n" + raw_mime
 
         # Create blob with signed message
-        blob = mailbox_sender.create_blob(
-            content=signed_mime, content_type="message/rfc822"
+        blob = factories.BlobFactory(
+            mailbox=mailbox_sender, content=signed_mime, content_type="message/rfc822"
         )
         message.blob = blob
         message.save()
@@ -1085,8 +1096,8 @@ class TestSendMessageDKIMVerification:
             + f"To: internal@{mailbox_sender.domain.name}\r\n"
             + "Subject: Test\r\n\r\nBody\r\n"
         ).encode()
-        blob = mailbox_sender.create_blob(
-            content=raw_mime, content_type="message/rfc822"
+        blob = factories.BlobFactory(
+            mailbox=mailbox_sender, content=raw_mime, content_type="message/rfc822"
         )
         message.blob = blob
         message.save()
@@ -1143,7 +1154,9 @@ def _create_spf_test_message(mailbox_sender):
         "To: external@other.com\r\n"
         "Subject: Test\r\n\r\nBody\r\n"
     ).encode()
-    blob = mailbox_sender.create_blob(content=raw_mime, content_type="message/rfc822")
+    blob = factories.BlobFactory(
+        mailbox=mailbox_sender, content=raw_mime, content_type="message/rfc822"
+    )
     message.blob = blob
     message.save()
 
@@ -1360,13 +1373,14 @@ class TestPrepareOutboundMessageBase64Images:
         """Blob attachments + base64 images that together exceed the limit raise ValidationError."""
         message = self._make_message(mailbox_sender)
 
-        # Create a blob attachment of 150 bytes (under the 200 byte limit alone)
-        attachment = factories.AttachmentFactory(
+        # Create a blob attachment of 150 bytes (under the 200 byte limit alone),
+        # owned by this draft via the per-message FK.
+        factories.AttachmentFactory(
             mailbox=mailbox_sender,
+            message=message,
             blob_size=150,
             name="file.bin",
         )
-        attachment.messages.add(message)
 
         # The tiny PNG (~69 bytes) + 150 bytes blob > 200 byte limit
         html_body = f'<img src="data:image/png;base64,{TINY_PNG_B64}">'

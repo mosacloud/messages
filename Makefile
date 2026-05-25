@@ -100,8 +100,8 @@ bootstrap: ## Prepare the project for local development
 update:  ## Update the project with latest changes
 	@$(MAKE) data/media
 	@$(MAKE) data/static
-	@$(MAKE) import-bucket
 	@$(MAKE) create-env-files
+	@$(MAKE) create-buckets
 	@$(MAKE) build
 	@$(MAKE) collectstatic
 	@$(MAKE) migrate
@@ -161,10 +161,11 @@ restart-minimal: \
 	start-minimal
 .PHONY: restart-minimal
 
-import-bucket: ## create the message imports bucket in objectstorage
+create-buckets: ## create the message imports & blobs buckets in objectstorage
 	@$(COMPOSE) up -d objectstorage --wait
 	@$(MANAGE_DB) create_bucket --storage message-imports --expire-days 1
-.PHONY: import-bucket
+	@$(MANAGE_DB) create_bucket --storage message-blobs
+.PHONY: create-buckets
 
 shell-objectstorage: ## open a shell in the objectstorage container
 	@$(COMPOSE) run --rm --build objectstorage bash
@@ -257,6 +258,12 @@ fuzz-back: ## run back-end fuzz tests
 	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
 	bin/pytest -m fuzz $${args:-${1}}
 .PHONY: fuzz-back
+
+fuzz-back-intensive: ## run back-end fuzz tests with 10x more examples (~20-30 min)
+	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
+	rm -rf src/backend/.hypothesis/examples && \
+	FUZZ_EXAMPLES=20000 bin/pytest -m fuzz $${args:-${1}}
+.PHONY: fuzz-back-intensive
 
 test-front: ## run the frontend tests
 	@args="$(filter-out $@,$(MAKECMDGOALS))" && \
@@ -360,6 +367,7 @@ demo-e2e: ## Populate the e2e database with demo data
 start-e2e: ## Start e2e services (migrate, seed, etc.)
 	@echo "$(BLUE)\n\n| 🔧 Setting up E2E services... \n$(RESET)"
 	@$(COMPOSE_E2E) run --rm backend python manage.py create_bucket --storage message-imports --expire-days 1
+	@$(COMPOSE_E2E) run --rm backend python manage.py create_bucket --storage message-blobs --expire-days 1
 	@$(COMPOSE_E2E) run --rm backend python manage.py migrate --noinput
 	@$(COMPOSE_E2E) run --rm backend python manage.py search_index_create || true
 	@$(MAKE) demo-e2e
@@ -571,6 +579,28 @@ api-update: \
 search-index: ## Create and/or reindex opensearch data
 	@$(MANAGE) search_reindex --all --recreate-index
 .PHONY: search-index
+
+build-keycloak: ## Build the custom Keycloak provider JARs (writes JAR alongside pom.xml so it can be committed)
+	@docker volume create st-messages-keycloak-mvn-cache >/dev/null
+	@docker run --rm \
+		-v "$(PWD)/src/keycloak/bulk-role-membership":/build \
+		-v st-messages-keycloak-mvn-cache:/root/.m2 \
+		-w /build \
+		maven:3.9-eclipse-temurin-21 \
+		mvn -B -q -o package -DskipTests 2>/dev/null \
+		|| docker run --rm \
+			-v "$(PWD)/src/keycloak/bulk-role-membership":/build \
+			-v st-messages-keycloak-mvn-cache:/root/.m2 \
+			-w /build \
+			maven:3.9-eclipse-temurin-21 \
+			mvn -B -q package -DskipTests
+	@cp src/keycloak/bulk-role-membership/target/bulk-role-membership.jar \
+		src/keycloak/bulk-role-membership/bulk-role-membership.jar
+.PHONY: build-keycloak
+
+test-keycloak: ## run all Keycloak provider tests (builds JARs, brings up Keycloak)
+	@bin/test-keycloak
+.PHONY: test-keycloak
 
 deps-lock-mta-in: ## lock the dependencies
 	@$(COMPOSE) run --rm --build mta-in-uv uv lock

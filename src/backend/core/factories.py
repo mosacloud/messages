@@ -14,6 +14,7 @@ from faker import Faker
 
 from core import enums, models
 from core.enums import UserEventTypeChoices
+from core.services.blob_gc import upload_and_reserve_blob
 
 fake = Faker()
 
@@ -147,15 +148,54 @@ class ThreadAccessFactory(factory.django.DjangoModelFactory):
 
 
 class ThreadEventFactory(factory.django.DjangoModelFactory):
-    """A factory to create thread events for testing purposes."""
+    """A factory to create thread events for testing purposes.
+
+    Mirrors the side effects that production code attaches to the
+    creation of these events — namely the matching ``UserEvent`` rows —
+    so existing tests that exercise the resulting state via the factory
+    keep working without having to call ``thread_events_service``
+    explicitly. Production code reaches the same effect by calling the
+    service from viewsets / admin; this hook is the test-only
+    equivalent.
+    """
 
     class Meta:
         model = models.ThreadEvent
+        skip_postgeneration_save = True
 
     thread = factory.SubFactory(ThreadFactory)
     type = "im"
     data = factory.LazyAttribute(lambda o: {"content": fake.sentence()})
     author = factory.SubFactory(UserFactory)
+
+    # pylint: disable=protected-access,no-member
+    # ``self.data`` is a real dict at runtime (factory_boy resolves
+    # ``LazyAttribute`` before post_generation hooks fire) but pylint sees
+    # the class-level descriptor and reports ``no-member``. Reaching into
+    # the private service helpers is intentional — see the docstring above.
+    @factory.post_generation
+    def _sync_user_events(self, create, _extracted, **_kwargs):
+        # pylint: disable=import-outside-toplevel
+        from core.services import thread_events as thread_events_service
+
+        if not create:
+            return
+        data = self.data or {}
+        if self.type == enums.ThreadEventTypeChoices.IM:
+            if data.get("mentions"):
+                thread_events_service.sync_im_mentions(thread_event=self)
+        elif self.type == enums.ThreadEventTypeChoices.ASSIGN:
+            assignees = data.get("assignees") or []
+            if assignees:
+                thread_events_service._create_user_event_assigns(  # noqa: SLF001
+                    self, self.thread, assignees
+                )
+        elif self.type == enums.ThreadEventTypeChoices.UNASSIGN:
+            assignees = data.get("assignees") or []
+            if assignees:
+                thread_events_service._delete_user_event_assigns(  # noqa: SLF001
+                    self.thread, assignees, context=str(self.id)
+                )
 
 
 class UserEventFactory(factory.django.DjangoModelFactory):
@@ -195,7 +235,7 @@ class MessageFactory(factory.django.DjangoModelFactory):
     subject = factory.Faker("sentence")
     sender = factory.SubFactory(ContactFactory)
     created_at = factory.LazyAttribute(lambda o: timezone.now())
-    mime_id = factory.Sequence(lambda n: f"message{n!s}")
+    mime_id = factory.Sequence(lambda n: f"message{n!s}@_lst.test.example.com")
 
     @factory.post_generation
     def raw_mime(self, create, extracted, **kwargs):
@@ -206,8 +246,7 @@ class MessageFactory(factory.django.DjangoModelFactory):
         if not create or not extracted:
             return
 
-        # Create a blob with the raw MIME content using the sender's mailbox
-        self.blob = self.sender.mailbox.create_blob(  # pylint: disable=attribute-defined-outside-init
+        self.blob = models.Blob.objects.create_blob(  # pylint: disable=attribute-defined-outside-init
             content=extracted,
             content_type="message/rfc822",
         )
@@ -248,7 +287,12 @@ class LabelFactory(factory.django.DjangoModelFactory):
 
 
 class AttachmentFactory(factory.django.DjangoModelFactory):
-    """A factory to random attachments for testing purposes."""
+    """Factory for ``Attachment`` rows.
+
+    Each Attachment belongs to exactly one ``Message`` via FK, so
+    ``message=`` is required. Tests that don't care about the
+    specific draft can let the factory autogenerate one.
+    """
 
     class Meta:
         model = models.Attachment
@@ -262,6 +306,29 @@ class AttachmentFactory(factory.django.DjangoModelFactory):
         """Create a blob with specified size for the attachment."""
         content = b"x" * self.blob_size
         return BlobFactory(mailbox=self.mailbox, content=content)
+
+    @factory.lazy_attribute
+    def message(self):
+        """Default to a fresh draft Message owned by ``mailbox``.
+
+        Tests that already have a draft handy should pass it
+        explicitly: ``AttachmentFactory(message=draft, ...)``.
+        """
+        sender_email = f"{self.mailbox.local_part}@{self.mailbox.domain.name}"
+        sender, _ = models.Contact.objects.get_or_create(
+            email=sender_email,
+            mailbox=self.mailbox,
+            defaults={"name": self.mailbox.local_part, "email": sender_email},
+        )
+        thread = ThreadFactory()
+        ThreadAccessFactory(
+            thread=thread,
+            mailbox=self.mailbox,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        return MessageFactory(
+            thread=thread, sender=sender, is_draft=True, is_sender=True
+        )
 
     @classmethod
     def _adjust_kwargs(cls, **kwargs):
@@ -342,7 +409,12 @@ def make_api_key_channel(
 
 
 class BlobFactory(factory.django.DjangoModelFactory):
-    """A factory to create blobs for testing purposes."""
+    """A factory to create blobs for testing purposes.
+
+    Pass ``mailbox=X`` to simulate a JMAP upload (registers an upload
+    reservation under that mailbox); omit it for plain server-side
+    fixtures (no reservation, just dedup-create).
+    """
 
     class Meta:
         model = models.Blob
@@ -352,19 +424,13 @@ class BlobFactory(factory.django.DjangoModelFactory):
 
     @classmethod
     def _create(cls, model_class, *args, **kwargs):
-        """Override _create to create a mailbox or maildomain if not provided and create_blob."""
-        if not kwargs.get("mailbox") and not kwargs.get("maildomain"):
-            kwargs["mailbox"] = MailboxFactory()
-
         content = kwargs.pop("content")
         content_type = kwargs.pop("content_type", "application/octet-stream")
         mailbox = kwargs.pop("mailbox", None)
-        maildomain = kwargs.pop("maildomain", None)
+        if mailbox is not None:
+            return upload_and_reserve_blob(mailbox, content, content_type)
         return models.Blob.objects.create_blob(
-            content=content,
-            content_type=content_type,
-            mailbox=mailbox,
-            maildomain=maildomain,
+            content=content, content_type=content_type
         )
 
 

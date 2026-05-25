@@ -2,7 +2,6 @@
 # pylint: disable=unused-argument
 
 import logging
-import uuid
 
 from django.conf import settings
 from django.db import transaction
@@ -10,6 +9,7 @@ from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import receiver
 
 from core import enums, models
+from core.services.blob_gc import schedule_for_gc
 from core.services.identity.keycloak import (
     sync_mailbox_to_keycloak_user,
     sync_maildomain_to_keycloak_group,
@@ -140,20 +140,29 @@ def index_thread_post_save(sender, instance, created, **kwargs):
     _schedule_thread_reindex(instance.id)
 
 
-@receiver(pre_delete, sender=models.Message)
-def delete_message_blobs(sender, instance, **kwargs):
-    """Delete the blobs associated with a message."""
-    if instance.blob:
-        instance.blob.delete()
-    if instance.draft_blob:
-        instance.draft_blob.delete()
+# When a row that FKs a Blob is deleted, push the blob_id into the
+# GC candidate set; ``gc_orphan_blobs_task`` re-checks references
+# under the per-sha advisory lock and deletes the Blob row + cleans
+# up S3 inline if no references remain.
 
 
-# @receiver(post_delete, sender=models.Attachment)
-# def delete_attachments_blobs(sender, instance, **kwargs):
-#     """Delete the blob associated with an attachment."""
-#     if instance.blob:
-#         instance.blob.delete()
+@receiver(post_delete, sender=models.Message)
+def schedule_message_blobs_for_gc(sender, instance, **kwargs):
+    """Push ``Message.blob`` and ``Message.draft_blob`` ids into the GC set."""
+    schedule_for_gc(instance.blob_id)
+    schedule_for_gc(instance.draft_blob_id)
+
+
+@receiver(post_delete, sender=models.Attachment)
+def schedule_attachment_blob_for_gc(sender, instance, **kwargs):
+    """Push ``Attachment.blob`` id into the GC set."""
+    schedule_for_gc(instance.blob_id)
+
+
+@receiver(post_delete, sender=models.MessageTemplate)
+def schedule_template_blob_for_gc(sender, instance, **kwargs):
+    """Push ``MessageTemplate.blob`` id into the GC set."""
+    schedule_for_gc(instance.blob_id)
 
 
 @receiver(post_delete, sender=models.Message)
@@ -193,26 +202,6 @@ def delete_thread_from_index(sender, instance, **kwargs):
 
     thread_id = str(instance.id)
     transaction.on_commit(lambda tid=thread_id: enqueue_thread_delete(tid))
-
-
-@receiver(pre_delete, sender=models.Message)
-def delete_orphan_draft_attachments(sender, instance, **kwargs):
-    """Remove orphan attachments after a draft message is deleted."""
-
-    # Get all attachments that are not used by any other message
-    if instance.is_draft:
-        attachments = models.Attachment.objects.filter(messages=instance)
-
-        for attachment in attachments:
-            if attachment.messages.count() == 1:
-                attachment.blob.delete()  # this will cascade delete the attachment
-
-        if instance.draft_blob and instance.draft_blob.pk:
-            instance.draft_blob.delete()
-
-    if instance.blob and instance.blob.pk:
-        if instance.blob.messages.count() == 1:
-            instance.blob.delete()
 
 
 @receiver(post_save, sender=models.ThreadAccess)
@@ -260,155 +249,3 @@ def delete_user_scope_channels_on_user_delete(sender, instance, **kwargs):
         user=instance,
         scope_level=enums.ChannelScopeLevel.USER,
     ).delete()
-
-
-def _validate_user_ids_with_access(thread_event, thread, users_data):
-    """Validate and deduplicate user IDs, checking ThreadAccess.
-
-    Shared validation logic for mentions. Parses UUIDs from
-    the 'id' field of each entry, deduplicates, and batch-validates that each
-    user has access to the thread via the MailboxAccess -> ThreadAccess chain.
-
-    Args:
-        thread_event: The ThreadEvent instance (for logging context).
-        thread: The Thread instance.
-        users_data: List of dicts with 'id' and 'name' keys.
-
-    Returns:
-        Set of valid user UUIDs that have access to the thread.
-    """
-    if not users_data:
-        return set()
-
-    seen_user_ids = set()
-    unique_user_ids = []
-    for entry in users_data:
-        raw_id = entry.get("id")
-        if not raw_id:
-            continue
-        try:
-            user_id = uuid.UUID(raw_id)
-        except (ValueError, AttributeError):
-            logger.warning(
-                "Skipping user with invalid UUID '%s' in ThreadEvent %s",
-                raw_id,
-                thread_event.id,
-            )
-            continue
-        if user_id not in seen_user_ids:
-            seen_user_ids.add(user_id)
-            unique_user_ids.append(user_id)
-
-    if not unique_user_ids:
-        return set()
-
-    # Batch validate: users who have access to this thread
-    # Chain: User -> MailboxAccess.user -> MailboxAccess.mailbox -> ThreadAccess.mailbox
-    valid_user_ids = set(
-        models.ThreadAccess.objects.filter(
-            thread=thread,
-            mailbox__accesses__user_id__in=unique_user_ids,
-        ).values_list("mailbox__accesses__user_id", flat=True)
-    )
-
-    for user_id in unique_user_ids:
-        if user_id not in valid_user_ids:
-            logger.warning(
-                "Skipping user %s in ThreadEvent %s: "
-                "user not found or no thread access",
-                user_id,
-                thread_event.id,
-            )
-
-    return valid_user_ids
-
-
-def sync_mention_user_events(thread_event, thread, mentions_data):
-    """Sync UserEvent MENTION records to match the current mentions payload.
-
-    Diffs the currently mentioned users against the existing UserEvent MENTION
-    records for this ThreadEvent and reconciles the two:
-    - Creates UserEvent records for newly mentioned users.
-    - Deletes UserEvent records for users who are no longer mentioned so that
-      stale entries do not linger in the "Mentioned" folder after an edit.
-    - Leaves existing records untouched when the user is still mentioned, which
-      preserves their ``read_at`` state across edits.
-
-    Invalid or unauthorized mentions are silently skipped with a warning log.
-
-    Args:
-        thread_event: The ThreadEvent instance containing mentions.
-        thread: The Thread instance.
-        mentions_data: List of mention dicts with 'id' and 'name' keys.
-    """
-    new_valid_user_ids = _validate_user_ids_with_access(
-        thread_event, thread, mentions_data
-    )
-
-    existing_user_ids = set(
-        models.UserEvent.objects.filter(
-            thread_event=thread_event,
-            type=enums.UserEventTypeChoices.MENTION,
-        ).values_list("user_id", flat=True)
-    )
-
-    to_add = new_valid_user_ids - existing_user_ids
-    to_remove = existing_user_ids - new_valid_user_ids
-
-    if to_remove:
-        deleted_count, _ = models.UserEvent.objects.filter(
-            thread_event=thread_event,
-            type=enums.UserEventTypeChoices.MENTION,
-            user_id__in=to_remove,
-        ).delete()
-        if deleted_count:
-            logger.info(
-                "Deleted %d UserEvent MENTION(s) for ThreadEvent %s",
-                deleted_count,
-                thread_event.id,
-            )
-
-    if to_add:
-        user_events = [
-            models.UserEvent(
-                user_id=user_id,
-                thread=thread,
-                thread_event=thread_event,
-                type=enums.UserEventTypeChoices.MENTION,
-            )
-            for user_id in to_add
-        ]
-        # ignore_conflicts=True lets the UniqueConstraint on
-        # (user, thread_event, type) absorb races between concurrent
-        # post_save signals on the same ThreadEvent (e.g. two PATCH in flight).
-        models.UserEvent.objects.bulk_create(user_events, ignore_conflicts=True)
-        logger.info(
-            "Created %d UserEvent MENTION(s) for ThreadEvent %s",
-            len(user_events),
-            thread_event.id,
-        )
-
-
-@receiver(post_save, sender=models.ThreadEvent)
-def handle_thread_event_post_save(sender, instance, created, **kwargs):
-    """Handle post-save signal for ThreadEvent to sync UserEvent records.
-
-    Dispatches by ThreadEvent type:
-    - IM: Syncs UserEvent MENTION records on both create and update so that
-      edits to the mentions list add/remove notifications accordingly.
-    """
-    try:
-        if instance.type == enums.ThreadEventTypeChoices.IM:
-            sync_mention_user_events(
-                thread_event=instance,
-                thread=instance.thread,
-                mentions_data=(instance.data or {}).get("mentions", []),
-            )
-
-    # pylint: disable=broad-exception-caught
-    except Exception as e:
-        logger.exception(
-            "Error in ThreadEvent post_save handler for event %s: %s",
-            instance.id,
-            e,
-        )

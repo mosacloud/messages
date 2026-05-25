@@ -8,14 +8,16 @@ import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Q
 
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import PolymorphicProxySerializer, extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 
 from core import enums, models
 from core.mda.rfc5322 import extract_base64_images_from_html
+from core.services.blob_gc import schedule_for_gc
+from core.services.identity import keycloak as keycloak_service
 
 
 class CreateOnlyFieldsMixin:
@@ -40,18 +42,96 @@ class ObjectJSONField(serializers.JSONField):
     """JSONField annotated as ``type: object`` for OpenAPI schema generation."""
 
 
-def _build_thread_event_data_schema():
-    """Build the OpenAPI schema for ThreadEvent.data from model DATA_SCHEMAS.
-
-    Returns a `oneOf` composition when multiple types are defined.
+class ThreadEventUserSerializer(serializers.Serializer):
     """
-    schemas = models.ThreadEvent.DATA_SCHEMAS
-    return {"oneOf": list(schemas.values())}
+    OpenAPI-only serializer: describes a single user inside
+    an ThreadEvent.data payload. (used for ``IM`` and ``ASSIGNEES`` events)
+
+    Not used for runtime validation (handled by
+    ``ThreadEvent.validate_data()`` against ``ThreadEvent.DATA_SCHEMAS``);
+    exists solely to produce a named component in the OpenAPI schema consumed
+    by the generated frontend client.
+    """
+
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+
+    def create(self, validated_data):
+        """Do not allow creating instances from this serializer."""
+        raise RuntimeError(f"{self.__class__.__name__} does not support create method")
+
+    def update(self, instance, validated_data):
+        """Do not allow updating instances from this serializer."""
+        raise RuntimeError(f"{self.__class__.__name__} does not support update method")
 
 
-@extend_schema_field(_build_thread_event_data_schema())
+class ThreadEventIMDataSerializer(serializers.Serializer):
+    """OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``IM`` events.
+
+    Not used for runtime validation (handled by
+    ``ThreadEvent.validate_data()`` against ``ThreadEvent.DATA_SCHEMAS``);
+    exists solely to produce a named component in the OpenAPI schema consumed
+    by the generated frontend client.
+    """
+
+    content = serializers.CharField()
+    mentions = ThreadEventUserSerializer(many=True, required=False)
+
+    def create(self, validated_data):
+        """Do not allow creating instances from this serializer."""
+        raise RuntimeError(f"{self.__class__.__name__} does not support create method")
+
+    def update(self, instance, validated_data):
+        """Do not allow updating instances from this serializer."""
+        raise RuntimeError(f"{self.__class__.__name__} does not support update method")
+
+
+class ThreadEventAssigneesDataSerializer(serializers.Serializer):
+    """OpenAPI-only serializer: shape of ``ThreadEvent.data`` for ``ASSIGN`` and ``UNASSIGN`` events.
+
+    Both event types share the exact same payload shape, so a single serializer
+    (and thus a single generated TypeScript type) covers them.
+
+    Not used for runtime validation (handled by
+    ``ThreadEvent.validate_data()`` against ``ThreadEvent.DATA_SCHEMAS``);
+    exists solely to produce a named component in the OpenAPI schema consumed
+    by the generated frontend client.
+    """
+
+    assignees = ThreadEventUserSerializer(many=True, min_length=1)
+
+    def create(self, validated_data):
+        """Do not allow creating instances from this serializer."""
+        raise RuntimeError(f"{self.__class__.__name__} does not support create method")
+
+    def update(self, instance, validated_data):
+        """Do not allow updating instances from this serializer."""
+        raise RuntimeError(f"{self.__class__.__name__} does not support update method")
+
+
+@extend_schema_field(
+    PolymorphicProxySerializer(
+        component_name="ThreadEventData",
+        serializers=[
+            ThreadEventIMDataSerializer,
+            ThreadEventAssigneesDataSerializer,
+        ],
+        resource_type_field_name=None,
+    )
+)
 class ThreadEventDataField(serializers.JSONField):
-    """JSONField for ThreadEvent.data, OpenAPI-annotated from model DATA_SCHEMAS."""
+    """JSONField for ``ThreadEvent.data``.
+
+    Runtime validation is performed by ``ThreadEvent.validate_data()`` against
+    ``ThreadEvent.DATA_SCHEMAS``, invoked both by ``ThreadEventSerializer``
+    (to surface 400 errors at the HTTP boundary) and by
+    ``ThreadEvent.clean()`` (defence in depth for ORM writes).
+    The ``@extend_schema_field`` decorator only affects OpenAPI generation:
+    it emits a named ``oneOf`` over the two ``*DataSerializer`` variants so
+    orval produces stable, readable TypeScript types
+    (``ThreadEventImData``, ``ThreadEventAssigneesData``) instead of
+    positional ``OneOfN`` names.
+    """
 
 
 class IntegerChoicesField(serializers.ChoiceField):
@@ -227,6 +307,16 @@ class UserWithoutAbilitiesSerializer(UserSerializer):
     exclude_abilities = True
 
 
+class ThreadMentionableUserSerializer(UserWithoutAbilitiesSerializer):
+    """User listed in a thread's mention suggestions, with comment capability flag."""
+
+    can_post_comments = serializers.BooleanField(read_only=True)
+
+    class Meta(UserWithoutAbilitiesSerializer.Meta):
+        fields = UserWithoutAbilitiesSerializer.Meta.fields + ["can_post_comments"]
+        read_only_fields = fields
+
+
 class MailboxAvailableSerializer(serializers.ModelSerializer):
     """Serialize mailboxes."""
 
@@ -257,6 +347,8 @@ class MailboxSerializer(AbilitiesModelSerializer):
     count_threads = serializers.SerializerMethodField(read_only=True)
     count_delivering = serializers.SerializerMethodField(read_only=True)
     count_unread_mentions = serializers.SerializerMethodField(read_only=True)
+    count_assigned = serializers.SerializerMethodField(read_only=True)
+    is_shared = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = models.Mailbox
@@ -264,11 +356,13 @@ class MailboxSerializer(AbilitiesModelSerializer):
             "id",
             "email",
             "is_identity",
+            "is_shared",
             "role",
             "count_unread_threads",
             "count_threads",
             "count_delivering",
             "count_unread_mentions",
+            "count_assigned",
         ]
         read_only_fields = fields
 
@@ -331,8 +425,25 @@ class MailboxSerializer(AbilitiesModelSerializer):
                     .distinct()
                     .count()
                 )
+                # Count distinct threads in this mailbox where the current user
+                # is currently assigned. UserEvent(type=ASSIGN) is the source
+                # of truth: created on assign, deleted on unassign — so a
+                # plain existence query reflects the live state. Polled
+                # client-side to detect cross-user assignments without push.
+                counts["count_assigned"] = (
+                    models.UserEvent.objects.filter(
+                        user=request.user,
+                        type=enums.UserEventTypeChoices.ASSIGN,
+                        thread__accesses__mailbox=instance,
+                    )
+                    .values("thread_id")
+                    .distinct()
+                    .count()
+                )
             else:
                 counts["count_unread_mentions"] = 0
+                counts["count_assigned"] = 0
+            counts["count_accesses"] = instance.accesses.count()
             setattr(self, cache_key, counts)
         return getattr(self, cache_key)
 
@@ -351,6 +462,21 @@ class MailboxSerializer(AbilitiesModelSerializer):
     def get_count_unread_mentions(self, instance) -> int:
         """Return the number of threads with unread mentions for the current user."""
         return self._get_cached_counts(instance)["count_unread_mentions"]
+
+    def get_count_assigned(self, instance) -> int:
+        """Return the number of threads in this mailbox currently assigned to the current user."""
+        return self._get_cached_counts(instance)["count_assigned"]
+
+    def get_is_shared(self, instance) -> bool:
+        """Return True if the mailbox is shared (non-identity or has more than one access).
+
+        Drives mailbox-level UI gating for collaboration features (assignment
+        sub-folders, mention folder) that have no purpose in a mono-user
+        identity mailbox.
+        """
+        return (not instance.is_identity) or self._get_cached_counts(instance)[
+            "count_accesses"
+        ] > 1
 
     @extend_schema_field(
         {
@@ -379,7 +505,7 @@ class MailboxLightSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Mailbox
-        fields = ["id", "email", "name"]
+        fields = ["id", "email", "name", "is_identity"]
         read_only_fields = fields
 
     def get_email(self, instance):
@@ -651,6 +777,7 @@ class ThreadSerializer(serializers.ModelSerializer):
     summary = serializers.CharField(read_only=True)
     events_count = serializers.IntegerField(read_only=True)
     abilities = serializers.SerializerMethodField(read_only=True)
+    assigned_users = serializers.SerializerMethodField(read_only=True)
 
     @extend_schema_field(serializers.DictField(child=serializers.BooleanField()))
     def get_abilities(self, instance):
@@ -704,24 +831,51 @@ class ThreadSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(ThreadAccessDetailSerializer(many=True))
     def get_accesses(self, instance):
-        """Return the accesses for the thread."""
-        accesses = instance.accesses.select_related("mailbox", "mailbox__contact")
+        """Return the accesses for the thread.
 
-        return ThreadAccessDetailSerializer(accesses, many=True).data
+        Uses the ``_accesses_with_mailbox`` prefetch cache when present;
+        the fallback select_related mirrors the prefetch queryset so
+        ``MailboxLightSerializer`` never lazy-loads the mail domain.
+        """
+        cached = getattr(instance, "_accesses_with_mailbox", None)
+        if cached is None:
+            cached = instance.accesses.select_related(
+                "mailbox", "mailbox__domain", "mailbox__contact"
+            )
+        return ThreadAccessDetailSerializer(cached, many=True).data
 
     def get_messages(self, instance):
-        """Return the messages in the thread."""
-        # Consider performance for large threads; pagination might be needed here?
-        return [str(message.id) for message in instance.messages.order_by("created_at")]
+        """Return the IDs of the thread messages, chronologically ordered."""
+        cached = getattr(instance, "_ordered_messages", None)
+        if cached is None:
+            cached = instance.messages.order_by("created_at")
+        return [str(message.id) for message in cached]
 
     @extend_schema_field(
         IntegerChoicesField(choices_class=models.ThreadAccessRoleChoices)
     )
     def get_user_role(self, instance):
-        """Get current user's role for this thread, scoped to the context mailbox."""
+        """Get current user's role for this thread, scoped to the context mailbox.
+
+        Walks the ``_accesses_with_mailbox`` prefetch cache when available
+        to avoid a per-thread SQL round-trip; falls back to a direct query
+        for code paths that build threads outside the annotated queryset
+        (e.g. the ``split`` action).
+        """
         mailbox_id = self.context.get("mailbox_id")
         if not mailbox_id:
             return None
+
+        cached = getattr(instance, "_accesses_with_mailbox", None)
+        if cached is not None:
+            mailbox_id_str = str(mailbox_id)
+            access = next(
+                (a for a in cached if str(a.mailbox_id) == mailbox_id_str),
+                None,
+            )
+            if access is None:
+                return None
+            return models.ThreadAccessRoleChoices(access.role).label
 
         try:
             role_value = instance.accesses.get(mailbox_id=mailbox_id).role
@@ -731,13 +885,46 @@ class ThreadSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(ThreadLabelSerializer(many=True))
     def get_labels(self, instance):
-        """Get labels for the thread, scoped to the context mailbox."""
+        """Get labels for the thread, scoped to the context mailbox.
+
+        Consumes the ``_scoped_labels`` prefetch cache when the viewset has
+        populated it (requires ``mailbox_id``); otherwise falls back to a
+        direct query, which keeps the ``split`` action and single-thread
+        retrieves working.
+        """
         mailbox_id = self.context.get("mailbox_id")
         if not mailbox_id:
             return []
 
-        labels = instance.labels.filter(mailbox_id=mailbox_id)
-        return ThreadLabelSerializer(labels, many=True).data
+        cached = getattr(instance, "_scoped_labels", None)
+        if cached is None:
+            cached = instance.labels.filter(mailbox_id=mailbox_id)
+        return ThreadLabelSerializer(cached, many=True).data
+
+    @extend_schema_field(ThreadEventUserSerializer(many=True))
+    def get_assigned_users(self, instance):
+        """Return the users currently assigned to this thread.
+
+        ``UserEvent(type=ASSIGN)`` is the denormalized per-user source of truth
+        for active assignments (rows are created on assign and deleted on
+        unassign via ``delete_assign_user_events``), so the thread list can
+        expose assignees without having to replay the ThreadEvent history.
+
+        Uses the ``_assigned_user_events`` prefetch cache when present to
+        avoid N+1 on list views; falls back to a direct query for code
+        paths that build threads outside the annotated queryset.
+        """
+        cached = getattr(instance, "_assigned_user_events", None)
+        if cached is None:
+            cached = list(
+                instance.user_events.filter(type=enums.UserEventTypeChoices.ASSIGN)
+                .select_related("user")
+                .order_by("created_at")
+            )
+        return [
+            {"id": str(event.user.id), "name": event.user.full_name or ""}
+            for event in cached
+        ]
 
     class Meta:
         model = models.Thread
@@ -774,6 +961,7 @@ class ThreadSerializer(serializers.ModelSerializer):
             "summary",
             "events_count",
             "abilities",
+            "assigned_users",
         ]
         read_only_fields = fields  # Mark all as read-only for safety
 
@@ -1016,12 +1204,39 @@ class ThreadAccessSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer)
     """Serialize thread access information."""
 
     role = IntegerChoicesField(choices_class=models.ThreadAccessRoleChoices)
+    users = serializers.SerializerMethodField()
 
     class Meta:
         model = models.ThreadAccess
-        fields = ["id", "thread", "mailbox", "role", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        fields = [
+            "id",
+            "thread",
+            "mailbox",
+            "role",
+            "created_at",
+            "updated_at",
+            "users",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at", "users"]
         create_only_fields = ["thread", "mailbox"]
+
+    @extend_schema_field(UserWithoutAbilitiesSerializer(many=True))
+    def get_users(self, instance):
+        """Return assignable users of the mailbox.
+
+        Scoped to the thread access because the UI renders the assignable
+        users per-access. Only roles in MAILBOX_ROLES_CAN_BE_ASSIGNED are
+        eligible.
+        """
+        accesses = [
+            access
+            for access in instance.mailbox.accesses.all()
+            if access.role in enums.MAILBOX_ROLES_CAN_BE_ASSIGNED
+        ]
+        accesses.sort(key=lambda a: (a.user.full_name or "", a.user.email or ""))
+        return UserWithoutAbilitiesSerializer(
+            [a.user for a in accesses], many=True
+        ).data
 
 
 class ThreadEventSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer):
@@ -1057,7 +1272,27 @@ class ThreadEventSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        create_only_fields = ["type", "message"]
+        create_only_fields = ["type", "message", "author"]
+
+    def validate(self, attrs):
+        """Validate ``data`` against the JSON Schema registered for ``type``.
+
+        Routes through ``ThreadEvent.validate_data`` so the HTTP layer and
+        ``ThreadEvent.clean()`` share a single source of truth, and so the
+        client receives a field-level 400 error rather than a generic
+        ValidationError bubbled up from ``full_clean()`` at save time.
+        """
+        # On partial updates where ``data`` is untouched, skip revalidation:
+        # the stored ``data`` was already validated at creation.
+        if "data" not in attrs:
+            return attrs
+
+        event_type = attrs.get("type") or getattr(self.instance, "type", None)
+        try:
+            models.ThreadEvent.validate_data(event_type, attrs["data"])
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict) from exc
+        return attrs
 
     @extend_schema_field(serializers.BooleanField())
     def get_has_unread_mention(self, obj):
@@ -1136,16 +1371,7 @@ class MailDomainAdminSerializer(AbilitiesModelSerializer):
     """Serialize mail domains for admin view."""
 
     expected_dns_records = serializers.SerializerMethodField(read_only=True)
-
-    def get_expected_dns_records(self, instance):
-        """Return the expected DNS records for the mail domain, only in detail views."""
-
-        # Only include DNS records in detail views, not in list views
-        view = self.context.get("view")
-        if view and hasattr(view, "action") and view.action == "retrieve":
-            return instance.get_expected_dns_records()
-
-        return None
+    mailbox_count = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = models.MailDomain
@@ -1155,6 +1381,7 @@ class MailDomainAdminSerializer(AbilitiesModelSerializer):
             "created_at",
             "updated_at",
             "expected_dns_records",
+            "mailbox_count",
             "identity_sync",
         ]
         read_only_fields = fields
@@ -1176,6 +1403,27 @@ class MailDomainAdminSerializer(AbilitiesModelSerializer):
     def get_abilities(self, instance):
         """Return the abilities for the mail domain."""
         return super().get_abilities(instance)
+
+    def get_expected_dns_records(self, instance):
+        """Return the expected DNS records for the mail domain, only in detail views."""
+
+        # Only include DNS records in detail views, not in list views
+        view = self.context.get("view")
+        if view and hasattr(view, "action") and view.action == "retrieve":
+            return instance.get_expected_dns_records()
+
+        return None
+
+    def get_mailbox_count(self, instance):
+        """Return the number of mailboxes for the mail domain.
+
+        Relies on the `mailbox_count` annotation provided by the viewset queryset
+        to avoid an N+1 COUNT query per domain when listing.
+        """
+        annotated = getattr(instance, "mailbox_count", None)
+        if annotated is not None:
+            return annotated
+        return instance.mailbox_set.count()
 
 
 class MaildomainAccessReadSerializer(serializers.ModelSerializer):
@@ -1268,6 +1516,49 @@ class MailboxAdminSerializer(serializers.ModelSerializer):
     alias_of = serializers.PrimaryKeyRelatedField(
         required=False, allow_null=True, queryset=models.Mailbox.objects.none()
     )
+    last_accessed_at = serializers.SerializerMethodField(
+        help_text="Most recent ``accessed_at`` across all mailbox accesses."
+    )
+    has_mandatory_totp = serializers.SerializerMethodField(
+        help_text=(
+            "Whether the Keycloak user backing this mailbox carries the "
+            "KEYCLOAK_TOTP_ROLE_ID realm role. ``null`` when the feature is "
+            "disabled or the role id isn't configured."
+        )
+    )
+
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_last_accessed_at(self, obj):
+        """Prefers the ``last_accessed_at`` annotation set by the admin list
+        viewset (single SQL aggregate). Falls back to a per-instance query so
+        the field still resolves on create/retrieve/update responses where the
+        annotation isn't present."""
+        if hasattr(obj, "last_accessed_at"):
+            return obj.last_accessed_at
+        return obj.accesses.aggregate(value=Max("accessed_at"))["value"]
+
+    @extend_schema_field(serializers.BooleanField(allow_null=True))
+    def get_has_mandatory_totp(self, obj):
+        """Whether the mailbox user has the configured TOTP realm role.
+
+        Returns ``None`` when the feature is disabled, prerequisites aren't
+        met (no role configured, identity sync off, not a personal mailbox),
+        or the serializer is rendering outside the admin list flow — the
+        field is only populated when the viewset pre-resolves it for the
+        whole page (one pipelined Redis call) and stashes the result in
+        ``context["mandatory_totp_membership"]``.
+        """
+        if (
+            not keycloak_service.is_mandatory_totp_enabled()
+            or not obj.is_identity
+            or not obj.domain.identity_sync
+        ):
+            return None
+
+        membership = self.context.get("mandatory_totp_membership")
+        if membership is None:
+            return None
+        return membership.get(str(obj))
 
     class Meta:
         model = models.Mailbox
@@ -1282,6 +1573,8 @@ class MailboxAdminSerializer(serializers.ModelSerializer):
             "updated_at",
             "can_reset_password",
             "contact",
+            "last_accessed_at",
+            "has_mandatory_totp",
         ]
         read_only_fields = [
             "id",
@@ -1292,6 +1585,8 @@ class MailboxAdminSerializer(serializers.ModelSerializer):
             "updated_at",
             "can_reset_password",
             "contact",
+            "last_accessed_at",
+            "has_mandatory_totp",
         ]
 
     def __init__(self, *args, **kwargs):
@@ -2151,8 +2446,6 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
             blob = models.Blob.objects.create_blob(
                 content=content_bytes,
                 content_type="application/json",
-                maildomain=self.context.get("domain"),
-                mailbox=self.context.get("mailbox"),
             )
             validated_data["blob"] = blob
             return super().create(validated_data)
@@ -2170,14 +2463,17 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
                 validated_data.pop("text_body", None)
                 validated_data.pop("raw_body", None)
 
-                if instance.blob:
-                    instance.blob.delete()
+                # Drop the old blob's reference and let the GC sweep
+                # collect it if no other row links to it. Direct delete
+                # would race with concurrent dedup / offload paths.
+                old_blob_id = instance.blob_id
+                instance.blob = None
+                if old_blob_id:
+                    schedule_for_gc(old_blob_id)
 
                 blob = models.Blob.objects.create_blob(
                     content=content_bytes,
                     content_type="application/json",
-                    maildomain=instance.maildomain or None,
-                    mailbox=instance.mailbox or None,
                 )
                 validated_data["blob"] = blob
 
