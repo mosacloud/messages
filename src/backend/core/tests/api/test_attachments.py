@@ -131,6 +131,15 @@ class TestBlobAPI:
         # Should be denied
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
+    def test_download_malformed_blob_id_returns_400(self, api_client):
+        """Non-UUID, non-``msg_`` pk must surface as 400, not 500."""
+        client, _ = api_client
+
+        url = reverse("blob-download", kwargs={"pk": "not-a-uuid"})
+        response = client.get(url)
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
     @pytest.mark.parametrize(
         "role",
         [

@@ -321,7 +321,7 @@ class MailHelper {
                     type: type || 'application/octet-stream',
                     size: parseInt(sizeStr || '0', 10),
                     created_at: created_at || '',
-                    url
+                    url,
                 });
             } else {
                 handle(new Error('Cannot extract drive attachment from anchor element.'), { extra: { anchorElement } });

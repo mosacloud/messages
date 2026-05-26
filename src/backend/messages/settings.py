@@ -1177,6 +1177,7 @@ class Base(Configuration):
         "file_url": "/explorer/items/files",
         "sdk_url": "/sdk",
         "api_url": "/api/v1.0",
+        "preview_url": "/media/preview/item",
     }
 
     # pylint: disable=invalid-name
@@ -1460,6 +1461,7 @@ class Test(Base):
         "file_url": "/explorer/items/files",
         "sdk_url": "/sdk",
         "api_url": "/api/v1.0",
+        "preview_url": "/media/preview/item",
     }
 
     # pylint: disable=invalid-name

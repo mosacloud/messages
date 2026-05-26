@@ -8,7 +8,7 @@ const eslintConfig = defineConfig([
   ...nextCoreWebVitals,
   ...nextTypescript,
   globalIgnores(["out/**", "next-env.d.ts", ".next/**"]),
-  { ignores: ["src/features/api/gen/**/*.ts"] },
+  { ignores: ["src/features/api/gen/**/*.ts", 'public/pdf.worker.min.mjs'] },
   {
     rules: {
       "react-hooks/exhaustive-deps": "off",
