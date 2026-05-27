@@ -321,7 +321,12 @@ export const ThreadMessage = forwardRef<HTMLSpanElement, ThreadMessageProps>(
                         icon={<Icon name="update" type={IconType.OUTLINED} />}
                         type="warning"
                         fullWidth
-                        actions={canUpdateDeliveryStatus ? [
+                        // Only offer cancellation when there are recipients the
+                        // backend can actually transition (retry). A message still
+                        // being sent has pending recipients (delivery_status null),
+                        // which the banner reports but which cannot be cancelled —
+                        // showing the button there would POST an empty payload.
+                        actions={canUpdateDeliveryStatus && retryRecipients.length > 0 ? [
                             {
                                 label: t('Cancel those sendings'),
                                 onClick: handleCancelRetries,

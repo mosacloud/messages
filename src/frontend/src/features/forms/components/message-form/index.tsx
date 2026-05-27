@@ -106,7 +106,7 @@ export const MessageForm = ({
     const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
     const saveDraftRef = useRef<() => void>(() => {});
     const quoteType: QuoteType | undefined = mode !== "new" ? (mode === "forward" ? "forward" : "reply") : undefined;
-    const { selectedMailbox, selectedThread, mailboxes, removeMessages, invalidateMailbox, invalidateThreadsStats, unselectThread, unpinThreads, pinThreads } = useMailboxContext();
+    const { selectedMailbox, selectedThread, mailboxes, removeMessages, patchMessages, invalidateMailbox, invalidateThreadsStats, unselectThread, unpinThreads, pinThreads } = useMailboxContext();
     const hideSubjectField = Boolean(draftMessage?.parent_id ?? parentMessage);
     // For replies/forwards, only allow sending from a mailbox that has access to the thread.
     const availableMailboxes = useMemo(() => {
@@ -287,8 +287,20 @@ export const MessageForm = ({
                 form.clearErrors();
                 toast.dismiss(DRAFT_TOAST_ID);
             },
-            onSuccess: async (response) => {
+            onSuccess: async (response, variables) => {
                 const data = (response as sendCreateResponse200).data;
+                // The backend un-drafts the message synchronously before queuing
+                // the SMTP task. Reflect that optimistically so the thread renders
+                // it as a sending message right away instead of keeping the draft
+                // form open until the background refetch lands.
+                const sentThreadId = draft?.thread_id ?? selectedThread?.id;
+                if (sentThreadId) {
+                    patchMessages(sentThreadId, (message) =>
+                        message.id === variables.data.messageId
+                            ? { ...message, is_draft: false }
+                            : message
+                    );
+                }
                 addQueuedMessage(data.task_id);
                 onSuccess?.();
             }
