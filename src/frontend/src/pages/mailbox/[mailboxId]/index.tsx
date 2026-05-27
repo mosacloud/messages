@@ -2,15 +2,14 @@ import { MainLayout } from "@/features/layouts/components/main";
 import { useResponsive } from "@gouvfr-lasuite/ui-kit";
 import { ThreadPanel } from "@/features/layouts/components/thread-panel";
 import { ThreadSelectionPlaceholder } from "@/features/layouts/components/thread-selection-placeholder";
+import { ThreadViewEmpty } from "@/features/layouts/components/thread-view/components/thread-view-empty";
 import { ThreadSelectionProvider, useThreadSelection } from "@/features/providers/thread-selection";
-import Image from "next/image";
 import { useTranslation } from "react-i18next";
 import { Panel, Group, Separator, useDefaultLayout } from "react-resizable-panels";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import useAbility, { Abilities } from "@/hooks/use-ability";
 import { useMemo } from "react";
 import ViewHelper from "@/features/utils/view-helper";
-import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { useSearchParams } from "next/navigation";
 
 const Mailbox = () => {
@@ -36,17 +35,7 @@ const Mailbox = () => {
     }, [canImportMessages, searchParams]);
 
     if (emptyMailbox) {
-        return (
-            <div className="thread-view thread-view--empty" style={{ top: 0 }}>
-                <div>
-                    <Image src="/images/svg/read-mail.svg" alt="" width={60} height={60} />
-                    <p>{t('No threads')}</p>
-                    {showImportButton && (
-                        <Button href="#modal-message-importer">{t('Import messages')}</Button>
-                    )}
-                </div>
-            </div>
-        )
+        return <ThreadViewEmpty label={t('No threads')} showImportButton={showImportButton} />
     }
 
     return (
@@ -61,12 +50,7 @@ const Mailbox = () => {
                         {selectedThreadIds.size > 0 ? (
                             <ThreadSelectionPlaceholder />
                         ) : (
-                            <div className="thread-view thread-view--empty">
-                                <div>
-                                    <Image src="/images/svg/read-mail.svg" alt="" width={60} height={60} />
-                                    <p>{t('Select a thread')}</p>
-                                </div>
-                            </div>
+                            <ThreadViewEmpty />
                         )}
                     </Panel>
                 </>
