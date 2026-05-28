@@ -8,6 +8,23 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-28
+
+### Added
+
+- Attachments preview #676
+- Add link to a CalDAV instance to accept events directly #584
+
+### Changed
+
+- Improve sending experience #681
+- Remove deprecated model fields from tiered storage migration #678
+
+### Fixed
+
+- Unmount thread view immediately on unselect thread #680
+- Prevent refetch thread messages on draft deletion #682
+
 ## [0.6.0] - 2026-05-20
 
 ### Added
@@ -229,7 +246,8 @@ and this project adheres to
 - Exclude `is_trashed` and `is_spam` threads from search results by default
 - `to` search modifier now looks for messages where recipient fields (to, cc, bcc) contain the given email address.
 
-[unreleased]: https://github.com/suitenumerique/messages/compare/v0.6.0...main
+[unreleased]: https://github.com/suitenumerique/messages/compare/v0.7.0...main
+[0.7.0]: https://github.com/suitenumerique/messages/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/suitenumerique/messages/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/suitenumerique/messages/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/suitenumerique/messages/compare/v0.3.0...v0.4.0
