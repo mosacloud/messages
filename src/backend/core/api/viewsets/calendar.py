@@ -56,14 +56,20 @@ class CalDAVChannelMixin:
 
         Priority: per-mailbox Channel (user-configured, pointing at any
         CalDAV provider) > deployment-default config (``CALDAV_DEFAULT_*``
-        env vars). For the default path, the mailbox email is sent as the
-        Basic Auth username so the CalDAV server can route to the user's
-        calendars via principal discovery — see
-        ``CalDAVService.from_instance_config`` for the trust model.
-        Returns None if neither is configured.
+        env vars). For the default path, the *requesting user's OIDC
+        identity email* is sent as the Basic Auth username — not the
+        mailbox email — because the CalDAV server (e.g. suitenumerique
+        /calendars) keys principals on the OIDC ``email`` claim, and the
+        two can diverge (a Mailbox's ``local_part@domain.name`` is not
+        always the human's primary identity address). Using the mailbox
+        email here returns 403 Unknown User for those cases and silently
+        hides the calendar UI; using the OIDC email routes to the
+        principal the calendar provider provisioned on first login.
+        See ``CalDAVService.from_instance_config`` for the trust model.
+        Returns None if neither config path is available.
         """
         return CalDAVService.from_channel_or_instance(
-            self.caldav_channel, str(self.mailbox)
+            self.caldav_channel, self.request.user.email
         )
 
     def require_caldav_service(self):
@@ -142,7 +148,7 @@ class CalendarRsvpView(CalDAVChannelMixin, APIView):
         try:
             task = calendar_rsvp_task.delay(
                 channel_id=str(channel.id) if channel else None,
-                mailbox_email=mailbox_email,
+                user_email=request.user.email,
                 ics_data=ics_data,
                 response=response_type,
                 attendee_email=mailbox_email,
@@ -215,7 +221,7 @@ class CalendarAddEventView(CalDAVChannelMixin, APIView):
         try:
             task = calendar_add_event_task.delay(
                 channel_id=str(channel.id) if channel else None,
-                mailbox_email=str(self.mailbox),
+                user_email=request.user.email,
                 ics_data=ics_data,
                 calendar_id=calendar_id,
             )
@@ -389,6 +395,14 @@ class CalendarListView(CalDAVChannelMixin, APIView):
                     ),
                 },
             ),
+            403: OpenApiResponse(
+                response=_ERROR_SCHEMA,
+                description=(
+                    "Per-mailbox CalDAV channel denied access (upstream 403). "
+                    "Not returned for the deployment-default config, where a "
+                    "403 is treated as an empty calendar list."
+                ),
+            ),
             502: OpenApiResponse(
                 response=_ERROR_SCHEMA,
                 description="CalDAV server error while listing calendars.",
@@ -411,22 +425,50 @@ class CalendarListView(CalDAVChannelMixin, APIView):
             # calendars would fail at PUT time.
             calendars = service.list_calendars(writable_only=True)
         except CalDAVError as e:
-            # 403 from the CalDAV proxy means "we authenticated the
-            # service credential but the mailbox email is not a known
-            # user upstream" — effectively this mailbox has no calendar
-            # account. Surface it like an unconfigured integration so
-            # the UI hides the footer rather than showing a misleading
-            # "service unavailable" message.
-            if e.status_code == 403:
+            # 403 on the *instance-level* path means "we authenticated the
+            # service credential but this OIDC identity is not yet a
+            # principal upstream" — calendars (and similar providers)
+            # provision a principal on first login, so this is the
+            # "user has no calendars *yet*" state, not "integration
+            # disabled". Surface it as configured=True with an empty
+            # list so the UI shows the create-a-calendar CTA.
+            #
+            # This rationale only holds for the deployment-default config:
+            # a per-mailbox Channel uses the user's own credentials against
+            # a CalDAV provider of their choice, so a 403 there is a genuine
+            # ACL/auth failure that must surface — not be hidden behind a
+            # spurious empty list.
+            if e.status_code == 403 and self.caldav_channel is None:
                 logger.info(
-                    "CalDAV reports mailbox %s has no calendar account (HTTP 403).",
-                    mailbox_id,
+                    "CalDAV reports user %s has no calendar account yet (HTTP 403); "
+                    "treating as empty calendar list.",
+                    request.user.id,
                 )
                 return Response(
-                    {"calendars": [], "web_url": web_url, "configured": False},
+                    {"calendars": [], "web_url": web_url, "configured": True},
                     status=status.HTTP_200_OK,
                 )
-            logger.warning("CalDAV upstream failed during list_calendars: %s", e)
+            if e.status_code == 403:
+                # Log only the channel id + status — the CalDAVError message
+                # embeds the (user-supplied) upstream URL, which must not
+                # reach the logs.
+                logger.warning(
+                    "CalDAV channel %s denied access (HTTP 403) during list_calendars.",
+                    self.caldav_channel.id,
+                )
+                return Response(
+                    {"detail": "CalDAV server denied access while listing calendars."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            # Same redaction: never log ``e`` — its message embeds the
+            # upstream URL (and, for network errors, the raw requests
+            # exception). Channel id + HTTP status are enough to triage.
+            logger.warning(
+                "CalDAV upstream failed during list_calendars "
+                "(channel=%s, HTTP status=%s).",
+                self.caldav_channel.id if self.caldav_channel else None,
+                e.status_code,
+            )
             return Response(
                 {"detail": "CalDAV server returned an error while listing calendars."},
                 status=status.HTTP_502_BAD_GATEWAY,
