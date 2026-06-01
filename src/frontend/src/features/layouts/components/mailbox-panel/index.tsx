@@ -1,4 +1,5 @@
 import { DropdownMenu, HorizontalSeparator, Icon, Spinner } from "@gouvfr-lasuite/ui-kit"
+import { ChevronDown, ChevronUp } from "@gouvfr-lasuite/ui-kit/icons";
 import { MailboxPanelActions } from "./components/mailbox-actions"
 import { MailboxList } from "./components/mailbox-list"
 import { useMailboxContext } from "@/features/providers/mailbox";
@@ -9,6 +10,7 @@ import { useLayoutContext } from "@/features/layouts/components/layout-context";
 import { MailboxLabels } from "./components/mailbox-labels";
 import { useState } from "react";
 import { Group, Panel, Separator, useDefaultLayout } from "react-resizable-panels";
+import MailboxHelper from "@/features/utils/mailbox-helper";
 
 export const MailboxPanel = () => {
     const navigate = useNavigate();
@@ -23,16 +25,12 @@ export const MailboxPanel = () => {
 
     const getMailboxOptions = () => {
         if (!mailboxes) return [];
-        const sortedMailboxes = [...mailboxes].sort((a, b) => {
-            const identityDiff = Number(b.is_identity) - Number(a.is_identity)
-            if (identityDiff !== 0) return identityDiff;
-            return a.email.localeCompare(b.email)
-        })
+        const sortedMailboxes = MailboxHelper.sortByKind(mailboxes);
         return sortedMailboxes.map((mailbox, index) => ({
             label: mailbox.email,
             value: mailbox.id,
             icon: mailbox.is_identity ? <Icon name="person" /> : <Icon name="group" />,
-            showSeparator: mailbox.is_identity && (sortedMailboxes[index + 1] && !sortedMailboxes[index + 1].is_identity)
+            showSeparator: MailboxHelper.showSeparatorAfter(sortedMailboxes, index)
         }));
     }
 
@@ -57,7 +55,7 @@ export const MailboxPanel = () => {
                                     className="mailbox-panel__mailbox-title__dropdown-button"
                                     color="neutral"
                                     variant="tertiary"
-                                    icon={<Icon name={isOpen ? "arrow_drop_up" : "arrow_drop_down"} />}
+                                    icon={isOpen ? <ChevronUp size="small" /> : <ChevronDown size="small" />}
                                     iconPosition="right"
                                     onClick={() => setIsOpen(!isOpen)}
                                 >

@@ -15,6 +15,12 @@ export interface Mailbox {
   /** primary key for the record as UUID */
   readonly id: string;
   readonly email: string;
+  /**
+   * Return the display name of the mailbox (its contact name).
+   * @nullable
+   */
+  readonly name: string | null;
+  readonly domain_id: string;
   /** Whether this mailbox identifies a person (i.e. is not an alias or a group) */
   readonly is_identity: boolean;
   /** Return True if the mailbox is shared (non-identity or has more than one access).

@@ -1,4 +1,4 @@
-import { Label, TreeLabel } from "@/features/api/gen";
+import { Label, Mailbox, TreeLabel } from "@/features/api/gen";
 import { useLabelsCreate, useLabelsList, useLabelsUpdate } from "@/features/api/gen/labels/labels";
 import { RhfInput, RhfSelect, RhfCheckbox, RhfTextArea } from "@/features/forms/components/react-hook-form";
 import { useMailboxContext } from "@/features/providers/mailbox";
@@ -22,6 +22,10 @@ type LabelModalProps = {
     onClose: () => void;
     onSuccess?: (label: Label) => void;
     label?: TreeLabel | SubLabelCreation
+    // Mailbox the label belongs to. Defaults to the context's selected mailbox;
+    // pass it explicitly when creating a label for a mailbox other than the one
+    // currently selected (e.g. from the mailbox settings modal).
+    mailbox?: Mailbox;
 }
 
 const formSchema = z.object({
@@ -37,7 +41,7 @@ type FormFields = z.infer<typeof formSchema>;
 /**
  * Modal component which contains a form to create/update a label
  */
-export const LabelModal = ({ isOpen, onClose, label, onSuccess }: LabelModalProps) => {
+export const LabelModal = ({ isOpen, onClose, label, onSuccess, mailbox }: LabelModalProps) => {
     const { t } = useTranslation();
     const isAutoLabelsEnabled = useFeatureFlag(FEATURE_KEYS.AI_AUTOLABELS);
 
@@ -57,11 +61,12 @@ export const LabelModal = ({ isOpen, onClose, label, onSuccess }: LabelModalProp
     const createMutation = useLabelsCreate();
     const updateMutation = useLabelsUpdate();
     const { selectedMailbox } = useMailboxContext();
+    const labelMailbox = mailbox ?? selectedMailbox;
     const navigate = useNavigate();
     const pathname = useLocation({ select: (l) => l.pathname });
     const searchParams = useUrlSearchParams();
     const queryClient = useQueryClient();
-    const labelsQuery = useLabelsList({ mailbox_id: selectedMailbox!.id })
+    const labelsQuery = useLabelsList({ mailbox_id: labelMailbox!.id })
     const autoLabelChecked = form.watch('is_auto');
     const flattenLabels = useMemo(() => {
       if (!labelsQuery.data) return [];
@@ -99,7 +104,7 @@ export const LabelModal = ({ isOpen, onClose, label, onSuccess }: LabelModalProp
         data: {
           name: data.parent_label ? `${data.parent_label}/${data.name}` : data.name,
           color: data.color,
-          mailbox: selectedMailbox!.id,
+          mailbox: labelMailbox!.id,
           description: data.description,
           is_auto: data.is_auto,
         }

@@ -18,6 +18,22 @@ export const inboxFolderLink = (page: Page): Locator =>
     .filter({ hasText: /Inbox/ })
     .first();
 
+/**
+ * Open the mailbox settings modal from the header "More options" menu and return
+ * the settings dialog locator. The per-mailbox configuration views (rename,
+ * access, signatures, templates, auto-replies, integrations) all live as tabs
+ * inside this single modal, so callers select the tab they need on the returned
+ * dialog.
+ */
+export const openMailboxSettingsModal = async (page: Page): Promise<Locator> => {
+  const header = page.locator(".c__header");
+  await header.getByRole("button", { name: "More options" }).click();
+  await page.getByRole("menuitem", { name: "All settings" }).click();
+  const modal = page.getByRole("dialog", { name: "Settings" });
+  await expect(modal).toBeVisible();
+  return modal;
+};
+
 export const signInKeycloakIfNeeded = async ({ page, username, navigateTo = "/" }: { page: Page, username: string, navigateTo?: string }) => {
     // Set up response listener BEFORE navigation to avoid race condition
     const meResponsePromise = page.waitForResponse((response) => response.url().includes('/api/v1.0/users/me/') && [200, 401].includes(response.status()));

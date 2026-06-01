@@ -132,6 +132,7 @@ export * from "./patched_channel_request";
 export * from "./patched_label_request";
 export * from "./patched_mailbox_access_write_request";
 export * from "./patched_mailbox_admin_partial_update_payload_request";
+export * from "./patched_mailbox_name_update_request";
 export * from "./patched_message_template_request";
 export * from "./patched_message_template_request_metadata";
 export * from "./patched_thread_access_request";

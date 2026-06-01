@@ -389,6 +389,7 @@ export const LabelItem = ({ level = 0, onEdit, canManage, defaultFoldState, ...l
                     label: t('Delete'),
                     icon: <span className="material-icons">delete</span>,
                     callback: handleDelete,
+                    variant: 'danger'
                   },
                 ]}
               >

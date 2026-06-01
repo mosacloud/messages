@@ -1,17 +1,19 @@
-import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, PropsWithChildren, useContext, useEffect, useState } from "react";
 import { modalStore } from "./global-store";
 import { useNavigate } from "@tanstack/react-router";
 
 type ModalStoreContextType = {
-    openModal: (modalId: string) => void;
+    openModal: (modalId: string, payload?: unknown) => void;
     closeModal: (modalId: string) => void;
     isModalOpen: (modalId: string) => boolean;
+    getModalPayload: (modalId: string) => unknown;
 };
 
 const ModalStoreContext = createContext<ModalStoreContextType>({
     openModal: () => {},
     closeModal: () => {},
     isModalOpen: () => false,
+    getModalPayload: () => undefined,
 });
 
 /**
@@ -21,10 +23,16 @@ const ModalStoreContext = createContext<ModalStoreContextType>({
 export const ModalStoreProvider = ({ children }: PropsWithChildren) => {
     const [openModals, setOpenModals] = useState<Set<string>>(new Set());
     const navigate = useNavigate();
+    // Optional per-modal payload (e.g. the tab to preselect) handed over at open
+    // time and read back by the controlled modal wrapper.
+    const [modalPayloads, setModalPayloads] = useState<Record<string, unknown>>({});
 
-    const openModal = (modalId: string) => {
+    const openModal = (modalId: string, payload?: unknown) => {
+        setModalPayloads((prev) => ({ ...prev, [modalId]: payload }));
         setOpenModals((prev) => new Set([...prev, modalId]));
     };
+
+    const getModalPayload = (modalId: string) => modalPayloads[modalId];
 
     const closeModal = async (modalId: string) => {
         // Remove the modal hash from the url if needed, keeping the current
@@ -41,17 +49,23 @@ export const ModalStoreProvider = ({ children }: PropsWithChildren) => {
             next.delete(modalId);
             return next;
         });
+        setModalPayloads((prev) => {
+            const next = { ...prev };
+            delete next[modalId];
+            return next;
+        });
     };
 
     const isModalOpen = (modalId: string) => {
         return openModals.has(modalId);
     };
 
-    const contextValue = useMemo(() => ({
+    const contextValue = {
         openModal,
         closeModal,
-        isModalOpen
-    }), [modalStore, openModal, closeModal, isModalOpen]);
+        isModalOpen,
+        getModalPayload
+    };
 
     /**
      * Listen for hash change to open the modal

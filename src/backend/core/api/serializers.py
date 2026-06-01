@@ -342,6 +342,8 @@ class MailboxSerializer(AbilitiesModelSerializer):
     """Serialize mailboxes."""
 
     email = serializers.SerializerMethodField(read_only=True)
+    name = serializers.SerializerMethodField(read_only=True)
+    domain_id = serializers.UUIDField(read_only=True)
     role = serializers.SerializerMethodField(read_only=True)
     count_unread_threads = serializers.SerializerMethodField(read_only=True)
     count_threads = serializers.SerializerMethodField(read_only=True)
@@ -355,6 +357,8 @@ class MailboxSerializer(AbilitiesModelSerializer):
         fields = [
             "id",
             "email",
+            "name",
+            "domain_id",
             "is_identity",
             "is_shared",
             "role",
@@ -369,6 +373,12 @@ class MailboxSerializer(AbilitiesModelSerializer):
     def get_email(self, instance):
         """Return the email of the mailbox."""
         return str(instance)
+
+    def get_name(self, instance) -> str | None:
+        """Return the display name of the mailbox (its contact name)."""
+        if instance.contact:
+            return instance.contact.name
+        return None
 
     @extend_schema_field(IntegerChoicesField(choices_class=models.MailboxRoleChoices))
     def get_role(self, instance):
@@ -495,6 +505,35 @@ class MailboxSerializer(AbilitiesModelSerializer):
     def get_abilities(self, instance):
         """Get abilities for the instance."""
         return super().get_abilities(instance)
+
+
+class MailboxNameUpdateSerializer(serializers.Serializer):
+    """Validate and apply a mailbox display-name update (its contact name)."""
+
+    name = serializers.CharField(max_length=255)
+
+    def validate_name(self, value):
+        """Strip surrounding whitespace and reject whitespace-only names, which
+        would otherwise be stored (and sent in the ``From`` header) verbatim."""
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Name cannot be blank.")
+        return value
+
+    def create(self, validated_data):
+        """Do not allow creating instances from this serializer."""
+        raise RuntimeError(f"{self.__class__.__name__} does not support create method")
+
+    def update(self, instance, validated_data):
+        """Persist the new display name through the mailbox helper.
+
+        The PATCH is partial: an absent ``name`` is a no-op, so callers may send
+        an empty body without error. This matches the optional ``name`` in the
+        generated OpenAPI request schema.
+        """
+        if "name" in validated_data:
+            instance.set_display_name(validated_data["name"])
+        return instance
 
 
 class MailboxLightSerializer(serializers.ModelSerializer):

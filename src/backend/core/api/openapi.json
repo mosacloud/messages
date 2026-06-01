@@ -3714,6 +3714,54 @@
                         "description": ""
                     }
                 }
+            },
+            "patch": {
+                "operationId": "mailboxes_partial_update",
+                "description": "Rename a mailbox (its display contact name). Mailbox admins only.\n\n``partial=True`` keeps true PATCH semantics: omitting ``name`` is a no-op\nrather than a 400, so the runtime matches the optional request schema.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "mailboxes"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedMailboxNameUpdateRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedMailboxNameUpdateRequest"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Mailbox"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
             }
         },
         "/api/v1.0/mailboxes/{id}/search/": {
@@ -7875,6 +7923,17 @@
                         "type": "string",
                         "readOnly": true
                     },
+                    "name": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "Return the display name of the mailbox (its contact name).",
+                        "readOnly": true
+                    },
+                    "domain_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "readOnly": true
+                    },
                     "is_identity": {
                         "type": "boolean",
                         "readOnly": true,
@@ -7990,10 +8049,12 @@
                     "count_threads",
                     "count_unread_mentions",
                     "count_unread_threads",
+                    "domain_id",
                     "email",
                     "id",
                     "is_identity",
                     "is_shared",
+                    "name",
                     "role"
                 ]
             },
@@ -9259,6 +9320,17 @@
                 "properties": {
                     "metadata": {
                         "$ref": "#/components/schemas/MailboxAdminUpdateMetadataRequest"
+                    }
+                }
+            },
+            "PatchedMailboxNameUpdateRequest": {
+                "type": "object",
+                "description": "Validate and apply a mailbox display-name update (its contact name).",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255
                     }
                 }
             },

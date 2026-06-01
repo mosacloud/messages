@@ -1,4 +1,5 @@
-import { Icon, IconSize, Spinner } from "@gouvfr-lasuite/ui-kit";
+import { Spinner } from "@gouvfr-lasuite/ui-kit";
+import { Trash } from "@gouvfr-lasuite/ui-kit/icons";
 import { Button, Checkbox, Column, DataGrid, useModal, useModals } from "@gouvfr-lasuite/cunningham-react";
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
@@ -167,6 +168,7 @@ export const AutoreplyDataGrid = ({ mailbox }: AutoreplyDataGridProps) => {
         {
             id: "schedule",
             headerName: t("Schedule"),
+            size: 240,
             renderCell: ({ row }) => (
                 <div className="flex-row flex-align-center" style={{ gap: "var(--c--globals--spacings--2xs)" }}>
                     {formatSchedule(t, row.metadata)}
@@ -182,23 +184,24 @@ export const AutoreplyDataGrid = ({ mailbox }: AutoreplyDataGridProps) => {
         },
         {
             id: "actions",
-            size: 154,
+            size: 130,
             headerName: t("Actions"),
             renderCell: ({ row }) => (
                 <div className="flex-row flex-justify-start" style={{ width: "100%", gap: "var(--c--globals--spacings--2xs)" }}>
                     <Button
-                        variant="bordered"
-                        size="small"
+                        variant="tertiary"
+                        size="nano"
                         onClick={() => handleModifyRow(row)}
                     >
                         {t("Modify")}
                     </Button>
                     <Button
                         color="error"
-                        size="small"
+                        variant="tertiary"
+                        size="nano"
                         onClick={() => handleDeleteRow(row)}
                         disabled={deletingId === row.id}
-                        icon={deletingId === row.id ? <Spinner size="sm" /> : <Icon name="delete" size={IconSize.SMALL} />}
+                        icon={deletingId === row.id ? <Spinner size="sm" /> : <Trash size="small" />}
                         aria-label={t("Delete")}
                     />
                 </div>
@@ -227,28 +230,27 @@ export const AutoreplyDataGrid = ({ mailbox }: AutoreplyDataGridProps) => {
     }
 
     return (
-        <section className="admin-page__body">
-            <div className="admin-data-grid">
-                <DataGrid
-                    columns={columns}
-                    rows={autoreplies?.data ?? []}
-                    onSortModelChange={() => undefined}
-                    enableSorting={false}
-                    emptyPlaceholderLabel={t("No auto-replies found")}
-                />
-                <ModalComposeMailboxAutoreply
-                    isOpen={modal.isOpen}
-                    onClose={
-                        () => {
-                            modal.close();
-                            if (selectedAutoreply) {
-                                setSelectedAutoreply(undefined);
-                            }
+        <div className="admin-data-grid">
+            <DataGrid
+                columns={columns}
+                rows={autoreplies?.data ?? []}
+                onSortModelChange={() => undefined}
+                enableSorting={false}
+                emptyPlaceholderLabel={t("No auto-replies")}
+            />
+            <ModalComposeMailboxAutoreply
+                isOpen={modal.isOpen}
+                onClose={
+                    () => {
+                        modal.close();
+                        if (selectedAutoreply) {
+                            setSelectedAutoreply(undefined);
                         }
                     }
-                    autoreply={selectedAutoreply}
-                />
-            </div>
-        </section>
+                }
+                mailbox={mailbox}
+                autoreply={selectedAutoreply}
+            />
+        </div>
     );
 };

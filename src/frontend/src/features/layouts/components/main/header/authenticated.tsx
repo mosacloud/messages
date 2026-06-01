@@ -1,4 +1,5 @@
 import { DropdownMenu, HeaderProps, Icon, IconType, useResponsive, UserMenu, VerticalSeparator } from "@gouvfr-lasuite/ui-kit";
+import { Controls, GearRounded, Upload } from "@gouvfr-lasuite/ui-kit/icons";
 import { Button, Tooltip, useCunningham } from "@gouvfr-lasuite/cunningham-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -16,7 +17,8 @@ import { MessageTemplateTypeChoices, StatusEnum, useMailboxesMessageTemplatesLis
 import { CircularProgress } from "@/features/ui/components/circular-progress";
 import { TaskImportCacheHelper } from "@/features/utils/task-import-cache";
 import { useTheme } from "@/features/providers/theme";
-import { useLayoutContext } from "@/features/layouts/components/layout-context";
+import { MODAL_MAILBOX_SETTINGS_ID } from "@/features/layouts/components/mailbox-settings/modal-mailbox-settings";
+import { useModalStore } from "@/features/providers/modal-store";
 
 
 type AuthenticatedHeaderProps = HeaderProps & {
@@ -63,9 +65,8 @@ export const AuthenticatedHeader = ({
 
 const AutoreplyIndicator = () => {
   const { selectedMailbox } = useMailboxContext();
-  const { closeLeftPanel } = useLayoutContext();
+  const { openModal } = useModalStore();
   const { t } = useTranslation();
-  const navigate = useNavigate();
 
   const { data } = useMailboxesMessageTemplatesList(
     selectedMailbox?.id ?? "",
@@ -96,8 +97,7 @@ const AutoreplyIndicator = () => {
         aria-label={t("Auto-reply is active")}
         onClick={() => {
           if (selectedMailbox) {
-            closeLeftPanel();
-            navigate({ to: '/mailbox/$mailboxId/autoreplies', params: { mailboxId: selectedMailbox.id } });
+            openModal(MODAL_MAILBOX_SETTINGS_ID, { initialTab: "autoreplies" });
           }
         }}
       />
@@ -138,12 +138,15 @@ export const HeaderRight = () => {
 
 const ApplicationMenu = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const { openModal } = useModalStore();
   const { selectedMailbox } = useMailboxContext();
   const canAccessDomainAdmin = useAbility(Abilities.CAN_VIEW_DOMAIN_ADMIN);
   const canImportMessages = useAbility(Abilities.CAN_IMPORT_MESSAGES, selectedMailbox);
   const canManageMessageTemplates = useAbility(Abilities.CAN_MANAGE_MESSAGE_TEMPLATES, selectedMailbox);
   const isIntegrationsEnabled = useFeatureFlag(FEATURE_KEYS.MAILBOX_ADMIN_CHANNELS);
   const canManageIntegrations = canManageMessageTemplates && isIntegrationsEnabled;
+  const canAdministrateSelectedMailbox = useAbility(Abilities.CAN_MANAGE_ACCESSES, selectedMailbox);
+  const canOpenMailboxSettings = canAdministrateSelectedMailbox || canManageMessageTemplates || canManageIntegrations;
   const { t } = useTranslation();
   const navigate = useNavigate();
   const taskId = useMemo(() => {
@@ -152,10 +155,10 @@ const ApplicationMenu = () => {
   }, [isDropdownOpen, selectedMailbox?.id]);
 
   const taskStatus = useTaskStatus(taskId, { enabled: canImportMessages && isDropdownOpen });
-  const hasOptions = canAccessDomainAdmin || canImportMessages || canManageMessageTemplates || canManageIntegrations;
+  const hasOptions = canAccessDomainAdmin || canImportMessages || canOpenMailboxSettings;
   const importMessageOption = useMemo(() => {
     let label = t("Import messages");
-    let icon = <Icon name="archive" type={IconType.OUTLINED} />;
+    let icon = <Upload />;
 
     if (taskStatus) {
       if (taskStatus.state === StatusEnum.PROGRESS) {
@@ -178,7 +181,8 @@ const ApplicationMenu = () => {
       icon,
       callback: () => {
         window.location.hash = `#modal-message-importer`;
-      }
+      },
+      showSeparator: canAccessDomainAdmin
     }
   }, [t, taskStatus]);
 
@@ -188,7 +192,7 @@ const ApplicationMenu = () => {
         <Button
           disabled
           onClick={(e) => e.preventDefault()}
-          icon={<Icon name="settings" type={IconType.OUTLINED} />}
+          icon={<GearRounded />}
           aria-label={t("More options (none available for this mailbox)")}
           color="neutral"
           variant="tertiary"
@@ -198,62 +202,33 @@ const ApplicationMenu = () => {
   }
 
   return (
+    <>
     <DropdownMenu
           isOpen={isDropdownOpen}
           onOpenChange={setIsDropdownOpen}
           options={[
-              ...(canAccessDomainAdmin ? [{
-                label: t("Domain admin"),
-                icon: <Icon name="domain" />,
-                callback: () => navigate({ to: "/domain" }),
-                showSeparator: canImportMessages || canManageMessageTemplates || canManageIntegrations,
+              ...(canOpenMailboxSettings ? [{
+                label: t("All settings"),
+                icon: <Controls size="medium"  />,
+                callback: () => openModal(MODAL_MAILBOX_SETTINGS_ID),
+                showSeparator: canAccessDomainAdmin && !canImportMessages
               }] : []),
               ...(canImportMessages ? [importMessageOption] : []),
-              ...(canManageMessageTemplates ? [{
-                label: t("My message templates"),
-                icon: <Icon name="description" />,
-                callback: () => {
-                    if (selectedMailbox) {
-                        navigate({ to: '/mailbox/$mailboxId/message-templates', params: { mailboxId: selectedMailbox.id } });
-                    }
-                }
-              },
-              {
-                label: t("My signatures"),
-                icon: <Icon name="draw" />,
-                callback: () => {
-                    if (selectedMailbox) {
-                        navigate({ to: '/mailbox/$mailboxId/signatures', params: { mailboxId: selectedMailbox.id } });
-                    }
-                }
-              },
-              {
-                label: t("My auto-replies"),
-                icon: <Icon name="forward_to_inbox" />,
-                callback: () => {
-                    if (selectedMailbox) {
-                        navigate({ to: '/mailbox/$mailboxId/autoreplies', params: { mailboxId: selectedMailbox.id } });
-                    }
-                }
-              }] : []),
-              ...(canManageIntegrations ? [{
-                label: t("Integrations"),
-                icon: <Icon name="integration_instructions" type={IconType.OUTLINED} />,
-                callback: () => {
-                    if (selectedMailbox) {
-                        navigate({ to: '/mailbox/$mailboxId/integrations', params: { mailboxId: selectedMailbox.id } });
-                    }
-                }
+              ...(canAccessDomainAdmin ? [{
+                label: t("Domain admin"),
+                icon: <Icon name="domain" style={{ fontSize: 24 }} />,
+                callback: () => navigate({ to: "/domain" }),
               }] : []),
           ]}
       >
       <Button
           onClick={() => setIsDropdownOpen(true)}
-          icon={<Icon name="settings" type={IconType.OUTLINED} />}
+          icon={<GearRounded />}
           aria-label={t("More options")}
           color="brand"
           variant="tertiary"
       />
       </DropdownMenu>
+    </>
   )
 }

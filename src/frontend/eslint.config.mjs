@@ -3,7 +3,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 const eslintConfig = defineConfig([
-  globalIgnores(["dist/**", "src/routes.gen.ts", "scripts/**"]),
+  globalIgnores(["dist/**", "src/routes.gen.ts", "scripts/**", '.vite']),
   { ignores: ["src/features/api/gen/**/*.ts", 'public/pdf.worker.min.mjs'] },
   ...tseslint.configs.recommended,
   reactHooks.configs.flat.recommended,

@@ -128,7 +128,7 @@ export const SignatureTemplateSelector = ({ mailboxId, messageId, ensureDraft, t
         key="signatureTemplateSelector"
         items={[
           {
-            text: t("No signature"),
+            text: t("No signatures"),
             isSelected: !isSelected,
             isDisabled: false,
             icon: <Icon name="drive_file_rename_outline" size={IconSize.SMALL} />,

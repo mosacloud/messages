@@ -2,7 +2,7 @@ import { Modal, ModalSize, Button } from "@gouvfr-lasuite/cunningham-react";
 import { Icon, IconType, IconSize } from "@gouvfr-lasuite/ui-kit";
 import { useTranslation } from "react-i18next";
 import { useState, useEffect } from "react";
-import { Channel } from "@/features/api/gen";
+import { Channel, Mailbox } from "@/features/api/gen";
 import { WidgetIntegrationForm } from "./widget-integration-form";
 import { useConfig } from "@/features/providers/config";
 import i18n from "@/features/i18n/initI18n";
@@ -10,6 +10,7 @@ import i18n from "@/features/i18n/initI18n";
 type ModalComposeIntegrationProps = {
     isOpen: boolean;
     onClose: () => void;
+    mailbox: Mailbox;
     channel?: Channel;
     onSuccess?: () => void;
 };
@@ -90,6 +91,7 @@ const BackButton = ({ onClick }: { onClick: () => void }) => {
 export const ModalComposeIntegration = ({
     isOpen,
     onClose,
+    mailbox,
     channel: initialChannel,
     onSuccess,
 }: ModalComposeIntegrationProps) => {
@@ -183,6 +185,7 @@ export const ModalComposeIntegration = ({
                 )}
                 {viewState === "form" && selectedType === "widget" && (
                     <WidgetIntegrationForm
+                        mailbox={mailbox}
                         channel={currentChannel}
                         onSuccess={handleSuccess}
                         onClose={onClose}

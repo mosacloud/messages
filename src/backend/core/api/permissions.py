@@ -447,6 +447,40 @@ class IsMailboxAdmin(permissions.BasePermission):
         return is_domain_admin
 
 
+class IsMailboxAdminObject(permissions.BasePermission):
+    """Object-level permission granting access on a Mailbox instance to its
+    admins (MailboxAccess role ADMIN), its domain admins, or superusers.
+
+    Unlike :class:`IsMailboxAdmin`, this works on the resolved Mailbox object
+    (e.g. ``/mailboxes/{pk}/``) rather than a nested ``mailbox_id`` URL kwarg.
+    """
+
+    message = "You do not have administrative rights for this mailbox or its domain."
+
+    def has_object_permission(self, request, view, obj):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+
+        if user.is_superuser:
+            return True
+
+        is_mailbox_admin = models.MailboxAccess.objects.filter(
+            user=user, mailbox=obj, role=models.MailboxRoleChoices.ADMIN
+        ).exists()
+        if is_mailbox_admin:
+            return True
+
+        if obj.domain:
+            return models.MailDomainAccess.objects.filter(
+                user=user,
+                maildomain=obj.domain,
+                role=models.MailDomainAccessRoleChoices.ADMIN,
+            ).exists()
+
+        return False
+
+
 class HasChannelScope(permissions.BasePermission):
     """Scope-based permission for service calls authenticated as a Channel.
 

@@ -31,6 +31,7 @@ import type {
   MailboxesSearchListParams,
   MessageTemplate,
   MessageTemplateRequest,
+  PatchedMailboxNameUpdateRequest,
   PatchedMessageTemplateRequest,
   ReadMessageTemplate,
 } from ".././models";
@@ -1722,6 +1723,113 @@ export function useMailboxesRetrieve<
   return query;
 }
 
+/**
+ * Rename a mailbox (its display contact name). Mailbox admins only.
+
+``partial=True`` keeps true PATCH semantics: omitting ``name`` is a no-op
+rather than a 400, so the runtime matches the optional request schema.
+ */
+export type mailboxesPartialUpdateResponse200 = {
+  data: Mailbox;
+  status: 200;
+};
+
+export type mailboxesPartialUpdateResponseSuccess =
+  mailboxesPartialUpdateResponse200 & {
+    headers: Headers;
+  };
+export type mailboxesPartialUpdateResponse =
+  mailboxesPartialUpdateResponseSuccess;
+
+export const getMailboxesPartialUpdateUrl = (id: string) => {
+  return `/api/v1.0/mailboxes/${id}/`;
+};
+
+export const mailboxesPartialUpdate = async (
+  id: string,
+  patchedMailboxNameUpdateRequest: PatchedMailboxNameUpdateRequest,
+  options?: RequestInit,
+): Promise<mailboxesPartialUpdateResponse> => {
+  return fetchAPI<mailboxesPartialUpdateResponse>(
+    getMailboxesPartialUpdateUrl(id),
+    {
+      ...options,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(patchedMailboxNameUpdateRequest),
+    },
+  );
+};
+
+export const getMailboxesPartialUpdateMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof mailboxesPartialUpdate>>,
+    TError,
+    { id: string; data: PatchedMailboxNameUpdateRequest },
+    TContext
+  >;
+  request?: SecondParameter<typeof fetchAPI>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof mailboxesPartialUpdate>>,
+  TError,
+  { id: string; data: PatchedMailboxNameUpdateRequest },
+  TContext
+> => {
+  const mutationKey = ["mailboxesPartialUpdate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof mailboxesPartialUpdate>>,
+    { id: string; data: PatchedMailboxNameUpdateRequest }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return mailboxesPartialUpdate(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type MailboxesPartialUpdateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof mailboxesPartialUpdate>>
+>;
+export type MailboxesPartialUpdateMutationBody =
+  PatchedMailboxNameUpdateRequest;
+export type MailboxesPartialUpdateMutationError = ErrorType<unknown>;
+
+export const useMailboxesPartialUpdate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof mailboxesPartialUpdate>>,
+      TError,
+      { id: string; data: PatchedMailboxNameUpdateRequest },
+      TContext
+    >;
+    request?: SecondParameter<typeof fetchAPI>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof mailboxesPartialUpdate>>,
+  TError,
+  { id: string; data: PatchedMailboxNameUpdateRequest },
+  TContext
+> => {
+  const mutationOptions = getMailboxesPartialUpdateMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
 /**
  * Search mailboxes by domain, local part and contact name.
 

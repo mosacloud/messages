@@ -951,9 +951,11 @@ source = { editable = "../jmap-email" }
 [package.metadata]
 requires-dist = [
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.151.0" },
+    { name = "pylint", marker = "extra == 'dev'", specifier = ">=4.0.4" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.0" },
+    { name = "ty", marker = "extra == 'dev'", specifier = ">=0.0.44" },
 ]
 provides-extras = ["dev"]
 

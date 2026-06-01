@@ -80,8 +80,8 @@ export const ModalCreateOrUpdateMailbox = ({ isOpen, mailbox, onClose, onSuccess
   const createMailboxSchema = z.discriminatedUnion("type", [
     z.object({
       type: z.literal("personal"),
-      first_name: z.string().min(1, { error: i18n.t("First name is required.") }),
-      last_name: z.string().min(1, { error: i18n.t("Last name is required.") }),
+      first_name: z.string().trim().min(1, { error: i18n.t("First name is required.") }),
+      last_name: z.string().trim().min(1, { error: i18n.t("Last name is required.") }),
       prefix: z.string()
         .min(1, { error: i18n.t("Prefix is required.") })
         .regex(/^[a-zA-Z0-9_.-]+$/, { error: i18n.t("Prefix can only contain letters, numbers, dots, underscores and hyphens.") }),
@@ -90,7 +90,10 @@ export const ModalCreateOrUpdateMailbox = ({ isOpen, mailbox, onClose, onSuccess
     }),
     z.object({
       type: z.literal("shared"),
-      name: z.string().min(1, { error: i18n.t("Name is required.") }),
+      name: z.string()
+        .trim()
+        .min(1, { error: i18n.t("Name is required.") })
+        .max(255, { error: i18n.t("The name must not exceed 255 characters.") }),
       prefix: z.string()
         .min(1, { error: i18n.t("Prefix is required.") })
         .regex(/^[a-zA-Z0-9_.-]+$/, { error: i18n.t("Prefix can only contain letters, numbers, dots, underscores and hyphens.") }),
@@ -106,12 +109,18 @@ export const ModalCreateOrUpdateMailbox = ({ isOpen, mailbox, onClose, onSuccess
   const editMailboxSchema = z.discriminatedUnion("type", [
     z.object({
       type: z.literal("personal"),
-      full_name: z.string().min(1, { error: i18n.t("Full name is required.") }),
+      full_name: z.string()
+        .trim()
+        .min(1, { error: i18n.t("Full name is required.") })
+        .max(255, { error: i18n.t("The name must not exceed 255 characters.") }),
       ...convertJsonSchemaToZod(SCHEMA_CUSTOM_ATTRIBUTES_USER as JSONSchema.Schema),
     }),
     z.object({
       type: z.literal("shared"),
-      name: z.string().min(1, { error: i18n.t("Name is required.") }),
+      name: z.string()
+        .trim()
+        .min(1, { error: i18n.t("Name is required.") })
+        .max(255, { error: i18n.t("The name must not exceed 255 characters.") }),
     }),
   ]);
   type CreateMailboxFormData = z.infer<typeof createMailboxSchema>;
@@ -126,7 +135,7 @@ export const ModalCreateOrUpdateMailbox = ({ isOpen, mailbox, onClose, onSuccess
           type: "personal",
           prefix: mailbox?.local_part ?? "",
           confirmation_accepted: true,
-          full_name: owner_access?.user.full_name ?? "",
+          full_name: mailbox?.contact?.name ?? "",
           ...Object.fromEntries(Object.entries(customAttributes).map(
             ([name, schema]) => ([name, owner_access?.user.custom_attributes[name] ?? schema.default ?? ''])
           )),
