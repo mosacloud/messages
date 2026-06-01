@@ -1714,11 +1714,10 @@ class MailboxAdminSerializer(serializers.ModelSerializer):
 
         if instance.is_identity is True:
             user_updated_fields = {}
-            contact_updated_fields = {}
+            display_name = metadata.get("full_name")
 
-            if full_name := metadata.get("full_name"):
-                user_updated_fields["full_name"] = full_name
-                contact_updated_fields["name"] = full_name
+            if display_name:
+                user_updated_fields["full_name"] = display_name
             if custom_attributes := metadata.get("custom_attributes"):
                 user_updated_fields["custom_attributes"] = custom_attributes
 
@@ -1733,21 +1732,12 @@ class MailboxAdminSerializer(serializers.ModelSerializer):
                     owner.save(update_fields=list(user_updated_fields.keys()))
                     updated = True
 
-            if contact_updated_fields:
-                contact = models.Contact.objects.filter(pk=instance.contact_id)
-                contact.update(**contact_updated_fields)
-                updated = True
-
         else:
-            contact_updated_fields = {}
+            display_name = metadata.get("name")
 
-            if name := metadata.get("name"):
-                contact_updated_fields["name"] = name
-
-            if contact_updated_fields:
-                contact = models.Contact.objects.filter(pk=instance.contact_id)
-                contact.update(**contact_updated_fields)
-                updated = True
+        if display_name:
+            instance.set_display_name(display_name)
+            updated = True
 
         if updated:
             instance.refresh_from_db()

@@ -735,6 +735,21 @@ class Mailbox(BaseModel):
 
         return reset_keycloak_user_password(email)
 
+    def set_display_name(self, name):
+        """Set the mailbox display name through its linked Contact.
+
+        Ensures a Contact (matching the mailbox email) exists and carries
+        ``name``, creating and linking it when the mailbox has none yet. This
+        guards against silently dropping the update when ``contact`` is NULL.
+        """
+        contact, _ = Contact.objects.update_or_create(
+            email=str(self), mailbox=self, defaults={"name": name}
+        )
+        if self.contact_id != contact.id:
+            self.contact = contact
+            self.save(update_fields=["contact"])
+        return contact
+
     @property
     def threads_viewer(self):
         """Return queryset of threads where the mailbox has at least viewer access."""

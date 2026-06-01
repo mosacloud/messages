@@ -1187,6 +1187,71 @@ class TestAdminMailDomainMailboxViewSet:
         mailbox2_domain1.refresh_from_db()
         assert mailbox2_domain1.contact.name == "Helpdesk"
 
+    def test_admin_maildomains_mailbox_partial_update_shared_creates_missing_contact(
+        self,
+        api_client,
+        domain_admin_user,
+        domain_admin_access1,
+        mail_domain1,
+    ):
+        """Renaming a shared mailbox that has no contact yet should create and
+        link one, instead of silently dropping the update."""
+        api_client.force_authenticate(user=domain_admin_user)
+
+        mailbox = factories.MailboxFactory(
+            domain=mail_domain1,
+            local_part="orphan-shared",
+            is_identity=False,
+            contact=None,
+        )
+        assert mailbox.contact_id is None
+
+        patch_url = self.mailbox_detail_url(mail_domain1.pk, mailbox.pk)
+        patch_response = api_client.patch(
+            patch_url, data={"metadata": {"name": "Helpdesk"}}, format="json"
+        )
+        assert patch_response.status_code == status.HTTP_200_OK
+
+        mailbox.refresh_from_db()
+        assert mailbox.contact is not None
+        assert mailbox.contact.name == "Helpdesk"
+        assert mailbox.contact.email == str(mailbox)
+
+    def test_admin_maildomains_mailbox_partial_update_personal_creates_missing_contact(
+        self,
+        api_client,
+        domain_admin_user,
+        domain_admin_access1,
+        mail_domain1,
+    ):
+        """Renaming a personal mailbox that has no contact yet should create and
+        link one, and still update the owner full name."""
+        api_client.force_authenticate(user=domain_admin_user)
+
+        mailbox = factories.MailboxFactory(
+            domain=mail_domain1,
+            local_part="orphan-personal",
+            is_identity=True,
+            contact=None,
+            users_admin=[
+                factories.UserFactory(email=f"orphan-personal@{mail_domain1.name}")
+            ],
+        )
+        assert mailbox.contact_id is None
+
+        patch_url = self.mailbox_detail_url(mail_domain1.pk, mailbox.pk)
+        patch_response = api_client.patch(
+            patch_url, data={"metadata": {"full_name": "Jane D."}}, format="json"
+        )
+        assert patch_response.status_code == status.HTTP_200_OK
+
+        mailbox.refresh_from_db()
+        assert mailbox.contact is not None
+        assert mailbox.contact.name == "Jane D."
+
+        user = models.User.objects.get(email=str(mailbox))
+        assert user.full_name == "Jane D."
+
     def test_admin_maildomains_mailbox_partial_update_forbidden_not_admin(
         self,
         api_client,
