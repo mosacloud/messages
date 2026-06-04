@@ -7,8 +7,10 @@ import { SentBoxProvider } from "@/features/providers/sent-box";
 import { LeftPanel } from "./left-panel";
 import { ModalStoreProvider } from "@/features/providers/modal-store";
 import { ScrollRestoreProvider } from "@/features/providers/scroll-restore";
+import { AttachmentPreviewProvider } from "@/features/providers/attachment-preview";
 import { useTheme } from "@/features/providers/theme";
 import { LayoutProvider, useLayoutDragContext } from "@/features/layouts/components/layout-context";
+import { AttachmentPreviewModal } from "@/features/layouts/components/thread-view/components/attachment-preview-modal";
 import Link from "next/link";
 
 export const MainLayout = ({ children }: PropsWithChildren) => {
@@ -18,9 +20,12 @@ export const MainLayout = ({ children }: PropsWithChildren) => {
                 <MailboxProvider>
                     <SentBoxProvider>
                         <ModalStoreProvider>
-                            <LayoutProvider draggable>
-                                <MainLayoutContent>{children}</MainLayoutContent>
-                            </LayoutProvider>
+                            <AttachmentPreviewProvider>
+                                <LayoutProvider draggable>
+                                    <MainLayoutContent>{children}</MainLayoutContent>
+                                    <AttachmentPreviewModal />
+                                </LayoutProvider>
+                            </AttachmentPreviewProvider>
                         </ModalStoreProvider>
                     </SentBoxProvider>
                 </MailboxProvider>

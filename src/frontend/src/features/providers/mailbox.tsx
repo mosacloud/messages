@@ -1,4 +1,4 @@
-import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useRef } from "react";
+import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Mailbox, MailboxRoleChoices, Message, PaginatedThreadList, Thread, ThreadEvent, ThreadsListParams, useLabelsList, useMailboxesList, useMessagesList, useThreadsEventsList, useThreadsListInfinite, useThreadsRetrieve, getThreadsEventsListQueryKey, getThreadsRetrieveQueryKey } from "../api/gen";
 import { FetchStatus, InfiniteData, QueryStatus, RefetchOptions, useQueryClient } from "@tanstack/react-query";
 import type { threadsListResponse } from "../api/gen/threads/threads";
@@ -42,6 +42,8 @@ type MailboxContextType = {
     threadItems: readonly TimelineItem[] | null;
     selectedMailbox: Mailbox | null;
     selectedThread: Thread | null;
+    // Lets the thread view unmount synchronously instead of waiting for the async navigation.
+    unmountThreadViewNeeded: boolean;
     unselectThread: () => void;
     loadNextThreads: () => Promise<unknown>;
     /** Patch threads in every cached list variant of the current mailbox AND
@@ -185,6 +187,7 @@ const MailboxContext = createContext<MailboxContextType>({
     threadItems: null,
     selectedMailbox: null,
     selectedThread: null,
+    unmountThreadViewNeeded: false,
     loadNextThreads: async () => {},
     unselectThread: () => {},
     pinThreads: () => {},
@@ -244,6 +247,7 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
     const queryClient = useQueryClient();
     const router = useRouter();
     const pinnedThreadIdsRef = useRef(new Set<string>());
+    const [unmountThreadViewNeeded, setUnmountThreadViewNeeded] = useState(false);
     const searchParams = useSearchParams();
     const previousSearchParams = usePrevious(searchParams);
     const hasSearchParamsChanged = useMemo(() => {
@@ -360,6 +364,7 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
     }, [threadsQuery.data?.pages]);
 
     const threadIdFromRoute = typeof router.query.threadId === 'string' ? router.query.threadId : undefined;
+
     const threadInList = useMemo(() => {
         if (!threadIdFromRoute) return null;
         return flattenThreads?.results.find((thread) => thread.id === threadIdFromRoute) ?? null;
@@ -550,7 +555,13 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
 
         const threadId = router.query.threadId as string | undefined;
         if (selectedMailbox && threadId && window.location.pathname.includes(threadId)) {
-            router.push(`/mailbox/${selectedMailbox!.id}${window.location.search}`);
+            // Unmount the thread view now (tearing down its auto-mark-as-read
+            // observer before the mutation's cache patch lands), then clear the
+            // flag once navigation has settled and `selectedThread` is null on
+            // its own.
+            setUnmountThreadViewNeeded(true);
+            router.push(`/mailbox/${selectedMailbox!.id}${window.location.search}`)
+                .finally(() => setUnmountThreadViewNeeded(false));
         }
     }
 
@@ -562,6 +573,7 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
         threadItems: threadItems,
         selectedMailbox,
         selectedThread,
+        unmountThreadViewNeeded,
         unselectThread,
         loadNextThreads: threadsQuery.fetchNextPage,
         pinThreads,

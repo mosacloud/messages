@@ -35,6 +35,58 @@
                 }
             }
         },
+        "/api/v1.0/blob/{id}/preview/": {
+            "get": {
+                "operationId": "blob_preview_retrieve",
+                "description": "Serve a blob inline for the FilePreview viewer.\n\nSibling of ``download`` with the same authorization model but two\nextra guarantees:\n\n- the response Content-Type is the MIME type detected from the bytes\n  (via ``python-magic``), not the value declared at upload time;\n- the detected MIME must belong to ``PREVIEWABLE_MIME_TYPES``,\n  otherwise the endpoint refuses with 415.\n\nReturning 415 (rather than 200 with the raw payload) is the security\ncontract that lets the frontend render the response inline: any byte\nwe send back has been re-classified server-side as one of the safe\npreviewable types.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "blob"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/octet-stream": {
+                                "schema": {
+                                    "type": "string",
+                                    "format": "binary"
+                                }
+                            }
+                        },
+                        "description": "Inline preview of the blob. The Content-Type is the MIME type detected server-side and is guaranteed to belong to ``PREVIEWABLE_MIME_TYPES``."
+                    },
+                    "400": {
+                        "description": "Invalid blob ID"
+                    },
+                    "403": {
+                        "description": "Forbidden - User does not have permission to preview this blob"
+                    },
+                    "404": {
+                        "description": "Blob not found"
+                    },
+                    "415": {
+                        "description": "Unsupported media type for inline preview. The detected MIME is not in ``PREVIEWABLE_MIME_TYPES`` or does not match the declared Content-Type. The response body includes a ``code`` field set to either ``suspicious`` (declared type was previewable but bytes disagree) or ``unsupported`` (type is plainly not previewable)."
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                }
+            }
+        },
         "/api/v1.0/blob/upload/{mailbox_id}/": {
             "post": {
                 "operationId": "blob_upload_create",
@@ -197,6 +249,10 @@
                                                     "type": "string",
                                                     "readOnly": true
                                                 },
+                                                "preview_url": {
+                                                    "type": "string",
+                                                    "readOnly": true
+                                                },
                                                 "app_name": {
                                                     "type": "string",
                                                     "readOnly": true
@@ -207,6 +263,7 @@
                                                 "sdk_url",
                                                 "api_url",
                                                 "file_url",
+                                                "preview_url",
                                                 "app_name"
                                             ]
                                         },
@@ -2642,6 +2699,21 @@
                             }
                         },
                         "description": ""
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "detail": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "description": "Per-mailbox CalDAV channel denied access (upstream 403). Not returned for the deployment-default config, where a 403 is treated as an empty calendar list."
                     },
                     "502": {
                         "content": {

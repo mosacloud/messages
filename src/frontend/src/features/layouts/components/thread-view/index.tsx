@@ -17,6 +17,7 @@ import { SKIP_LINK_TARGET_ID } from "@/features/ui/components/skip-link"
 import { useTranslation } from "react-i18next"
 import { ThreadViewLabelsList } from "./components/thread-view-labels-list"
 import { ThreadSummary } from "./components/thread-summary";
+import { ThreadViewEmpty } from "./components/thread-view-empty";
 import clsx from "clsx";
 import ThreadViewProvider, { useThreadViewContext } from "./provider";
 import useSpam from "@/features/message/use-spam";
@@ -431,7 +432,7 @@ const ThreadViewComponent = ({ threadItems, mailboxId, thread, showTrashedMessag
 
 export const ThreadView = () => {
     const isTrashView = ViewHelper.isTrashedView();
-    const { selectedMailbox, selectedThread, messages, threadItems, queryStates } = useMailboxContext();
+    const { selectedMailbox, selectedThread, unmountThreadViewNeeded, messages, threadItems, queryStates } = useMailboxContext();
     const [showTrashedMessages, setShowTrashedMessages] = useState(isTrashView);
     // Nest draft messages under their parent messages
     const messagesWithDraftChildren = useMemo(() => {
@@ -498,6 +499,11 @@ export const ThreadView = () => {
         setShowTrashedMessages(isTrashView);
     }, [selectedThread]);
 
+    // `unmountThreadViewNeeded` unmounts the heavy thread view (and its
+    // auto-mark-as-read observer) synchronously on unselect, before the
+    // navigation completes, while still showing the empty placeholder rather
+    // than a blank panel.
+    if (unmountThreadViewNeeded) return <ThreadViewEmpty />
     if (!selectedMailbox || !selectedThread) return null
 
     if (queryStates.messages.isLoading || queryStates.threadEvents.isLoading) {

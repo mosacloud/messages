@@ -191,7 +191,7 @@
 }
 .thread-message__correspondents dd {
     margin: 0;
-    word-break: break-word;
+    overflow-wrap: break-word;
     min-width: 0;
 }
 
@@ -224,8 +224,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 100%;
-    margin-block: var(--c--globals--spacings--base);
+    margin-bottom: var(--c--globals--spacings--base);
 }
 
 .thread-message__reply-form {

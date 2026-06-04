@@ -17,6 +17,7 @@ from icalendar import Calendar as ICalendar
 
 from core import factories
 from core.enums import ChannelTypes, MailboxRoleChoices
+from core.services.calendar.ics_rebuild import rebuild_for_storage
 from core.services.calendar.service import CalDAVError, CalDAVService
 
 
@@ -352,6 +353,53 @@ class TestCalendarListView:
         list_calendars.assert_called_once_with(writable_only=True)
         names = [c["name"] for c in resp.json()["calendars"]]
         assert names == ["Writable"]
+
+    def test_list_calendars_403_instance_config_is_empty_list(
+        self,
+        api_client,
+        mailbox,
+        user_with_mailbox,
+        instance_caldav_config,
+    ):
+        """On the instance-level path, a 403 means the OIDC identity has no
+        principal upstream yet (provisioned on first login) — surface it as
+        configured=True with an empty list, not an error."""
+        api_client.force_authenticate(user=user_with_mailbox)
+        with mock.patch.object(
+            CalDAVService,
+            "list_calendars",
+            side_effect=CalDAVError("Forbidden", status_code=403),
+        ):
+            resp = api_client.get(
+                f"/api/v1.0/mailboxes/{mailbox.id}/calendar/calendars/"
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["calendars"] == []
+        assert body["configured"] is True
+
+    def test_list_calendars_403_per_channel_surfaces_error(
+        self,
+        api_client,
+        mailbox,
+        caldav_channel,
+        user_with_mailbox,
+    ):
+        """On a per-mailbox channel the user supplies their own credentials,
+        so a 403 is a genuine ACL/auth failure and must surface — not be
+        masked as an empty calendar list."""
+        api_client.force_authenticate(user=user_with_mailbox)
+        with mock.patch.object(
+            CalDAVService,
+            "list_calendars",
+            side_effect=CalDAVError("Forbidden", status_code=403),
+        ):
+            resp = api_client.get(
+                f"/api/v1.0/mailboxes/{mailbox.id}/calendar/calendars/"
+            )
+
+        assert resp.status_code == 403
 
 
 # ---------------------------------------------------------------------------
@@ -1001,24 +1049,27 @@ def instance_caldav_config(radicale_server, settings):
     """Configure instance-level CalDAV settings pointing at Radicale.
 
     CALDAV_DEFAULT_URL is the CalDAV server root — the service resolves the
-    per-user calendar-home-set via principal discovery, using the mailbox
-    email as the Basic Auth username.
+    per-user calendar-home-set via principal discovery, using the requesting
+    user's OIDC identity email as the Basic Auth username (see
+    ``CalDAVService.from_instance_config``).
     """
     settings.CALDAV_DEFAULT_URL = f"{radicale_server}/"
     settings.CALDAV_DEFAULT_PASSWORD = INSTANCE_CALDAV_PASSWORD
 
 
 @pytest.fixture()
-def instance_calendar(radicale_server, mailbox):
-    """Create a calendar under the mailbox's principal on Radicale.
+def instance_calendar(radicale_server, user_with_mailbox):
+    """Create a calendar under the requesting user's principal on Radicale.
 
     Radicale with ``auth.type=none`` treats the Basic Auth username as the
-    principal name and serves calendars under ``/{username}/``. Since the
-    service now uses the mailbox email as the Basic Auth username, the
-    calendar must live under that path.
+    principal name and serves calendars under ``/{username}/``. The
+    instance-level service authenticates as the requesting user's OIDC
+    identity email (``CalDAVService.from_instance_config``), so the calendar
+    must live under that user's path — not the mailbox's.
     """
-    cal_url = f"{radicale_server}/{mailbox}/instance-cal/"
-    _mkcalendar(cal_url, "Instance Calendar", auth=(str(mailbox), "ignored"))
+    user_email = user_with_mailbox.email
+    cal_url = f"{radicale_server}/{user_email}/instance-cal/"
+    _mkcalendar(cal_url, "Instance Calendar", auth=(str(user_email), "ignored"))
     return radicale_server
 
 
@@ -1313,7 +1364,7 @@ class TestRebuildForStorage:
         )
 
     def _rebuild(self, ics):
-        return CalDAVService._rebuild_for_storage(ICalendar.from_ical(ics))
+        return rebuild_for_storage(ICalendar.from_ical(ics))
 
     def test_drops_method(self):
         out = self._rebuild(self._hostile_ics())
@@ -1461,7 +1512,7 @@ class TestRebuildForStorage:
         ics = self._hostile_ics()
         cal = ICalendar.from_ical(ics)
         before = cal.to_ical()
-        _ = CalDAVService._rebuild_for_storage(cal)
+        _ = rebuild_for_storage(cal)
         # Input must be byte-identical after rebuild.
         assert cal.to_ical() == before
 
@@ -1957,19 +2008,22 @@ class TestListCalendarsWritableFilter:
 
 
 # ---------------------------------------------------------------------------
-# Credential contract: Basic Auth user = mailbox email, password = setting
+# Credential contract: Basic Auth user = OIDC identity email, password = setting
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db()
-def test_instance_config_sends_mailbox_email_as_basic_auth_user(settings, mailbox):
-    """Instance-level auth: Basic Auth user must be the mailbox email and
-    the password must be CALDAV_DEFAULT_PASSWORD verbatim."""
+def test_instance_config_sends_oidc_email_as_basic_auth_user(settings):
+    """Instance-level auth: Basic Auth user must be the requesting user's
+    OIDC identity email (NOT the mailbox address — the CalDAV provider
+    keys principals on the OIDC ``email`` claim) and the password must be
+    CALDAV_DEFAULT_PASSWORD verbatim."""
     settings.CALDAV_DEFAULT_URL = "https://caldav.example.com/"
     settings.CALDAV_DEFAULT_PASSWORD = "shared-secret-xyz"
 
-    service = CalDAVService.from_instance_config(str(mailbox))
+    oidc_email = "alice@identity.example"
+    service = CalDAVService.from_instance_config(oidc_email)
 
-    assert service.username == str(mailbox)
+    assert service.username == oidc_email
     assert service.password == "shared-secret-xyz"
-    assert service.session.auth == (str(mailbox), "shared-secret-xyz")
+    assert service.session.auth == (oidc_email, "shared-secret-xyz")

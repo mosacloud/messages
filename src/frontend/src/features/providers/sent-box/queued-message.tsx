@@ -95,8 +95,17 @@ export const QueueMessage = ({ taskId, onSettled }: QueueMessageProps) => {
 
     useEffect(() => {
         if (hasTimedOut) {
+            // The send didn't fail: the backend already un-drafted the message and
+            // the SMTP task is still running. Reassure the user and point them to
+            // the Outbox rather than showing a misleading error. onSettled refreshes
+            // the stats so the Outbox folder reflects the pending message.
             toast.update(toastId, {
-                render: <ToasterItem type="error"><span>{t('The message could not be sent. Please try again later.')}</span></ToasterItem>,
+                render: (
+                    <ToasterItem type="warning">
+                        <span className="material-icons">schedule_send</span>
+                        <span>{t('Sending is taking longer than expected. You can track your message in the Outbox.')}</span>
+                    </ToasterItem>
+                ),
                 autoClose: QUEUED_MESSAGE_CLOSE_DELAY * 2,
             });
             onSettled?.();
