@@ -1143,6 +1143,15 @@ def reconstruct_eml(
                 att_size = attachment.get_size()
                 att_data = attachment.read_buffer(att_size)
 
+                # Skip empty / whitespace-only parts. DSN and read-receipt
+                # reports routinely expose blank diagnostic parts (e.g. an empty
+                # text/rfc822-headers) that libpff surfaces as attachments;
+                # importing them yields 0-byte attachments that render as broken
+                # in the UI while carrying no information.
+                if not att_data or not att_data.strip():
+                    logger.debug("Skipping empty attachment %d", i)
+                    continue
+
                 # Filename from MAPI properties
                 filename = (
                     get_mapi_property_string(attachment, PR_ATTACH_LONG_FILENAME)
@@ -1155,6 +1164,15 @@ def reconstruct_eml(
                 mime_type = get_mapi_property_string(attachment, PR_ATTACH_MIME_TAG)
                 if not mime_type:
                     mime_type = "application/octet-stream"
+
+                # text/rfc822-headers (the original-headers part of a DSN/read
+                # receipt) composes fine but our display parser (flanker)
+                # silently drops the body of this subtype on re-parse, surfacing
+                # it as a 0-byte attachment in the UI. The content is plain
+                # RFC822 header text, so normalize the label to text/plain, which
+                # round-trips intact.
+                if mime_type.split(";")[0].strip().lower() == "text/rfc822-headers":
+                    mime_type = "text/plain"
 
                 # Content-ID for inline images
                 content_id = get_mapi_property_string(attachment, PR_ATTACH_CONTENT_ID)

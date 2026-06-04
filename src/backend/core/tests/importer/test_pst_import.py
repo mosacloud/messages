@@ -4,6 +4,7 @@
 # pylint: disable=too-many-lines, too-many-arguments, broad-exception-caught
 
 import email
+import email.policy
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, Mock, patch
 
@@ -11,6 +12,7 @@ from django.core.files.storage import storages
 
 import pytest
 
+from core.mda.rfc5322 import parse_email_message
 from core.models import Mailbox, MailDomain, Message
 from core.services.importer.pst import (
     FLAG_STATUS_FOLLOWUP,
@@ -261,6 +263,7 @@ def _make_folder(
 # --- reconstruct_eml tests ---
 
 
+# pylint: disable=too-many-public-methods
 class TestReconstructEml:
     """Tests for EML reconstruction from pypff messages."""
 
@@ -587,6 +590,105 @@ class TestReconstructEml:
         ]
         assert len(att_parts) == 1
         assert att_parts[0].get_content_type() == "application/octet-stream"
+
+    def test_reconstruct_delivery_status_attachment_does_not_crash(self):
+        """A DSN delivery-status part imports without crashing the composer.
+
+        Regression: bounce/read-receipt reports in a PST carry the
+        delivery-status body as a flat-bytes MAPI attachment. Fed to the strict
+        composer as message/delivery-status, email.generator walked the base64
+        string character by character and raised "'str' object has no attribute
+        'policy'", dropping the whole message. The composer now relabels the
+        part to text/plain (content preserved, readable), so reconstructing the
+        report no longer crashes.
+        """
+        dsn = (
+            b"Reporting-MTA: dns; mx.example.com\r\n"
+            b"Final-Recipient: rfc822; nobody@example.com\r\n"
+            b"Action: failed\r\nStatus: 5.1.1\r\n"
+        )
+        att = _make_attachment(
+            data=dsn,
+            long_filename="details.txt",
+            mime_type="message/delivery-status",
+        )
+        msg = _make_message(
+            transport_headers="From: daemon@example.com\r\n",
+            plain_text_body="Delivery failed",
+            num_attachments=1,
+            attachments=[att],
+        )
+        eml_bytes = reconstruct_eml(msg)
+        parsed = email.message_from_bytes(eml_bytes, policy=email.policy.default)
+
+        part = next(p for p in parsed.walk() if p.get_filename() == "details.txt")
+        # Relabelled to a safe leaf type; content preserved verbatim.
+        assert part.get_content_type() == "text/plain"
+        assert part.get_payload(decode=True) == dsn
+        # The original message/delivery-status type is never emitted.
+        assert b"message/delivery-status" not in eml_bytes
+
+    def test_reconstruct_skips_empty_attachment(self):
+        """Blank/whitespace-only attachments (e.g. empty DSN parts) are dropped.
+
+        libpff surfaces empty diagnostic report parts as attachments; importing
+        them produces 0-byte attachments that render as broken in the UI while
+        carrying no information.
+        """
+        empty = _make_attachment(
+            data=b"\r\n",
+            long_filename="empty.txt",
+            mime_type="text/rfc822-headers",
+        )
+        msg = _make_message(
+            transport_headers="From: a@b.com\r\n",
+            plain_text_body="body",
+            num_attachments=1,
+            attachments=[empty],
+        )
+        eml_bytes = reconstruct_eml(msg)
+        parsed = email.message_from_bytes(eml_bytes)
+
+        att_parts = [
+            p for p in parsed.walk() if p.get_content_disposition() == "attachment"
+        ]
+        assert att_parts == []
+
+    def test_reconstruct_rfc822_headers_attachment_is_displayable(self):
+        """text/rfc822-headers is relabelled so it doesn't show as 0 bytes.
+
+        Regression: the original-headers part of a DSN composes fine, but the
+        display parser (flanker) silently drops the body of text/rfc822-headers
+        on re-parse, so the UI showed a 0-byte attachment. The importer
+        normalizes it to text/plain, which round-trips with its content intact.
+        """
+
+        headers = (
+            b"Return-Path: <sender@example.com>\r\n"
+            b"From: Sender <sender@example.com>\r\n"
+            b"To: Recipient <rcpt@example.com>\r\n"
+            b"Subject: original\r\n"
+        )
+        att = _make_attachment(
+            data=headers,
+            long_filename="Message Headers.txt",
+            mime_type="text/rfc822-headers",
+        )
+        msg = _make_message(
+            transport_headers="From: daemon@example.com\r\n",
+            plain_text_body="Delivered",
+            num_attachments=1,
+            attachments=[att],
+        )
+        eml_bytes = reconstruct_eml(msg)
+
+        # Re-parse the stored .eml the way the message view does.
+        parsed = parse_email_message(eml_bytes)
+        headers_att = next(
+            a for a in parsed["attachments"] if a["name"] == "Message Headers.txt"
+        )
+        assert headers_att["type"] == "text/plain"
+        assert headers_att["size"] == len(headers)
 
     def test_reconstruct_empty_message(self):
         """Test EML reconstruction with no body."""

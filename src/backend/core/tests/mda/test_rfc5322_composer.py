@@ -618,6 +618,78 @@ class TestEmailComposition:
 
         assert attachment_found, "PDF attachment not found in the email"
 
+    def test_compose_with_delivery_status_attachment_does_not_crash(self):
+        """A message/delivery-status attachment is composed safely.
+
+        Regression: composed as message/delivery-status, the flat byte payload
+        drove email.generator's _handle_message_delivery_status to iterate the
+        base64 string character by character, raising "'str' object has no
+        attribute 'policy'" and failing the whole compose (and any send/import
+        carrying such a part). The composer relabels the part to text/plain —
+        the bytes are RFC822-style text, so they stay readable and intact.
+        """
+        dsn = (
+            b"Reporting-MTA: dns; mx.example.com\r\n"
+            b"Final-Recipient: rfc822; nobody@example.com\r\n"
+            b"Action: failed\r\nStatus: 5.1.1\r\n"
+        )
+        jmap_data = {
+            "from": {"name": "Mailer Daemon", "email": "daemon@example.com"},
+            "to": [{"email": "sender@example.com"}],
+            "subject": "Undelivered Mail Returned to Sender",
+            "textBody": [{"content": "Delivery failed."}],
+            "attachments": [
+                {
+                    "type": "message/delivery-status",
+                    "name": "details.txt",
+                    "content": base64.b64encode(dsn).decode("ascii"),
+                    "disposition": "attachment",
+                }
+            ],
+        }
+
+        raw_email = compose_email(jmap_data, keep_bcc=True)
+
+        msg = email.message_from_bytes(raw_email, policy=policy.default)
+        part = next(p for p in msg.walk() if p.get_filename() == "details.txt")
+        assert part.get_content_type() == "text/plain"
+        assert part.get_payload(decode=True) == dsn
+        assert b"message/delivery-status" not in raw_email
+
+    def test_compose_with_mixed_case_delivery_status_attachment(self):
+        """The relabel guard is case-insensitive, per RFC 2045.
+
+        A "Message/Delivery-Status" content type (any casing) must be relabeled
+        to text/plain just like the lowercase form, otherwise it escapes the
+        guard and crashes the compose pipeline.
+        """
+        dsn = (
+            b"Reporting-MTA: dns; mx.example.com\r\n"
+            b"Final-Recipient: rfc822; nobody@example.com\r\n"
+            b"Action: failed\r\nStatus: 5.1.1\r\n"
+        )
+        jmap_data = {
+            "from": {"name": "Mailer Daemon", "email": "daemon@example.com"},
+            "to": [{"email": "sender@example.com"}],
+            "subject": "Undelivered Mail Returned to Sender",
+            "textBody": [{"content": "Delivery failed."}],
+            "attachments": [
+                {
+                    "type": "Message/Delivery-Status",
+                    "name": "details.txt",
+                    "content": base64.b64encode(dsn).decode("ascii"),
+                    "disposition": "attachment",
+                }
+            ],
+        }
+
+        raw_email = compose_email(jmap_data, keep_bcc=True)
+
+        msg = email.message_from_bytes(raw_email, policy=policy.default)
+        part = next(p for p in msg.walk() if p.get_filename() == "details.txt")
+        assert part.get_content_type() == "text/plain"
+        assert part.get_payload(decode=True) == dsn
+
     def test_compose_with_empty_subject(self):
         """Test composing an email with an empty subject."""
         jmap_data = {
