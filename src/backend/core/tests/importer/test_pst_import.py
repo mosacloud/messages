@@ -1227,6 +1227,46 @@ class TestFolderIdentification:
         count = count_pst_messages(pst, {})
         assert count == 1
 
+    def test_process_imap_folder(self):
+        """IMAP-archived PSTs tag mail folders IPF.Imap — they must be counted."""
+        msg = _make_message(delivery_time=datetime(2025, 1, 1, tzinfo=timezone.utc))
+        folder = _make_folder(
+            name="Boîte de réception",
+            messages=[msg],
+            container_class="IPF.Imap",
+        )
+        root = _make_folder(name="Root", subfolders=[folder])
+
+        pst = Mock()
+        pst.get_root_folder.return_value = root
+        pst.get_message_store.return_value = Mock(number_of_record_sets=0)
+
+        count = count_pst_messages(pst, {})
+        assert count == 1
+
+    def test_walk_yields_messages_from_imap_folder(self):
+        """walk_pst_messages (the import path) must yield IPF.Imap messages."""
+        msg = _make_message(
+            subject="IMAP message",
+            transport_headers="From: a@example.com\r\nTo: b@example.com\r\n",
+            delivery_time=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        )
+        folder = _make_folder(
+            name="Boîte de réception",
+            messages=[msg],
+            container_class="IPF.Imap",
+        )
+        root = _make_folder(name="Root", subfolders=[folder])
+
+        pst = Mock()
+        pst.get_root_folder.return_value = root
+        pst.get_message_store.return_value = Mock(number_of_record_sets=0)
+        pst.get_name_to_id_map.side_effect = Exception("no named props")
+
+        results = list(walk_pst_messages(pst, {}))
+        assert len(results) == 1
+        assert results[0][4] is not None  # eml_bytes reconstructed
+
     def test_sent_folder_identification_via_entry_id(self):
         """Test identifying Sent Items via message store folder identifier."""
         special_map = {100: FOLDER_TYPE_SENT}

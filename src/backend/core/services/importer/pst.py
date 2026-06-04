@@ -92,8 +92,11 @@ MSGFLAG_UNSENT = 0x8
 # Flag status values
 FLAG_STATUS_FOLLOWUP = 2  # Flagged for follow-up
 
-# Container class prefix for email folders (MAPI standard)
-EMAIL_CONTAINER_CLASS_PREFIX = "IPF.Note"
+# Container class prefixes for folders that hold mail items (MAPI standard).
+# IPF.Note — standard Outlook mail folders.
+# IPF.Imap — IMAP accounts archived to PST keep this class on their mail
+# folders (e.g. the inbox), so they must be treated as mail too.
+EMAIL_CONTAINER_CLASS_PREFIXES = ("IPF.Note", "IPF.Imap")
 
 # Maximum recursion depth for PST folder traversal
 MAX_FOLDER_DEPTH = 50
@@ -349,7 +352,7 @@ def _is_email_folder(folder) -> bool:
         return True
     try:
         container_class = entry.data_as_string
-        return container_class.startswith(EMAIL_CONTAINER_CLASS_PREFIX)
+        return container_class.startswith(EMAIL_CONTAINER_CLASS_PREFIXES)
     except Exception:
         logger.debug("Failed to read container class for folder")
     return True
