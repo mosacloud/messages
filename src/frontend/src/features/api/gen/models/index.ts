@@ -14,6 +14,7 @@ export * from "./calendar_add_event_response";
 export * from "./calendar_conflicts_request_request";
 export * from "./calendar_conflicts_response";
 export * from "./calendar_conflicts_response_conflicts_item";
+export * from "./calendar_conflicts_response_existing_partstats";
 export * from "./calendar_list_response";
 export * from "./calendar_list_response_calendars_item";
 export * from "./calendar_rsvp_request_request";
