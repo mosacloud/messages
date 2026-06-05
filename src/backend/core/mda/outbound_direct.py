@@ -86,10 +86,22 @@ def group_recipients_by_mx(recipients: List[str]) -> Dict[str, Dict[str, Any]]:
 
 
 def select_smtp_proxy() -> Optional[SmtpProxy]:
-    """Pick a SOCKS5 proxy at random from MTA_OUT_DIRECT_PROXIES, if any."""
-    if len(settings.MTA_OUT_DIRECT_PROXIES) > 0:
-        url = random.choice(settings.MTA_OUT_DIRECT_PROXIES)  # noqa: S311
-        parsed = urlparse(url)
+    """Pick a SOCKS5 proxy at random from MTA_OUT_DIRECT_PROXIES, if any.
+
+    Skips entries whose URL is missing a hostname or port, so a single bad
+    config line doesn't take out the whole proxy pool.
+    """
+    proxies = list(settings.MTA_OUT_DIRECT_PROXIES)
+    random.shuffle(proxies)
+    for url in proxies:
+        try:
+            parsed = urlparse(url)
+        except ValueError as e:
+            logger.warning("Invalid SMTP proxy URL %r: %s", url, e)
+            continue
+        if not parsed.hostname or not parsed.port:
+            logger.warning("SMTP proxy URL %r missing hostname or port, skipping", url)
+            continue
         return SmtpProxy(
             host=parsed.hostname,
             port=parsed.port,

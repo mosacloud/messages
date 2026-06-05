@@ -260,6 +260,23 @@ def send_smtp_mail(
             return error_for_all_recipients(tls_result, True)
 
         if smtp_username and smtp_password:
+            # Refuse to send SMTP AUTH over an unencrypted connection — this
+            # covers both an explicit ``smtp_tls_security_level="none"`` config
+            # and the recursive cleartext retry taken after a "may"-level
+            # STARTTLS failure. Without this guard, a network attacker who can
+            # strip or fail STARTTLS would harvest cleartext relay credentials.
+            if smtp_tls_security_level == "none":
+                _quit()
+                logger.error(
+                    "SMTP: refusing AUTH for user '%s' over unencrypted "
+                    "connection to %s:%s (TLS unavailable or disabled)",
+                    smtp_username,
+                    smtp_host,
+                    smtp_port,
+                )
+                return error_for_all_recipients(
+                    "SMTP AUTH blocked: connection is not TLS-encrypted", True
+                )
             try:
                 client.login(smtp_username, smtp_password)
             except smtplib.SMTPAuthenticationError as auth_err:
