@@ -320,6 +320,10 @@ typecheck-jmap-email: ## type-check the jmap-email library with ty (Astral, Rust
 	@$(COMPOSE) run --build --rm --entrypoint ty jmap-email-test check
 .PHONY: typecheck-jmap-email
 
+release-jmap-email: ## publish jmap-email to PyPI (interactive: TestPyPI → smoke install → PyPI)
+	@bin/release-jmap-email.sh
+.PHONY: release-jmap-email
+
 test-socks-proxy: ## run the socks-proxy tests
 	@$(COMPOSE) run --build --rm socks-proxy-test
 .PHONY: test-socks-proxy
