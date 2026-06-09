@@ -32,9 +32,12 @@ an explicit DMARC fail.
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+from jmap_email import JmapEmail
 
 from core.mda.signing import verify_message_dkim
+from core.mda.utils import headers_blocks
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +49,7 @@ _NONE = "none"  # explicitly no signature / policy
 
 # Rspamd symbol names -> outcome, per check type.
 # https://rspamd.com/doc/modules/dkim.html / dmarc
-_RSPAMD_SYMBOLS: Dict[str, Dict[str, str]] = {
+_RSPAMD_SYMBOLS: dict[str, dict[str, str]] = {
     "dkim": {
         "R_DKIM_ALLOW": _PASS,
         "R_DKIM_REJECT": _FAIL,
@@ -97,16 +100,14 @@ def _scrub_ar_value(value: str) -> str:
     return _AR_QUOTED_STRING_RE.sub(" ", value)
 
 
-def _rspamd_outcome(
-    check: str, rspamd_result: Optional[Dict[str, Any]]
-) -> Optional[str]:
+def _rspamd_outcome(check: str, rspamd_result: dict[str, Any] | None) -> str | None:
     if not rspamd_result:
         return None
     symbols = rspamd_result.get("symbols") or {}
     if not isinstance(symbols, dict):
         return None
     mapping = _RSPAMD_SYMBOLS.get(check, {})
-    outcome: Optional[str] = None
+    outcome: str | None = None
     for symbol, result in mapping.items():
         if symbol not in symbols:
             continue
@@ -121,16 +122,16 @@ def _rspamd_outcome(
 
 
 def _authentication_results_values(
-    parsed_email: Dict[str, Any], trusted_relays: int
-) -> List[str]:
+    parsed_email: JmapEmail, trusted_relays: int
+) -> list[str]:
     """Collect Authentication-Results header values from trusted header blocks.
 
     Block 0 is what we (or our MTA) prepended; blocks 1..N are upstream relays
     (most recent first). Anything past ``trusted_relays`` is ignored.
     """
-    blocks = parsed_email.get("headers_blocks") or []
+    blocks = headers_blocks(parsed_email)
     blocks_to_check = trusted_relays + 1
-    values: List[str] = []
+    values: list[str] = []
     for block in blocks[:blocks_to_check]:
         ar = block.get("authentication-results")
         if not ar:
@@ -142,11 +143,11 @@ def _authentication_results_values(
     return values
 
 
-def _ar_outcome(check: str, ar_values: List[str]) -> Optional[str]:
+def _ar_outcome(check: str, ar_values: list[str]) -> str | None:
     if not ar_values:
         return None
     found = False
-    outcome: Optional[str] = None
+    outcome: str | None = None
     for value in ar_values:
         scrubbed = _scrub_ar_value(value)
         for match in _AR_METHOD_RE.finditer(scrubbed):
@@ -163,7 +164,7 @@ def _ar_outcome(check: str, ar_values: List[str]) -> Optional[str]:
     return outcome if found else None
 
 
-def _native_dkim_outcome(raw_data: bytes) -> Optional[str]:
+def _native_dkim_outcome(raw_data: bytes) -> str | None:
     try:
         return _PASS if verify_message_dkim(raw_data) else _FAIL
     except Exception as e:  # pylint: disable=broad-exception-caught
@@ -175,7 +176,7 @@ VERDICT_UNVERIFIED = "none"
 VERDICT_FORGED = "fail"
 
 
-def get_inbound_auth_mode(spam_config: Dict[str, Any]) -> str:
+def get_inbound_auth_mode(spam_config: dict[str, Any]) -> str:
     """Return the normalized ``inbound_auth`` mode from a spam config.
 
     Empty or missing values become an empty string. Callers can treat the
@@ -187,10 +188,10 @@ def get_inbound_auth_mode(spam_config: Dict[str, Any]) -> str:
 
 def check_inbound_authentication(
     raw_data: bytes,
-    parsed_email: Dict[str, Any],
-    spam_config: Dict[str, Any],
-    rspamd_result: Optional[Dict[str, Any]] = None,
-) -> Optional[str]:
+    parsed_email: JmapEmail,
+    spam_config: dict[str, Any],
+    rspamd_result: dict[str, Any] | None = None,
+) -> str | None:
     """Return the ``X-StMsg-Sender-Auth`` verdict for this message.
 
     See module docstring for the rule set and supported backends.
@@ -201,7 +202,7 @@ def check_inbound_authentication(
 
     if mode == "native":
         dkim = _native_dkim_outcome(raw_data)
-        dmarc: Optional[str] = None
+        dmarc: str | None = None
     elif mode == "rspamd":
         dkim = _rspamd_outcome("dkim", rspamd_result)
         dmarc = _rspamd_outcome("dmarc", rspamd_result)

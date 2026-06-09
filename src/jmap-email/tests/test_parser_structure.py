@@ -7,14 +7,21 @@ are NOT added to attachments (unlike the spec example).
 """
 
 import base64
+import email
+from email import policy as email_policy
 
 import pytest
-from flanker.mime import create
 
-from core.mda.rfc5322.parser import (
+from jmap_email.parser import (
     _is_inline_media_type,
-    parse_message_content,
+    _parse_message_content,
 )
+
+
+def _stdlib_message(raw_bytes: bytes):
+    """Parse raw email bytes into a stdlib ``email.message.Message`` —
+    same lenient ``compat32`` policy the parser uses internally."""
+    return email.message_from_bytes(raw_bytes, policy=email_policy.compat32)
 
 
 class TestIsInlineMediaType:
@@ -62,8 +69,8 @@ Subject: Simple Text
 Content-Type: text/plain
 
 Hello, world!"""
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         assert len(content["textBody"]) == 1
         assert content["textBody"][0]["type"] == "text/plain"
@@ -79,8 +86,8 @@ Subject: Simple HTML
 Content-Type: text/html
 
 <html><body><p>Hello, world!</p></body></html>"""
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         assert len(content["htmlBody"]) == 1
         assert content["htmlBody"][0]["type"] == "text/html"
@@ -110,8 +117,8 @@ Content-Type: text/html
 <p>HTML version.</p>
 
 --boundary--"""
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         assert len(content["textBody"]) == 1
         assert content["textBody"][0]["type"] == "text/plain"
@@ -136,8 +143,8 @@ Content-Type: text/plain
 Only plain text here.
 
 --boundary--"""
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         assert len(content["textBody"]) == 1
         assert len(content["htmlBody"]) == 1
@@ -156,8 +163,8 @@ Content-Type: text/html
 <p>Only HTML here.</p>
 
 --boundary--"""
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         assert len(content["textBody"]) == 1
         assert len(content["htmlBody"]) == 1
@@ -186,8 +193,8 @@ Content-Disposition: attachment; filename="doc.pdf"
 PDF content here
 
 --boundary--"""
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         assert len(content["textBody"]) == 1
         assert "Body text" in content["textBody"][0]["content"]
@@ -216,8 +223,8 @@ Content-Disposition: attachment; filename="image.png"
 PNG data
 
 --boundary--"""
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         assert len(content["attachments"]) == 1
         assert content["attachments"][0]["type"] == "image/png"
@@ -246,8 +253,8 @@ Content-ID: <image1>
 PNG data
 
 --boundary--"""
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         assert len(content["htmlBody"]) == 1
         assert '<img src="cid:image1">' in content["htmlBody"][0]["content"]
@@ -271,8 +278,8 @@ Content-ID: <image1>
 PNG data
 
 --boundary--"""
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         # The image at position > 0 in related should be an attachment
         assert len(content["attachments"]) == 1
@@ -316,8 +323,8 @@ Content-Type: text/plain
 Text after image.
 
 --boundary--"""
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         # All three parts should be in textBody (mixed context)
         assert len(content["textBody"]) == 3
@@ -348,8 +355,8 @@ Content-Disposition: inline
 PNG data
 
 --boundary--"""
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         # The image should be in htmlBody, not attachments
         # (it's at position > 0 but in mixed, not related, so it's inline)
@@ -479,8 +486,8 @@ K: Last text part
 
     def test_complex_structure_textbody(self, complex_email):
         """textBody should contain A, B, C, D, K."""
-        message = create.from_string(complex_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(complex_email)
+        content = _parse_message_content(message)
 
         # Find text parts by their content markers
         text_parts = content["textBody"]
@@ -499,8 +506,8 @@ K: Last text part
 
     def test_complex_structure_htmlbody(self, complex_email):
         """htmlBody should contain A, E, K."""
-        message = create.from_string(complex_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(complex_email)
+        content = _parse_message_content(message)
 
         html_contents = [p["content"] for p in content["htmlBody"]]
 
@@ -510,8 +517,8 @@ K: Last text part
 
     def test_complex_structure_attachments(self, complex_email):
         """attachments should contain F, G, H, J but NOT C."""
-        message = create.from_string(complex_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(complex_email)
+        content = _parse_message_content(message)
 
         # Get all attachment content as strings for checking
         attachment_contents = []
@@ -541,8 +548,8 @@ K: Last text part
 
     def test_complex_structure_attachment_count(self, complex_email):
         """Should have exactly 4 attachments: F, G, H, J."""
-        message = create.from_string(complex_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(complex_email)
+        content = _parse_message_content(message)
 
         assert len(content["attachments"]) == 4
 
@@ -568,8 +575,8 @@ Content-Type: text/plain; name="readme.txt"
 This is a text file attachment.
 
 --boundary--"""
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         # First text/plain is body
         assert len(content["textBody"]) >= 1
@@ -592,8 +599,8 @@ Content-Type: text/plain; name="body.txt"
 This is the body.
 
 --boundary--"""
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         # First part should be body even with filename
         assert len(content["textBody"]) == 1
@@ -611,8 +618,8 @@ To: recipient@example.com
 Subject: Empty
 
 """
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         # Should have some structure but may be empty
         assert "textBody" in content
@@ -642,8 +649,8 @@ Deep nested text.
 --l2--
 
 --l1--"""
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         assert len(content["textBody"]) >= 1
         assert "Deep nested text" in content["textBody"][0]["content"]
@@ -666,8 +673,245 @@ Content-Type: application/x-custom-type
 Custom data.
 
 --boundary--"""
-        message = create.from_string(raw_email)
-        content = parse_message_content(message)
+        message = _stdlib_message(raw_email)
+        content = _parse_message_content(message)
 
         assert len(content["attachments"]) == 1
         assert content["attachments"][0]["type"] == "application/x-custom-type"
+
+
+class TestRfc8621Conformance:
+    """Direct regression tests for RFC 8621 §4.1.4 conformance points
+    that were violated in an earlier iteration:
+
+    - ``partId`` must be consistent across ``bodyStructure``,
+      ``textBody`` / ``htmlBody`` / ``attachments``, and ``bodyValues``.
+    - ``bodyValues`` is keyed only for ``text/*`` parts.
+    - ``bodyValues.value`` normalises CR / CRLF / LF to LF.
+    - ``hasAttachment`` is true when at least one attachment has a
+      disposition other than literally ``inline``.
+    """
+
+    def test_partid_consistent_across_bodystructure_and_bodyvalues(self):
+        from jmap_email import parse_email
+
+        raw = (
+            b"From: a@b.c\r\nTo: d@e.f\r\nSubject: s\r\n"
+            b'Content-Type: multipart/mixed; boundary="X"\r\n'
+            b"\r\n"
+            b"--X\r\n"
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"plain\r\n"
+            b"--X\r\n"
+            b"Content-Type: text/html\r\n"
+            b"\r\n"
+            b"<p>html</p>\r\n"
+            b"--X--\r\n"
+        )
+        parsed = parse_email(raw, body_structure=True, body_values=True)
+        text_ids = [p["partId"] for p in parsed["textBody"]]
+        html_ids = [p["partId"] for p in parsed["htmlBody"]]
+        struct_ids = [
+            sp["partId"]
+            for sp in (parsed["bodyStructure"].get("subParts") or [])
+            if sp.get("partId") is not None
+        ]
+        bv_ids = sorted(parsed["bodyValues"].keys())
+        assert text_ids == ["1", "2"]
+        assert html_ids == ["1", "2"]
+        assert struct_ids == ["1", "2"]
+        assert bv_ids == ["1", "2"]
+
+    def test_bodyvalues_excludes_non_text_parts(self):
+        from jmap_email import parse_email
+
+        raw = (
+            b"From: a@b.c\r\nTo: d@e.f\r\nSubject: s\r\n"
+            b'Content-Type: multipart/mixed; boundary="X"\r\n'
+            b"\r\n"
+            b"--X\r\n"
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"text\r\n"
+            b"--X\r\n"
+            b"Content-Type: image/png\r\n"
+            b"Content-Transfer-Encoding: base64\r\n"
+            b"Content-Disposition: inline\r\n"
+            b"\r\n"
+            b"iVBORw0KGgo=\r\n"
+            b"--X--\r\n"
+        )
+        parsed = parse_email(raw)
+        # textBody contains both the text and the image (rendered inline
+        # per JMAP). bodyValues must only hold the text part.
+        text_part_ids = {p["partId"] for p in parsed["textBody"]}
+        bv_ids = set(parsed["bodyValues"].keys())
+        image_ids = {
+            p["partId"] for p in parsed["textBody"] if p["type"] == "image/png"
+        }
+        assert image_ids.issubset(text_part_ids)
+        assert image_ids.isdisjoint(bv_ids)
+
+    def test_bodyvalues_line_endings_normalised_to_lf(self):
+        from jmap_email import parse_email
+
+        raw = (
+            b"From: a@b.c\r\nTo: d@e.f\r\nSubject: s\r\n"
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"crlf\r\nlf\nbarecr\rmix\r\n"
+        )
+        parsed = parse_email(raw)
+        value = parsed["bodyValues"]["1"]["value"]
+        assert "\r" not in value
+        # Each input line break collapses to one LF.
+        assert value.count("\n") == 4
+
+    def test_hasattachment_true_for_non_inline_dispositions(self):
+        from jmap_email import parse_email
+
+        # ``form-data`` (or any other non-``inline``) must still flip
+        # hasAttachment per RFC 8621 §4.1.4.
+        raw = (
+            b"From: a@b.c\r\nTo: d@e.f\r\nSubject: s\r\n"
+            b'Content-Type: multipart/mixed; boundary="X"\r\n'
+            b"\r\n"
+            b"--X\r\n"
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"body\r\n"
+            b"--X\r\n"
+            b"Content-Type: application/pdf\r\n"
+            b'Content-Disposition: form-data; name="upload"\r\n'
+            b"\r\n"
+            b"fake pdf\r\n"
+            b"--X--\r\n"
+        )
+        parsed = parse_email(raw)
+        assert parsed["attachments"][0]["disposition"] == "form-data"
+        assert parsed["hasAttachment"] is True
+
+
+class TestBoundaryReuseDefence:
+    """Mailsploit-class defence: when a child multipart re-declares a
+    boundary that an ancestor already uses, the inner delimiters are
+    ambiguous with the ancestor's and strict / lenient receivers will
+    split the tree differently. The parser must refuse to recurse into
+    such a subtree — surfacing its content as body parts would let an
+    attacker hide payloads that some receivers process and others don't.
+
+    Reference: RFC 2046 §5.1.1 ("The boundary value cannot appear in any
+    of the encapsulated parts").
+    """
+
+    def test_same_boundary_at_two_levels_yields_no_body_parts(self):
+        """Outer and inner both declare ``boundary="a"``: the inner
+        re-declaration is invalid, so its child text/plain part must
+        not be surfaced."""
+        raw_email = (
+            b'Content-Type: multipart/mixed; boundary="a"\r\n'
+            b"\r\n"
+            b"--a\r\n"
+            b'Content-Type: multipart/mixed; boundary="a"\r\n'
+            b"\r\n"
+            b"--a\r\n"
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"smuggled body\r\n"
+        )
+        content = _parse_message_content(_stdlib_message(raw_email))
+        assert not content["textBody"]
+        assert not content["htmlBody"]
+        assert not content["attachments"]
+
+    def test_same_boundary_three_levels_deep_drops_all_inner_bodies(self):
+        """Three levels of ``boundary="1"`` reuse: even a strict parser
+        can only safely surface what the OUTERMOST level allows, which
+        is zero parts (the outer's first child is itself a multipart
+        with the same boundary)."""
+        raw_email = (
+            b'Content-Type: multipart/mixed; boundary="1"\r\n'
+            b"\r\n"
+            b"--1\r\n"
+            b'Content-Type: multipart/mixed; boundary="1"\r\n'
+            b"\r\n"
+            b"--1\r\n"
+            b'Content-Type: multipart/mixed; boundary="1"\r\n'
+            b"\r\n"
+            b"--1\r\n"
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"hidden body\r\n"
+        )
+        content = _parse_message_content(_stdlib_message(raw_email))
+        assert not content["textBody"]
+        assert not content["htmlBody"]
+        assert not content["attachments"]
+
+    def test_distinct_boundaries_still_recurse(self):
+        """Sanity check: when inner and outer use distinct boundary
+        values the parser must still descend (no false positive)."""
+        raw_email = (
+            b'Content-Type: multipart/mixed; boundary="outer"\r\n'
+            b"\r\n"
+            b"--outer\r\n"
+            b'Content-Type: multipart/mixed; boundary="inner"\r\n'
+            b"\r\n"
+            b"--inner\r\n"
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"legitimate body\r\n"
+            b"--inner--\r\n"
+            b"--outer--\r\n"
+        )
+        content = _parse_message_content(_stdlib_message(raw_email))
+        assert len(content["textBody"]) == 1
+        assert "legitimate body" in content["textBody"][0]["content"]
+
+    def test_outer_siblings_after_reuse_are_also_dropped(self):
+        """When the OUTER's first child re-declares the outer boundary,
+        every subsequent ``--X`` on the wire is ambiguous (outer-next
+        vs. inner-sep). Strict and lenient receivers will disagree on
+        which siblings belong to the outer vs. the inner — so the
+        defence drops the whole tree, not just the inner subtree.
+        Sibling salvage would re-open the smuggling vector."""
+        raw_email = (
+            b'Content-Type: multipart/mixed; boundary="X"\r\n'
+            b"\r\n"
+            b"--X\r\n"
+            b'Content-Type: multipart/mixed; boundary="X"\r\n'
+            b"\r\n"
+            b"--X\r\n"
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"hidden\r\n"
+            b"--X\r\n"
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"would-be sibling\r\n"
+            b"--X--\r\n"
+        )
+        content = _parse_message_content(_stdlib_message(raw_email))
+        assert not content["textBody"]
+        assert not content["htmlBody"]
+        assert not content["attachments"]
+
+    def test_defects_records_the_signal_when_caller_asks(self):
+        """``BoundaryReuseAmbiguousStructure`` is emitted into the
+        defects channel so a programmatic consumer can flag the
+        message without having to inspect logs."""
+        raw_email = (
+            b'Content-Type: multipart/mixed; boundary="X"\r\n'
+            b"\r\n"
+            b"--X\r\n"
+            b'Content-Type: multipart/mixed; boundary="X"\r\n'
+            b"\r\n"
+            b"--X\r\n"
+            b"Content-Type: text/plain\r\n"
+            b"\r\n"
+            b"x\r\n"
+        )
+        defects: list[str] = []
+        _parse_message_content(_stdlib_message(raw_email), defects=defects)
+        assert "BoundaryReuseAmbiguousStructure" in defects

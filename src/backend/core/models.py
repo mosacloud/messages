@@ -30,6 +30,7 @@ from django.utils.text import slugify
 
 import pyzstd
 from encrypted_fields.fields import EncryptedJSONField, EncryptedTextField
+from jmap_email import EmailHeader, JmapEmail, body_part_text, parse_email
 from timezone_field import TimeZoneField
 
 from core.enums import (
@@ -54,7 +55,6 @@ from core.enums import (
     thread_event_type_choices,
     user_event_type_choices,
 )
-from core.mda.rfc5322 import EmailParseError, parse_email_message
 from core.mda.signing import generate_dkim_key as _generate_dkim_key
 from core.services.tiered_storage import TieredStorageService, sha256_advisory_lock
 from core.utils import validate_json_schema
@@ -1974,7 +1974,7 @@ class Message(BaseModel):
     objects = MessageManager()
 
     # Internal cache for parsed data
-    _parsed_email_cache: Optional[Dict[str, Any]] = None
+    _parsed_email_cache: Optional[JmapEmail] = None
 
     class Meta:
         db_table = "messages_message"
@@ -1985,51 +1985,72 @@ class Message(BaseModel):
     def __str__(self):
         return str(self.subject) if self.subject else "(no subject)"
 
-    def get_parsed_data(self) -> Dict[str, Any]:
-        """Parse raw mime message using parser and cache the result."""
+    def get_parsed_data(self) -> JmapEmail:
+        """Parse the raw MIME message and cache the strict JMAP Email
+        object (RFC 8621 §4) produced by ``jmap_email.parse_email``.
+
+        Use the helpers in :mod:`jmap_email` (``first_address``,
+        ``first_msgid``, ``find_header``, …) for null-safe access
+        patterns over the list-typed fields. Returns ``{}`` when
+        there's no blob or parsing fails.
+        """
         if self._parsed_email_cache is not None:
             return self._parsed_email_cache
 
         if self.blob:
+            # ``body_values=False`` keeps text-body content inlined on
+            # each ``EmailBodyPart`` rather than moving it to a
+            # separate ``bodyValues`` map. The library spec-default is
+            # the moved form (RFC 8621 §4.2 ``defaultProperties`` for
+            # ``Email/get``); this backend's consumers (snippet
+            # extraction, search indexing, LLM formatting, the API
+            # serializer) all read ``content`` inline, so we project
+            # back to that shape at the model boundary.
             try:
-                self._parsed_email_cache = parse_email_message(self.blob.get_content())
-            except EmailParseError:
+                raw = self.blob.get_content()
+            except ValueError as exc:
+                # ``Blob.get_content`` raises ``ValueError`` on
+                # decompression / decryption / integrity-check failure.
                 logger.warning(
-                    "Failed to parse email for message %s, returning empty data",
-                    self.id,
+                    "Failed to load blob content for message %s: %s", self.id, exc
                 )
                 self._parsed_email_cache = {}
+                return self._parsed_email_cache
+            parsed = parse_email(raw, body_values=False)
+            self._parsed_email_cache = parsed if parsed is not None else {}
         else:
             self._parsed_email_cache = {}
         return self._parsed_email_cache
 
     def get_parsed_field(self, field_name: str) -> Any:
-        """Get a parsed field from the parsed email data."""
+        """Get a parsed field from the parsed JMAP Email object."""
         return (self.get_parsed_data() or {}).get(field_name)
 
-    def get_mime_headers(self) -> Dict[str, Any]:
-        """Get the MIME headers of the message.
+    def get_mime_headers(self) -> list[EmailHeader]:
+        """Return the MIME headers as a JMAP ``EmailHeader[]`` list.
 
-        Values follow the rfc5322 parser contract: ``str`` for RFC max=1
-        headers, ``list[str]`` in document order for every other header.
+        Each entry is ``{"name": <wire_case>, "value": <decoded>}`` in
+        document order. Use :func:`jmap_email.find_header` for
+        case-insensitive scalar lookups.
         """
-        return self.get_parsed_data().get("headers", {})
+        return self.get_parsed_data().get("headers", [])
 
     def get_stmsg_headers(self) -> Dict[str, str]:
-        """Get the STMSG headers of the message.
+        """Return the ``X-StMsg-*`` headers as ``{suffix_lower: value}``.
 
-        ``X-StMsg-*`` headers are stamped by our own MTA pipeline (one
-        per message) and any sender-supplied copies are stripped before
-        parsing. They surface as single-element lists; take the first.
+        ``X-StMsg-*`` headers are stamped by our MTA pipeline (one per
+        message) and any sender-supplied copies are stripped before
+        parsing; first occurrence wins on duplicates.
         """
-        return {
-            k[len("x-stmsg-") :].lower(): v[0]
-            for k, v in self.get_parsed_data().get("headers", {}).items()
-            if k.startswith("x-stmsg-") and v
-        }
+        result: Dict[str, str] = {}
+        for h in self.get_parsed_data().get("headers", []):
+            name = h.get("name", "")
+            if name.lower().startswith("x-stmsg-"):
+                result.setdefault(name[len("x-stmsg-") :].lower(), h.get("value", ""))
+        return result
 
     def generate_mime_id(self) -> str:
-        """Get the RFC5322 Message-ID of the message."""
+        """Get the RFC 5322 Message-ID of the message."""
         _id = base64.urlsafe_b64encode(uuid.uuid4().bytes).rstrip(b"=").decode("ascii")
         return f"{_id}@_lst.{self.sender.email.split('@')[1]}"
 
@@ -2060,12 +2081,15 @@ class Message(BaseModel):
         cc = [str(mr.contact) for mr in cc_contacts]
         # Subject
         subject = self.subject or "No subject"
-        # Body: try to get text/plain from parsed data
+        # Body: pick the first text/plain text-body part. Transparent to
+        # the body_values projection — body_part_text reads inline
+        # ``content`` or ``bodyValues[partId]`` depending on which the
+        # parser emitted.
         body = ""
         parsed_data = self.get_parsed_data()
         for part in parsed_data.get("textBody", []):
             if part.get("type") == "text/plain":
-                body = part.get("content", "")
+                body = body_part_text(parsed_data, part)
                 break
         # Message ID
         msg_id = str(self.id)
@@ -2083,12 +2107,13 @@ class Message(BaseModel):
         """Get the number of tokens in the message (subject + body)."""
         # Subject
         subject = self.subject or "No subject"
-        # Body: try to get text/plain from parsed data
+        # Body: pick the first text/plain text-body part. See
+        # ``Message.format_for_llm`` for the body_values rationale.
         body = ""
         parsed_data = self.get_parsed_data()
         for part in parsed_data.get("textBody", []):
             if part.get("type") == "text/plain":
-                body = part.get("content", "")
+                body = body_part_text(parsed_data, part)
                 break
         counted_text = f"{subject} {body}"
         return len(counted_text.split())

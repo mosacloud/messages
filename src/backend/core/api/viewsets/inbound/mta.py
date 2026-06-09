@@ -8,6 +8,7 @@ from django.conf import settings
 
 import jwt
 from drf_spectacular.utils import extend_schema
+from jmap_email import parse_email
 from rest_framework import status, viewsets
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.decorators import action
@@ -17,7 +18,7 @@ from rest_framework.response import Response
 
 from core import models
 from core.mda.inbound import check_local_recipients, deliver_inbound_message
-from core.mda.rfc5322 import EmailParseError, parse_email_message, remove_mime_headers
+from core.mda.raw_mime import remove_mime_headers
 
 logger = logging.getLogger(__name__)
 
@@ -183,10 +184,10 @@ class InboundMTAViewSet(viewsets.GenericViewSet):
             ).encode("utf-8") + raw_data
 
         # Parse the email message once
-        try:
-            parsed_email = parse_email_message(raw_data)
-        except EmailParseError as e:
-            logger.error("Failed to parse inbound email: %s", str(e))
+        parsed_email = parse_email(raw_data)
+        if parsed_email is None:
+            # Sender-supplied malformed input; not an internal error.
+            logger.warning("Failed to parse inbound email (returning 400)")
             # Consider saving the raw email for debugging
             return Response(
                 {"status": "error", "detail": "Failed to parse email"},

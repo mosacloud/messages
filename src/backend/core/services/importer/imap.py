@@ -19,9 +19,9 @@ from typing import Any, Dict, List, Optional, Tuple
 from django.conf import settings
 
 from celery.utils.log import get_task_logger
+from jmap_email import first_address_email, parse_email
 
 from core.mda.inbound import deliver_inbound_message
-from core.mda.rfc5322 import parse_email_message
 from core.services.ssrf import SSRFValidationError, validate_hostname
 
 logger = get_task_logger(__name__)
@@ -515,24 +515,33 @@ def process_folder_messages(  # pylint: disable=too-many-arguments
                 failure_count += 1
             else:
                 # Parse message
-                parsed_email = parse_email_message(raw_email)
-
-                # TODO: better heuristic to determine if the message is from the sender
-                is_sender = parsed_email["from"]["email"].lower() == username.lower()
-
-                # Deliver message
-                if deliver_inbound_message(
-                    str(recipient),
-                    parsed_email,
-                    raw_email,
-                    is_import=True,
-                    is_import_sender=is_sender,
-                    imap_labels=[display_name],
-                    imap_flags=flags,
-                ):
-                    success_count += 1
-                else:
+                parsed_email = parse_email(raw_email)
+                if parsed_email is None:
+                    logger.warning(
+                        "IMAP: skipping unparseable message %s",
+                        msg_num,
+                    )
                     failure_count += 1
+                else:
+                    # TODO: better heuristic to determine if the message is from the sender
+                    is_sender = (
+                        first_address_email(parsed_email.get("from")).lower()
+                        == username.lower()
+                    )
+
+                    # Deliver message
+                    if deliver_inbound_message(
+                        str(recipient),
+                        parsed_email,
+                        raw_email,
+                        is_import=True,
+                        is_import_sender=is_sender,
+                        imap_labels=[display_name],
+                        imap_flags=flags,
+                    ):
+                        success_count += 1
+                    else:
+                        failure_count += 1
 
         except Exception as e:
             logger.exception(

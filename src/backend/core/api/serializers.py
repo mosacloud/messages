@@ -15,7 +15,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 
 from core import enums, models
-from core.mda.rfc5322 import extract_base64_images_from_html
+from core.mda.inline_images import extract_inline_images_html
 from core.services.blob_gc import schedule_for_gc
 from core.services.identity import keycloak as keycloak_service
 
@@ -2339,7 +2339,7 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
                 attrs.pop("text_body")
                 attrs.pop("raw_body")
             else:
-                _html, images = extract_base64_images_from_html(attrs["html_body"])
+                _html, images = extract_inline_images_html(attrs["html_body"])
                 total_image_size = 0
                 for image in images:
                     total_image_size += image["size"]

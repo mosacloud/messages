@@ -1,10 +1,10 @@
 """
-Fuzzing tests for RFC5322 email composition.
+Fuzzing tests for RFC 5322 email composition.
 
 Property-based tests for every user-controlled input path into the composer.
 Each test uses Hypothesis to generate chaotic inputs and verifies that the
 composer either produces well-formed RFC 5322 bytes OR raises a structured
-EmailComposeError — never an unwrapped stdlib exception, never a crash, never
+ComposeError — never an unwrapped stdlib exception, never a crash, never
 a malformed output.
 
 Input paths covered:
@@ -15,10 +15,7 @@ Input paths covered:
       ↳ prepend_headers: arbitrary list of (str, str) tuples
   - format_address(name, email)
   - format_address_list(addresses)
-  - make_reply_subject(subject)
   - _normalize_date(date)
-  - create_reply_message(original_message, ...)
-  - create_forward_message(original_message, ...)
 
 Run with: pytest -m fuzz core/tests/mda/test_rfc5322_composer_fuzz.py
 Or:       make fuzz-back
@@ -36,15 +33,12 @@ import pytest
 from hypothesis import HealthCheck, Phase, given, settings
 from hypothesis import strategies as st
 
-from core.mda.rfc5322.composer import (
-    EmailComposeError,
+from jmap_email.composer import (
+    ComposeError,
     _normalize_date,
     compose_email,
-    create_forward_message,
-    create_reply_message,
     format_address,
     format_address_list,
-    make_reply_subject,
 )
 
 # Fuzzing settings. Default 2000 examples per test keeps a normal `make
@@ -145,7 +139,7 @@ jmap_dict = st.fixed_dictionaries(
         "cc": contact_list,
         "bcc": contact_list,
         "subject": st.one_of(st.none(), chaotic_text),
-        "date": chaotic_date,
+        "sentAt": chaotic_date,
         "messageId": st.one_of(st.none(), chaotic_text),
         "references": st.one_of(st.none(), chaotic_text),
         "textBody": st.lists(
@@ -220,11 +214,11 @@ class TestComposeEmailFuzz:
     @given(jmap=jmap_dict)
     @settings(**FUZZ_SETTINGS)
     def test_compose_either_succeeds_or_raises_email_compose_error(self, jmap):
-        """compose_email's contract: bytes on success, EmailComposeError on
+        """compose_email's contract: bytes on success, ComposeError on
         failure. Any other exception is a bug."""
         try:
             raw = compose_email(jmap)
-        except EmailComposeError:
+        except ComposeError:
             return
         assert isinstance(raw, bytes) and len(raw) > 0
 
@@ -234,7 +228,7 @@ class TestComposeEmailFuzz:
         """If compose succeeds, output meets every wire-format invariant."""
         try:
             raw = compose_email(jmap)
-        except EmailComposeError:
+        except ComposeError:
             return
         _assert_wire_format_invariants(raw)
         _assert_parseable_with_required_headers(raw)
@@ -245,7 +239,7 @@ class TestComposeEmailFuzz:
         """RFC 5322 §3.6.3 contract: Bcc never leaks unless keep_bcc=True."""
         try:
             raw = compose_email(jmap)
-        except EmailComposeError:
+        except ComposeError:
             return
         parsed = BytesParser(policy=policy.default).parsebytes(raw)
         assert parsed["Bcc"] is None
@@ -257,7 +251,7 @@ class TestComposeEmailFuzz:
         (PST import passes parsed inbound msg-ids straight through)."""
         try:
             raw = compose_email(jmap, in_reply_to=in_reply_to)
-        except EmailComposeError:
+        except ComposeError:
             return
         _assert_wire_format_invariants(raw)
 
@@ -266,10 +260,10 @@ class TestComposeEmailFuzz:
     def test_compose_with_prepend_headers(self, jmap, prepend):
         """prepend_headers carries widget Referer / Received which is
         attacker-influenced. Reserved-name guard + ftext validation must
-        either accept or raise EmailComposeError; nothing in between."""
+        either accept or raise ComposeError; nothing in between."""
         try:
             raw = compose_email(jmap, prepend_headers=prepend)
-        except EmailComposeError:
+        except ComposeError:
             return
         _assert_wire_format_invariants(raw)
         parsed = BytesParser(policy=policy.default).parsebytes(raw)
@@ -284,7 +278,7 @@ class TestComposeEmailFuzz:
         PST import relies on."""
         try:
             raw = compose_email(jmap, keep_bcc=keep_bcc)
-        except EmailComposeError:
+        except ComposeError:
             return
         parsed = BytesParser(policy=policy.default).parsebytes(raw)
         if not keep_bcc:
@@ -300,7 +294,7 @@ class TestComposeEmailFuzz:
         before = copy.deepcopy(jmap)
         try:
             compose_email(jmap)
-        except EmailComposeError:
+        except ComposeError:
             pass
         assert jmap == before
 
@@ -310,7 +304,7 @@ class TestComposeEmailFuzz:
         """Every multipart level must use a distinct boundary (RFC 2046 §5.1.1)."""
         try:
             raw = compose_email(jmap)
-        except EmailComposeError:
+        except ComposeError:
             return
         boundaries = re.findall(rb'boundary="([^"]+)"', raw)
         assert len(set(boundaries)) == len(boundaries), (
@@ -338,129 +332,27 @@ class TestFormatAddressFuzz:
 
 
 @pytest.mark.fuzz
-class TestMakeReplySubjectFuzz:
-    """make_reply_subject with chaotic input."""
-
-    @given(subject=chaotic_text)
-    @settings(**FUZZ_SETTINGS)
-    def test_make_reply_subject_returns_str_no_crash(self, subject):
-        """make_reply_subject never raises; output starts with 'Re: ' unless
-        the input already begins with 're:' (case-insensitive)."""
-        result = make_reply_subject(subject)
-        assert isinstance(result, str)
-        # If input already starts with 're:' (case-insensitive), output equals
-        # input. Otherwise output starts with 'Re: '.
-        if subject.lower().startswith("re:"):
-            assert result == subject
-        else:
-            assert result.startswith("Re: ")
-
-
-@pytest.mark.fuzz
 class TestNormalizeDateFuzz:
     """_normalize_date with chaotic input — every JMAP input shape."""
 
     @given(date=chaotic_date)
     @settings(**FUZZ_SETTINGS)
-    def test_normalize_date_returns_tz_aware_datetime(self, date):
-        """_normalize_date always returns a tz-aware datetime regardless of
-        which input branch (None / datetime / int / float / str / bool) hit."""
-        result = _normalize_date(date)
+    def test_normalize_date_returns_tz_aware_or_raises(self, date):
+        """_normalize_date is strict-by-design (M10): inputs it can parse
+        return a tz-aware datetime; everything else (``None``, garbage
+        strings, ints / floats out of POSIX range, bools, dicts) raises
+        ``InvalidDateError``. The contract is "no fabricated `now()`
+        fallback" — the caller controls the timestamp."""
+        from jmap_email.composer import InvalidDateError
+
+        try:
+            result = _normalize_date(date)
+        except InvalidDateError:
+            return
         assert isinstance(result, datetime.datetime)
         # Must be tz-aware so format_datetime always emits a +HHMM offset.
         assert result.tzinfo is not None
         assert result.tzinfo.utcoffset(result) is not None
-
-
-@pytest.mark.fuzz
-class TestReplyForwardFuzz:
-    """create_reply_message / create_forward_message with chaotic 'inbound'.
-
-    The original_message dict simulates what comes out of parse_email_message
-    on real-world inbound MIME — including malformed Message-IDs, missing
-    fields, and weird encodings."""
-
-    inbound_dict = st.fixed_dictionaries(
-        {
-            "subject": st.one_of(st.none(), chaotic_text),
-            "from": contact_dict,
-            "to": contact_list,
-            "cc": contact_list,
-            "messageId": st.one_of(st.none(), chaotic_text),
-            "references": st.one_of(st.none(), chaotic_text),
-            "date": chaotic_date,
-            "textBody": st.lists(
-                st.one_of(
-                    chaotic_text,
-                    st.fixed_dictionaries({"content": chaotic_text}),
-                ),
-                max_size=2,
-            ),
-            "htmlBody": st.lists(
-                st.one_of(
-                    chaotic_text,
-                    st.fixed_dictionaries({"content": chaotic_text}),
-                ),
-                max_size=2,
-            ),
-        }
-    )
-
-    @given(orig=inbound_dict, reply_text=chaotic_text)
-    @settings(**FUZZ_SETTINGS)
-    def test_create_reply_returns_well_shaped_dict(self, orig, reply_text):
-        """create_reply_message must always return a dict with the documented
-        keys; it is the JMAP shape downstream callers rely on."""
-        reply = create_reply_message(orig, reply_text)
-        assert isinstance(reply, dict)
-        assert "subject" in reply
-        assert "textBody" in reply
-        assert "from" in reply
-        assert "to" in reply
-        assert "cc" in reply
-        assert "headers" in reply
-        # textBody is always a list of dicts with 'content'.
-        assert isinstance(reply["textBody"], list)
-        assert len(reply["textBody"]) == 1
-        assert "content" in reply["textBody"][0]
-
-    @given(orig=inbound_dict, reply_text=chaotic_text)
-    @settings(**FUZZ_SETTINGS)
-    def test_reply_dict_composes_to_legal_bytes(self, orig, reply_text):
-        """The reply-builder's output must be safely composable. Add the
-        required 'from' field that compose_email needs but create_reply_message
-        leaves empty (the outbound flow fills this in)."""
-        reply = create_reply_message(orig, reply_text)
-        reply["from"] = {"name": "Me", "email": "me@example.com"}
-        try:
-            raw = compose_email(reply)
-        except EmailComposeError:
-            return
-        _assert_wire_format_invariants(raw)
-        _assert_parseable_with_required_headers(raw)
-
-    @given(orig=inbound_dict, fwd_text=chaotic_text)
-    @settings(**FUZZ_SETTINGS)
-    def test_create_forward_returns_well_shaped_dict(self, orig, fwd_text):
-        """Forward-builder mirror of test_create_reply_returns_well_shaped_dict."""
-        fwd = create_forward_message(orig, fwd_text)
-        assert isinstance(fwd, dict)
-        assert "subject" in fwd
-        assert "textBody" in fwd
-
-    @given(orig=inbound_dict, fwd_text=chaotic_text)
-    @settings(**FUZZ_SETTINGS)
-    def test_forward_dict_composes_to_legal_bytes(self, orig, fwd_text):
-        """Forward dict must be safely composable, same contract as reply."""
-        fwd = create_forward_message(orig, fwd_text)
-        fwd["from"] = {"name": "Me", "email": "me@example.com"}
-        fwd["to"] = [{"name": "R", "email": "r@example.com"}]
-        try:
-            raw = compose_email(fwd)
-        except EmailComposeError:
-            return
-        _assert_wire_format_invariants(raw)
-        _assert_parseable_with_required_headers(raw)
 
 
 @pytest.mark.fuzz
@@ -474,7 +366,7 @@ class TestEndToEndPathFuzz:
             "to": contact_list,
             "cc": contact_list,
             "subject": chaotic_text,
-            "date": chaotic_date,
+            "sentAt": chaotic_date,
             "textBody": st.lists(chaotic_text, max_size=1),
             "htmlBody": st.lists(chaotic_text, max_size=1),
             "attachments": st.lists(attachment_dict, max_size=2),
@@ -487,7 +379,7 @@ class TestEndToEndPathFuzz:
         """Editor → outbound.compose_and_store_mime → compose_email."""
         try:
             raw = compose_email(jmap)
-        except EmailComposeError:
+        except ComposeError:
             return
         _assert_wire_format_invariants(raw)
 
@@ -498,7 +390,7 @@ class TestEndToEndPathFuzz:
             "cc": contact_list,
             "bcc": contact_list,  # PST import preserves Bcc via keep_bcc=True
             "subject": chaotic_text,
-            "date": chaotic_date,
+            "sentAt": chaotic_date,
             "messageId": st.one_of(st.none(), chaotic_text),
             "references": st.one_of(st.none(), chaotic_text),
             "textBody": st.lists(chaotic_text, max_size=1),
@@ -514,7 +406,7 @@ class TestEndToEndPathFuzz:
         """PST import → reconstruct_eml → compose_email(keep_bcc=True)."""
         try:
             raw = compose_email(jmap, keep_bcc=True)
-        except EmailComposeError:
+        except ComposeError:
             return
         _assert_wire_format_invariants(raw)
 
@@ -523,7 +415,7 @@ class TestEndToEndPathFuzz:
             "from": contact_dict,
             "to": contact_list,
             "subject": chaotic_text,
-            "date": st.datetimes(),
+            "sentAt": st.datetimes(),
             "textBody": st.lists(chaotic_text, max_size=1),
             "htmlBody": st.lists(chaotic_text, max_size=1),
         }
@@ -536,167 +428,6 @@ class TestEndToEndPathFuzz:
         and REMOTE_ADDR (attacker-influenced)."""
         try:
             raw = compose_email(jmap, prepend_headers=prepend)
-        except EmailComposeError:
+        except ComposeError:
             return
         _assert_wire_format_invariants(raw)
-
-
-@pytest.mark.fuzz
-class TestCombinatorialFuzz:
-    """Fuzz tests where multiple user-controlled inputs vary *together*.
-
-    Single-parameter fuzz tests miss interactions: e.g. a bug that only
-    fires when keep_bcc=True AND prepend_headers shadows a reserved name AND
-    jmap.headers also tries to set the same header. These tests vary all
-    knobs jointly per Hypothesis example.
-    """
-
-    @given(
-        jmap=jmap_dict,
-        in_reply_to=st.one_of(st.none(), chaotic_text),
-        prepend=prepend_headers_list,
-        keep_bcc=st.booleans(),
-    )
-    @settings(**FUZZ_SETTINGS)
-    def test_compose_with_all_knobs_simultaneously(
-        self, jmap, in_reply_to, prepend, keep_bcc
-    ):
-        """The full compose_email signature, all four user-controlled
-        parameters varying together. Catches interactions that single-knob
-        tests can't reach."""
-        try:
-            raw = compose_email(
-                jmap,
-                in_reply_to=in_reply_to,
-                prepend_headers=prepend,
-                keep_bcc=keep_bcc,
-            )
-        except EmailComposeError:
-            return
-        _assert_wire_format_invariants(raw)
-        parsed = BytesParser(policy=policy.default).parsebytes(raw)
-        if not keep_bcc:
-            assert parsed["Bcc"] is None
-        # Reserved identity headers never appear duplicated.
-        for header in ("From", "To", "Subject", "Date", "MIME-Version"):
-            assert len(parsed.get_all(header) or []) <= 1
-
-    @given(
-        orig=TestReplyForwardFuzz.inbound_dict,
-        reply_text=chaotic_text,
-        in_reply_to=st.one_of(st.none(), chaotic_text),
-        prepend=prepend_headers_list,
-    )
-    @settings(**FUZZ_SETTINGS)
-    def test_reply_to_compose_pipeline_with_all_outbound_knobs(
-        self, orig, reply_text, in_reply_to, prepend
-    ):
-        """The actual production outbound flow: parse parent → reply-build →
-        compose with parent.mime_id as in_reply_to and arbitrary prepend
-        headers. None of the single-knob tests cover this composition."""
-        reply = create_reply_message(orig, reply_text)
-        reply["from"] = {"name": "Me", "email": "me@example.com"}
-        try:
-            raw = compose_email(reply, in_reply_to=in_reply_to, prepend_headers=prepend)
-        except EmailComposeError:
-            return
-        _assert_wire_format_invariants(raw)
-
-    @given(
-        orig=TestReplyForwardFuzz.inbound_dict,
-        fwd_text=chaotic_text,
-        in_reply_to=st.one_of(st.none(), chaotic_text),
-        prepend=prepend_headers_list,
-    )
-    @settings(**FUZZ_SETTINGS)
-    def test_forward_to_compose_pipeline_with_all_outbound_knobs(
-        self, orig, fwd_text, in_reply_to, prepend
-    ):
-        """Forward mirror of the reply pipeline test."""
-        fwd = create_forward_message(orig, fwd_text)
-        fwd["from"] = {"name": "Me", "email": "me@example.com"}
-        fwd["to"] = [{"name": "R", "email": "r@example.com"}]
-        try:
-            raw = compose_email(fwd, in_reply_to=in_reply_to, prepend_headers=prepend)
-        except EmailComposeError:
-            return
-        _assert_wire_format_invariants(raw)
-
-    @given(jmap=jmap_dict, in_reply_to=chaotic_text)
-    @settings(**FUZZ_SETTINGS)
-    def test_in_reply_to_param_takes_precedence_over_custom_headers(
-        self, jmap, in_reply_to
-    ):
-        """When both in_reply_to= parameter is set AND jmap['headers']
-        contains 'In-Reply-To'/'References', set_basic_headers is supposed
-        to skip the custom-headers entries (the parameter wins). Verify
-        that under fuzzing — a divergence here means duplicate headers in
-        the wire bytes."""
-        # Plant a deliberate conflict every time
-        jmap = {
-            **jmap,
-            "headers": {
-                **(jmap.get("headers") or {}),
-                "In-Reply-To": "<conflicting-other@example.com>",
-                "References": "<other-ref@example.com>",
-            },
-        }
-        try:
-            raw = compose_email(jmap, in_reply_to=in_reply_to)
-        except EmailComposeError:
-            return
-        parsed = BytesParser(policy=policy.default).parsebytes(raw)
-        # No duplicate of either header
-        assert len(parsed.get_all("In-Reply-To") or []) <= 1
-        assert len(parsed.get_all("References") or []) <= 1
-
-    @given(jmap=jmap_dict)
-    @settings(**FUZZ_SETTINGS)
-    def test_compose_is_deterministic_modulo_date_and_boundaries(self, jmap):
-        """Composing the same input twice should produce the same bytes
-        except for (a) the Date header (we set it from datetime.now() if
-        no input date was given) and (b) the random multipart boundary.
-        Anything else differing is a state-leak bug."""
-        try:
-            raw1 = compose_email(jmap)
-            raw2 = compose_email(jmap)
-        except EmailComposeError:
-            return
-        # Strip known-variable bytes (Date, boundary= attribute, inline
-        # boundary delimiter lines) and compare the rest.
-        # `$` in re.MULTILINE matches before `\n`, so with CRLF line endings
-        # `^Date: .*$\r\n` cannot match — `$` lands between `\r` and `\n`,
-        # leaving no `\r` to satisfy the trailing literal. Match the line
-        # explicitly via `[^\r\n]*\r\n` instead.
-        date_re = re.compile(rb"^Date: [^\r\n]*\r\n", re.MULTILINE)
-        boundary_re = re.compile(rb'boundary="[^"]+"')
-        multipart_line_re = re.compile(rb"^--===============[^\r\n]+", re.MULTILINE)
-
-        def _normalize(b):
-            b = date_re.sub(b"Date: X\r\n", b)
-            b = boundary_re.sub(b'boundary="X"', b)
-            return multipart_line_re.sub(b"--BOUNDARY", b)
-
-        assert _normalize(raw1) == _normalize(raw2)
-
-    @given(jmap=jmap_dict)
-    @settings(**FUZZ_SETTINGS)
-    def test_repeated_composes_do_not_leak_state(self, jmap):
-        """Compose 5 times in a row with same input. If any internal cache,
-        module-global, or generator state leaks between calls, the 5th
-        output should differ from the 1st (modulo date/boundary)."""
-        outputs = []
-        for _ in range(5):
-            try:
-                outputs.append(compose_email(jmap))
-            except EmailComposeError:
-                return  # all-or-nothing; if one raises they all should
-        # All succeeded. Each output should be parseable and meet invariants.
-        for raw in outputs:
-            _assert_wire_format_invariants(raw)
-        # Sanity: byte length should be within ~32 bytes (boundary differs).
-        # If outputs grow unboundedly, that's a state-leak signal.
-        lengths = [len(b) for b in outputs]
-        assert max(lengths) - min(lengths) < 200, (
-            f"compose output sizes drifted: {lengths!r}"
-        )

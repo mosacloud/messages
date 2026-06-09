@@ -114,7 +114,14 @@ build: ## build the project containers
 .PHONY: build
 
 build-back-distroless: ## build the distroless production image
-	@docker build --target runtime-distroless-prod -t messages-distroless -f src/backend/Dockerfile src/backend/
+	# Sibling jmap-email package is plumbed via BuildKit named context
+	# (see src/backend/Dockerfile ``COPY --from=jmap-email``). Use buildx
+	# explicitly so ``--build-context`` is available even on hosts where
+	# ``docker build`` still resolves to the legacy builder.
+	@docker buildx build --load --target runtime-distroless-prod -t messages-distroless \
+		-f src/backend/Dockerfile \
+		--build-context jmap-email=src/jmap-email \
+		src/backend/
 .PHONY: build-back-distroless
 
 test-back-distroless: build-back-distroless ## build and smoke-test the distroless production image
@@ -294,6 +301,24 @@ test-mta-out: ## run the mta-out tests
 test-mpa: ## run the mpa tests
 	@$(COMPOSE) run --build --rm mpa-test
 .PHONY: test-mpa
+
+test-jmap-email: ## run the jmap-email package tests (zero infrastructure deps)
+	@$(COMPOSE) run --build --rm jmap-email-test
+.PHONY: test-jmap-email
+
+fuzz-jmap-email: ## run the jmap-email Hypothesis fuzz suite
+	@$(COMPOSE) run --build --rm jmap-email-test pytest -m fuzz tests/
+.PHONY: fuzz-jmap-email
+
+lint-jmap-email: ## lint the jmap-email library (ruff check + format check + pylint)
+	@$(COMPOSE) run --build --rm --entrypoint ruff jmap-email-test check jmap_email tests
+	@$(COMPOSE) run --build --rm --entrypoint ruff jmap-email-test format --check jmap_email tests
+	@$(COMPOSE) run --build --rm --entrypoint pylint jmap-email-test jmap_email tests
+.PHONY: lint-jmap-email
+
+typecheck-jmap-email: ## type-check the jmap-email library with ty (Astral, Rust)
+	@$(COMPOSE) run --build --rm --entrypoint ty jmap-email-test check
+.PHONY: typecheck-jmap-email
 
 test-socks-proxy: ## run the socks-proxy tests
 	@$(COMPOSE) run --build --rm socks-proxy-test

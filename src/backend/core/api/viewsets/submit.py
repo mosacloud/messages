@@ -12,6 +12,7 @@ import logging
 from django.core.exceptions import ValidationError as DjangoValidationError
 
 from drf_spectacular.utils import extend_schema
+from jmap_email import parse_email
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -24,7 +25,6 @@ from core.enums import MAILBOX_ROLES_CAN_SEND, ChannelApiKeyScope
 from core.mda.inbound_create import _create_message_from_inbound
 from core.mda.outbound import prepare_outbound_message
 from core.mda.outbound_tasks import send_message_task
-from core.mda.rfc5322 import EmailParseError, parse_email_message
 
 logger = logging.getLogger(__name__)
 
@@ -103,25 +103,26 @@ class SubmitRawEmailView(APIView):
             )
 
         # Parse to validate structure
-        try:
-            parsed = parse_email_message(raw_mime)
-        except EmailParseError:
+        parsed = parse_email(raw_mime)
+        if parsed is None:
             return Response(
                 {"detail": "Failed to parse email message."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Validate sender matches the mailbox
-        sender_email = (parsed.get("from") or {}).get("email", "")
+        # Validate sender matches the mailbox. A multi-address From
+        # would let the caller pair their authorised mailbox with an
+        # unrelated identity that the receiver may display instead —
+        # the From header must collapse to exactly one entry, the
+        # acting mailbox.
+        from_list = parsed.get("from") or []
         mailbox_email = str(mailbox)
-        if sender_email.lower() != mailbox_email.lower():
+        if (
+            len(from_list) != 1
+            or (from_list[0].get("email") or "").lower() != mailbox_email.lower()
+        ):
             return Response(
-                {
-                    "detail": (
-                        f"From header '{sender_email}' does not match"
-                        f" mailbox '{mailbox_email}'."
-                    )
-                },
+                {"detail": f"From header does not match mailbox '{mailbox_email}'."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
