@@ -127,6 +127,7 @@ function AdminLayoutContent({
 
 export function AdminLayout(props: AdminLayoutProps) {
   const { theme, variant } = useTheme();
+  const { t } = useTranslation();
 
   return (
     <LayoutProvider>
@@ -136,7 +137,7 @@ export function AdminLayout(props: AdminLayoutProps) {
         leftPanelContent={null}
         hideSearch
         hideLeftPanelOnDesktop={true}
-        icon={<Link to="/"><img src={`/images/${theme}/app-logo-${variant}.svg`} alt="logo" height={40} /></Link>}
+        icon={<Link to="/"><img src={`/images/${theme}/app-logo-${variant}.svg`} alt={t("logo")} height={40} /></Link>}
       >
         <AdminMailDomainProvider>
           <AdminLayoutContent {...props} />

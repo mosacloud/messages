@@ -25,12 +25,12 @@ const HomePage = () => {
       hideLeftPanelOnDesktop
       leftPanelContent={<LeftPanel />}
       rightHeaderContent={<LanguagePicker />}
-      icon={<img src={`/images/${theme}/app-logo-${variant}.svg`} alt="logo" height={40} />}
+      icon={<img src={`/images/${theme}/app-logo-${variant}.svg`} alt={t("logo")} height={40} />}
     >
       <div id={SKIP_LINK_TARGET_ID} className="app__home">
         <HomeGutter>
           <Hero
-            logo={<img src={`/images/${theme}/app-icon-${variant}.svg`} alt="Messages Logo" width={64} />}
+            logo={<img src={`/images/${theme}/app-icon-${variant}.svg`} alt={t("Messages Logo")} width={64} />}
             title={t("Simple and intuitive messaging")}
             banner={`/images/banner-${variant}.webp`}
             subtitle={t("Send and receive your messages in an instant.")}

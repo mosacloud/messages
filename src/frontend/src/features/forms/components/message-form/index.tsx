@@ -679,14 +679,13 @@ export const MessageForm = ({
                         name="to"
                         label={t("To:")}
                         autoFocus={mode === "forward"}
-                        // icon={<span className="material-icons">group</span>}
                         text={form.formState.errors.to && !Array.isArray(form.formState.errors.to) ? form.formState.errors.to.message : t("Enter the email addresses of the recipients separated by commas")}
                         textItems={Array.isArray(form.formState.errors.to) ? form.formState.errors.to?.map((error, index) => t(error!.message as string, { email: form.getValues('to')?.[index] })) : []}
                         disabled={!canWriteMessages}
                         rightText={
                             <div className="form-field-options">
-                                <Button tabIndex={-1} type="button" size="nano" variant={showCCField ? "bordered" : "tertiary"} onClick={() => setShowCCField(!showCCField)} disabled={!canWriteMessages}>cc</Button>
-                                <Button tabIndex={-1} type="button" size="nano" variant={showBCCField ? "bordered" : "tertiary"} onClick={() => setShowBCCField(!showBCCField)} disabled={!canWriteMessages}>bcc</Button>
+                                <Button tabIndex={-1} type="button" size="nano" variant={showCCField ? "bordered" : "tertiary"} onClick={() => setShowCCField(!showCCField)} disabled={!canWriteMessages}>{t("cc")}</Button>
+                                <Button tabIndex={-1} type="button" size="nano" variant={showBCCField ? "bordered" : "tertiary"} onClick={() => setShowBCCField(!showBCCField)} disabled={!canWriteMessages}>{t("bcc")}</Button>
                             </div> as unknown as string // TODO: Allow ReactNode as rightText in Cunningham
                         }
                         fullWidth
@@ -699,7 +698,6 @@ export const MessageForm = ({
                         <RhfContactComboBox
                             name="cc"
                             label={t("Copy: ")}
-                            // icon={<span className="material-icons">group</span>}
                             text={form.formState.errors.cc && !Array.isArray(form.formState.errors.cc) ? t(form.formState.errors.cc.message as string) : t("Enter the email addresses of the recipients separated by commas")}
                             textItems={Array.isArray(form.formState.errors.cc) ? form.formState.errors.cc?.map((error, index) => t(error!.message as string, { email: form.getValues('cc')?.[index] })) : []}
                             disabled={!canWriteMessages}
@@ -714,7 +712,6 @@ export const MessageForm = ({
                         <RhfContactComboBox
                             name="bcc"
                             label={t("Blind copy: ")}
-                            // icon={<span className="material-icons">visibility_off</span>}
                             text={form.formState.errors.bcc && !Array.isArray(form.formState.errors.bcc) ? t(form.formState.errors.bcc.message as string) : t("Enter the email addresses of the recipients separated by commas")}
                             textItems={Array.isArray(form.formState.errors.bcc) ? form.formState.errors.bcc?.map((error, index) => t(error!.message as string, { email: form.getValues('bcc')?.[index] })) : []}
                             disabled={!canWriteMessages}

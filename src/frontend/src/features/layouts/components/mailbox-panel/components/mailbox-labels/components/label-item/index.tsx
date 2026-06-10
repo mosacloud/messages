@@ -376,18 +376,18 @@ export const LabelItem = ({ level = 0, onEdit, canManage, defaultFoldState, ...l
                 options={[
                   {
                     label: t('Edit'),
-                    icon: <span className="material-icons">edit</span>,
+                    icon: <Icon name="edit" />,
                     callback: () => onEdit(label),
                   },
                   {
                     label: t('Add a sub-label'),
-                    icon: <span className="material-icons">add</span>,
+                    icon: <Icon name="add" />,
                     callback: () => onEdit({ name: `${label.name}/`, color: label.color }),
                     showSeparator: true,
                   },
                   {
                     label: t('Delete'),
-                    icon: <span className="material-icons">delete</span>,
+                    icon: <Icon name="delete" />,
                     callback: handleDelete,
                     variant: 'danger'
                   },

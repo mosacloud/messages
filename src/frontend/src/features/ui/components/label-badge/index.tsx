@@ -56,7 +56,7 @@ export const LabelBadge = ({ label, removable = false, linkable = false, compact
                             }
                         }]}
                     >
-                        <span className="material-icons">label_off</span>
+                        <Icon name="label_off" />
                         <span>{t('Label "{{label}}" removed from this conversation.', { label: label.name })}</span>
                     </ToasterItem>,
                     { toastId }

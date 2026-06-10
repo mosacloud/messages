@@ -306,7 +306,7 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                             },
                             ...([SelectionReadStatus.MIXED, SelectionReadStatus.UNREAD].includes(selectionReadStatus) ? [{
                                 label: markAllTooltip,
-                                icon: <span className="material-icons">drafts</span>,
+                                icon: <Icon name="drafts" />,
                                 callback: () => {
                                     markAsReadAt({
                                         threadIds: threadIdsToMark,
@@ -320,7 +320,7 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                             }] : []),
                             ...([SelectionReadStatus.MIXED, SelectionReadStatus.READ, SelectionReadStatus.NONE].includes(selectionReadStatus) ? [{
                                 label: markAllUnreadLabel,
-                                icon: <span className="material-icons">mark_email_unread</span>,
+                                icon: <Icon name="mark_email_unread" />,
                                 callback: () => {
                                     // Close the open thread before the mutation so the visibility
                                     // observer cannot re-mark the newly-unread messages as read.
@@ -363,7 +363,7 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                         <Tooltip content={t('More options')}>
                             <Button
                                 onClick={() => setIsDropdownOpen(true)}
-                                icon={<span className="material-icons">more_vert</span>}
+                                icon={<Icon name="more_vert" />}
                                 variant="tertiary"
                                 aria-label={t('More options')}
                                 size="nano"

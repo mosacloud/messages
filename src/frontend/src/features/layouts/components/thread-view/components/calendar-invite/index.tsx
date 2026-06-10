@@ -904,7 +904,7 @@ export const CalendarInvite = ({
             setIsSubmitting(false);
             addToast(
                 <ToasterItem type="info">
-                    <span className="material-icons">check_circle</span>
+                    <Icon name="check_circle" />
                     <span>
                         {pendingActionIsRsvp
                             ? t("Response saved — the organizer will be notified")
@@ -934,7 +934,7 @@ export const CalendarInvite = ({
             setPendingActionIsRsvp(false);
             addToast(
                 <ToasterItem type="error">
-                    <span className="material-icons">error</span>
+                    <Icon name="error" />
                     <span>{taskStatus.error ?? t("An unexpected error occurred.")}</span>
                 </ToasterItem>,
             );

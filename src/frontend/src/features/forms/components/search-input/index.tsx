@@ -103,7 +103,7 @@ export const SearchInput = () => {
                     title={t("Reset")}
                     size="small"
                 >
-                    <span className="material-icons">close</span>
+                    <Icon name="close" />
                     <span className="c__offscreen">{t("Reset")}</span>
                 </Button>
                 )}
@@ -114,7 +114,7 @@ export const SearchInput = () => {
                     title={showFilters ? t("Close filters") : t("Open filters")}
                     size="small"
                 >
-                    <span className="material-icons">tune</span>
+                    <Icon name="tune" />
                     <span className="c__offscreen">{showFilters ? t("Close filters") : t("Open filters")}</span>
                 </Button>
             </div>

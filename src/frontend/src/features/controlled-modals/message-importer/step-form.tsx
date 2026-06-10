@@ -3,7 +3,7 @@ import z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { FormProvider, useForm, useWatch } from "react-hook-form";
 import { Button } from "@gouvfr-lasuite/cunningham-react";
-import { Spinner } from "@gouvfr-lasuite/ui-kit";
+import { Icon, Spinner } from "@gouvfr-lasuite/ui-kit";
 import { useTranslation } from "react-i18next";
 import { useParams } from "@tanstack/react-router";
 import { importFileCreateResponse202, importImapCreateResponse202, useImportFileCreate, useImportImapCreate } from "@/features/api/gen";
@@ -277,8 +277,8 @@ export const StepForm = ({ onUploading, onSuccess, onError, error, step }: StepF
                     <RhfFileUploader
                         name="archive_file"
                         accept=".eml,.mbox,.pst"
-                        icon={<span className="material-icons">inventory_2</span>}
-                        fileSelectedIcon={<span className="material-icons">inventory_2</span>}
+                        icon={<Icon name="inventory_2" />}
+                        fileSelectedIcon={<Icon name="inventory_2" />}
                         bigText={t('Drag and drop an archive here')}
                         text={t('EML, MBOX or PST')}
                         fullWidth
