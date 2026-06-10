@@ -1,4 +1,5 @@
 import { Button } from "@gouvfr-lasuite/cunningham-react";
+import { useEffect } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,6 +13,9 @@ import i18n from "@/features/i18n/initI18n";
 
 type MailboxSettingsGeneralTabProps = {
   mailbox: Mailbox;
+  /** Reports the form's dirty state so the parent modal can guard tab switches
+   * and closing against discarding unsaved edits. */
+  onDirtyChange?: (isDirty: boolean) => void;
 };
 
 const renameSchema = z.object({
@@ -26,7 +30,7 @@ const renameSchema = z.object({
 });
 type RenameFormData = z.infer<typeof renameSchema>;
 
-export const MailboxSettingsGeneralTab = ({ mailbox }: MailboxSettingsGeneralTabProps) => {
+export const MailboxSettingsGeneralTab = ({ mailbox, onDirtyChange }: MailboxSettingsGeneralTabProps) => {
   const { t } = useTranslation();
   const { refetchMailboxes } = useMailboxContext();
 
@@ -34,6 +38,7 @@ export const MailboxSettingsGeneralTab = ({ mailbox }: MailboxSettingsGeneralTab
     resolver: zodResolver(renameSchema),
     defaultValues: { name: mailbox.name ?? "" },
   });
+
   const { mutateAsync: renameMailbox, isPending } = useMailboxesPartialUpdate({
     mutation: { meta: { noGlobalError: true } }
   });
@@ -58,6 +63,17 @@ export const MailboxSettingsGeneralTab = ({ mailbox }: MailboxSettingsGeneralTab
       );
     }
   };
+
+  // Surface the dirty state to the parent modal, and clear it on unmount so a
+  // stale "dirty" flag can't outlive this tab (Cunningham unmounts the inactive
+  // tab's content, so switching away tears the form down entirely).
+  useEffect(() => {
+    onDirtyChange?.(form.formState.isDirty);
+  }, [form.formState.isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    return () => onDirtyChange?.(false);
+  }, [onDirtyChange]);
 
   return (
     <div className="mailbox-settings__tab mailbox-settings__general">

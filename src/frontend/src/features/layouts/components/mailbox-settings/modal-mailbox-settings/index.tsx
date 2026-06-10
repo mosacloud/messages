@@ -11,6 +11,10 @@ import { Mailbox } from "@/features/api/gen";
 import { useMailboxContext } from "@/features/providers/mailbox";
 import { FEATURE_KEYS, useFeatureFlag } from "@/hooks/use-feature";
 import MailboxHelper from "@/features/utils/mailbox-helper";
+import {
+  useConfirmBeforeClose,
+  useConfirmUnsavedChanges,
+} from "@/features/hooks/use-confirm-before-close";
 import { MailboxSettingsGeneralTab } from "./general-tab";
 import { MailboxSettingsAccessTab } from "./access-tab";
 import { MailboxSettingsSignaturesTab } from "./signatures-tab";
@@ -88,6 +92,10 @@ export const ModalMailboxSettings = ({
     null,
   );
   const [isMailboxDropdownOpen, setIsMailboxDropdownOpen] = useState(false);
+
+  const [isActiveTabDirty, setIsActiveTabDirty] = useState(false);
+  const confirmUnsavedChanges = useConfirmUnsavedChanges();
+  const guardedOnClose = useConfirmBeforeClose(isActiveTabDirty, onClose);
 
   const settingsMailbox =
     settingsMailboxes.find((mailbox) => mailbox.id === selectedMailboxId) ??
@@ -213,9 +221,16 @@ export const ModalMailboxSettings = ({
           isOpen={isMailboxDropdownOpen}
           onOpenChange={setIsMailboxDropdownOpen}
           selectedValues={[settingsMailbox.id]}
-          onSelectValue={(value) => {
-            setSelectedMailboxId(value);
+          onSelectValue={async (value) => {
             setIsMailboxDropdownOpen(false);
+            if (value === settingsMailbox.id) {
+              return;
+            }
+            // Switching the configured mailbox remounts the General tab and
+            // discards any unsaved rename, just like a tab switch does.
+            if (await confirmUnsavedChanges(isActiveTabDirty)) {
+              setSelectedMailboxId(value);
+            }
           }}
         >
           <Button
@@ -270,6 +285,7 @@ export const ModalMailboxSettings = ({
               <MailboxSettingsGeneralTab
                 key={settingsMailbox.id}
                 mailbox={settingsMailbox}
+                onDirtyChange={setIsActiveTabDirty}
               />
             ),
           },
@@ -367,13 +383,22 @@ export const ModalMailboxSettings = ({
       }}
       isOpen={isOpen}
       aria-label={t("Settings")}
-      onClose={onClose}
+      onClose={guardedOnClose}
       size={ModalSize.LARGE}
       variant="tab"
       sidebarTitle={<div className="mailbox-settings__identity">{sidebarHeader}</div>}
       tabs={tabs}
       activeTab={activeTab}
-      onTabChange={(tabId) => setActiveTab(tabId as SettingsTabId)}
+      onTabChange={async (tabId) => {
+        if (tabId === activeTab) {
+          return;
+        }
+        // Switching tab unmounts the General tab and discards any unsaved
+        // rename; confirm first when there are pending edits.
+        if (await confirmUnsavedChanges(isActiveTabDirty)) {
+          setActiveTab(tabId as SettingsTabId);
+        }
+      }}
     />
   );
 };

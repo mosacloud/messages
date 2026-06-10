@@ -1,5 +1,6 @@
 import { Modal, ModalSize, Button } from "@gouvfr-lasuite/cunningham-react";
 import { Icon, IconType, IconSize } from "@gouvfr-lasuite/ui-kit";
+import { ArrowLeft } from "@gouvfr-lasuite/ui-kit/icons";
 import { useTranslation } from "react-i18next";
 import { useState, useEffect } from "react";
 import { Channel, Mailbox } from "@/features/api/gen";
@@ -79,9 +80,10 @@ const BackButton = ({ onClick }: { onClick: () => void }) => {
     return (
         <Button
             type="button"
+            color="neutral"
             variant="tertiary"
             size="small"
-            icon={<Icon name="arrow_back" type={IconType.OUTLINED} />}
+            icon={<ArrowLeft size={IconSize.SMALL} />}
             onClick={onClick}
             aria-label={t("Back")}
         />
@@ -137,18 +139,27 @@ export const ModalComposeIntegration = ({
         onSuccess?.();
     };
 
-    const getTitle = () => {
+    // Show back button only when in form view after selecting a type (not when editing existing)
+  const showBackButton = viewState === "form" && !isEditing;
+
+  const getTitle = () => {
+    let label: string;
         if (viewState === "select_type") {
-            return t("Create a new integration");
+            label = t("Create a new integration");
         }
-        if (selectedType === "widget") {
-            return isEditing ? t("Edit Widget") : t("Create a Widget");
+        else if (selectedType === "widget") {
+            label = isEditing ? t("Edit Widget") : t("Create a Widget");
         }
-        return t("Integrations");
+        else {
+            label = t("Integrations");
+        }
+
+      return <>
+        {showBackButton && <BackButton onClick={handleBack} />}
+        {label}
+      </>;
     };
 
-    // Show back button only when in form view after selecting a type (not when editing existing)
-    const showBackButton = viewState === "form" && !isEditing;
 
     return (
         <Modal
@@ -156,7 +167,6 @@ export const ModalComposeIntegration = ({
             onClose={onClose}
             title={getTitle()}
             size={ModalSize.LARGE}
-            leftActions={showBackButton ? <BackButton onClick={handleBack} /> : undefined}
         >
             <div className="modal-compose-integration">
                 {viewState === "select_type" && (

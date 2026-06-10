@@ -206,7 +206,8 @@ _lasuite_widget.push(["loader", "init", {
                         <pre><code>{widgetSnippet}</code></pre>
                         <Button
                             type="button"
-                            variant="tertiary"
+                            color="neutral"
+                            variant="secondary"
                             size="small"
                             icon={<Icon name="content_copy" type={IconType.OUTLINED} />}
                             onClick={async () => {
