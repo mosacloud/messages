@@ -3185,7 +3185,8 @@ class MessageTemplate(BaseModel):
 
         Args:
             mailbox: Mailbox object — provides `name` via its contact
-            user: User object — fallback for `name` and source of custom attributes
+            user: User object — source of `user_name`, fallback for `name`,
+                and source of custom attributes
             message: Message object — provides `recipient_name` from TO recipients
 
         Returns:
@@ -3196,7 +3197,8 @@ class MessageTemplate(BaseModel):
             mailbox.contact.name
             if mailbox and mailbox.contact
             else (getattr(user, "full_name", None) if user else "")
-        )
+        ) or ""
+        context["user_name"] = (getattr(user, "full_name", None) or "") if user else ""
         schema = settings.SCHEMA_CUSTOM_ATTRIBUTES_USER
         schema_properties = schema.get("properties", {})
 

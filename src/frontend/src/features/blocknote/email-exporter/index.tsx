@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { Block, InlineContent, StyledText } from '@blocknote/core';
 import { Text, Heading, Img, Link, Hr, Row, Column } from '@react-email/components';
 import MailHelper from '@/features/utils/mail-helper';
+import { TEMPLATE_VARIABLE_TYPE } from '../inline-template-variable';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyBlock = Block<any, any, any>;
@@ -22,6 +23,21 @@ const COLORS: Record<string, { text: string; background: string }> = {
     blue: { text: '#0b6e99', background: '#ddebf1' },
     purple: { text: '#6940a5', background: '#eae4f2' },
     pink: { text: '#ad1a72', background: '#f4dfeb' },
+};
+
+// BlockNote renders heading sizes via CSS variables on `data-level` attributes,
+// not on the <h1>-<h6> tags — and its `.bn-default-styles` rule forces
+// `font-size: inherit` on those tags. A heading exported as a bare tag is thus
+// flattened to body size wherever that stylesheet applies (e.g. a signature
+// preview injected inside the editor). We inline BlockNote's own scale so the
+// heading keeps its size in previews and email clients alike.
+const HEADING_LEVEL_STYLES: Record<number, CSSProperties> = {
+    1: { fontSize: '3em', fontWeight: 700 },
+    2: { fontSize: '2em', fontWeight: 700 },
+    3: { fontSize: '1.3em', fontWeight: 700 },
+    4: { fontSize: '1em', fontWeight: 700 },
+    5: { fontSize: '0.9em', fontWeight: 700 },
+    6: { fontSize: '0.8em', fontWeight: 700 },
 };
 
 // ---------------------------------------------------------------------------
@@ -147,15 +163,25 @@ function renderInlineContent(content: AnyInlineContent[]): React.ReactNode[] {
         if (ic.type === 'link') {
             // BlockNote Link: { type: "link", href: string, content: StyledText[] }
             const link = ic as { type: 'link'; href: string; content: AnyStyledText[] };
+            // Mirror the link text's own color onto the <a> so the underline
+            // matches the text instead of staying the default link blue.
+            const textColor = link.content
+                .map((st) => st.styles?.textColor as string | undefined)
+                .find((color) => color && color !== 'default');
+            const linkColor = textColor ? (COLORS[textColor]?.text || textColor) : '#0b6e99';
             return (
-                <Link key={i} href={link.href} style={{ color: '#0b6e99', textDecoration: 'underline' }}>
+                <Link key={i} href={link.href} style={{ color: linkColor, textDecoration: 'underline' }}>
                     {link.content.map((st, j) => renderStyledText(st, j))}
                 </Link>
             );
         }
-        if (ic.type === 'template-variable') {
-            const variable = ic as unknown as { props: Record<string, string> };
-            return <span key={i} data-inline-content-type="template-variable">{`{${variable.props.value}}`}</span>;
+        if (ic.type === TEMPLATE_VARIABLE_TYPE) {
+            const variable = ic as unknown as { props: Record<string, string>; content?: AnyStyledText[] };
+            // The editor shows the human label, but the export keeps the canonical
+            // `{value}` token — carrying the styles applied to it.
+            const styles = variable.content?.[0]?.styles ?? {};
+            const token = { type: 'text', text: `{${variable.props.value}}`, styles } as AnyStyledText;
+            return <span key={i} data-inline-content-type={TEMPLATE_VARIABLE_TYPE}>{renderStyledText(token, 0)}</span>;
         }
         return null;
     });
@@ -287,8 +313,11 @@ function renderBlock(
         case 'heading': {
             const level = Math.min(Math.max((props.level as number) || 1, 1), 6);
             const as = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
+            // `margin: 0` matches BlockNote (spacing comes from block padding) and
+            // avoids the browser's large default heading margins in email clients.
+            // Block-level styles (color/alignment) come last so they can override.
             return (
-                <Heading key={key} as={as} style={styleOrUndefined(style)}>
+                <Heading key={key} as={as} style={{ margin: 0, ...HEADING_LEVEL_STYLES[level], ...style }}>
                     {renderInlineContent(content || [])}
                 </Heading>
             );

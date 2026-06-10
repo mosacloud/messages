@@ -10,7 +10,7 @@ import { useImageObjectUrls } from '@/features/blocknote/image-block/use-image-o
 import { EmailExporter } from '@/features/blocknote/email-exporter';
 import { useConfig } from '@/features/providers/config';
 import MailHelper from '@/features/utils/mail-helper';
-import { createBlockNoteDictionary, createNonImageFileBlockers } from '@/features/blocknote/utils';
+import { backfillTemplateVariableContent, createBlockNoteDictionary, createNonImageFileBlockers } from '@/features/blocknote/utils';
 import { handle } from '@/features/utils/errors';
 
 const emailExporter = new EmailExporter();
@@ -80,6 +80,11 @@ export const useBase64Composer = <
             handle(new Error("Error parsing initial content."), { extra: { error, defaultValue } });
             return DEFAULT_CONTENT;
         }
+
+        // Restore the styled content of legacy `template-variable` tokens stored
+        // before the inline spec switched from `content: "none"` to "styled",
+        // otherwise they render as empty blue chips.
+        blocks = backfillTemplateVariableContent(blocks);
 
         // Traverse blocks tree to transform image data URLs to Object URLs
         let imageIndex = 0;

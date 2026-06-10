@@ -138,6 +138,7 @@ export * from "./patched_message_template_request_metadata";
 export * from "./patched_thread_access_request";
 export * from "./patched_thread_event_request";
 export * from "./placeholders_retrieve200";
+export * from "./placeholders_retrieve200_i18n";
 export * from "./read_message_template";
 export * from "./read_message_template_metadata";
 export * from "./regenerated_api_key_response";

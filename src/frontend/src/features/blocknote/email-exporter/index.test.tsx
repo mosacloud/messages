@@ -122,6 +122,30 @@ describe('EmailExporter', () => {
       ]);
       expect(html).toContain('color:#0b6e99');
     });
+
+    it('inlines size and weight so headings survive bn-default-styles', () => {
+      const html = exportBlocks([heading('Title', 1)]);
+      expect(html).toContain('font-size:3em');
+      expect(html).toContain('font-weight:700');
+    });
+
+    // Guard: pins the full HEADING_LEVEL_STYLES scale against BlockNote's own
+    // `--level` values (node_modules/@blocknote/core/dist/style.css). Email
+    // clients load no stylesheet, so these sizes MUST be inlined; if a BlockNote
+    // upgrade changes the scale, our hardcoded copy diverges silently — this
+    // table makes that divergence fail loudly.
+    it.each([
+      [1, '3em'],
+      [2, '2em'],
+      [3, '1.3em'],
+      [4, '1em'],
+      [5, '0.9em'],
+      [6, '0.8em'],
+    ])('level %i inlines font-size %s and weight 700', (level, fontSize) => {
+      const html = exportBlocks([heading('Title', level)]);
+      expect(html).toContain(`font-size:${fontSize}`);
+      expect(html).toContain('font-weight:700');
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -181,20 +205,6 @@ describe('EmailExporter', () => {
       expect(html).toContain('text-decoration-line:underline line-through');
     });
 
-    it('renders named textColor via COLORS', () => {
-      const html = exportBlocks([
-        paragraph([styledText('Purple', { textColor: 'purple' })]),
-      ]);
-      expect(html).toContain('color:#6940a5');
-    });
-
-    it('renders named backgroundColor via COLORS', () => {
-      const html = exportBlocks([
-        paragraph([styledText('Green bg', { backgroundColor: 'green' })]),
-      ]);
-      expect(html).toContain('background-color:#ddedea');
-    });
-
     it('passes through non-named color values', () => {
       const html = exportBlocks([
         paragraph([styledText('Custom', { textColor: '#ff00ff' })]),
@@ -209,6 +219,52 @@ describe('EmailExporter', () => {
       // Should render plain text without a <span> wrapper since styles are empty
       expect(html).toContain('Default');
       expect(html).not.toContain('color:');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 4b. COLORS palette guard
+  //
+  // Pins the full COLORS map against BlockNote's own values
+  // (node_modules/@blocknote/core/dist/style.css). Like the heading scale,
+  // these are an inline copy of a non-public BlockNote constant: email clients
+  // load no stylesheet, so the hex values MUST be inlined. If a BlockNote
+  // upgrade shifts the palette, our copy diverges silently — these tables make
+  // that fail loudly.
+  // -----------------------------------------------------------------------
+  describe('COLORS palette', () => {
+    it.each([
+      ['gray', '#9b9a97'],
+      ['brown', '#64473a'],
+      ['red', '#e03e3e'],
+      ['orange', '#d9730d'],
+      ['yellow', '#dfab01'],
+      ['green', '#4d6461'],
+      ['blue', '#0b6e99'],
+      ['purple', '#6940a5'],
+      ['pink', '#ad1a72'],
+    ])('maps textColor "%s" to %s', (name, hex) => {
+      const html = exportBlocks([
+        paragraph([styledText('Text', { textColor: name })]),
+      ]);
+      expect(html).toContain(`color:${hex}`);
+    });
+
+    it.each([
+      ['gray', '#ebeced'],
+      ['brown', '#e9e5e3'],
+      ['red', '#fbe4e4'],
+      ['orange', '#f6e9d9'],
+      ['yellow', '#fbf3db'],
+      ['green', '#ddedea'],
+      ['blue', '#ddebf1'],
+      ['purple', '#eae4f2'],
+      ['pink', '#f4dfeb'],
+    ])('maps backgroundColor "%s" to %s', (name, hex) => {
+      const html = exportBlocks([
+        paragraph([styledText('Text', { backgroundColor: name })]),
+      ]);
+      expect(html).toContain(`background-color:${hex}`);
     });
   });
 
@@ -235,6 +291,25 @@ describe('EmailExporter', () => {
       const html = exportBlocks([paragraph([styledLink])]);
       expect(html).toContain('font-weight:bold');
       expect(html).toContain('href="https://example.com"');
+    });
+
+    it('defaults the <a> color to link blue when the text has no color', () => {
+      const html = exportBlocks([
+        paragraph([link('https://example.com', 'Click here')]),
+      ]);
+      expect(html).toContain('color:#0b6e99');
+    });
+
+    it('mirrors the text color onto the <a> so the underline matches', () => {
+      const coloredLink: AnyInlineContent = {
+        type: 'link',
+        href: 'https://example.com',
+        content: [styledText('Red link', { textColor: 'red' })],
+      } as unknown as AnyInlineContent;
+      const html = exportBlocks([paragraph([coloredLink])]);
+      // The <a> itself carries the red color (not the default blue).
+      expect(html).toMatch(/<a[^>]*color:#e03e3e/);
+      expect(html).not.toContain('color:#0b6e99');
     });
   });
 
@@ -451,8 +526,8 @@ describe('EmailExporter', () => {
 
   // -----------------------------------------------------------------------
   // Inline template-variable — InlineTemplateVariable has no toExternalHTML;
-  // EmailExporter handles it explicitly at index.tsx:156-158. These tests
-  // pin the current behavior (literal `{var}` output).
+  // EmailExporter handles it explicitly. The `{value}` token is stored as the
+  // node's styled content, so its own marks must be rendered too.
   // -----------------------------------------------------------------------
   describe('inline template-variable', () => {
     it('renders a standalone template-variable as a placeholder span', () => {
@@ -461,6 +536,14 @@ describe('EmailExporter', () => {
       ]);
       expect(html).toContain('data-inline-content-type="template-variable"');
       expect(html).toContain('{first_name}');
+    });
+
+    it('applies the styles carried by the template-variable token', () => {
+      const html = exportBlocks([
+        paragraph([templateVariable('first_name', 'First name', { bold: true })]),
+      ]);
+      expect(html).toContain('{first_name}');
+      expect(html).toContain('font-weight:bold');
     });
 
     it('preserves order and styles around an inline template-variable', () => {
@@ -886,7 +969,7 @@ describe('EmailExporter', () => {
       const html = exportBlocks([
         heading('Important', 2, { textColor: 'red' }),
       ]);
-      expect(html).toMatchInlineSnapshot(`"<h2 style="color:#e03e3e">Important</h2>"`);
+      expect(html).toMatchInlineSnapshot(`"<h2 style="margin:0;font-size:2em;font-weight:700;color:#e03e3e">Important</h2>"`);
     });
 
     it('renders an image with caption and center alignment', () => {
