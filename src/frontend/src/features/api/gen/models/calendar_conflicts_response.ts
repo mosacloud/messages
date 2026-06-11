@@ -6,12 +6,10 @@
  * OpenAPI spec version: 1.0.0 (v1.0)
  */
 import type { CalendarConflictsResponseConflictsItem } from "./calendar_conflicts_response_conflicts_item";
+import type { CalendarConflictsResponseExistingPartstats } from "./calendar_conflicts_response_existing_partstats";
 
 export interface CalendarConflictsResponse {
   conflicts: CalendarConflictsResponseConflictsItem[];
-  /**
-   * PARTSTAT of the requesting mailbox on the prior copy of ``exclude_uid``, if such a copy exists. Lets the UI pre-select the user's prior RSVP.
-   * @nullable
-   */
-  existing_partstat: string | null;
+  /** PARTSTAT per attendee identity (calendar owner email, lowercased) on the prior copy of ``exclude_uid``. Lets the UI pre-select the right prior RSVP for the *selected* calendar when a mailbox can act through several attendee-owned calendars. */
+  existing_partstats: CalendarConflictsResponseExistingPartstats;
 }

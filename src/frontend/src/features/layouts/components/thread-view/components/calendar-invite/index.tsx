@@ -36,9 +36,9 @@ type CalendarInviteProps = {
     mailboxId?: string;
     // Acting mailbox email. Used to (a) check whether the mailbox is on
     // the ATTENDEE list — RSVP buttons are hidden otherwise to avoid a
-    // misleading "Response saved" toast on a no-op write — and (b) match
-    // the user's PARTSTAT in the stored copy when conflicts return
-    // ``existing_partstat``.
+    // misleading "Response saved" toast on a no-op write — and (b) act as
+    // the fallback RSVP identity (keying the prior PARTSTAT) when the
+    // CalDAV server doesn't expose a calendar's ``owner_email``.
     mailboxEmail?: string;
 };
 
@@ -46,6 +46,19 @@ type CalendarInfo = {
     id: string;
     name: string;
     color?: string | null;
+    // User-controlled sort order from Apple's ``calendar-order`` property —
+    // the backend already sorts the list, so this is informational only.
+    // Null when the CalDAV server doesn't expose it.
+    order?: number | null;
+    // Email of the principal that owns this calendar (the OIDC user for a
+    // personal calendar, the shared mailbox address for a MAILBOX calendar).
+    // Used to match the calendar against the event's ATTENDEE list so RSVP
+    // buttons are only shown for a calendar that can credibly speak for an
+    // attendee. Null when the CalDAV server doesn't expose it.
+    owner_email?: string | null;
+    // "USER" or "MAILBOX" — matches suitenumerique's calendar-owner-type
+    // extension. Null when the CalDAV server doesn't expose it.
+    owner_type?: string | null;
 };
 
 type ConflictInfo = {
@@ -633,7 +646,12 @@ type CalendarsApiResponse = {
 type ConflictsApiResponse = {
     data: {
         conflicts: ConflictInfo[];
-        existing_partstat?: ExistingPartstat;
+        // PARTSTAT per attendee identity (calendar owner email, lowercased)
+        // on the prior stored copy. The UI keys its RSVP state by the
+        // *selected* calendar's identity, so a mailbox with access to
+        // several attendee-owned calendars shows the right prior response
+        // for each.
+        existing_partstats?: Record<string, ExistingPartstat>;
     };
     status: number;
 };
@@ -651,7 +669,16 @@ export const CalendarInvite = ({
 }: CalendarInviteProps) => {
     const { t, i18n } = useTranslation();
     const [selectedCalendarId, setSelectedCalendarId] = useState<string | null>(null);
-    const [rsvpResponse, setRsvpResponse] = useState<RsvpResponse | null>(null);
+    // RSVP choice keyed by attendee identity (the selected calendar's owner,
+    // or the acting mailbox when the server exposes no owner). A single
+    // mailbox can act through several attendee-owned calendars, so the
+    // displayed response must follow the selected calendar's identity.
+    const [rsvpByIdentity, setRsvpByIdentity] = useState<
+        Record<string, RsvpResponse>
+    >({});
+    // Whether the in-flight task is an RSVP (vs. a plain "add to calendar"),
+    // so the success toast picks the right message.
+    const [pendingActionIsRsvp, setPendingActionIsRsvp] = useState(false);
 
     const downloadUrl = AttachmentHelper.getDownloadUrl(attachment);
     const language = i18n.resolvedLanguage || "en";
@@ -701,9 +728,6 @@ export const CalendarInvite = ({
     // layout shift) but not show the final controls yet.
     const isCalendarsPending = !!mailboxId && isCalendarsLoading;
 
-    // Set default calendar when calendars load
-    const effectiveCalendarId = selectedCalendarId ?? (calendars.length > 0 ? calendars[0].id : null);
-
     // A recurring invite arrives as a master VEVENT plus one VEVENT per
     // modified occurrence, all sharing a UID. Collapse them so the series
     // renders as a single card instead of one card per occurrence.
@@ -716,19 +740,85 @@ export const CalendarInvite = ({
     // Conflict detection for the first event
     const firstEvent = events[0];
 
-    // RSVP semantics only apply when the mailbox is actually on the
-    // ATTENDEE list. Without this gate, clicking Accept on a forwarded
-    // invite (where the mailbox isn't an attendee) would PUT a stored
-    // copy with no PARTSTAT change for the user — the backend already
-    // refuses such RSVPs (see ``respond_to_event``), but the buttons
-    // shouldn't appear in the UI in the first place.
-    const isMailboxAttendee = useMemo(() => {
-        if (!firstEvent || !mailboxEmail) return false;
-        const target = mailboxEmail.toLowerCase();
-        return (firstEvent.attendees ?? []).some(
-            (a) => (a.email ?? "").toLowerCase() === target,
-        );
-    }, [firstEvent, mailboxEmail]);
+    // Lowercased ATTENDEE email set for the first event. Used to test
+    // whether a given calendar (by its owner) can credibly RSVP — and to
+    // pick a default selection that already speaks for an attendee.
+    const attendeeEmails = useMemo(() => {
+        const set = new Set<string>();
+        for (const a of firstEvent?.attendees ?? []) {
+            if (a.email) set.add(a.email.toLowerCase());
+        }
+        return set;
+    }, [firstEvent]);
+
+    // Whether a given calendar speaks for an attendee on the invite. Uses
+    // the calendar's owner_email when the CalDAV server exposes it
+    // (suitenumerique/calendars); otherwise falls back to the acting
+    // mailbox email so backends without owner metadata still behave like
+    // before this feature.
+    const calendarMatchesAttendee = useCallback(
+        (cal: CalendarInfo): boolean => {
+            if (cal.owner_email) {
+                return attendeeEmails.has(cal.owner_email.toLowerCase());
+            }
+            if (mailboxEmail) {
+                return attendeeEmails.has(mailboxEmail.toLowerCase());
+            }
+            return false;
+        },
+        [attendeeEmails, mailboxEmail],
+    );
+
+    // Default to the first calendar that actually represents an attendee
+    // on this invite — so opening a mailbox-addressed invite while
+    // sitting on your personal mailbox auto-selects the mailbox calendar.
+    // Falls back to ``calendars[0]`` when no calendar matches (the user
+    // can still "Add to calendar"; RSVP buttons stay hidden).
+    const defaultCalendarId = useMemo(() => {
+        if (calendars.length === 0) return null;
+        const match = calendars.find(calendarMatchesAttendee);
+        return (match ?? calendars[0]).id;
+    }, [calendars, calendarMatchesAttendee]);
+    // Ignore ``selectedCalendarId`` when it no longer matches any calendar
+    // in the current list — otherwise a stale id (mailbox switch, calendar
+    // deleted server-side) would flow into the RSVP/add-to-calendar POST
+    // and the chooser display.
+    const effectiveCalendarId =
+        selectedCalendarId &&
+        calendars.some((c) => c.id === selectedCalendarId)
+            ? selectedCalendarId
+            : defaultCalendarId;
+
+    const selectedCalendar = useMemo(
+        () => calendars.find((c) => c.id === effectiveCalendarId) ?? null,
+        [calendars, effectiveCalendarId],
+    );
+
+    // Identity the selected calendar speaks for — its owner when the CalDAV
+    // server exposes it, otherwise the acting mailbox. RSVP state is keyed
+    // by this so switching calendars reflects the right prior response.
+    const activeIdentity = (
+        selectedCalendar?.owner_email ??
+        mailboxEmail ??
+        ""
+    ).toLowerCase();
+    const currentResponse = rsvpByIdentity[activeIdentity] ?? null;
+
+    // Only show RSVP when the *selected* calendar's identity is on the
+    // ATTENDEE list — picking a different calendar from the dropdown
+    // hides the buttons and surfaces a help text. "Add to calendar"
+    // stays available either way.
+    const canRsvpFromSelected = useMemo(
+        () => (selectedCalendar ? calendarMatchesAttendee(selectedCalendar) : false),
+        [selectedCalendar, calendarMatchesAttendee],
+    );
+    // Whether *any* calendar in the list represents an attendee. When
+    // none do, the "pick another calendar" hint would be misleading —
+    // we suppress it and just expose "Add to calendar".
+    const anyCalendarMatchesAttendee = useMemo(
+        () => calendars.some(calendarMatchesAttendee),
+        [calendars, calendarMatchesAttendee],
+    );
     const eventStart = firstEvent?.start?.date;
     const eventEnd = getEventEnd(firstEvent);
     const eventUid = firstEvent?.uid;
@@ -766,24 +856,31 @@ export const CalendarInvite = ({
     // failures or actual emptiness as "unavailable".
     const showUnavailable = isCalendarsError && !isCalDAVEmpty;
 
-    // Pre-select the user's prior RSVP from the stored copy (if any),
-    // so re-opening the email doesn't re-prompt for a choice already made.
-    // Only seeds ``rsvpResponse`` once per mount per UID — manual clicks
-    // afterwards take precedence.
-    const existingPartstat = conflictsResponse?.data?.existing_partstat ?? null;
+    // Pre-select the user's prior RSVP from the stored copy (if any), per
+    // identity, so re-opening the email doesn't re-prompt for a choice
+    // already made — and switching calendars shows the right one. Seeds
+    // once per UID; manual clicks afterwards take precedence.
+    const existingPartstats = conflictsResponse?.data?.existing_partstats ?? null;
     const seededFromExistingRef = useRef<string | null>(null);
     useEffect(() => {
-        if (!eventUid || existingPartstat == null) return;
+        if (!eventUid || !existingPartstats) return;
         if (seededFromExistingRef.current === eventUid) return;
-        if (
-            existingPartstat === "ACCEPTED" ||
-            existingPartstat === "DECLINED" ||
-            existingPartstat === "TENTATIVE"
-        ) {
-            setRsvpResponse(existingPartstat);
-            seededFromExistingRef.current = eventUid;
+        const seed: Record<string, RsvpResponse> = {};
+        for (const [identity, partstat] of Object.entries(existingPartstats)) {
+            if (
+                partstat === "ACCEPTED" ||
+                partstat === "DECLINED" ||
+                partstat === "TENTATIVE"
+            ) {
+                seed[identity.toLowerCase()] = partstat;
+            }
         }
-    }, [existingPartstat, eventUid]);
+        seededFromExistingRef.current = eventUid;
+        if (Object.keys(seed).length > 0) {
+            // Manual clicks already recorded take precedence over the seed.
+            setRsvpByIdentity((prev) => ({ ...seed, ...prev }));
+        }
+    }, [existingPartstats, eventUid]);
 
     // Task polling for RSVP/add-to-calendar (shared with import code).
     // The hook's default exhausted-retries message is import-flavored;
@@ -791,6 +888,10 @@ export const CalendarInvite = ({
     // the user something failed "while importing messages".
     const [taskId, setTaskId] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    // Identity and prior value of the in-flight optimistic RSVP, so a task
+    // failure reverts the right entry to what it was before the click.
+    const submittedIdentityRef = useRef<string | null>(null);
+    const submittedPrevResponseRef = useRef<RsvpResponse | null>(null);
     const taskStatus = useTaskStatus(taskId, {
         exhaustedError: t("Could not confirm the calendar update."),
     });
@@ -805,7 +906,7 @@ export const CalendarInvite = ({
                 <ToasterItem type="info">
                     <span className="material-icons">check_circle</span>
                     <span>
-                        {rsvpResponse
+                        {pendingActionIsRsvp
                             ? t("Response saved — the organizer will be notified")
                             : t("Event added to calendar")}
                     </span>
@@ -814,7 +915,23 @@ export const CalendarInvite = ({
         } else if (taskStatus.state === StatusEnum.FAILURE) {
             setTaskId(null);
             setIsSubmitting(false);
-            setRsvpResponse(null);
+            // Revert the optimistic RSVP for the identity we submitted for.
+            if (pendingActionIsRsvp) {
+                const identity = submittedIdentityRef.current;
+                const prev = submittedPrevResponseRef.current;
+                if (identity) {
+                    setRsvpByIdentity((m) => {
+                        const next = { ...m };
+                        if (prev == null) {
+                            delete next[identity];
+                        } else {
+                            next[identity] = prev;
+                        }
+                        return next;
+                    });
+                }
+            }
+            setPendingActionIsRsvp(false);
             addToast(
                 <ToasterItem type="error">
                     <span className="material-icons">error</span>
@@ -822,13 +939,15 @@ export const CalendarInvite = ({
                 </ToasterItem>,
             );
         }
-    }, [taskStatus, rsvpResponse, t]);
+    }, [taskStatus, pendingActionIsRsvp, t]);
 
     const handleRsvp = useCallback(
         async (response: RsvpResponse) => {
             if (!mailboxId || !icsContent || isPending) return;
 
+            const identity = activeIdentity;
             setIsSubmitting(true);
+            setPendingActionIsRsvp(true);
             try {
                 const result = await fetchAPI<RsvpApiResponse>(
                     `/api/v1.0/mailboxes/${mailboxId}/calendar/rsvp/`,
@@ -842,10 +961,17 @@ export const CalendarInvite = ({
                         }),
                     },
                 );
-                setRsvpResponse(response);
+                // Optimistically reflect the choice for the selected
+                // identity; reverted on task failure.
+                submittedIdentityRef.current = identity;
+                setRsvpByIdentity((prev) => {
+                    submittedPrevResponseRef.current = prev[identity] ?? null;
+                    return { ...prev, [identity]: response };
+                });
                 setTaskId(result.data.task_id);
             } catch {
                 setIsSubmitting(false);
+                setPendingActionIsRsvp(false);
                 addToast(
                     <ToasterItem type="error">
                         <span>{t("An unexpected error occurred.")}</span>
@@ -853,13 +979,14 @@ export const CalendarInvite = ({
                 );
             }
         },
-        [mailboxId, icsContent, effectiveCalendarId, isPending, t],
+        [mailboxId, icsContent, effectiveCalendarId, isPending, activeIdentity, t],
     );
 
     const handleAddToCalendar = useCallback(async () => {
         if (!mailboxId || !icsContent || isPending) return;
 
         setIsSubmitting(true);
+        setPendingActionIsRsvp(false);
         try {
             const result = await fetchAPI<RsvpApiResponse>(
                 `/api/v1.0/mailboxes/${mailboxId}/calendar/add/`,
@@ -872,7 +999,6 @@ export const CalendarInvite = ({
                     }),
                 },
             );
-            setRsvpResponse(null);
             setTaskId(result.data.task_id);
         } catch {
             setIsSubmitting(false);
@@ -1018,6 +1144,15 @@ export const CalendarInvite = ({
                 </div>
             );
         }
+        // Only nudge the user toward a different calendar when there *is*
+        // one that could RSVP — otherwise the hint would point at a
+        // non-existent option. ``canRsvpFromSelected`` already excludes
+        // cancellations via the unmount of ``RsvpButtons``; here we also
+        // skip the hint on cancellations since RSVP isn't meaningful.
+        const showRsvpHint =
+            !canRsvpFromSelected
+            && anyCalendarMatchesAttendee
+            && !isCancellation;
         return (
             <div className="calendar-invite__connection">
                 <CalendarChooser
@@ -1027,11 +1162,11 @@ export const CalendarInvite = ({
                     calendarsWebUrl={calendarsWebUrl}
                 />
                 <div className="calendar-invite__connection-actions">
-                    {isMailboxAttendee && (
+                    {canRsvpFromSelected && (
                         <RsvpButtons
                             onRespond={handleRsvp}
                             isPending={isPending || !icsContent}
-                            currentResponse={rsvpResponse}
+                            currentResponse={currentResponse}
                             isCancellation={isCancellation}
                         />
                     )}
@@ -1051,6 +1186,16 @@ export const CalendarInvite = ({
                         {t("Add to calendar")}
                     </Button>
                 </div>
+                {showRsvpHint && (
+                    <p className="calendar-invite__rsvp-hint" role="note">
+                        <Icon name="info" type={IconType.OUTLINED} />
+                        <span>
+                            {t(
+                                "Pick a calendar that matches one of the invitees to respond.",
+                            )}
+                        </span>
+                    </p>
+                )}
             </div>
         );
     };

@@ -282,12 +282,15 @@ class CalendarConflictsView(CalDAVChannelMixin, APIView):
                     "conflicts": drf_serializers.ListField(
                         child=drf_serializers.DictField()
                     ),
-                    "existing_partstat": drf_serializers.CharField(
-                        allow_null=True,
+                    "existing_partstats": drf_serializers.DictField(
+                        child=drf_serializers.CharField(),
                         help_text=(
-                            "PARTSTAT of the requesting mailbox on the prior "
-                            "copy of ``exclude_uid``, if such a copy exists. "
-                            "Lets the UI pre-select the user's prior RSVP."
+                            "PARTSTAT per attendee identity (calendar owner "
+                            "email, lowercased) on the prior copy of "
+                            "``exclude_uid``. Lets the UI pre-select the right "
+                            "prior RSVP for the *selected* calendar when a "
+                            "mailbox can act through several attendee-owned "
+                            "calendars."
                         ),
                     ),
                 },

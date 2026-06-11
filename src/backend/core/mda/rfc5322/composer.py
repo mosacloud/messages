@@ -477,6 +477,20 @@ def create_attachment_part(  # pylint: disable=too-many-return-statements
     content_id = attachment.get("cid")
     maintype, subtype = _split_content_type(content_type)
 
+    # Defensive relabel for message/delivery-status — the one media type whose
+    # email.generator handler (_handle_message_delivery_status) assumes a
+    # structured (list) payload and crashes on the flat byte string set_content
+    # produces, iterating it character by character until it hits
+    # "'str' object has no attribute 'policy'" and aborting the whole compose.
+    # It is never a legitimate opaque-bytes attachment (DSN/bounce archives are
+    # the only source); the bytes are RFC822-style text, so text/plain keeps
+    # them readable and intact. No other attachment type reaches a payload-
+    # structured generator branch, so nothing else is affected.
+    # MIME types are case-insensitive (RFC 2045), so normalize before matching
+    # to catch variants like "Message/Delivery-Status".
+    if (maintype.lower(), subtype.lower()) == ("message", "delivery-status"):
+        maintype, subtype = "text", "plain"
+
     try:
         part = MIMEPart(policy=_POLICY)
         kwargs: Dict[str, Any] = {
