@@ -2583,3 +2583,57 @@ class ProvisioningMailDomainSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
         """This serializer is only used to validate the data, not to create or update."""
+
+
+# Named so drf-spectacular keeps the request component as
+# "ThreadBulkDeleteRequest" (the old inline_serializer name), leaving the
+# generated frontend client untouched.
+# Validating through this serializer (rather than reading request.data by hand)
+# turns a malformed UUID or an unknown scope into a clean 400 instead of a 500
+# raised deep inside the queryset filter.
+class ThreadBulkDeleteRequestSerializer(serializers.Serializer):
+    """Payload for the bulk-delete endpoint: a scope and the threads/messages
+    to permanently delete."""
+
+    # Scopes accepted by the bulk-delete endpoint, mapping each to the queryset
+    # filter selecting the messages whose rows get permanently removed. Only
+    # "draft" is exposed for now: trashed deletion is intentionally not offered
+    # until the product behavior for trashed messages is decided.
+    BULK_DELETE_SCOPE_FILTERS = {"draft": {"is_draft": True}}
+    BULK_DELETE_SCOPES = list(BULK_DELETE_SCOPE_FILTERS)
+
+    scope = serializers.ChoiceField(
+        choices=BULK_DELETE_SCOPES,
+        help_text=(
+            "Which messages to permanently delete. Only 'draft' "
+            "(draft messages) is supported."
+        ),
+    )
+    thread_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        allow_empty=True,
+        default=list,
+        help_text="Threads whose scope-matching messages should be deleted.",
+    )
+    message_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        allow_empty=True,
+        default=list,
+        help_text="Specific messages to delete (still scope-filtered).",
+    )
+
+    def validate(self, attrs):
+        """Require at least one target list to be non-empty."""
+        if not attrs["thread_ids"] and not attrs["message_ids"]:
+            raise serializers.ValidationError(
+                "Provide at least one of thread_ids or message_ids."
+            )
+        return attrs
+
+    def create(self, validated_data):
+        """This serializer is only used to validate the data, not to create or update."""
+
+    def update(self, instance, validated_data):
+        """This serializer is only used to validate the data, not to create or update."""

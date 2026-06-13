@@ -133,7 +133,10 @@ const ThreadViewComponent = ({ threadItems, mailboxId, thread, showTrashedMessag
     const debouncedFlushMentions = useDebounceCallback(flushPendingMentions, 150);
     const isThreadTrashed = stats.trashed === stats.total;
     const isThreadArchived = stats.archived === stats.total;
-    const isThreadSender = messages?.some((m) => m.is_sender);
+    // Talk mode (left/right alternating layout) only makes sense for an actual
+    // back-and-forth: at least one received message AND at least one truly sent
+    // one. A draft doesn't count as sent, so a lone draft stays full-width.
+    const isTalkMode = messages?.some((m) => !m.is_sender) && messages?.some((m) => m.is_sender && !m.is_draft);
     const latestMessage = messages.reduce((acc, message) => {
         if (message!.created_at && acc!.created_at && message!.created_at > acc!.created_at) {
             return message;
@@ -314,7 +317,7 @@ const ThreadViewComponent = ({ threadItems, mailboxId, thread, showTrashedMessag
     }, [thread.id]);
 
     return (
-        <div id={SKIP_LINK_TARGET_ID} className={clsx("thread-view", { "thread-view--talk": isThreadSender })} ref={rootRef}>
+        <div id={SKIP_LINK_TARGET_ID} className={clsx("thread-view", { "thread-view--talk": isTalkMode })} ref={rootRef}>
             <div className="thread-view__sticky-container" ref={stickyContainerRef}>
                 <header className="thread-view__header">
                     <div className="thread-view__header__top">

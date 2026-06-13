@@ -12,6 +12,7 @@ import ViewHelper from "@/features/utils/view-helper";
 import useArchive from "@/features/message/use-archive";
 import useSpam from "@/features/message/use-spam";
 import useTrash from "@/features/message/use-trash";
+import useDeleteDrafts from "@/features/message/use-delete-drafts";
 import useStarred from "@/features/message/use-starred";
 import useCanEditThreads from "@/features/message/use-can-edit-threads";
 import { ThreadPanelFilter } from "./thread-panel-filter";
@@ -38,6 +39,7 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
     const { markAsReadAt } = useRead();
     const { markAsArchived, markAsUnarchived } = useArchive();
     const { markAsTrashed, markAsUntrashed } = useTrash();
+    const { deleteDrafts } = useDeleteDrafts();
     const { markAsSpam, markAsNotSpam } = useSpam();
     const { markAsStarred, markAsUnstarred } = useStarred();
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -116,9 +118,10 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
     const canArchive = canEditSelection && !isSpamView && !isTrashedView && !isDraftsView;
     const canReportSpam = canEditSelection && !isTrashedView && !isSentView && !isDraftsView;
     const canTrash = canEditSelection && !isDraftsView;
+    const canDeleteDrafts = canEditSelection && isDraftsView;
     const canManageLabels = useAbility(Abilities.CAN_MANAGE_MAILBOX_LABELS, selectedMailbox);
     const canAssignLabel = canManageLabels && !isSpamView && !isTrashedView && !isDraftsView;
-    const hasSelectionActions = canArchive || canReportSpam || canTrash || canAssignLabel;
+    const hasSelectionActions = canArchive || canReportSpam || canTrash || canDeleteDrafts || canAssignLabel;
 
     const countLabel = useMemo(() => {
         if (isSearch) {
@@ -277,6 +280,26 @@ const ThreadPanelTitle = ({ selectedThreadIds, isAllSelected, isSomeSelected, is
                                         variant="tertiary"
                                         size="nano"
                                         aria-label={trashLabel}
+                                    />
+                                </Tooltip>
+                            )}
+                            {canDeleteDrafts && (
+                                <Tooltip content={t('Delete drafts')} className={selectedThreadIds.size === 0 ? 'hidden' : ''}>
+                                    <Button
+                                        onClick={() => {
+                                            deleteDrafts({
+                                                threadIds: threadIdsToMark,
+                                                onSuccess: () => {
+                                                    unselectThread();
+                                                    onClearSelection();
+                                                }
+                                            });
+                                        }}
+                                        disabled={selectedThreadIds.size === 0}
+                                        icon={<Icon name="edit_off" type={IconType.OUTLINED} />}
+                                        variant="tertiary"
+                                        size="nano"
+                                        aria-label={t('Delete draft')}
                                     />
                                 </Tooltip>
                             )}

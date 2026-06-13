@@ -3620,6 +3620,78 @@
                 }
             }
         },
+        "/api/v1.0/mailboxes/{mailbox_id}/message-templates/{id}/render/": {
+            "get": {
+                "operationId": "mailboxes_message_templates_render_retrieve",
+                "description": "Render the template's html and text bodies with placeholders resolved from the mailbox and the authenticated user (name, user_name, custom attributes). When a draft message_id is provided, message-level placeholders (recipient_name) are also resolved. Unresolved placeholders keep their {placeholder} token.",
+                "summary": "Render a message template",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    },
+                    {
+                        "in": "path",
+                        "name": "mailbox_id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "required": true
+                    },
+                    {
+                        "in": "query",
+                        "name": "message_id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "Optional draft id used to resolve message-level placeholders. Ignored unless it references a draft owned by this mailbox."
+                    }
+                ],
+                "tags": [
+                    "mailboxes"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "description": "The rendered template bodies.",
+                                    "properties": {
+                                        "html_body": {
+                                            "type": "string"
+                                        },
+                                        "text_body": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "html_body",
+                                        "text_body"
+                                    ],
+                                    "example": {
+                                        "html_body": "<p>John Doe</p>",
+                                        "text_body": "John Doe"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
         "/api/v1.0/mailboxes/{mailbox_id}/message-templates/available/": {
             "get": {
                 "operationId": "mailboxes_message_templates_available_list",
@@ -6468,6 +6540,80 @@
                             }
                         },
                         "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1.0/threads/bulk-delete/": {
+            "post": {
+                "operationId": "threads_bulk_delete_create",
+                "description": "Permanently delete (hard-delete) draft messages within the given accessible and editable threads. A thread emptied by the deletion is removed; otherwise its stats are recomputed.",
+                "tags": [
+                    "threads"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ThreadBulkDeleteRequestRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ThreadBulkDeleteRequestRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean"
+                                        },
+                                        "deleted_count": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": [
+                                        "success",
+                                        "deleted_count"
+                                    ]
+                                }
+                            }
+                        },
+                        "description": "Messages permanently deleted."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "detail": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "description": "Missing or invalid parameters."
+                    },
+                    "401": {
+                        "description": "Authentication credentials were not provided or are invalid."
+                    },
+                    "403": {
+                        "description": "You do not have permission to delete drafts in one or more targeted threads."
                     }
                 }
             }
@@ -9594,6 +9740,13 @@
                 "type": "string",
                 "description": "* `ACCEPTED` - ACCEPTED\n* `DECLINED` - DECLINED\n* `TENTATIVE` - TENTATIVE"
             },
+            "ScopeEnum": {
+                "enum": [
+                    "draft"
+                ],
+                "type": "string",
+                "description": "* `draft` - draft"
+            },
             "ScopeLevelEnum": {
                 "enum": [
                     "global",
@@ -10023,6 +10176,39 @@
                 "enum": [
                     "viewer",
                     "editor"
+                ]
+            },
+            "ThreadBulkDeleteRequestRequest": {
+                "type": "object",
+                "description": "Payload for the bulk-delete endpoint: a scope and the threads/messages\nto permanently delete.",
+                "properties": {
+                    "scope": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/ScopeEnum"
+                            }
+                        ],
+                        "description": "Which messages to permanently delete. Only 'draft' (draft messages) is supported.\n\n* `draft` - draft"
+                    },
+                    "thread_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "Threads whose scope-matching messages should be deleted."
+                    },
+                    "message_ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "Specific messages to delete (still scope-filtered)."
+                    }
+                },
+                "required": [
+                    "scope"
                 ]
             },
             "ThreadEvent": {

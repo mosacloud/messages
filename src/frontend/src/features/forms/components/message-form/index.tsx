@@ -1,7 +1,7 @@
 import { Icon, IconType, Spinner } from "@gouvfr-lasuite/ui-kit";
 import { Button, Tooltip, useModals } from "@gouvfr-lasuite/cunningham-react";
 import { clsx } from "clsx";
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef, forwardRef, useImperativeHandle } from "react";
 import { FormProvider, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import z from "zod";
@@ -27,6 +27,7 @@ import { useUrlSearchParams } from "@/hooks/use-url-search-params";
 import { useConfig } from "@/features/providers/config";
 import { DriveFile } from "./drive-attachment-picker";
 import { useAttachments } from "@/features/forms/hooks/use-attachments";
+import { MessageComposerHelper } from "@/features/utils/composer-helper";
 
 export type MessageFormMode = "new" | "reply" | "reply_all" | "forward";
 
@@ -39,6 +40,10 @@ interface MessageFormProps {
     // For new message mode
     showSubject?: boolean;
     onSuccess?: () => void;
+    // Notifies the parent whether the current user may delete this draft, so a
+    // surrounding surface (e.g. the draft header menu) can mirror the same
+    // mailbox + thread permission check used to gate the in-form delete button.
+    onDeletableChange?: (deletable: boolean) => void;
 }
 
 // Zod schema for form validation
@@ -71,15 +76,23 @@ const messageFormSchema = z.object({
 
 export type MessageFormValues = z.infer<typeof messageFormSchema>;
 
+// Imperative handle so a parent (e.g. the draft compose surface header) can
+// trigger the form's coordinated draft deletion instead of duplicating its
+// autosave-aware logic.
+export type MessageFormHandle = {
+    deleteDraft: () => void;
+};
+
 const DRAFT_TOAST_ID = "MESSAGE_FORM_DRAFT_TOAST";
 
-export const MessageForm = ({
+export const MessageForm = forwardRef<MessageFormHandle, MessageFormProps>(({
     parentMessage,
     mode = "new",
     onClose,
     draftMessage,
-    onSuccess
-}: MessageFormProps) => {
+    onSuccess,
+    onDeletableChange
+}, ref) => {
     const { t } = useTranslation();
     const navigate = useNavigate();
     const location = useLocation();
@@ -261,6 +274,9 @@ export const MessageForm = ({
     const canSendMessages = useAbility(Abilities.CAN_SEND_MESSAGES, currentSender!) && canEditThread;
     const canWriteMessages = useAbility(Abilities.CAN_WRITE_MESSAGES, currentSender!) && canEditThread;
     const canChangeSender = !draft || canWriteMessages;
+    // Same gate as the in-form delete button below: requires write rights on the
+    // sender mailbox AND edit rights on the thread, and an existing draft.
+    const canDeleteDraft = canWriteMessages && !!draft;
 
     const initialAttachments = useMemo((): (Attachment | DriveFile)[] => {
         // Include parent message attachments when forwarding
@@ -320,7 +336,10 @@ export const MessageForm = ({
         }
     });
 
-    const handleDraftMutationSuccess = () => {
+    // Only surfaced on draft creation. Subsequent updates are intentionally
+    // silent: the in-form "saved at" label already conveys the save state, and
+    // a toast flashing on every autosave is more distracting than informative.
+    const notifyDraftCreated = () => {
         addToast(
             <ToasterItem type="info">
                 <span>{t("Draft saved")}</span>
@@ -349,14 +368,12 @@ export const MessageForm = ({
                 }
                 invalidateMailbox();
                 invalidateThreadsStats();
-                handleDraftMutationSuccess();
+                notifyDraftCreated();
             }
         }
     });
 
-    const draftUpdateMutation = useDraftUpdate2({
-        mutation: { onSuccess: handleDraftMutationSuccess }
-    });
+    const draftUpdateMutation = useDraftUpdate2();
 
 
     const deleteMessageMutation = useMessagesDestroy();
@@ -407,6 +424,17 @@ export const MessageForm = ({
             onError: startAutoSave,
         });
     }
+
+    useImperativeHandle(ref, () => ({
+        deleteDraft: () => {
+            const id = draftRef.current?.id;
+            if (id) void handleDeleteMessage(id);
+        },
+    }));
+
+    useEffect(() => {
+        onDeletableChange?.(canDeleteDraft);
+    }, [canDeleteDraft, onDeletableChange]);
 
     /**
      * If the user changes the message sender, we need to delete the draft,
@@ -461,8 +489,36 @@ export const MessageForm = ({
     };
 
     /**
+     * Whether the form holds genuine user content worth persisting as a draft.
+     * Recipients alone do not trigger creation by design: only a subject, body
+     * or attachment does.
+     *
+     * Everything is measured against the initial template (`formDefaultValues`),
+     * not against zero, so reply/forward behave like a new message: the prefilled
+     * "Re:"/"Fwd:" subject and the attachments carried over from a forwarded
+     * message do not, on their own, create a draft. The body is checked through
+     * the editor blocks (not its raw length), and `hasUserBodyContent` ignores
+     * the auto-inserted signature and quoted-message blocks — so a pristine
+     * composer counts as empty in every mode.
+     */
+    const hasUserDraftContent = (data: MessageFormValues): boolean => {
+        const subjectChanged =
+            data.subject.trim() !== (formDefaultValues.subject ?? "").trim();
+        const initialAttachmentCount =
+            (formDefaultValues.attachments?.length ?? 0) +
+            (formDefaultValues.driveAttachments?.length ?? 0);
+        const currentAttachmentCount =
+            (data.attachments?.length ?? 0) + (data.driveAttachments?.length ?? 0);
+        return (
+            subjectChanged
+            || currentAttachmentCount > initialAttachmentCount
+            || MessageComposerHelper.hasUserBodyContent(data.messageDraftBody)
+        )
+    }
+
+    /**
      * Update or create a draft message if any field to change.
-     * When `force` is true, bypass the dirty-fields check (used by ensureDraft).
+     * When `force` is true, bypass the content check (used by ensureDraft).
      * Returns the draft id on success.
      */
     const saveDraftInner = async (force = false): Promise<string | undefined> => {
@@ -471,20 +527,16 @@ export const MessageForm = ({
         const data = form.getValues();
         if (!canWriteMessages) return draft?.id;
 
+        // Once a draft exists, keep the reactive behavior (save on any dirty
+        // field, plus the 30s timer). Before a draft exists, only create one
+        // when the user has actually entered content: relying on `dirtyFields`
+        // here is both unreliable (it lags behind the synchronous form values,
+        // hence the "save only on the second blur" bug) and too eager (the
+        // composer marks `messageDraftBody` dirty on mount with an empty doc).
         const saveDraftNeeded = force || (
-            Object.keys(form.formState.dirtyFields).length > 0
-            && (
-                !!draft || (
-                    data.subject.length > 0
-                    || data.to.length > 0
-                    || (data.cc?.length ?? 0) > 0
-                    || (data.bcc?.length ?? 0) > 0
-                    || (data.messageDraftBody?.length ?? 0) > 0
-                    || (data.attachments?.length ?? 0) > 0
-                    || (data.driveAttachments?.length ?? 0) > 0
-                    || (data.signatureId?.length ?? 0) > 0
-                )
-            )
+            draftRef.current
+                ? Object.keys(form.formState.dirtyFields).length > 0
+                : hasUserDraftContent(data)
         )
 
         if (!saveDraftNeeded) {
@@ -535,7 +587,9 @@ export const MessageForm = ({
                 return draftRef.current?.id;
             } finally {
                 saveDraftPromiseRef.current = null;
-                startAutoSave();
+                // Only resume the periodic auto-save once a draft actually
+                // exists; an empty new-message form must not be polled.
+                if (draftRef.current) startAutoSave();
             }
         })();
 
@@ -619,8 +673,11 @@ export const MessageForm = ({
         }
     }
 
+    // The periodic auto-save only runs while a draft exists. Before that, the
+    // draft is created on demand from real user content, not on a timer.
     useEffect(() => {
-        startAutoSave();
+        if (draft) startAutoSave();
+        else stopAutoSave();
         return () => stopAutoSave();
     }, [draft]);
 
@@ -825,8 +882,8 @@ export const MessageForm = ({
                         </Tooltip>
                     )}
                     {
-                        canWriteMessages && draft && (
-                            <Tooltip content={t("Delete draft")}>
+                        canDeleteDraft && (
+                            <Tooltip content={t("Delete draft")} placement="top">
                                 <Button
                                     type="button"
                                     variant="tertiary"
@@ -841,4 +898,6 @@ export const MessageForm = ({
             </form>
         </FormProvider>
     );
-};
+});
+
+MessageForm.displayName = "MessageForm";
