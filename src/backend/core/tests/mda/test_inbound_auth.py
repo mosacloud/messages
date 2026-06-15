@@ -49,33 +49,86 @@ class TestCheckInboundAuthenticationDisabled:
 
 
 class TestCheckInboundAuthenticationNative:
-    """Native mode verifies DKIM locally and ignores DMARC."""
+    """Native mode verifies DKIM locally, requires From/DKIM alignment, and
+    ignores DMARC."""
+
+    # parsed_email carrying a From: whose domain is ``example.com``.
+    PARSED_FROM = {"from": [{"email": "sender@example.com"}]}
 
     @patch("core.mda.inbound_auth.verify_message_dkim")
-    def test_dkim_pass(self, mock_verify):
-        mock_verify.return_value = True
+    def test_dkim_pass_aligned(self, mock_verify):
+        """Valid signature whose d= matches the From domain -> verified."""
+        mock_verify.return_value = "example.com"
         config = {"inbound_auth": "native"}
-        assert check_inbound_authentication(RAW_EMAIL, {}, config) is None
+        assert check_inbound_authentication(RAW_EMAIL, self.PARSED_FROM, config) is None
+
+    @patch("core.mda.inbound_auth.verify_message_dkim")
+    def test_dkim_pass_unaligned_unverified(self, mock_verify):
+        """Valid signature from an unrelated domain (spoofed From) -> 'none'.
+
+        This is the spoofing case: From: sender@example.com but the message is
+        DKIM-signed with d=attacker.com. Raw DKIM passes, but the signer is not
+        the From domain, so it must NOT be shown as verified.
+        """
+        mock_verify.return_value = "attacker.com"
+        config = {"inbound_auth": "native"}
+        assert (
+            check_inbound_authentication(RAW_EMAIL, self.PARSED_FROM, config)
+            == VERDICT_UNVERIFIED
+        )
+
+    @patch("core.mda.inbound_auth.verify_message_dkim")
+    def test_dkim_subdomain_not_strictly_aligned(self, mock_verify):
+        """Strict alignment: d=mail.example.com does NOT match From example.com."""
+        mock_verify.return_value = "mail.example.com"
+        config = {"inbound_auth": "native"}
+        assert (
+            check_inbound_authentication(RAW_EMAIL, self.PARSED_FROM, config)
+            == VERDICT_UNVERIFIED
+        )
+
+    @patch("core.mda.inbound_auth.verify_message_dkim")
+    def test_alignment_is_case_insensitive(self, mock_verify):
+        """From: Sender@Example.COM aligns with d=example.com."""
+        mock_verify.return_value = "example.com"
+        config = {"inbound_auth": "native"}
+        parsed = {"from": [{"email": "Sender@Example.COM"}]}
+        assert check_inbound_authentication(RAW_EMAIL, parsed, config) is None
+
+    @patch("core.mda.inbound_auth.verify_message_dkim")
+    def test_no_from_header_unverified(self, mock_verify):
+        """A valid signature with no From: to align against -> can't verify."""
+        mock_verify.return_value = "example.com"
+        config = {"inbound_auth": "native"}
+        assert check_inbound_authentication(RAW_EMAIL, {}, config) == VERDICT_UNVERIFIED
 
     @patch("core.mda.inbound_auth.verify_message_dkim")
     def test_dkim_fail(self, mock_verify):
-        mock_verify.return_value = False
+        """No valid signature (verify returns None) -> 'none'."""
+        mock_verify.return_value = None
         config = {"inbound_auth": "native"}
-        assert check_inbound_authentication(RAW_EMAIL, {}, config) == VERDICT_UNVERIFIED
+        assert (
+            check_inbound_authentication(RAW_EMAIL, self.PARSED_FROM, config)
+            == VERDICT_UNVERIFIED
+        )
 
     @patch("core.mda.inbound_auth.verify_message_dkim")
     def test_dkim_error_unverified(self, mock_verify):
         """Transient errors -> cannot verify -> "none" (not forgery)."""
         mock_verify.side_effect = RuntimeError("dns broken")
         config = {"inbound_auth": "native"}
-        assert check_inbound_authentication(RAW_EMAIL, {}, config) == VERDICT_UNVERIFIED
+        assert (
+            check_inbound_authentication(RAW_EMAIL, self.PARSED_FROM, config)
+            == VERDICT_UNVERIFIED
+        )
 
     @patch("core.mda.inbound_auth.verify_message_dkim")
     def test_dmarc_header_ignored(self, mock_verify):
-        """Native doesn't look at DMARC; passing DKIM alone is enough."""
-        mock_verify.return_value = True
+        """Native doesn't look at DMARC; an aligned passing DKIM is enough."""
+        mock_verify.return_value = "example.com"
         parsed = {
-            "ext": {"headersBlocks": [{"authentication-results": ["mx; dmarc=fail"]}]}
+            "from": [{"email": "sender@example.com"}],
+            "ext": {"headersBlocks": [{"authentication-results": ["mx; dmarc=fail"]}]},
         }
         config = {"inbound_auth": "native"}
         assert check_inbound_authentication(RAW_EMAIL, parsed, config) is None
@@ -83,10 +136,13 @@ class TestCheckInboundAuthenticationNative:
     @patch("core.mda.inbound_auth.verify_message_dkim")
     def test_dmarc_rspamd_ignored(self, mock_verify):
         """Native ignores any rspamd_result that was passed in."""
-        mock_verify.return_value = True
+        mock_verify.return_value = "example.com"
         rspamd = {"symbols": {"DMARC_POLICY_REJECT": {"score": 5}}}
         config = {"inbound_auth": "native"}
-        assert check_inbound_authentication(RAW_EMAIL, {}, config, rspamd) is None
+        assert (
+            check_inbound_authentication(RAW_EMAIL, self.PARSED_FROM, config, rspamd)
+            is None
+        )
 
 
 class TestCheckInboundAuthenticationRspamd:
@@ -293,12 +349,30 @@ class TestCheckInboundAuthenticationResults:
         assert check_inbound_authentication(b"", parsed, config) == VERDICT_UNVERIFIED
 
     def test_trusted_block_used(self):
-        """Default trusted_relays=1 -> block 1 is trusted.
+        """trusted_relays=1 -> block 1 (one configured relay hop) is trusted.
 
         Block 0 (our own prepend) has no AR; block 1 (the first
         upstream relay) carries ``dkim=pass``. ``headers_blocks`` groups
         them by walking the ``headers`` list in order, closing each
         block at the next ``Received``.
+        """
+        config = {"inbound_auth": "authentication-results", "trusted_relays": 1}
+        parsed = {
+            "headers": [
+                {"name": "Received", "value": "from our-mta"},
+                {"name": "Authentication-Results", "value": "mx; dkim=pass"},
+                {"name": "Received", "value": "from upstream"},
+            ]
+        }
+        assert check_inbound_authentication(b"", parsed, config) is None
+
+    def test_default_trusts_only_our_block(self):
+        """Default (no trusted_relays) -> only block 0 is trusted.
+
+        The same payload as ``test_trusted_block_used`` but without an
+        explicit ``trusted_relays`` must NOT honour block 1's ``dkim=pass``:
+        a sender can forge that block, so the secure default of 0 ignores it
+        and the verdict collapses to "unverified".
         """
         config = {"inbound_auth": "authentication-results"}
         parsed = {
@@ -308,7 +382,7 @@ class TestCheckInboundAuthenticationResults:
                 {"name": "Received", "value": "from upstream"},
             ]
         }
-        assert check_inbound_authentication(b"", parsed, config) is None
+        assert check_inbound_authentication(b"", parsed, config) == VERDICT_UNVERIFIED
 
     def test_dkim_fail_dominates_pass_across_values(self):
         """Multiple AR values in one block: fail wins -> 'none'."""
