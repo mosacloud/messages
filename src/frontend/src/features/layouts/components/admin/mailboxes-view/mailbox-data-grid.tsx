@@ -185,7 +185,7 @@ export const AdminMailboxDataGrid = ({ domain, pagination, searchQuery }: AdminU
                     ? new Date(row.last_accessed_at).toLocaleDateString(i18n.resolvedLanguage)
                     : <EmptyCell />,
         },
-        ...(isMandatoryTotpEnabled ? [{
+        ...(isMandatoryTotpEnabled && domain.identity_sync ? [{
             id: "mandatory_totp",
             headerName: t("Mandatory 2FA"),
             size: 160,
@@ -240,7 +240,7 @@ export const AdminMailboxDataGrid = ({ domain, pagination, searchQuery }: AdminU
             renderCell: ({ row }: { row: MailboxAdmin }) => <ActionsRow
                 onManageAccess={() => handleManageAccess(row)}
                 onResetPassword={row.can_reset_password ? () => handleResetPassword(row) : undefined}
-                onResetTotp={isMandatoryTotpEnabled && row.has_mandatory_totp !== null && row.has_mandatory_totp !== undefined
+                onResetTotp={isMandatoryTotpEnabled && domain.identity_sync && row.has_mandatory_totp !== null && row.has_mandatory_totp !== undefined
                     ? () => handleResetTotp(row)
                     : undefined}
                 onDelete={() => handleDelete(row)}
