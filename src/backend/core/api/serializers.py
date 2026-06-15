@@ -2585,12 +2585,6 @@ class ProvisioningMailDomainSerializer(serializers.Serializer):
         """This serializer is only used to validate the data, not to create or update."""
 
 
-# Named so drf-spectacular keeps the request component as
-# "ThreadBulkDeleteRequest" (the old inline_serializer name), leaving the
-# generated frontend client untouched.
-# Validating through this serializer (rather than reading request.data by hand)
-# turns a malformed UUID or an unknown scope into a clean 400 instead of a 500
-# raised deep inside the queryset filter.
 class ThreadBulkDeleteRequestSerializer(serializers.Serializer):
     """Payload for the bulk-delete endpoint: a scope and the threads/messages
     to permanently delete."""

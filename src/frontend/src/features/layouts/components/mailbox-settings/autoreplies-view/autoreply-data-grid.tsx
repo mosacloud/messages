@@ -170,8 +170,8 @@ export const AutoreplyDataGrid = ({ mailbox }: AutoreplyDataGridProps) => {
             headerName: t("Schedule"),
             size: 240,
             renderCell: ({ row }) => (
-                <div className="flex-row flex-align-center" style={{ gap: "var(--c--globals--spacings--2xs)" }}>
-                    {formatSchedule(t, row.metadata)}
+                <div className="autoreply-schedule-cell">
+                    <span className="autoreply-schedule-cell__range">{formatSchedule(t, row.metadata)}</span>
                     {row.is_active
                         ? row.is_active_autoreply
                             ? <Badge color="success">{t("On going")}</Badge>
@@ -179,7 +179,6 @@ export const AutoreplyDataGrid = ({ mailbox }: AutoreplyDataGridProps) => {
                         : null
                     }
                 </div>
-
             ),
         },
         {
