@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { useUploadImageAsBase64 } from '@/features/blocknote/image-block/use-upload-image-as-base64';
 import { useImageObjectUrls } from '@/features/blocknote/image-block/use-image-object-urls';
 import { EmailExporter } from '@/features/blocknote/email-exporter';
+import { blocksToMarkdown } from '@/features/blocknote/markdown-exporter';
 import { useConfig } from '@/features/providers/config';
 import MailHelper from '@/features/utils/mail-helper';
 import { backfillTemplateVariableContent, createBlockNoteDictionary, createNonImageFileBlockers } from '@/features/blocknote/utils';
@@ -135,7 +136,7 @@ export const useBase64Composer = <
     }, [editor, form, resolveObjectUrls]);
 
     const exportContent = useCallback(async () => {
-        const markdown = await editor.blocksToMarkdownLossy(editor.document);
+        const markdown = await blocksToMarkdown(editor, editor.document);
         const html = emailExporter.exportBlocks(editor.document, editor.domElement ?? null);
         return {
             htmlBody: resolveObjectUrls(html),

@@ -13,6 +13,7 @@ import {
   useConfirmBeforeClose,
   useConfirmUnsavedChanges,
 } from "@/features/hooks/use-confirm-before-close";
+import { useRestoreFocusOnNestedModalClose } from "@/features/hooks/use-restore-focus-on-nested-modal-close";
 import { MailboxSettingsGeneralTab } from "./general-tab";
 import { MailboxSettingsAccessTab } from "./access-tab";
 import { MailboxSettingsSignaturesTab } from "./signatures-tab";
@@ -87,6 +88,11 @@ export const ModalMailboxSettings = ({
   const [isActiveTabDirty, setIsActiveTabDirty] = useState(false);
   const confirmUnsavedChanges = useConfirmUnsavedChanges();
   const guardedOnClose = useConfirmBeforeClose(isActiveTabDirty, onClose);
+
+  // The unsaved-changes confirmation (a stacked Cunningham modal) strands focus
+  // on <body> when it closes; hand it back to this modal so keyboard/SR users
+  // keep a focus anchor and Escape keeps working.
+  useRestoreFocusOnNestedModalClose(isOpen);
 
   const settingsMailbox =
     settingsMailboxes.find((mailbox) => mailbox.id === selectedMailboxId) ??
