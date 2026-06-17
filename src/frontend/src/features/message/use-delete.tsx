@@ -1,6 +1,7 @@
 import { useThreadsBulkDeleteCreate } from "@/features/api/gen";
 import { Message, ScopeEnum, Thread } from "@/features/api/gen/models";
 import { addToast, ToasterItem } from "../ui/components/toaster";
+import { useMailboxContext } from "../providers/mailbox";
 
 type DeleteOnSuccess = (deletedCount?: number) => void;
 
@@ -30,10 +31,12 @@ const extractDeletedCount = (response: { data: unknown }): number | undefined =>
  * !!! Do not use this hook directly, use the specialized hooks instead !!!
  */
 const useDelete = (scope: ScopeEnum, options?: UseDeleteOptions) => {
+    const { unpinThreads } = useMailboxContext();
     const { mutate, status } = useThreadsBulkDeleteCreate({
         mutation: {
             onSuccess: (response, { data }) => {
                 const deletedCount = extractDeletedCount(response);
+                unpinThreads(data.thread_ids ?? []);
                 options?.onSuccess?.(deletedCount);
                 if (options?.showToast !== false && options?.toastMessage) {
                     const submittedCount =
