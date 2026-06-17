@@ -13,6 +13,7 @@ from django.utils import timezone
 import rest_framework as drf
 from jmap_email import (
     compose_email,
+    find_header,
     first_address_email,
     parse_email,
 )
@@ -104,6 +105,13 @@ def validate_attachments_size(total_size: int, message_id: str) -> None:
                 )
             }
         )
+
+
+# When a message has no To recipient, emit a "To:" header using empty-group
+# syntax (RFC 4356 §3). A missing To header is a common anti-spam negative
+# signal (and resembles a DKIM-replay shape), so this keeps such sends —
+# typically Bcc-only — looking legitimate without disclosing anyone.
+UNDISCLOSED_RECIPIENTS_TO_HEADER = b"To: undisclosed-recipients:;"
 
 
 def compose_and_sign_mime(
@@ -198,6 +206,11 @@ def compose_and_sign_mime(
         in_reply_to=message.parent.mime_id if message.parent else None,
         prepend_headers=prepend_headers,
     )
+
+    # Bcc/Cc-only send: the composed MIME has no To header. Add the empty-group
+    # placeholder before signing so it is covered by DKIM.
+    if not mime_data["to"]:
+        raw_mime = UNDISCLOSED_RECIPIENTS_TO_HEADER + b"\r\n" + raw_mime
 
     dkim_header = sign_message_dkim(raw_mime, mailbox.domain)
     if dkim_header:
@@ -311,6 +324,12 @@ def prepare_outbound_message(
         # atomic for just the Blob INSERT + FK-establishing save —
         # this keeps the per-sha advisory lock taken inside
         # ``create_blob`` held for ms, not for the duration of DKIM.
+        # Caller-supplied MIME may also lack a To header (e.g. Bcc-only); add
+        # the placeholder before signing. ``parse_email`` returns None on
+        # unparseable input (already rejected upstream by the submit view).
+        parsed = parse_email(raw_mime)
+        if parsed is not None and not find_header(parsed, "to"):
+            raw_mime = UNDISCLOSED_RECIPIENTS_TO_HEADER + b"\r\n" + raw_mime
         signed_mime = _sign_mime(mailbox_sender, raw_mime)
         validate_mime_size(len(signed_mime), message.id)
         message.sender_user = user
