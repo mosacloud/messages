@@ -124,9 +124,11 @@ export const BrandContent = styled.div`
   animation: ${fadeIn} 0.6s ease-out;
 
   img {
+    display: block;
     width: 32rem;
     max-width: 80%;
     height: auto;
+    margin: 0 auto;
   }
 
   @media (prefers-reduced-motion: reduce) {
