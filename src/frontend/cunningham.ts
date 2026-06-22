@@ -18,7 +18,7 @@ tokens.themes.default.globals = {
 };
 
 // Upstream component overrides
-Object.keys(tokens.themes).forEach((key) => {
+(Object.keys(tokens.themes) as Array<keyof typeof tokens.themes>).forEach((key) => {
   tokens.themes[key].components = {
     ...tokens.themes[key].components,
     modal: {
