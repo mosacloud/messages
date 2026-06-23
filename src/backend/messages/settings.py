@@ -944,6 +944,9 @@ class Base(Configuration):
     OIDC_AUTH_REQUEST_EXTRA_PARAMS = values.DictValue(
         {}, environ_name="OIDC_AUTH_REQUEST_EXTRA_PARAMS", environ_prefix=None
     )
+    OIDC_AUTH_REQUEST_FORWARDED_PARAMS = values.ListValue(
+        ["login_hint"], environ_name="OIDC_AUTH_REQUEST_FORWARDED_PARAMS", environ_prefix=None
+    )
     OIDC_RP_SCOPES = values.Value(
         "openid email", environ_name="OIDC_RP_SCOPES", environ_prefix=None
     )

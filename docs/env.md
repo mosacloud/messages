@@ -208,6 +208,7 @@ blob stays in PG.
 | `OIDC_FALLBACK_TO_EMAIL_FOR_IDENTIFICATION` | `True` | Use email as fallback identifier | Optional |
 | `OIDC_ALLOW_DUPLICATE_EMAILS` | `False` | Allow duplicate emails (⚠️ Security risk) | Optional |
 | `OIDC_AUTH_REQUEST_EXTRA_PARAMS` | `{"acr_values": "eidas1"}` | Extra parameters for auth requests | Optional |
+| `OIDC_AUTH_REQUEST_FORWARDED_PARAMS` | `["login_hint"]` | Forwarded parameters for auth requests | Optional |
 
 ### User Mapping (⚠️ DEPRECATED)
 _Those settings are deprecated and will be removed in the future._
