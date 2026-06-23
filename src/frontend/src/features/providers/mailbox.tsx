@@ -726,6 +726,8 @@ export const MailboxProvider = ({ children }: PropsWithChildren) => {
     }, [selectedMailbox?.id, searchParams.toString()]);
 
     useEffect(() => {
+        if (!location.pathname.startsWith('/mailbox')) return;
+
         const previousSearch = previousSearchParams?.get('search');
         const currentSearch = searchParams.get('search');
 

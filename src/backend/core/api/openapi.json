@@ -7928,7 +7928,27 @@
                         "description": "date and time at which a record was last updated"
                     },
                     "expected_dns_records": {
-                        "type": "string",
+                        "type": "array",
+                        "nullable": true,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "target": {
+                                    "type": "string"
+                                },
+                                "type": {
+                                    "type": "string"
+                                },
+                                "value": {
+                                    "type": "string"
+                                }
+                            },
+                            "required": [
+                                "target",
+                                "type",
+                                "value"
+                            ]
+                        },
                         "readOnly": true
                     },
                     "mailbox_count": {
@@ -8111,6 +8131,7 @@
                                 "$ref": "#/components/schemas/MailboxRoleChoices"
                             }
                         ],
+                        "nullable": true,
                         "readOnly": true
                     },
                     "count_unread_threads": {
@@ -8421,7 +8442,8 @@
                                 "$ref": "#/components/schemas/Contact"
                             }
                         ],
-                        "readOnly": true
+                        "readOnly": true,
+                        "nullable": true
                     },
                     "last_accessed_at": {
                         "type": "string",
@@ -8511,7 +8533,8 @@
                                 "$ref": "#/components/schemas/Contact"
                             }
                         ],
-                        "readOnly": true
+                        "readOnly": true,
+                        "nullable": true
                     },
                     "last_accessed_at": {
                         "type": "string",
@@ -9975,6 +9998,7 @@
                                 "$ref": "#/components/schemas/ThreadAccessRoleChoices"
                             }
                         ],
+                        "nullable": true,
                         "readOnly": true
                     },
                     "accesses": {
