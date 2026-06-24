@@ -1,3 +1,12 @@
 {
-  "Log in": "Se connecter"
+  "Log in": "Se connecter",
+  "YOU'RE IN": "VOUS UTILISEZ",
+  "JUMP TO": "ALLER VERS",
+  "Home": "Accueil",
+  "Documents": "Documents",
+  "Files": "Fichiers",
+  "Video calls": "Appels vidéo",
+  "Email": "E-mail",
+  "Admin": "Admin",
+  "Switch app": "Changer d'application"
 }

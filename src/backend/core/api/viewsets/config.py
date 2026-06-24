@@ -151,6 +151,12 @@ class ConfigView(drf.views.APIView):
                             "description": "Whether silent OIDC login is enabled",
                             "readOnly": True,
                         },
+                        "APP_URLS": {
+                            "type": "object",
+                            "description": "Root URLs of enabled Mosa apps for the app switcher. Keys: docs, meet, calendar, chat.",
+                            "additionalProperties": {"type": "string"},
+                            "readOnly": True,
+                        },
                     },
                     "required": [
                         "ENVIRONMENT",
@@ -235,5 +241,22 @@ class ConfigView(drf.views.APIView):
                     }
                 }
             )
+
+        # App switcher — only include apps whose URL is configured
+        app_urls = {}
+        for app_id, setting_name in [
+            ("epicentre", "APP_URL_EPICENTRE"),
+            ("docs", "APP_URL_DOCS"),
+            ("drive", "APP_URL_DRIVE"),
+            ("meet", "APP_URL_MEET"),
+            ("calendar", "APP_URL_CALENDAR"),
+            ("chat", "APP_URL_CHAT"),
+            ("commander", "APP_URL_COMMANDER"),
+            ("epicentre", "APP_URL_EPICENTRE"),
+        ]:
+            url = getattr(settings, setting_name, None)
+            if url:
+                app_urls[app_id] = url
+        dict_settings["APP_URLS"] = app_urls
 
         return drf.response.Response(dict_settings)

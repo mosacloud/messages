@@ -5,5 +5,14 @@
   "{{count}} messages have been deleted._other": "{{count}} Nachrichten wurden gelöscht.",
   "{{count}} messages have been updated._one": "Die Nachricht wurde aktualisiert.",
   "{{count}} messages have been updated._other": "{{count}} Nachrichten wurden aktualisiert.",
-  "Log in": "Anmelden"
+  "Log in": "Anmelden",
+  "YOU'RE IN": "DU NUTZT",
+  "JUMP TO": "WECHSELN ZU",
+  "Home": "Start",
+  "Documents": "Dokumente",
+  "Files": "Dateien",
+  "Video calls": "Videoanrufe",
+  "Email": "E-Mail",
+  "Admin": "Admin",
+  "Switch app": "App wechseln"
 }

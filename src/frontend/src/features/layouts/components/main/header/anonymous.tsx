@@ -2,9 +2,6 @@ import { HeaderProps, Icon, useResponsive } from "@gouvfr-lasuite/ui-kit";
 import { Button } from "@gouvfr-lasuite/cunningham-react";
 import { useTranslation } from "react-i18next";
 import { LanguagePicker } from "../language-picker";
-import { LagaufreButton } from "@/features/ui/components/lagaufre";
-
-
 export const AnonymousHeader = ({
   leftIcon,
   onTogglePanel,
@@ -29,12 +26,7 @@ export const AnonymousHeader = ({
         {leftIcon}
       </div>
       <div className="c__header__right">
-        {isDesktop && (
-          <>
-            <LanguagePicker />
-            <LagaufreButton />
-          </>
-        )}
+        {isDesktop && <LanguagePicker />}
 
       </div>
     </div>
