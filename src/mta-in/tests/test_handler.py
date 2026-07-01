@@ -8,6 +8,7 @@ stand-ins — no Docker stack, no real SMTP traffic.
 from __future__ import annotations
 
 import types
+from ipaddress import ip_address
 
 import pytest
 
@@ -28,9 +29,16 @@ class _FakeMDA:
         self.check_result = check_result or MDAResult(
             ok=True, temp_fail=False, payload={}, status_code=200
         )
+        self.deliver_kwargs: dict | None = None
 
     async def check_recipient(self, address: str) -> MDAResult:
         return self.check_result
+
+    async def deliver(self, **kwargs) -> MDAResult:
+        self.deliver_kwargs = kwargs
+        return MDAResult(
+            ok=True, temp_fail=False, payload={"status": "ok"}, status_code=200
+        )
 
 
 def _session():
@@ -180,3 +188,59 @@ async def test_null_sender_round_trip_via_sentinel():
     reply = await _handler().handle_MAIL(None, session, envelope, "<>", [])
     assert reply.startswith("250")
     assert envelope.mail_from == NULL_SENDER_SENTINEL
+
+
+# ---------------------------------------------------------------------------
+# PROXY-protocol source survives the STARTTLS session rebuild.
+#
+# aiosmtpd rebuilds ``session`` from scratch when the client issues STARTTLS,
+# dropping ``session.proxy_data`` and resetting ``session.peer`` to the raw TCP
+# peer (the load balancer). The real client IP must still reach the MDA on the
+# post-TLS DATA command. Regression guard for the "client_ip == LB internal IP"
+# bug seen in production behind HAProxy.
+# ---------------------------------------------------------------------------
+
+
+class _FakeServer:
+    """Per-connection SMTP protocol stand-in (survives the STARTTLS swap)."""
+
+    async def acquire_gate_post_proxy(self, ip: str) -> bool:
+        return True
+
+
+@pytest.mark.asyncio
+async def test_proxy_source_survives_starttls_and_reaches_mda():
+    real_client = ip_address("203.0.113.9")
+    lb_peer = ("10.89.0.2", 43154)  # HAProxy/podman gateway — NOT the client
+
+    server = _FakeServer()
+    mda = _FakeMDA()
+    handler = _handler(mda)
+
+    # 1. PROXY header parsed on the plaintext connection, before STARTTLS.
+    proxy_data = types.SimpleNamespace(
+        src_addr=real_client, src_port=52000, version=2, protocol=1
+    )
+    session_pre_tls = types.SimpleNamespace(
+        host_name=None, peer=lb_peer, proxy_data=proxy_data
+    )
+    gate = await handler.handle_PROXY(server, session_pre_tls, _envelope(), proxy_data)
+    assert gate is True
+
+    # 2. STARTTLS rebuilds the session: proxy_data gone, peer is the LB again.
+    #    Same server instance carries over.
+    session_post_tls = types.SimpleNamespace(
+        host_name=None, peer=lb_peer, proxy_data=None
+    )
+
+    # 3. DATA delivers using the post-TLS session.
+    envelope = _envelope()
+    envelope.mail_from = "sender@example.com"
+    envelope.rcpt_tos = ["rcpt@example.com"]
+    envelope.content = b"Subject: hi\r\n\r\nbody\r\n"
+    reply = await handler.handle_DATA(server, session_post_tls, envelope)
+
+    assert reply.startswith("250"), reply
+    assert mda.deliver_kwargs is not None
+    assert mda.deliver_kwargs["client_address"] == "203.0.113.9"
+    assert mda.deliver_kwargs["client_port"] == "52000"

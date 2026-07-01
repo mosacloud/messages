@@ -35,6 +35,15 @@ _ENVELOPES_ATTR = "_pymta_envelopes"
 _SOFT_ERRORS_ATTR = "_pymta_soft_errors"
 _RCPT_MISSES_ATTR = "_pymta_rcpt_misses"
 
+# The PROXY-protocol source is stashed on the *server* (the per-connection SMTP
+# protocol instance), NOT on the session. aiosmtpd rebuilds ``session`` from
+# scratch when the client issues STARTTLS (connection_made -> _create_session),
+# which drops ``session.proxy_data`` and resets ``session.peer`` to the raw TCP
+# peer (the load balancer). The server instance survives that transport swap,
+# so a value stashed there is the only copy of the real client IP that outlives
+# STARTTLS. Holds a ``(addr, port)`` tuple; ``port`` may be None.
+_PROXY_SRC_ATTR = "_pymta_proxy_src"
+
 # Sentinel for the RFC 5321 null sender (MAIL FROM:<>). aiosmtpd's
 # ``smtp_RCPT`` rejects with 503 when ``envelope.mail_from`` is falsy, which
 # would block legitimate bounces. We keep the sentinel internally and rewrite
@@ -70,7 +79,14 @@ def _bump_rcpt_misses(session) -> int:
     return n
 
 
-def _peer_ip(session) -> str | None:
+def _peer_ip(session, server=None) -> str | None:
+    # Prefer the PROXY source captured at connect time and stashed on the
+    # server: it is the only copy that survives the STARTTLS session rebuild
+    # (see _PROXY_SRC_ATTR). Fall back to session.proxy_data for the pre-TLS
+    # window, then to the raw TCP peer when PROXY protocol is off.
+    stashed = getattr(server, _PROXY_SRC_ATTR, None) if server is not None else None
+    if stashed is not None and stashed[0]:
+        return str(stashed[0])
     proxy_data = getattr(session, "proxy_data", None)
     if proxy_data is not None and getattr(proxy_data, "src_addr", None):
         return str(proxy_data.src_addr)
@@ -80,7 +96,10 @@ def _peer_ip(session) -> str | None:
     return None
 
 
-def _peer_port(session) -> str | None:
+def _peer_port(session, server=None) -> str | None:
+    stashed = getattr(server, _PROXY_SRC_ATTR, None) if server is not None else None
+    if stashed is not None and stashed[1] is not None:
+        return str(stashed[1])
     proxy_data = getattr(session, "proxy_data", None)
     if proxy_data is not None and getattr(proxy_data, "src_port", None) is not None:
         return str(proxy_data.src_port)
@@ -277,8 +296,8 @@ class InboundHandler:
                     message=content,
                     sender=sender,
                     original_recipients=list(envelope.rcpt_tos),
-                    client_address=_peer_ip(session),
-                    client_port=_peer_port(session),
+                    client_address=_peer_ip(session, server),
+                    client_port=_peer_port(session, server),
                     # We do not reverse-DNS ourselves: the MDA inserts its
                     # own Received header using metadata and can decide what
                     # to do with the missing hostname.
@@ -294,7 +313,7 @@ class InboundHandler:
             logger.warning(
                 "DATA deliver deadline exceeded (%ds) for peer %s",
                 settings.PYMTA_DATA_TIMEOUT,
-                _peer_ip(session),
+                _peer_ip(session, server),
             )
             return "451 4.3.0 Delivery timed out, please retry"
 
@@ -325,6 +344,28 @@ class InboundHandler:
         real_ip = "unknown"
         if proxy_data is not None and getattr(proxy_data, "src_addr", None):
             real_ip = str(proxy_data.src_addr)
+            # Stash on the server so the real client IP outlives the STARTTLS
+            # session rebuild that would otherwise drop session.proxy_data.
+            setattr(
+                server,
+                _PROXY_SRC_ATTR,
+                (str(proxy_data.src_addr), getattr(proxy_data, "src_port", None)),
+            )
+        if proxy_data is not None:
+            # Permanent forensic record: ties the SMTP session to the real
+            # origin IP carried in the PROXY header. Every other mail.log line
+            # is keyed on session.peer (the load balancer), so this is the only
+            # place the true client IP is recorded. Logging peer alongside src
+            # also surfaces misconfigurations at a glance: src == peer means the
+            # header is not carrying a real origin.
+            logger.info(
+                "PROXY header: src=%s:%s peer=%r version=%r protocol=%r",
+                getattr(proxy_data, "src_addr", None),
+                getattr(proxy_data, "src_port", None),
+                getattr(session, "peer", None),
+                getattr(proxy_data, "version", None),
+                getattr(proxy_data, "protocol", None),
+            )
         return await server.acquire_gate_post_proxy(real_ip)
 
     # ------------------------------------------------------------------ misc
