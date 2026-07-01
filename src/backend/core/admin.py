@@ -1554,6 +1554,7 @@ class InboundMessageAdmin(admin.ModelAdmin):
         "has_error",
         "is_abandoned",
         "created_at",
+        "updated_at",
     )
     list_filter = ("created_at", "abandoned_at")
     search_fields = (
@@ -1571,7 +1572,7 @@ class InboundMessageAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
     )
-    actions = ("replay_abandoned",)
+    actions = ("reprocess",)
 
     def has_error(self, obj):
         """Return whether the message has an error."""
@@ -1587,39 +1588,40 @@ class InboundMessageAdmin(admin.ModelAdmin):
     is_abandoned.boolean = True
     is_abandoned.short_description = "Abandoned"
 
-    @admin.action(description="Replay abandoned messages (clear + re-queue)")
-    def replay_abandoned(self, request, queryset):
-        """Re-queue abandoned inbound messages for processing.
+    @admin.action(description="Re-process selected messages immediately")
+    def reprocess(self, request, queryset):
+        """Re-dispatch the per-message task for the selected inbound messages.
 
-        Clears the terminal ``abandoned_at`` marker (and the stale
-        ``error_message``) and re-dispatches the per-message task, so an
-        operator can retry a poison message after fixing whatever caused it
-        to fail. No-op for rows that aren't abandoned.
+        Runs against any selected row — an operator can force an immediate
+        re-run of the inbound pipeline (spam steps + user webhooks), whether
+        the message is live in the queue or was terminally abandoned after
+        fixing whatever made it fail.
+
+        A row whose ``abandoned_at`` is still set is un-abandoned *before*
+        dispatch: ``process_inbound_message_task`` skips abandoned rows, so a
+        fast worker running before the clear commits would otherwise silently
+        no-op. If the publish then fails we do NOT revert the clear — the row
+        is now live (``abandoned_at`` NULL) so the 5-min retry sweep
+        (``process_inbound_messages_queue_task``) re-queues it.
         """
         # pylint: disable-next=import-outside-toplevel
         from core.mda.inbound_tasks import process_inbound_message_task
 
-        replayed = 0
-        for inbound_message in queryset.filter(abandoned_at__isnull=False):
-            # Un-abandon *before* publishing: ``process_inbound_message_task``
-            # skips any row whose ``abandoned_at`` is still set, so a fast
-            # worker running before the clear commits would silently no-op.
-            # Clearing first makes the row live for the worker.
-            inbound_message.abandoned_at = None
-            inbound_message.error_message = ""
-            inbound_message.save(update_fields=["abandoned_at", "error_message"])
-            # If the publish fails, do NOT revert the clear: the row is now
-            # live (abandoned_at NULL) so the 5-min retry sweep
-            # (``process_inbound_messages_queue_task``) will re-queue it.
+        queued = 0
+        for inbound_message in queryset:
+            if inbound_message.abandoned_at is not None:
+                inbound_message.abandoned_at = None
+                inbound_message.error_message = ""
+                inbound_message.save(update_fields=["abandoned_at", "error_message"])
             try:
                 process_inbound_message_task.delay(str(inbound_message.id))
             except Exception:  # pylint: disable=broad-except
                 logging.exception(
-                    "Failed to re-queue abandoned inbound message %s",
-                    inbound_message.id,
+                    "Failed to re-queue inbound message %s", inbound_message.id
                 )
-            replayed += 1
-        self.message_user(request, f"Re-queued {replayed} abandoned message(s).")
+            else:
+                queued += 1
+        self.message_user(request, f"Re-queued {queued} message(s) for processing.")
 
     def get_queryset(self, request):
         """Optimize queryset with select_related for better performance."""

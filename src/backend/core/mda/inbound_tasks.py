@@ -134,7 +134,11 @@ def _handle_retry(
     inbound_message.error_message = (
         f"Held for retry at step={step_name}" if step_name else "Held for retry"
     )
-    inbound_message.save(update_fields=["error_message"])
+    # Bump ``updated_at`` so the admin shows the latest retry activity. It is
+    # ``auto_now`` but Django omits auto_now fields from the write unless
+    # they're in ``update_fields`` — and a repeat retry may leave
+    # ``error_message`` unchanged, so list it explicitly to touch the row.
+    inbound_message.save(update_fields=["error_message", "updated_at"])
     return {
         "success": False,
         "inbound_message_id": str(inbound_message.id),
@@ -171,7 +175,9 @@ def _retry_or_abandon(
                 str(inbound_message.id), blocking_webhook_results
             )
         inbound_message.error_message = reason
-        inbound_message.save(update_fields=["error_message"])
+        # See ``_handle_retry``: list ``updated_at`` so each retry bumps it
+        # even when ``error_message`` is identical to the previous attempt.
+        inbound_message.save(update_fields=["error_message", "updated_at"])
         return {
             "success": False,
             "inbound_message_id": str(inbound_message.id),
@@ -188,7 +194,9 @@ def _retry_or_abandon(
     # skips it instead of deleting and losing the only copy of the mail.
     inbound_message.error_message = reason
     inbound_message.abandoned_at = timezone.now()
-    inbound_message.save(update_fields=["error_message", "abandoned_at"])
+    inbound_message.save(
+        update_fields=["error_message", "abandoned_at", "updated_at"]
+    )
     return {
         "success": False,
         "inbound_message_id": str(inbound_message.id),

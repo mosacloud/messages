@@ -1,6 +1,7 @@
-"""Regression tests for the InboundMessage ``replay_abandoned`` admin action.
+"""Regression tests for the InboundMessage ``reprocess`` admin action.
 
-The action must clear ``abandoned_at`` *before* it dispatches the per-message
+The action re-dispatches ``process_inbound_message_task`` for any selected row.
+For an abandoned row it must clear ``abandoned_at`` *before* it dispatches the
 task: ``process_inbound_message_task`` skips any row that is still abandoned, so
 publishing first would let a fast worker no-op on the stale marker.
 """
@@ -28,9 +29,16 @@ def _make_abandoned(mailbox):
     )
 
 
+def _make_live(mailbox):
+    blob = factories.BlobFactory(
+        mailbox=mailbox, content=b"raw", content_type="message/rfc822"
+    )
+    return models.InboundMessage.objects.create(mailbox=mailbox, blob=blob)
+
+
 @pytest.mark.django_db
-class TestReplayAbandoned:
-    """``replay_abandoned`` clears the marker before re-queuing."""
+class TestReprocess:
+    """``reprocess`` re-queues any selected row, clearing abandoned markers."""
 
     def _admin(self):
         return InboundMessageAdmin(models.InboundMessage, dj_admin.site)
@@ -55,9 +63,7 @@ class TestReplayAbandoned:
                 side_effect=_capture,
             ) as mock_delay,
         ):
-            admin_obj.replay_abandoned(
-                rf.post("/admin/"), models.InboundMessage.objects.all()
-            )
+            admin_obj.reprocess(rf.post("/admin/"), models.InboundMessage.objects.all())
 
         mock_delay.assert_called_once_with(str(inbound.id))
         assert seen["abandoned_at"] is None
@@ -80,21 +86,16 @@ class TestReplayAbandoned:
         ):
             # The broker error is swallowed; the clear stands so the retry
             # sweep can pick the now-live row up.
-            admin_obj.replay_abandoned(
-                rf.post("/admin/"), models.InboundMessage.objects.all()
-            )
+            admin_obj.reprocess(rf.post("/admin/"), models.InboundMessage.objects.all())
 
         inbound.refresh_from_db()
         assert inbound.abandoned_at is None
         assert inbound.error_message == ""
 
-    def test_skips_non_abandoned_rows(self, rf):
-        """Live (non-abandoned) rows are left untouched and never re-queued."""
+    def test_reprocesses_live_rows(self, rf):
+        """A live (non-abandoned) row is re-queued and left otherwise untouched."""
         mailbox = factories.MailboxFactory()
-        blob = factories.BlobFactory(
-            mailbox=mailbox, content=b"raw", content_type="message/rfc822"
-        )
-        live = models.InboundMessage.objects.create(mailbox=mailbox, blob=blob)
+        live = _make_live(mailbox)
 
         admin_obj = self._admin()
         with (
@@ -103,10 +104,26 @@ class TestReplayAbandoned:
                 "core.mda.inbound_tasks.process_inbound_message_task.delay"
             ) as mock_delay,
         ):
-            admin_obj.replay_abandoned(
-                rf.post("/admin/"), models.InboundMessage.objects.all()
-            )
+            admin_obj.reprocess(rf.post("/admin/"), models.InboundMessage.objects.all())
 
-        mock_delay.assert_not_called()
+        mock_delay.assert_called_once_with(str(live.id))
         live.refresh_from_db()
         assert live.abandoned_at is None
+
+    def test_dispatches_every_selected_row(self, rf):
+        """A mixed selection re-queues both the abandoned and the live row."""
+        mailbox = factories.MailboxFactory()
+        abandoned = _make_abandoned(mailbox)
+        live = _make_live(mailbox)
+
+        admin_obj = self._admin()
+        with (
+            patch.object(admin_obj, "message_user"),
+            patch(
+                "core.mda.inbound_tasks.process_inbound_message_task.delay"
+            ) as mock_delay,
+        ):
+            admin_obj.reprocess(rf.post("/admin/"), models.InboundMessage.objects.all())
+
+        dispatched = {call.args[0] for call in mock_delay.call_args_list}
+        assert dispatched == {str(abandoned.id), str(live.id)}
