@@ -9,6 +9,8 @@ import ipaddress
 import socket
 from urllib.parse import urljoin, urlparse, urlunparse
 
+from django.conf import settings
+
 import requests
 from requests.adapters import HTTPAdapter
 
@@ -20,6 +22,21 @@ REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
 
 class SSRFValidationError(Exception):
     """Raised when a URL or hostname fails SSRF validation."""
+
+
+def is_allowlisted_host(hostname: str) -> bool:
+    """Return True if ``hostname`` is on the operator SSRF allowlist.
+
+    ``settings.SSRF_ALLOWED_HOSTS`` holds exact, case-insensitive hostnames
+    that a deployment trusts even though they resolve to a private/internal
+    address (e.g. app-to-app traffic on a PaaS internal overlay). Matching a
+    host here bypasses the ``_check_ip`` range checks — so keep the list
+    narrow.
+    """
+    if not hostname:
+        return False
+    allowed = {h.lower() for h in settings.SSRF_ALLOWED_HOSTS}
+    return hostname.lower() in allowed
 
 
 def _check_ip(ip_addr: ipaddress._BaseAddress, hostname: str) -> None:
@@ -83,6 +100,11 @@ def validate_hostname(hostname: str, *, allow_ip_literal: bool = False) -> list[
     if not hostname:
         raise SSRFValidationError("Invalid hostname (missing)")
 
+    # An operator-trusted host skips the IP-range checks below, but we still
+    # resolve it: callers (IP-pinning session) need a concrete IP, and a name
+    # that doesn't resolve should still fail rather than silently pass.
+    allowlisted = is_allowlisted_host(hostname)
+
     try:
         ip = ipaddress.ip_address(hostname)
     except ValueError:
@@ -93,7 +115,8 @@ def validate_hostname(hostname: str, *, allow_ip_literal: bool = False) -> list[
             raise SSRFValidationError(
                 "IP addresses are not allowed (domain name required)"
             )
-        _check_ip(ip, hostname)
+        if not allowlisted:
+            _check_ip(ip, hostname)
         return [str(ip)]
 
     try:
@@ -110,7 +133,8 @@ def validate_hostname(hostname: str, *, allow_ip_literal: bool = False) -> list[
             ip_addr = ipaddress.ip_address(ip_str)
         except ValueError as exc:
             raise SSRFValidationError("Invalid IP address in DNS response") from exc
-        _check_ip(ip_addr, hostname)
+        if not allowlisted:
+            _check_ip(ip_addr, hostname)
         valid_ips.append(ip_str)
 
     if not valid_ips:

@@ -229,6 +229,17 @@ class Base(Configuration):
     SECRET_KEY = values.Value(None)
     SERVER_TO_SERVER_API_TOKENS = values.ListValue([])
 
+    # SSRF allowlist: hostnames that bypass the private/internal-IP checks in
+    # ``core.services.ssrf``. Needed for trusted destinations that only resolve
+    # to a private address from inside the platform network — e.g. app-to-app
+    # traffic on a PaaS where a public hostname resolves onto an internal 10.x
+    # overlay. Entries are exact, case-insensitive hostnames (not CIDRs); keep
+    # this list as narrow as possible, since each entry is a deliberate hole in
+    # the SSRF protection.
+    SSRF_ALLOWED_HOSTS = values.ListValue(
+        [], environ_name="SSRF_ALLOWED_HOSTS", environ_prefix=None
+    )
+
     USE_X_FORWARDED_FOR = values.BooleanValue(
         default=False, environ_name="USE_X_FORWARDED_FOR", environ_prefix=None
     )

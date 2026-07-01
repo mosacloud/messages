@@ -9,6 +9,8 @@ surface for redirect responses.
 import socket
 from unittest.mock import MagicMock, patch
 
+from django.test import override_settings
+
 import pytest
 import requests
 
@@ -18,10 +20,52 @@ from core.services.ssrf import (
     SSRFSafeSession,
     SSRFValidationError,
     assert_public_ip,
+    validate_hostname,
 )
 
 PUBLIC_IP = "93.184.216.34"
 PRIVATE_IP = "192.168.1.1"
+
+
+class TestValidateHostnameAllowlist:
+    """``SSRF_ALLOWED_HOSTS`` — operator escape hatch for trusted internal hosts."""
+
+    @patch("core.services.ssrf.socket.getaddrinfo")
+    def test_private_ip_rejected_by_default(self, mock_dns):
+        """A host resolving to a private IP is rejected when not allowlisted."""
+        mock_dns.return_value = _addrinfo(PRIVATE_IP)
+        with pytest.raises(SSRFValidationError, match="private IP"):
+            validate_hostname("trusted.internal.test")
+
+    @override_settings(SSRF_ALLOWED_HOSTS=["trusted.internal.test"])
+    @patch("core.services.ssrf.socket.getaddrinfo")
+    def test_allowlisted_private_ip_passes(self, mock_dns):
+        """An allowlisted host still resolves but skips the range checks."""
+        mock_dns.return_value = _addrinfo(PRIVATE_IP)
+        assert validate_hostname("trusted.internal.test") == [PRIVATE_IP]
+
+    @override_settings(SSRF_ALLOWED_HOSTS=["Trusted.Internal.Test"])
+    @patch("core.services.ssrf.socket.getaddrinfo")
+    def test_allowlist_match_is_case_insensitive(self, mock_dns):
+        """Allowlist matching ignores case on both sides."""
+        mock_dns.return_value = _addrinfo(PRIVATE_IP)
+        assert validate_hostname("trusted.internal.test") == [PRIVATE_IP]
+
+    @override_settings(SSRF_ALLOWED_HOSTS=["trusted.internal.test"])
+    @patch("core.services.ssrf.socket.getaddrinfo")
+    def test_allowlist_does_not_leak_to_other_hosts(self, mock_dns):
+        """A non-allowlisted host resolving to a private IP is still rejected."""
+        mock_dns.return_value = _addrinfo(PRIVATE_IP)
+        with pytest.raises(SSRFValidationError, match="private IP"):
+            validate_hostname("other.internal.test")
+
+    @override_settings(SSRF_ALLOWED_HOSTS=["trusted.internal.test"])
+    @patch("core.services.ssrf.socket.getaddrinfo")
+    def test_allowlisted_host_that_does_not_resolve_still_fails(self, mock_dns):
+        """Allowlisting bypasses range checks, not resolution failures."""
+        mock_dns.side_effect = socket.gaierror("no such host")
+        with pytest.raises(SSRFValidationError, match="Unable to resolve"):
+            validate_hostname("trusted.internal.test")
 
 
 class TestAssertPublicIP:

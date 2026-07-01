@@ -246,6 +246,7 @@ _Those settings are deprecated and will be removed in the future._
 | `CSRF_TRUSTED_ORIGINS` | `["http://localhost:8900", "http://localhost:8901"]` | Trusted origins for CSRF | Optional |
 | `ALLOWED_HOSTS` | `[]` | Django host/domain allow-list setting (`settings.ALLOWED_HOSTS`). In the Base/Production configurations it is populated from the `DJANGO_ALLOWED_HOSTS` env var (see above); the Development configuration hardcodes `["*"]`. The `bucket_cors` management command also reads it to build S3 CORS origins. | Optional |
 | `SERVER_TO_SERVER_API_TOKENS` | `[]` | API tokens for server-to-server auth | Optional |
+| `SSRF_ALLOWED_HOSTS` | `[]` | Comma-separated list of exact, case-insensitive hostnames that bypass the SSRF private/internal-IP checks (webhook URLs, image proxy, IMAP, CalDAV). Use only for trusted destinations that resolve to a private address from inside the platform network (e.g. app-to-app traffic on an internal overlay). Each entry is a deliberate hole in the SSRF protection — keep the list as narrow as possible. | Optional |
 | `SALT_KEY` | `[]` | Key(s) for Django Fernet-encrypted model fields. Accepts a list for rotation (`["new_key", "old_key"]`); the first is used to encrypt, all are tried to decrypt. | Optional |
 
 ## Monitoring & Observability
