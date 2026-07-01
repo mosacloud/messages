@@ -18,19 +18,12 @@ $mosa-ease:          cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .app-switcher-panel__trigger-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 3px);
-  grid-template-rows: repeat(3, 3px);
-  gap: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid $mosa-border;
   border-radius: 6px;
-  padding: 6px;
-
-  span {
-    width: 3px;
-    height: 3px;
-    border-radius: 50%;
-  }
+  padding: 5px;
 }
 
 /* ── Dropdown card ───────────────────────────────────────── */
@@ -93,7 +86,7 @@ $mosa-ease:          cubic-bezier(0.4, 0, 0.2, 1);
 .app-switcher-panel__divider {
   height: 1px;
   background: $mosa-border;
-  margin: 2px 0 10px;
+  margin: 4px -14px 14px;
 }
 
 /* ── "Jump to" section ───────────────────────────────────── */

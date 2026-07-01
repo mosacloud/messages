@@ -1237,9 +1237,6 @@ class Base(Configuration):
     APP_URL_COMMANDER = values.Value(
         default=None, environ_name="APP_URL_COMMANDER", environ_prefix=None
     )
-    APP_URL_EPICENTRE = values.Value(
-        default=None, environ_name="APP_URL_EPICENTRE", environ_prefix=None
-    )
 
     # pylint: disable=invalid-name
     def __init__(self, *args, **kwargs):

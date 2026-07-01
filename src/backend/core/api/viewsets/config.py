@@ -153,7 +153,11 @@ class ConfigView(drf.views.APIView):
                         },
                         "APP_URLS": {
                             "type": "object",
-                            "description": "Root URLs of enabled Mosa apps for the app switcher. Keys: docs, meet, calendar, chat.",
+                            "description": (
+                                "Root URLs of enabled Mosa apps for the app switcher. "
+                                "Keys: epicentre, docs, drive, meet, calendar, chat, "
+                                "commander."
+                            ),
                             "additionalProperties": {"type": "string"},
                             "readOnly": True,
                         },
@@ -252,7 +256,6 @@ class ConfigView(drf.views.APIView):
             ("calendar", "APP_URL_CALENDAR"),
             ("chat", "APP_URL_CHAT"),
             ("commander", "APP_URL_COMMANDER"),
-            ("epicentre", "APP_URL_EPICENTRE"),
         ]:
             url = getattr(settings, setting_name, None)
             if url:
