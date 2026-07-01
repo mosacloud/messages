@@ -4,6 +4,7 @@ Declare and configure the models for the messages core application
 # pylint: disable=too-many-lines,too-many-instance-attributes
 
 import hashlib
+import hmac
 import json
 import re
 import secrets
@@ -39,6 +40,7 @@ from core.enums import (
     CompressionTypeChoices,
     CRUDAbilities,
     DKIMAlgorithmChoices,
+    InboundOrigin,
     MailboxAbilities,
     MailboxRoleChoices,
     MailDomainAbilities,
@@ -572,31 +574,127 @@ class Channel(BaseModel):
     # that Q() in Python and raises ValidationError before the row is sent
     # to the DB. No custom clean() override is needed.
 
-    # --- api_key helpers --- #
+    # --- secret rotation --- #
 
-    API_KEY_PREFIX = "msgk_"
+    # Secret storage shapes per channel type — deliberately divergent.
+    # ``api_key`` channels store only a SHA-256 hash so a DB read can't
+    # yield a working credential (server hashes incoming ``X-API-Key``
+    # and compares). ``webhook`` channels store plaintext under the
+    # generic ``encrypted_settings["secret"]`` key because the
+    # dispatcher needs the raw bytes every fire to sign / send;
+    # future channel types that need a plaintext root reuse the same
+    # storage key. Forcing one storage shape would either break
+    # dispatch (hashing webhooks) or weaken api_key (plaintext at
+    # rest), so the divergence is load-bearing.
+    #
+    # ``settings.auth_method`` ("jwt" or "api_key") on webhook
+    # channels picks how the dispatcher presents that one stored
+    # secret on each POST. The root never travels on the wire —
+    # JWT mode keys an HMAC sig + HS256 JWT, API-key mode sends a
+    # *derived* value (see ``get_webhook_api_key``).
 
-    def rotate_api_key(self, *, save: bool = True) -> str:
-        """Mint a fresh api_key plaintext, replace ``api_key_hashes`` with
-        the new SHA-256 digest, and return the plaintext exactly once.
+    # Context label for the webhook API-key derivation. Versioned so
+    # we can roll the KDF without changing the root secret.
+    WEBHOOK_API_KEY_KDF_LABEL = b"messages.webhook.api_key.v1"
 
-        Single-active rotation: any prior secret is invalidated immediately.
-        Dual-active "smooth" rotation (appending without removing) is not
-        exposed here — callers that need it must mutate ``encrypted_settings``
-        directly via the Django admin.
+    def rotate_secret(self, *, save: bool = True) -> str:
+        """Mint a fresh plaintext secret appropriate for this channel
+        type, persist it according to the type's storage shape, and
+        return the plaintext exactly once.
 
-        Set ``save=False`` for the DRF create path, where the row is being
-        built and ``super().create()`` will persist it shortly after.
+        Single-active rotation: any prior secret is invalidated
+        immediately. Dual-active "smooth" rotation is intentionally
+        not exposed here — callers that need it must mutate
+        ``encrypted_settings`` directly via the Django admin.
+
+        Raises ``ValueError`` for channel types without a rotatable
+        secret (``widget``, ``mta``, ``caldav`` — these authenticate
+        differently).
+
+        Set ``save=False`` for the DRF create path, where the row is
+        being built and ``super().create()`` will persist it shortly
+        after.
         """
-        plaintext = self.API_KEY_PREFIX + secrets.token_urlsafe(32)
-        digest = hashlib.sha256(plaintext.encode("utf-8")).hexdigest()
-        self.encrypted_settings = {
-            **(self.encrypted_settings or {}),
-            "api_key_hashes": [digest],
-        }
+        from core.enums import ChannelTypes  # pylint: disable=import-outside-toplevel
+
+        if self.type == ChannelTypes.API_KEY:
+            plaintext = "msgk_" + secrets.token_urlsafe(32)
+            # SHA-256 (not Argon2/bcrypt) is correct: this hashes a 256-bit
+            # random token for O(1) lookup, not a low-entropy password — a
+            # slow KDF would add nothing. (CodeQL py/weak-sensitive-data-
+            # hashing false positive.)
+            digest = hashlib.sha256(plaintext.encode("utf-8")).hexdigest()
+            self.encrypted_settings = {
+                **(self.encrypted_settings or {}),
+                "api_key_hashes": [digest],
+            }
+        elif self.type == ChannelTypes.WEBHOOK:
+            plaintext = "whsec_" + secrets.token_urlsafe(32)
+            self.encrypted_settings = {
+                **(self.encrypted_settings or {}),
+                "secret": plaintext,
+            }
+        else:
+            raise ValueError(f"Channel type {self.type!r} has no rotatable secret")
+
         if save:
             self.save(update_fields=["encrypted_settings", "updated_at"])
         return plaintext
+
+    def get_webhook_api_key(self) -> Optional[str]:
+        """Derive the API-key presentation of the root secret.
+
+        ``api_key = "whk_" + HMAC-SHA256(root_secret, label).hex()``. The
+        HMAC step is one-way: a receiver-side leak of the API key
+        reveals nothing about the root secret, so JWT/HMAC verification
+        remains unforgeable. Deterministic — switching ``auth_method``
+        between ``jwt`` and ``api_key`` on the same channel doesn't
+        require rotating, because both presentations are tied to the
+        same root.
+
+        Returns ``None`` if the channel has no root secret yet (a
+        misconfigured row that the dispatcher will fail closed on).
+        """
+        root = (self.encrypted_settings or {}).get("secret")
+        if not root:
+            return None
+        # HMAC-SHA256 key derivation from a 256-bit random root (not password
+        # hashing): a deterministic, unsalted PRF is required so the same root
+        # always yields the same key. Argon2/bcrypt are slow/salted and would
+        # break that. (CodeQL py/weak-sensitive-data-hashing false positive.)
+        derived = hmac.new(
+            root.encode("utf-8"),
+            self.WEBHOOK_API_KEY_KDF_LABEL,
+            hashlib.sha256,
+        ).hexdigest()
+        return "whk_" + derived
+
+    def get_webhook_surfaced_credential(self) -> "Optional[tuple[str, str]]":
+        """The credential a webhook receiver actually presents, as
+        ``(response_key, value)``:
+
+          - ``auth_method='jwt'`` → ``("secret", <root>)``
+          - ``auth_method='api_key'`` → ``("api_key", <whk_… derived>)``
+
+        Returns ``None`` for a non-webhook channel, an unknown/missing
+        ``auth_method``, or an absent secret. Single source of truth for
+        "which credential is surfaceable", shared by the DRF
+        create/regenerate response (``_attach_credential``) and the
+        Django-admin regenerate view, so the two can't drift.
+        """
+        # pylint: disable-next=import-outside-toplevel
+        from core.enums import ChannelTypes, WebhookAuthMethod
+
+        if self.type != ChannelTypes.WEBHOOK:
+            return None
+        auth_method = (self.settings or {}).get("auth_method")
+        if auth_method == WebhookAuthMethod.JWT:
+            root = (self.encrypted_settings or {}).get("secret")
+            return ("secret", root) if root else None
+        if auth_method == WebhookAuthMethod.API_KEY:
+            derived = self.get_webhook_api_key()
+            return ("api_key", derived) if derived else None
+        return None
 
     def api_key_covers(
         self, *, mailbox=None, maildomain=None, mailbox_roles=None
@@ -1987,6 +2085,24 @@ class Message(BaseModel):
         blank=True,
         related_name="messages",
     )
+    # Sparse structured record of what our inbound pipeline determined about
+    # this delivery — NULL in the happy path. Holds only data that is either
+    # computed AFTER the bytes are committed (so baking it would fork the blob)
+    # or per-recipient (so baking it would break blob dedup). Flat, short keys:
+    #   "auth":       "none" | "fail"   sender-auth verdict (verified ⇒ absent)
+    #   "processing": "fail"            force-delivered past the deferral window
+    #   "rcpt_to":    "<addr>"          envelope RCPT TO, only when it diverges
+    #                                   from the MIME To/Cc (BCC / alias / catch-all)
+    # Immutable ingest-time facts (ip/helo/hostname, MAIL FROM, widget referer)
+    # live in headers in the blob instead — see the ingest paths. Keep values
+    # small and bounded; large/regenerated data (e.g. AI summaries) belongs in
+    # its own field, never here. Surfaced via ``get_stmsg_headers``.
+    postmark = models.JSONField(
+        "postmark",
+        null=True,
+        blank=True,
+        help_text="Sparse per-delivery pipeline record.",
+    )
 
     objects = MessageManager()
 
@@ -2053,17 +2169,48 @@ class Message(BaseModel):
         return self.get_parsed_data().get("headers", [])
 
     def get_stmsg_headers(self) -> Dict[str, str]:
-        """Return the ``X-StMsg-*`` headers as ``{suffix_lower: value}``.
+        """Return the pipeline hint headers as ``{suffix_lower: value}``.
 
-        ``X-StMsg-*`` headers are stamped by our MTA pipeline (one per
-        message) and any sender-supplied copies are stripped before
-        parsing; first occurrence wins on duplicates.
+        Two sources, unioned, during the transition away from MIME-baked
+        verdicts:
+
+        * **Legacy (bytes):** ``X-StMsg-*`` headers parsed from the stored
+          MIME. Serves every message written before ``postmark`` existed
+          (never backfilled in bulk), plus ``widget-referer``, which stays a
+          header permanently. Sender-supplied copies are stripped at ingest,
+          so this namespace is ours; first occurrence wins on duplicates.
+        * **Structured (``postmark``):** verdicts computed after the bytes are
+          committed now live here. Projected onto the same suffix shape and
+          overlaid LAST so the authoritative structured value wins over any
+          residual/legacy header.
+
+        A future release drops the legacy branch once ``postmark`` is fully
+        backfilled (see the ``backfill_postmark`` management command).
         """
         result: Dict[str, str] = {}
         for h in self.get_parsed_data().get("headers", []):
             name = h.get("name", "")
             if name.lower().startswith("x-stmsg-"):
                 result.setdefault(name[len("x-stmsg-") :].lower(), h.get("value", ""))
+
+        postmark = self.postmark or {}
+        if postmark.get("auth"):
+            # ``sender-auth`` carries the verdict value verbatim ("none"/"fail"),
+            # matching the legacy header.
+            result["sender-auth"] = postmark["auth"]
+        if postmark.get("processing"):
+            # ``processing-failed`` is a boolean flag; normalise to the legacy
+            # header value ("true") regardless of the structured reason.
+            result["processing-failed"] = "true"
+        if postmark.get("spam"):
+            # rspamd flagged probable spam but below the Junk threshold — the
+            # UI renders a "suspected spam" marker while the message stays in
+            # the inbox.
+            result["spam"] = postmark["spam"]
+        if postmark.get("rcpt_to"):
+            # The divergent envelope RCPT TO (alias/BCC/catch-all) recorded by
+            # ``_record_divergent_rcpt`` — surfaces the recipient's own alias.
+            result["rcpt_to"] = postmark["rcpt_to"]
         return result
 
     def generate_mime_id(self) -> str:
@@ -2147,7 +2294,38 @@ class InboundMessage(BaseModel):
         on_delete=models.CASCADE,
         related_name="inbound_messages",
     )
-    raw_data = models.BinaryField("raw data", help_text="Raw email message bytes")
+    # Sole byte source: a content-addressed, encrypted, deduped Blob created
+    # at ingest, so a message to N recipients shares ONE blob from the moment
+    # it's queued and nothing sits in plaintext. PROTECT mirrors
+    # ``Message.blob``: only the GC sweep deletes, and it clears references
+    # first; ``is_referenced`` counts this FK. Nullable at the DB level for
+    # migration safety, but always set by the ingest paths
+    # (``deliver_inbound_message``).
+    blob = models.ForeignKey(
+        "Blob",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="inbound_messages",
+        help_text="Content-addressed blob holding the raw message bytes.",
+    )
+    # Structured SMTP / provenance envelope for this delivery — carried as
+    # data, NOT injected into the message bytes, so the blob stays pristine and
+    # shared across recipients. Shape:
+    #   {"origin": "mta"|"internal"|"widget"|"import",
+    #    "mail_from": <envelope sender>, "rcpt_to": <envelope recipient>,
+    #    "ip": <client ip>, "helo": <HELO>, "hostname": <client rDNS>}
+    # SMTP fields are present only for ``origin="mta"``. Consumed by the spam
+    # pipeline (rspamd envelope) and the autoreply bounce check. ``origin`` is
+    # the trust discriminator (see ``is_internal``) and is set EXPLICITLY by
+    # each ingest path — never inferred from which fields happen to be present
+    # (inferring "internal" from missing SMTP data would fail open to trusted).
+    envelope = models.JSONField(
+        "envelope",
+        default=dict,
+        blank=True,
+        help_text="Structured SMTP/provenance envelope for this delivery.",
+    )
     channel = models.ForeignKey(
         "Channel",
         on_delete=models.SET_NULL,
@@ -2160,6 +2338,20 @@ class InboundMessage(BaseModel):
         blank=True,
         help_text="Error message if processing failed",
     )
+    # Terminal-failure marker. Set when processing is permanently given up
+    # after the deferral window (a poison message that can never be
+    # parsed/created). The row and its bytes are KEPT — never deleted at
+    # abandon time — so the mail stays recoverable; the retry sweep skips
+    # rows with this set, so the pipeline (and user webhooks) stop re-firing.
+    # Doubles as the audit timestamp ("when did it die") and the cutoff key
+    # for ``purge_abandoned_inbound_messages_task``, which reclaims rows once
+    # they pass the retention window. NULL = still live (pending or retrying).
+    abandoned_at = models.DateTimeField(
+        "abandoned at",
+        null=True,
+        blank=True,
+        help_text="When processing was permanently abandoned; NULL while live.",
+    )
 
     class Meta:
         db_table = "messages_inboundmessage"
@@ -2168,10 +2360,40 @@ class InboundMessage(BaseModel):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["created_at"]),
+            # Partial: only the rare abandoned rows are indexed (the column is
+            # NULL for every live/in-flight message), so live INSERTs skip it
+            # and the purge/retry sweeps still get a tiny index to scan.
+            models.Index(
+                fields=["abandoned_at"],
+                condition=models.Q(abandoned_at__isnull=False),
+                name="messages_in_abandon_partial",
+            ),
         ]
 
     def __str__(self):
         return f"InboundMessage {self.id} - {self.mailbox}"
+
+    @property
+    def is_internal(self) -> bool:
+        """Whether this is a trusted same-instance mailbox-to-mailbox delivery
+        (the spam steps no-op for it while user webhooks still run).
+
+        Derived from the EXPLICIT ``envelope["origin"]`` discriminator set by
+        the internal-delivery path — never inferred from the absence of SMTP
+        fields, which would fail open to "trusted" for a stripped external
+        message.
+        """
+        return (self.envelope or {}).get("origin") == InboundOrigin.INTERNAL
+
+    def get_raw_bytes(self) -> bytes:
+        """Return the raw message bytes from the backing blob.
+
+        ``Blob.get_content()`` transparently decrypts and handles tiered
+        storage.
+        """
+        if self.blob_id is None:
+            raise ValueError(f"InboundMessage {self.id} has no blob attached")
+        return self.blob.get_content()
 
 
 class BlobManager(models.Manager):
@@ -2322,6 +2544,10 @@ class BlobManager(models.Manager):
             ).exists()
             or Attachment.objects.filter(blob_id=blob_id).exists()
             or MessageTemplate.objects.filter(blob_id=blob_id).exists()
+            # Internal mail in flight references the sender's blob from
+            # its transient queue row; collecting it here would strip the
+            # bytes out from under the recipient pipeline mid-delivery.
+            or InboundMessage.objects.filter(blob_id=blob_id).exists()
         )
 
     def user_can_access(self, user, blob_id) -> bool:
@@ -3198,11 +3424,13 @@ class MessageTemplate(BaseModel):
             Dictionary mapping placeholder keys to their resolved string values
         """
         context = {}
+        # Prefer the mailbox contact name, but fall back to the user's
+        # full name when the contact has no (or an empty) name.
         context["name"] = (
-            mailbox.contact.name
-            if mailbox and mailbox.contact
-            else (getattr(user, "full_name", None) if user else "")
-        ) or ""
+            (mailbox.contact.name if mailbox and mailbox.contact else None)
+            or (getattr(user, "full_name", None) if user else None)
+            or ""
+        )
         context["user_name"] = (getattr(user, "full_name", None) or "") if user else ""
         schema = settings.SCHEMA_CUSTOM_ATTRIBUTES_USER
         schema_properties = schema.get("properties", {})

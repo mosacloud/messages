@@ -124,7 +124,7 @@ def find_thread_for_inbound_message(
             return parent.thread  # Found a match!
 
     # Strategy 2 (Fallback): If no subject match, return thread of the most recent parent message
-    # The list is ordered by -sent_at, so the first element is the latest match.
+    # The list is ordered by -created_at, so the first element is the latest match.
     return None  # potential_parents.first().thread
 
 
@@ -200,6 +200,30 @@ def _find_thread_by_message_ids(
     return None
 
 
+def _record_divergent_rcpt(
+    postmark: dict, recipient_email: str, parsed_email: JmapEmail
+) -> None:
+    """Record the envelope RCPT TO in ``postmark`` when it diverges from the
+    MIME addressees.
+
+    In the happy path the RCPT is one of the visible To/Cc addresses and we
+    store nothing (keeps ``postmark`` NULL). When it isn't — a BCC'd copy, an
+    alias/catch-all, or plus-addressed delivery — the RCPT is the only record
+    of how this mailbox actually received the mail, so we keep it. Matching is
+    case-insensitive on the address.
+    """
+    rcpt = (recipient_email or "").strip().lower()
+    if not rcpt:
+        return
+    visible = {
+        (entry.get("email") or "").strip().lower()
+        for field_name in ("to", "cc")
+        for entry in (parsed_email.get(field_name) or [])
+    }
+    if rcpt not in visible:
+        postmark["rcpt_to"] = recipient_email
+
+
 def _create_message_from_inbound(  # pylint: disable=too-many-arguments
     recipient_email: str,
     parsed_email: JmapEmail,
@@ -211,7 +235,11 @@ def _create_message_from_inbound(  # pylint: disable=too-many-arguments
     imap_flags: list[str] | None = None,
     channel: models.Channel | None = None,
     is_spam: bool = False,
+    is_trashed: bool = False,
+    is_archived: bool = False,
     is_outbound: bool = False,
+    blob: "models.Blob | None" = None,
+    postmark: dict | None = None,
 ) -> models.Message | None:
     """Create a message and thread from parsed email data.
 
@@ -257,6 +285,18 @@ def _create_message_from_inbound(  # pylint: disable=too-many-arguments
                     mime_id,
                     mailbox.id,
                 )
+                # Dedup hit on ``(mailbox, mime_id)``: this call did NOT create
+                # the row. The common cause is a DUPLICATE INBOUND EMAIL — an
+                # upstream MTA redelivered the same Message-ID (SMTP retry /
+                # greylisting / relay double-send), so the original ``Message``
+                # already exists; a concurrent reprocess could land here too,
+                # but the prefork ``time_limit`` / lock-TTL coupling makes that
+                # structurally rare. Signal the caller so it skips the
+                # non-idempotent finalize side effects (events, draft replies,
+                # autoreply, the ``message.delivered`` webhook) that already
+                # ran for the original create — re-running would duplicate them.
+                # pylint: disable-next=protected-access
+                existing_message._created_now = False  # noqa: SLF001
                 return existing_message
 
         # --- 3. Find or Create Thread --- #
@@ -414,15 +454,22 @@ def _create_message_from_inbound(  # pylint: disable=too-many-arguments
             # so the GC sweep never sees the Blob row without its
             # referencing FK on ``Message.blob``. Outbound messages have
             # no blob yet — ``prepare_outbound_message`` adds it later.
+            # ``postmark`` is assembled by the caller (the inbound task builds
+            # the pipeline verdicts + envelope-RCPT divergence); here we only
+            # persist it.
             with transaction.atomic():
-                blob = None
-                if not is_outbound:
+                # Reuse the ingest blob (inbound queue path) so a message has
+                # ONE blob from ingest through to here — no second plaintext
+                # copy, no re-encrypt. Imports have no ingest blob and pass
+                # raw bytes; outbound gets its blob later from the send path.
+                if blob is None and not is_outbound:
                     blob = models.Blob.objects.create_blob(
                         content=raw_data,
                         content_type="message/rfc822",
                     )
 
                 message = models.Message.objects.create(
+                    postmark=postmark or None,
                     thread=thread,
                     sender=sender_contact,
                     subject=subject,
@@ -432,7 +479,14 @@ def _create_message_from_inbound(  # pylint: disable=too-many-arguments
                     sent_at=(None if is_outbound else (sent_at or timezone.now())),
                     is_draft=is_outbound,  # Outbound: draft until prepare_outbound_message finalizes
                     is_sender=is_sender,
-                    is_trashed=False,
+                    is_trashed=is_trashed,
+                    # Keep timestamps in lockstep with the booleans, as the
+                    # flag endpoint does — a NULL trashed_at/archived_at on a
+                    # trashed/archived row breaks restore, ordering and any
+                    # auto-purge that keys off the timestamp.
+                    trashed_at=(timezone.now() if is_trashed else None),
+                    is_archived=is_archived,
+                    archived_at=(timezone.now() if is_archived else None),
                     is_spam=is_spam,
                     has_attachments=len(parsed_email.get("attachments", [])) > 0,
                     channel=channel,
@@ -540,7 +594,7 @@ def _create_message_from_inbound(  # pylint: disable=too-many-arguments
                 defaults = {}
                 if is_import and not message.is_draft:
                     defaults["delivery_status"] = (
-                        enums.MessageDeliveryStatusChoices.SENT
+                        enums.MessageDeliveryStatusChoices.SENT_EXTERNAL
                     )
                 models.MessageRecipient.objects.get_or_create(
                     message=message,
@@ -631,6 +685,10 @@ def _create_message_from_inbound(  # pylint: disable=too-many-arguments
         mailbox.id,
         thread.id,
     )
+    # Freshly created this call — the caller may run the one-shot finalize
+    # side effects (see the dedup branch above for why this matters).
+    # pylint: disable-next=protected-access
+    message._created_now = True  # noqa: SLF001
     return message  # Return created Message on success (truthy), None on failure
 
 

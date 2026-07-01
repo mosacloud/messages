@@ -165,17 +165,27 @@ def schedule_template_blob_for_gc(sender, instance, **kwargs):
     schedule_for_gc(instance.blob_id)
 
 
+@receiver(post_delete, sender=models.InboundMessage)
+def schedule_inbound_message_blob_for_gc(sender, instance, **kwargs):
+    """Push ``InboundMessage.blob`` id into the GC set.
+
+    Internal mail references the sender's blob while in flight; once the
+    task deletes the queue row the blob may have become collectable
+    (no-op when ``blob_id`` is None, i.e. external inline-bytes rows).
+    """
+    schedule_for_gc(instance.blob_id)
+
+
 @receiver(post_delete, sender=models.Message)
 def delete_message_from_index(sender, instance, **kwargs):
     """Enqueue a targeted OpenSearch delete for the message child document.
 
     Pushes ``(thread_id, message_id)`` to the dedicated delete-message set
     so ``bulk_delete_messages_task`` can later issue a ``bulk delete by
-    _id`` (with the parent ``thread_id`` as routing). Replaces the
-    previous behaviour of scheduling a thread reindex and relying on a
-    ``delete_by_query`` orphan purge — far cheaper for the cluster, and
-    correct because Django fires ``post_delete`` for both direct and
-    cascaded message deletions.
+    _id`` (with the parent ``thread_id`` as routing). Cheaper for the
+    cluster than reindexing the thread and letting a ``delete_by_query``
+    orphan purge catch up, and correct because Django fires ``post_delete``
+    for both direct and cascaded message deletions.
     """
     if not settings.OPENSEARCH_INDEX_THREADS:
         return
@@ -193,9 +203,9 @@ def delete_thread_from_index(sender, instance, **kwargs):
 
     Only the parent doc is queued here — child message docs are picked up
     by ``delete_message_from_index`` via the cascaded ``post_delete``
-    signal Django fires for each child. Splitting the two paths replaces
-    the previous all-in-one ``delete_by_query`` on ``thread_id`` with two
-    cheap ``bulk delete by _id`` requests.
+    signal Django fires for each child. Splitting parent and children into
+    two cheap ``bulk delete by _id`` requests avoids an all-in-one
+    ``delete_by_query`` on ``thread_id``.
     """
     if not settings.OPENSEARCH_INDEX_THREADS:
         return

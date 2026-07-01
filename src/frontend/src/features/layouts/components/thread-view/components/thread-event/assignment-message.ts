@@ -12,10 +12,10 @@ export type AssignmentEvent = ThreadEventType & {
  * Returns the localised sentence describing an ASSIGN/UNASSIGN event.
  *
  * Picks a wording variant based on who acts and who is impacted so the result
- * stays grammatically correct when the current user is involved — the previous
- * single-template approach produced sentences like "Vous a assigné Vous" once
- * self-substitution kicked in, and "User Un a assigné User Un" when a user
- * self-assigned.
+ * stays grammatically correct when the current user is involved: a single
+ * template would produce sentences like "Vous a assigné Vous" once
+ * self-substitution kicks in, or "User Un a assigné User Un" when a user
+ * self-assigns.
  *
  * Cases (for each of assign/unassign):
  *   A.  author = me, assignees = [me]                        → "You assigned yourself"
@@ -40,9 +40,14 @@ export const buildAssignmentMessage = (
     const isAssign = event.type === ThreadEventTypeEnum.assign;
     const assignees: Assignee[] = event.data.assignees ?? [];
     const authorId = event.author?.id;
-    const authorName = event.author?.full_name || event.author?.email || t("Unknown");
+    // Prefer the human author's name/email; for channel-driven events (no
+    // author) fall back to ``author_display`` ("Webhook: {name}"), then Unknown.
+    const authorName = event.author?.full_name || event.author?.email || event.author_display || t("Unknown");
     const isAuthorSelf = !!currentUserId && authorId === currentUserId;
-    const isSystem = event.author === null;
+    // A true system event has no actor at all. A webhook event also has a null
+    // ``author`` but carries ``author_display`` — treat it as a named third
+    // party, not as the passive "was unassigned" system wording.
+    const isSystem = event.author === null && !event.author_display;
 
     const selfInAssignees = !!currentUserId && assignees.some((a) => a.id === currentUserId);
     // Author appears among assignees AND the viewer is not the author — that's

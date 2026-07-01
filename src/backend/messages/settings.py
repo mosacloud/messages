@@ -288,9 +288,6 @@ class Base(Configuration):
     STATIC_ROOT = os.path.join(DATA_DIR, "static")
     MEDIA_URL = "/media/"
     MEDIA_ROOT = os.path.join(DATA_DIR, "media")
-    MEDIA_BASE_URL = values.Value(
-        None, environ_name="MEDIA_BASE_URL", environ_prefix=None
-    )
 
     SITE_ID = 1
 
@@ -535,10 +532,39 @@ class Base(Configuration):
         environ_prefix=None,
     )
 
+    # Public base URL of this Messages instance, i.e. the origin that serves
+    # both the API and the web app (e.g. ``https://messages-public-url.example.com``).
+    # Instance-wide, not feature-specific: anything that has to emit an
+    # absolute link back to ourselves should read this. Today the only
+    # consumer is outbound webhooks, which send it as the ``X-StMsg-Instance``
+    # header so a receiver can build callback API URLs from the ``*-Id``
+    # headers; the header is omitted when this is unset.
+    INSTANCE_URL = values.Value(
+        None,
+        environ_name="INSTANCE_URL",
+        environ_prefix=None,
+    )
+
     # Manual retry settings
     MESSAGES_MANUAL_RETRY_MAX_AGE = values.PositiveIntegerValue(
         7 * 24 * 60 * 60,  # 7 days in seconds
         environ_name="MESSAGES_MANUAL_RETRY_MAX_AGE",
+        environ_prefix=None,
+    )
+
+    # How long an inbound message is deferred (held and retried) when a
+    # processing step keeps failing, before the pipeline stops holding it. A
+    # message whose step keeps failing (rspamd unreachable, a blocking
+    # webhook erroring) is re-attempted every 5 minutes up to this age, then
+    # delivered anyway — flagged ``X-StMsg-Processing-Failed`` — so mail is
+    # never lost, only delayed. A parse/create failure that never clears is
+    # marked abandoned at this age instead. Operators trade delivery latency
+    # (longer = more time for a flaky dependency to recover before we deliver
+    # unchecked) against how long unchecked mail can sit held during an
+    # outage. See ``DEFERRAL_MAX_AGE`` in ``core/mda/inbound_pipeline.py``.
+    MESSAGES_INBOUND_DEFERRAL_MAX_AGE = values.PositiveIntegerValue(
+        48 * 60 * 60,  # 48 hours in seconds
+        environ_name="MESSAGES_INBOUND_DEFERRAL_MAX_AGE",
         environ_prefix=None,
     )
 
@@ -617,6 +643,17 @@ class Base(Configuration):
     MESSAGES_SPF_CHECK_OUTGOING = values.BooleanValue(
         default=False,
         environ_name="MESSAGES_SPF_CHECK_OUTGOING",
+        environ_prefix=None,
+    )
+
+    # Deliver mailbox-to-mailbox mail through the internal inbound pipeline
+    # (the fast path) instead of routing it out through the MTA. Set False to
+    # force every message — including same-instance recipients — through the
+    # external MTA path, e.g. so all mail passes the same scanning/archiving
+    # as outbound. Default True keeps the local fast path.
+    MESSAGES_ALLOW_INTERNAL_DELIVERY = values.BooleanValue(
+        default=True,
+        environ_name="MESSAGES_ALLOW_INTERNAL_DELIVERY",
         environ_prefix=None,
     )
 
@@ -1101,13 +1138,8 @@ class Base(Configuration):
     FEATURE_IMPORT_MESSAGES = values.BooleanValue(
         default=True, environ_name="FEATURE_IMPORT_MESSAGES", environ_prefix=None
     )
-    # NOTE: "webhook" is intentionally NOT in the default list — the
-    # outbound webhook delivery pipeline is not wired yet. Keeping the
-    # type creatable would let users mint dead-letter channels that look
-    # functional. Add "webhook" here once core/mda/webhook_tasks.py and
-    # the post_save signal land.
     FEATURE_MAILBOX_ADMIN_CHANNELS = values.ListValue(
-        default=["api_key"],
+        default=["api_key", "webhook"],
         environ_name="FEATURE_MAILBOX_ADMIN_CHANNELS",
         environ_prefix=None,
     )
@@ -1481,7 +1513,16 @@ class Test(Base):
     # Add a test encryption key for django-fernet-encrypted-fields
     SALT_KEY = ["test-salt-for-development-only"]
 
-    FEATURE_MAILBOX_ADMIN_CHANNELS = ["api_key", "widget"]
+    FEATURE_MAILBOX_ADMIN_CHANNELS = ["api_key", "widget", "webhook"]
+
+    # Tests must not depend on a reachable rspamd. With no rspamd_url the
+    # spam step is a no-op ("no opinion"), so inbound delivery tests
+    # deliver deterministically; spam-specific tests opt in explicitly via
+    # ``@override_settings(SPAM_CONFIG={"rspamd_url": ...})`` and mock the
+    # HTTP call. (A configured-but-unreachable rspamd now *holds* mail for
+    # retry instead of failing open — see ``_make_rspamd_step`` — so an
+    # inherited env SPAM_CONFIG would otherwise stall delivery in tests.)
+    SPAM_CONFIG = {}
 
     SCHEMA_CUSTOM_ATTRIBUTES_USER = {}
     SCHEMA_CUSTOM_ATTRIBUTES_MAILDOMAIN = {}

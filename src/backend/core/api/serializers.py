@@ -4,6 +4,7 @@
 import hashlib
 import json
 import uuid
+from urllib.parse import urlparse
 
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -15,9 +16,13 @@ from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 
 from core import enums, models
+from core.mda.dispatch_webhooks import (
+    VALID_FORMATS,
+)
 from core.mda.inline_images import extract_inline_images_html
 from core.services.blob_gc import schedule_for_gc
 from core.services.identity import keycloak as keycloak_service
+from core.services.ssrf import SSRFValidationError, validate_hostname
 
 
 class CreateOnlyFieldsMixin:
@@ -1298,6 +1303,7 @@ class ThreadEventSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer):
     """Serialize thread event information."""
 
     author = UserWithoutAbilitiesSerializer(read_only=True)
+    author_display = serializers.SerializerMethodField()
     data = ThreadEventDataField()
     has_unread_mention = serializers.SerializerMethodField()
     is_editable = serializers.SerializerMethodField()
@@ -1311,6 +1317,7 @@ class ThreadEventSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer):
             "channel",
             "message",
             "author",
+            "author_display",
             "data",
             "has_unread_mention",
             "is_editable",
@@ -1348,6 +1355,27 @@ class ThreadEventSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer):
         except DjangoValidationError as exc:
             raise serializers.ValidationError(exc.message_dict) from exc
         return attrs
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_author_display(self, obj):
+        """Human-readable author label for the UI.
+
+        Human-authored events resolve to the user's name (or email). Events
+        created by a webhook have no ``author`` but carry the firing
+        ``channel``; surface it as ``Webhook: {name}`` so the timeline shows
+        the integration instead of an anonymous "Unknown". Returns ``None``
+        when neither is available, letting the client fall back.
+
+        The ``Webhook:`` prefix is intentionally a fixed, server-side label
+        and not localized: it is a trust/provenance marker that prevents a
+        channel from choosing a ``name`` that impersonates a human author
+        in the timeline. This might get moved to the frontend in the future.
+        """
+        if obj.author_id:
+            return obj.author.full_name or obj.author.email
+        if obj.channel_id and obj.channel.name:
+            return f"Webhook: {obj.channel.name}"
+        return None
 
     @extend_schema_field(serializers.BooleanField())
     def get_has_unread_mention(self, obj):
@@ -2027,25 +2055,40 @@ class ChannelSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer):
         # the plaintext ``settings`` JSONField — a DB read would otherwise
         # surface every user's CalDAV password.
         enums.ChannelTypes.CALDAV: ["username", "password"],
+        # The outgoing webhook secret is generated server-side and
+        # written straight to ``encrypted_settings["secret"]``; callers
+        # must never smuggle their own value in via ``settings``. The
+        # same bytes back both auth methods (JWT/HMAC and API key) —
+        # see ``Channel.rotate_secret``.
+        enums.ChannelTypes.WEBHOOK: ["secret"],
     }
 
+    # Channel types that mint a plaintext secret on create. The
+    # viewset surfaces the minted value via the right response key
+    # (``api_key`` for api_key channels and api_key webhooks, ``secret``
+    # for jwt webhooks — keyed by ``settings.auth_method``).
+    _ROTATABLE_TYPES = frozenset(
+        {enums.ChannelTypes.API_KEY, enums.ChannelTypes.WEBHOOK}
+    )
+
     def create(self, validated_data):
-        # For api_key channels, mint the secret on a transient instance so
-        # the resulting ``encrypted_settings`` rides through the normal
-        # ``super().create()`` save path. The plaintext is stashed on the
-        # saved row for ChannelViewSet.create() to surface exactly once,
-        # mirroring the ``_generated_password`` pattern at channel.py:68-74.
-        generated_api_key = None
-        if validated_data.get("type") == enums.ChannelTypes.API_KEY:
+        # Mint the per-type secret on a transient instance so the
+        # resulting ``encrypted_settings`` rides through the normal
+        # ``super().create()`` save path. The plaintext (when one
+        # exists at rest — only api_key channels store it indirectly
+        # via a hash) is stashed on the saved row for
+        # ``ChannelViewSet.create()`` to surface exactly once.
+        plaintext = None
+        if validated_data.get("type") in self._ROTATABLE_TYPES:
             transient = models.Channel(**validated_data)
-            generated_api_key = transient.rotate_api_key(save=False)
+            plaintext = transient.rotate_secret(save=False)
             validated_data["encrypted_settings"] = transient.encrypted_settings
 
         instance = super().create(validated_data)
 
         # pylint: disable=protected-access
-        if generated_api_key is not None:
-            instance._generated_api_key = generated_api_key  # noqa: SLF001
+        if plaintext is not None and instance.type == enums.ChannelTypes.API_KEY:
+            instance._generated_api_key = plaintext  # noqa: SLF001
         return instance
 
     def validate_settings(self, value):
@@ -2217,7 +2260,7 @@ class ChannelSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer):
         Runs on CREATE and on every PATCH/PUT touching ``type`` or
         ``settings``. Same airtight rule as ``_validate_api_key_scopes``:
         a settings-only PATCH on an existing webhook channel must hit the
-        URL/events validators, otherwise a mailbox admin could PATCH
+        URL/trigger validators, otherwise a mailbox admin could PATCH
         ``{"settings": {"url": "javascript:..."}}`` past the create-time
         check.
         """
@@ -2232,22 +2275,99 @@ class ChannelSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"settings": "webhook channels require settings.url (a string)."}
             )
-        if not url.startswith(("http://", "https://")):
+        # Parse first so the scheme check sees urlparse's normalized
+        # (lowercased) scheme — a raw ``startswith`` would wrongly reject
+        # e.g. ``HTTPS://``.
+        parsed_url = urlparse(url)
+        if parsed_url.scheme not in ("http", "https"):
             raise serializers.ValidationError(
                 {"settings": "webhook settings.url must be http:// or https://"}
             )
+        host = (parsed_url.hostname or "").lower()
+        if not host:
+            raise serializers.ValidationError(
+                {"settings": "webhook settings.url must include a host."}
+            )
+        # Each POST carries the HMAC/JWT signing material in its headers,
+        # so plaintext http would leak credentials in transit. Require
+        # https except under DEBUG, the local-dev escape hatch where
+        # operators routinely point at a local receiver. We deliberately
+        # do *not* special-case loopback hosts here: in production the
+        # shared SSRF guard (``services.ssrf``) rejects loopback targets
+        # at dispatch anyway, so a hand-rolled allowance would only ever
+        # apply under DEBUG — which the check below already covers.
+        if parsed_url.scheme != "https" and not settings.DEBUG:
+            raise serializers.ValidationError(
+                {"settings": "webhook settings.url must use https://."}
+            )
 
-        events = settings_data.get("events")
-        if not events or not isinstance(events, list):
+        # Reject internal / unresolvable webhook URLs up front, so a misconfig
+        # is a clear 400 at config time instead of silently-stalled mail later.
+        # This is a fail-fast UX layer, NOT the security boundary: a hostname
+        # can resolve public now and be rebound to internal at dispatch, so
+        # ``SSRFSafeSession`` re-validates with IP pinning on every POST
+        # regardless. ``validate_hostname`` does a DNS lookup (a config
+        # endpoint, not a hot path) and rejects IP literals, private/internal
+        # targets, and names that don't resolve. Skipped under DEBUG, the
+        # local-dev escape hatch where operators point at local receivers.
+        if not settings.DEBUG:
+            try:
+                validate_hostname(host)
+            except SSRFValidationError as exc:
+                raise serializers.ValidationError(
+                    {"settings": f"webhook settings.url is not allowed: {exc}"}
+                ) from exc
+
+        # A single ``trigger`` lifecycle event describes the webhook — it
+        # encodes the event, the pipeline phase, and whether it blocks
+        # delivery, so invalid combinations (e.g. non-blocking before-spam)
+        # can't be expressed (see ``enums.WebhookTrigger``).
+        trigger = settings_data.get("trigger")
+        if trigger not in enums.WebhookTrigger:
             raise serializers.ValidationError(
                 {
-                    "settings": "webhook channels require settings.events (a non-empty list)."
+                    "settings": (
+                        "webhook channels require settings.trigger, one of: "
+                        f"{', '.join(t.value for t in enums.WebhookTrigger)}."
+                    )
                 }
             )
-        unknown = [e for e in events if e not in enums.WebhookEvents]
-        if unknown:
+
+        body_format = settings_data.get("format", "eml")
+        if body_format not in VALID_FORMATS:
             raise serializers.ValidationError(
-                {"settings": f"Unknown webhook events: {unknown}"}
+                {
+                    "settings": (
+                        f"webhook settings.format must be one of: "
+                        f"{', '.join(sorted(VALID_FORMATS))}."
+                    )
+                }
+            )
+        # auth_method selects how the stored secret is presented on each
+        # POST; it pairs with the credential in encrypted_settings, which a
+        # settings PATCH never touches. So treat it like that credential:
+        # carry the existing value forward when a partial PATCH omits it,
+        # instead of forcing the caller to re-send it on every edit (and
+        # silently dropping it on the replace-on-PATCH save). Only a value
+        # that is actually supplied — or a create with none — is rejected.
+        auth_method = settings_data.get("auth_method")
+        if auth_method is None and self.instance is not None:
+            existing = (self.instance.settings or {}).get("auth_method")
+            if existing in enums.WebhookAuthMethod and isinstance(
+                attrs.get("settings"), dict
+            ):
+                # Persist it through the replace-save so the dispatcher
+                # still knows how to present the secret.
+                attrs["settings"]["auth_method"] = existing
+                auth_method = existing
+        if auth_method not in enums.WebhookAuthMethod:
+            raise serializers.ValidationError(
+                {
+                    "settings": (
+                        "webhook settings.auth_method is required, one of: "
+                        f"{', '.join(m.value for m in enums.WebhookAuthMethod)}."
+                    )
+                }
             )
 
     def validate(self, attrs):
@@ -2260,13 +2380,13 @@ class ChannelSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer):
         explicit mailbox or maildomain.
         """
         if self.context.get("mailbox") or self.context.get("user_channel"):
-            # On CREATE, ``type`` MUST be supplied explicitly. The model
-            # field used to default to "mta", which let a caller omit
-            # ``type`` from the body and bypass FEATURE_MAILBOX_ADMIN_CHANNELS
-            # even when "mta" was not in the allowlist. On UPDATE, ``type``
-            # is made read-only by ``CreateOnlyFieldsMixin`` so it's never
-            # in ``attrs`` — fall through to the other validators which
-            # read the instance's existing type.
+            # On CREATE, ``type`` MUST be supplied explicitly: a default
+            # would let a caller omit ``type`` from the body and slip past
+            # FEATURE_MAILBOX_ADMIN_CHANNELS even when that default type
+            # isn't in the allowlist. On UPDATE, ``type`` is made read-only
+            # by ``CreateOnlyFieldsMixin`` so it's never in ``attrs`` — fall
+            # through to the other validators which read the instance's
+            # existing type.
             if self.instance is None and "type" not in attrs:
                 raise serializers.ValidationError(
                     {
@@ -2309,6 +2429,40 @@ class ChannelSerializer(CreateOnlyFieldsMixin, serializers.ModelSerializer):
         self._validate_api_key_scopes(attrs)
         self._validate_webhook_settings(attrs)
         return attrs
+
+
+class ChannelCreateResponseSerializer(ChannelSerializer):
+    """Schema-only view of the channel-create 201 response.
+
+    ``ChannelViewSet.create`` returns the full ``ChannelSerializer``
+    payload plus the freshly-minted plaintext credentials — surfaced
+    exactly once on creation and never retrievable again. They are
+    declared here as read-only fields so generated API clients see them
+    in the OpenAPI schema. This serializer is never used to serialize a
+    response directly; the view assembles the body by hand.
+    """
+
+    # ``required=False`` without ``read_only`` so drf-spectacular lists
+    # these as optional (not ``required``) in the response schema — each
+    # create returns only the one credential matching the channel type /
+    # auth_method, so the others are intentionally absent.
+    api_key = serializers.CharField(
+        required=False,
+        help_text=(
+            "Plaintext API key — api_key channels and webhook channels "
+            "with auth_method=api_key."
+        ),
+    )
+    secret = serializers.CharField(
+        required=False,
+        help_text="webhook channels with auth_method=jwt — the HMAC/JWT signing secret.",
+    )
+
+    class Meta(ChannelSerializer.Meta):
+        fields = ChannelSerializer.Meta.fields + [
+            "api_key",
+            "secret",
+        ]
 
 
 class MessageTemplateSerializer(serializers.ModelSerializer):

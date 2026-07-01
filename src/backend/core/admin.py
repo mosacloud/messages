@@ -573,24 +573,27 @@ class ChannelAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path(
-                "<path:object_id>/regenerate-api-key/",
-                self.admin_site.admin_view(self.regenerate_api_key_view),
-                name="core_channel_regenerate_api_key",
+                "<path:object_id>/regenerate-secret/",
+                self.admin_site.admin_view(self.regenerate_secret_view),
+                name="core_channel_regenerate_secret",
             ),
         ]
         return custom_urls + urls
 
-    def regenerate_api_key_view(self, request, object_id):
-        """Regenerate the api_key secret on an api_key channel.
+    def regenerate_secret_view(self, request, object_id):
+        """Regenerate the secret on an api_key or webhook channel.
 
-        Delegates the actual rotation to ``Channel.rotate_api_key`` (single
-        source of truth, shared with the DRF create + regenerate flows). The
-        plaintext is rendered ONCE in the response body and never stored in
-        cookies, session, or the messages framework — closing the window
-        where a credential could leak through signed-cookie message storage.
+        Both channel types authenticate with a single root secret
+        (``Channel.rotate_secret`` is the single source of truth, shared
+        with the DRF create + regenerate flows): for api_key channels it
+        is the API key itself, for webhook channels it is the HMAC/JWT
+        signing secret. The plaintext is rendered ONCE in the response
+        body and never stored in cookies, session, or the messages
+        framework — closing the window where a credential could leak
+        through signed-cookie message storage.
         """
         # pylint: disable=import-outside-toplevel
-        from core.enums import ChannelTypes
+        from core.enums import ChannelTypes, WebhookAuthMethod
 
         if request.method != "POST":
             return HttpResponseNotAllowed(["POST"])
@@ -599,23 +602,46 @@ class ChannelAdmin(admin.ModelAdmin):
         if channel is None:
             messages.error(request, "Channel not found.")
             return redirect("..")
-        if channel.type != ChannelTypes.API_KEY:
+        if channel.type not in (ChannelTypes.API_KEY, ChannelTypes.WEBHOOK):
             messages.error(
-                request, "Only api_key channels can have their secret regenerated."
+                request,
+                "Only api_key and webhook channels can have their secret regenerated.",
+            )
+            return redirect("..")
+        # Guard before rotating: a webhook channel whose auth_method isn't
+        # one ``get_webhook_surfaced_credential`` knows how to surface would
+        # have its old secret invalidated by ``rotate_secret`` while the
+        # freshly minted one can't be handed back — permanently bricking the
+        # webhook. Reject up front, mirroring the DRF regenerate flow.
+        if (
+            channel.type == ChannelTypes.WEBHOOK
+            and (channel.settings or {}).get("auth_method") not in WebhookAuthMethod
+        ):
+            messages.error(
+                request,
+                "Webhook auth_method must be 'jwt' or 'api_key' before "
+                "the secret can be rotated.",
             )
             return redirect("..")
 
-        plaintext = channel.rotate_api_key()
+        root = channel.rotate_secret()
+
+        # Show the credential the *receiver* actually presents. The
+        # webhook (jwt→secret / api_key→derived) rule lives on the model
+        # so this and the DRF ``_attach_credential`` flow can't drift;
+        # api_key *channels* (not webhooks) fall back to the rotated root.
+        credential = channel.get_webhook_surfaced_credential()
+        display_secret = credential[1] if credential else root
 
         context = {
             **self.admin_site.each_context(request),
             "opts": self.model._meta,  # noqa: SLF001
             "original": channel,
-            "title": "New api_key generated",
-            "api_key": plaintext,
+            "title": "New secret generated",
+            "secret": display_secret,
         }
         return TemplateResponse(
-            request, "admin/core/channel/regenerated_api_key.html", context
+            request, "admin/core/channel/regenerated_secret.html", context
         )
 
 
@@ -1526,17 +1552,26 @@ class InboundMessageAdmin(admin.ModelAdmin):
         "mailbox",
         "channel",
         "has_error",
+        "is_abandoned",
         "created_at",
     )
-    list_filter = ("created_at",)
+    list_filter = ("created_at", "abandoned_at")
     search_fields = (
         "mailbox__local_part",
         "mailbox__domain__name",
         "error_message",
     )
     autocomplete_fields = ("mailbox", "channel")
-    readonly_fields = ("created_at", "updated_at")
-    fields = ("mailbox", "channel", "error_message", "created_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at", "abandoned_at")
+    fields = (
+        "mailbox",
+        "channel",
+        "error_message",
+        "abandoned_at",
+        "created_at",
+        "updated_at",
+    )
+    actions = ("replay_abandoned",)
 
     def has_error(self, obj):
         """Return whether the message has an error."""
@@ -1545,13 +1580,53 @@ class InboundMessageAdmin(admin.ModelAdmin):
     has_error.boolean = True
     has_error.short_description = "Error"
 
+    def is_abandoned(self, obj):
+        """Return whether processing was permanently abandoned."""
+        return obj.abandoned_at is not None
+
+    is_abandoned.boolean = True
+    is_abandoned.short_description = "Abandoned"
+
+    @admin.action(description="Replay abandoned messages (clear + re-queue)")
+    def replay_abandoned(self, request, queryset):
+        """Re-queue abandoned inbound messages for processing.
+
+        Clears the terminal ``abandoned_at`` marker (and the stale
+        ``error_message``) and re-dispatches the per-message task, so an
+        operator can retry a poison message after fixing whatever caused it
+        to fail. No-op for rows that aren't abandoned.
+        """
+        # pylint: disable-next=import-outside-toplevel
+        from core.mda.inbound_tasks import process_inbound_message_task
+
+        replayed = 0
+        for inbound_message in queryset.filter(abandoned_at__isnull=False):
+            # Un-abandon *before* publishing: ``process_inbound_message_task``
+            # skips any row whose ``abandoned_at`` is still set, so a fast
+            # worker running before the clear commits would silently no-op.
+            # Clearing first makes the row live for the worker.
+            inbound_message.abandoned_at = None
+            inbound_message.error_message = ""
+            inbound_message.save(update_fields=["abandoned_at", "error_message"])
+            # If the publish fails, do NOT revert the clear: the row is now
+            # live (abandoned_at NULL) so the 5-min retry sweep
+            # (``process_inbound_messages_queue_task``) will re-queue it.
+            try:
+                process_inbound_message_task.delay(str(inbound_message.id))
+            except Exception:  # pylint: disable=broad-except
+                logging.exception(
+                    "Failed to re-queue abandoned inbound message %s",
+                    inbound_message.id,
+                )
+            replayed += 1
+        self.message_user(request, f"Re-queued {replayed} abandoned message(s).")
+
     def get_queryset(self, request):
         """Optimize queryset with select_related for better performance."""
         return (
             super()
             .get_queryset(request)
             .select_related("mailbox", "mailbox__domain", "channel")
-            .defer("raw_data")  # Exclude large binary content from list view
         )
 
 

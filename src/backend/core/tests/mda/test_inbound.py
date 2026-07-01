@@ -1,18 +1,66 @@
 """Tests for the core.mda.inbound module."""
 
+# pylint: disable=too-many-lines
+
 from unittest.mock import patch
 
 from django.test import override_settings
 from django.utils import timezone
 
 import pytest
+from jmap_email import parse_email
 
 from core import enums, factories, models
 from core.mda.inbound import deliver_inbound_message
 from core.mda.inbound_create import (
     _create_message_from_inbound,
+    _record_divergent_rcpt,
     find_thread_for_inbound_message,
 )
+
+
+class TestRecordDivergentRcpt:
+    """``postmark["rcpt_to"]`` is written only when the envelope RCPT diverges
+    from the visible MIME To/Cc — the BCC / alias / catch-all signal."""
+
+    def _parsed(self, to=None, cc=None):
+        return {"to": to or [], "cc": cc or []}
+
+    def test_rcpt_in_to_not_recorded(self):
+        """RCPT present in To → not recorded (happy path)."""
+        postmark = {}
+        _record_divergent_rcpt(
+            postmark,
+            "user@example.com",
+            self._parsed(to=[{"email": "user@example.com"}]),
+        )
+        assert "rcpt_to" not in postmark
+
+    def test_rcpt_in_cc_not_recorded(self):
+        """RCPT present in Cc (case-insensitively) → not recorded."""
+        postmark = {}
+        _record_divergent_rcpt(
+            postmark,
+            "User@Example.com",
+            self._parsed(cc=[{"email": "user@example.com"}]),
+        )
+        assert "rcpt_to" not in postmark
+
+    def test_bcc_recipient_recorded(self):
+        """RCPT absent from To/Cc (BCC / alias) → recorded."""
+        postmark = {}
+        _record_divergent_rcpt(
+            postmark,
+            "hidden@example.com",
+            self._parsed(to=[{"email": "list@example.com"}]),
+        )
+        assert postmark["rcpt_to"] == "hidden@example.com"
+
+    def test_empty_rcpt_is_noop(self):
+        """An empty RCPT is a no-op (nothing to record)."""
+        postmark = {}
+        _record_divergent_rcpt(postmark, "", self._parsed())
+        assert not postmark
 
 
 @pytest.mark.django_db
@@ -257,7 +305,7 @@ class TestDeliverInboundMessage:
         assert models.Message.objects.count() == 0
 
         success = deliver_inbound_message(
-            recipient_addr, sample_parsed_email, raw_email_data, skip_inbound_queue=True
+            recipient_addr, sample_parsed_email, raw_email_data, is_import=True
         )
 
         assert success is True
@@ -293,6 +341,70 @@ class TestDeliverInboundMessage:
         assert msg_recipient.contact.name == "Recipient Name"
         assert msg_recipient.contact.mailbox == target_mailbox
 
+    def test_divergent_envelope_rcpt_recorded_in_postmark(self, target_mailbox):
+        """Regression: the divergence check must see the *envelope* RCPT TO,
+        not the canonical mailbox address. A BCC/alias delivery (RCPT not in
+        the visible To/Cc) is the only record of how the mail was addressed, so
+        it lands in ``postmark["rcpt_to"]``. Passing the canonical address here
+        (the pre-fix bug) would always match To and silently drop it."""
+        recipient_addr = f"{target_mailbox.local_part}@{target_mailbox.domain.name}"
+        alias = f"bcc-victim@{target_mailbox.domain.name}"
+        raw = (
+            b"From: sender@test.com\r\n"
+            b"To: " + recipient_addr.encode() + b"\r\n"
+            b"Subject: Divergent rcpt\r\n"
+            b"Message-ID: <divergent.rcpt.1@example.com>\r\n\r\nbody"
+        )
+        blob = models.Blob.objects.create_blob(
+            content=raw, content_type="message/rfc822"
+        )
+
+        success = deliver_inbound_message(
+            recipient_addr,
+            parse_email(raw),
+            raw,
+            envelope={
+                "origin": "mta",
+                "mail_from": "sender@test.com",
+                "rcpt_to": alias,
+            },
+            blob=blob,
+        )
+
+        assert success is True
+        message = models.Message.objects.get(mime_id="divergent.rcpt.1@example.com")
+        assert message.postmark["rcpt_to"] == alias
+
+    def test_matching_envelope_rcpt_leaves_postmark_null(self, target_mailbox):
+        """When the envelope RCPT is one of the visible To addresses (the happy
+        path), nothing is recorded and ``postmark`` stays NULL."""
+        recipient_addr = f"{target_mailbox.local_part}@{target_mailbox.domain.name}"
+        raw = (
+            b"From: sender@test.com\r\n"
+            b"To: " + recipient_addr.encode() + b"\r\n"
+            b"Subject: Matching rcpt\r\n"
+            b"Message-ID: <matching.rcpt.1@example.com>\r\n\r\nbody"
+        )
+        blob = models.Blob.objects.create_blob(
+            content=raw, content_type="message/rfc822"
+        )
+
+        success = deliver_inbound_message(
+            recipient_addr,
+            parse_email(raw),
+            raw,
+            envelope={
+                "origin": "mta",
+                "mail_from": "sender@test.com",
+                "rcpt_to": recipient_addr,
+            },
+            blob=blob,
+        )
+
+        assert success is True
+        message = models.Message.objects.get(mime_id="matching.rcpt.1@example.com")
+        assert message.postmark is None
+
     @pytest.mark.parametrize(
         "role",
         [
@@ -323,7 +435,7 @@ class TestDeliverInboundMessage:
         assert models.Message.objects.count() == 0
 
         success = deliver_inbound_message(
-            recipient_addr, sample_parsed_email, raw_email_data, skip_inbound_queue=True
+            recipient_addr, sample_parsed_email, raw_email_data, is_import=True
         )
 
         assert success is True
@@ -346,7 +458,7 @@ class TestDeliverInboundMessage:
         ).exists()
 
         success = deliver_inbound_message(
-            recipient_addr, sample_parsed_email, raw_email_data, skip_inbound_queue=True
+            recipient_addr, sample_parsed_email, raw_email_data, is_import=True
         )
 
         assert success is True
@@ -366,7 +478,7 @@ class TestDeliverInboundMessage:
         ).exists()
 
         success = deliver_inbound_message(
-            recipient_addr, sample_parsed_email, raw_email_data, skip_inbound_queue=True
+            recipient_addr, sample_parsed_email, raw_email_data, is_import=True
         )
 
         assert success is False
@@ -395,7 +507,7 @@ class TestDeliverInboundMessage:
         ).exists()
 
         success = deliver_inbound_message(
-            recipient_addr, sample_parsed_email, raw_email_data, skip_inbound_queue=True
+            recipient_addr, sample_parsed_email, raw_email_data, is_import=True
         )
 
         assert success is True
@@ -420,7 +532,7 @@ class TestDeliverInboundMessage:
         ]
 
         success = deliver_inbound_message(
-            recipient_addr, sample_parsed_email, raw_email_data, skip_inbound_queue=True
+            recipient_addr, sample_parsed_email, raw_email_data, is_import=True
         )
 
         assert success is True  # Should still succeed using fallback
@@ -439,7 +551,7 @@ class TestDeliverInboundMessage:
         del sample_parsed_email["from"]  # Remove From header
 
         success = deliver_inbound_message(
-            recipient_addr, sample_parsed_email, raw_email_data, skip_inbound_queue=True
+            recipient_addr, sample_parsed_email, raw_email_data, is_import=True
         )
 
         assert success is True
@@ -466,7 +578,7 @@ class TestDeliverInboundMessage:
         ]
 
         success = deliver_inbound_message(
-            recipient_addr, sample_parsed_email, raw_email_data, skip_inbound_queue=True
+            recipient_addr, sample_parsed_email, raw_email_data, is_import=True
         )
 
         assert success is True  # Delivery succeeds overall
@@ -501,7 +613,7 @@ class TestDeliverInboundMessage:
         raw_email_1 = b"Raw for message 1"
 
         success1 = deliver_inbound_message(
-            addr2, parsed_email_1, raw_email_1, skip_inbound_queue=True
+            addr2, parsed_email_1, raw_email_1, is_import=True
         )
         assert success1 is True
         assert models.Thread.objects.filter(accesses__mailbox=mailbox1).count() == 0
@@ -530,7 +642,7 @@ class TestDeliverInboundMessage:
         raw_email_2 = b"Raw for message 2"
 
         success2 = deliver_inbound_message(
-            addr1, parsed_email_2, raw_email_2, skip_inbound_queue=True
+            addr1, parsed_email_2, raw_email_2, is_import=True
         )
         assert success2 is True
         assert models.Thread.objects.filter(accesses__mailbox=mailbox1).count() == 1
@@ -559,7 +671,7 @@ class TestDeliverInboundMessage:
         raw_email_3 = b"Raw for message 3"
 
         success3 = deliver_inbound_message(
-            addr2, parsed_email_3, raw_email_3, skip_inbound_queue=True
+            addr2, parsed_email_3, raw_email_3, is_import=True
         )
         assert success3 is True
         # Counts should remain 1 thread per mailbox
@@ -595,7 +707,7 @@ class TestDeliverInboundMessage:
             recipient_addr,
             parsed_email_empty_subject,
             raw_email_data,
-            skip_inbound_queue=True,
+            is_import=True,
         )
 
         assert success is True
@@ -632,7 +744,7 @@ class TestDeliverInboundMessage:
             recipient_addr,
             parsed_email_null_subject,
             raw_email_data,
-            skip_inbound_queue=True,
+            is_import=True,
         )
 
         assert success is True
@@ -671,7 +783,7 @@ class TestDeliverInboundMessage:
             recipient_addr,
             parsed_email_no_subject,
             raw_email_data,
-            skip_inbound_queue=True,
+            is_import=True,
         )
 
         assert success is True
@@ -712,7 +824,7 @@ class TestDeliverInboundMessage:
             recipient_addr,
             parsed_email_long_subject,
             raw_email_data,
-            skip_inbound_queue=True,
+            is_import=True,
         )
         assert success is True
         assert models.Message.objects.count() == 1
@@ -747,7 +859,7 @@ class TestDeliverInboundMessage:
         }
 
         success1 = deliver_inbound_message(
-            recipient_addr, parsed_email_1, raw_email_data, skip_inbound_queue=True
+            recipient_addr, parsed_email_1, raw_email_data, is_import=True
         )
         assert success1 is True
 
@@ -763,7 +875,7 @@ class TestDeliverInboundMessage:
         }
 
         success2 = deliver_inbound_message(
-            recipient_addr, parsed_email_2, raw_email_data, skip_inbound_queue=True
+            recipient_addr, parsed_email_2, raw_email_data, is_import=True
         )
         assert success2 is True
 
@@ -818,7 +930,7 @@ class TestDeliverInboundMessage:
             recipient_addr,
             parsed_email_with_duplicates,
             raw_email_data,
-            skip_inbound_queue=True,
+            is_import=True,
         )
 
         assert success is True
@@ -890,24 +1002,44 @@ class TestInboundAutoreplyIntegration:
         }
 
     @patch("core.mda.autoreply.try_send_autoreply")
-    def test_autoreply_called_on_direct_delivery(
-        self, mock_try_autoreply, target_mailbox, sample_parsed_email
+    def test_autoreply_called_on_internal_delivery(
+        self, mock_try_autoreply, target_mailbox
     ):
-        """try_send_autoreply is called for skip_inbound_queue deliveries."""
+        """try_send_autoreply fires for internal deliveries.
+
+        Internal mail now runs through the inbound pipeline task, which
+        re-parses the raw bytes, so we feed real MIME (not a placeholder).
+        The autoreply is dispatched from the task after message creation.
+        """
         recipient_addr = f"{target_mailbox.local_part}@{target_mailbox.domain.name}"
+        raw = (
+            b"From: sender@test.com\r\n"
+            b"To: " + recipient_addr.encode() + b"\r\n"
+            b"Subject: Autoreply Test\r\n"
+            b"Message-ID: <autoreply.integ.1@example.com>\r\n\r\nHello"
+        )
+        # Internal delivery references the sender's committed blob, just
+        # like outbound.send_message does.
+        blob = models.Blob.objects.create_blob(
+            content=raw, content_type="message/rfc822"
+        )
 
         result = deliver_inbound_message(
             recipient_addr,
-            sample_parsed_email,
-            b"raw data",
-            skip_inbound_queue=True,
+            parse_email(raw),
+            raw,
+            envelope={
+                "origin": "internal",
+                "mail_from": "sender@test.com",
+                "rcpt_to": recipient_addr,
+            },
+            blob=blob,
         )
 
         assert result is True
         mock_try_autoreply.assert_called_once()
         args = mock_try_autoreply.call_args[0]
         assert args[0] == target_mailbox
-        assert args[1] == sample_parsed_email
         assert isinstance(args[2], models.Message)
 
     @patch("core.mda.autoreply.try_send_autoreply")
@@ -937,7 +1069,7 @@ class TestInboundAutoreplyIntegration:
             "nonexistent@nonexistent-domain.invalid",
             sample_parsed_email,
             b"raw data",
-            skip_inbound_queue=True,
+            is_import=True,
         )
 
         assert result is False

@@ -77,17 +77,25 @@ def _is_recipient_explicit(mailbox_email: str, parsed_email: JmapEmail) -> bool:
     return False
 
 
-def _is_auto_reply_message(parsed_email: JmapEmail) -> bool:
+def _is_auto_reply_message(
+    parsed_email: JmapEmail, envelope: Optional[dict] = None
+) -> bool:
     """Detect whether the inbound message is itself an automatic reply.
 
-    Checks Auto-Submitted, Precedence, List-Id, X-Auto-Response-Suppress,
-    X-Autoreply, X-Autorespond, and Return-Path bounce indicators.
+    Checks the SMTP envelope MAIL FROM (bounce indicator) plus the
+    Auto-Submitted, Precedence, List-Id, X-Auto-Response-Suppress,
+    X-Autoreply, and X-Autorespond headers.
     """
-    # Return-Path empty or <> means bounce (RFC 3834). Walk every
-    # occurrence so a benign duplicate can't mask a bounce indicator.
-    for return_path in find_headers(parsed_email, "Return-Path"):
-        if return_path.strip() in ("", "<>"):
-            return True
+    # A null envelope sender (MAIL FROM ``<>`` or empty) marks a bounce /
+    # notification we must never reply to (RFC 3834 §2). We read the
+    # authoritative SMTP envelope rather than a ``Return-Path`` header: the
+    # delivering MTA never writes one on our inbound path, and any header in
+    # the body is sender-forgeable. Only an explicitly-present null value
+    # counts — an absent ``mail_from`` key means "no envelope info supplied"
+    # (e.g. a caller that doesn't carry one), not "null sender".
+    mail_from = (envelope or {}).get("mail_from")
+    if mail_from is not None and mail_from.strip() in ("", "<>"):
+        return True
 
     # Auto-Submitted (max=1 per RFC 3834 §5). Parameters after ``;``
     # (e.g. ``auto-replied; owner-email=...``) are stripped before
@@ -111,6 +119,7 @@ def should_send_autoreply(
     mailbox: models.Mailbox,
     parsed_email: JmapEmail,
     is_spam: bool = False,
+    envelope: Optional[dict] = None,
 ) -> Optional[models.MessageTemplate]:
     """Determine whether we should send an autoreply and return the template.
 
@@ -121,8 +130,8 @@ def should_send_autoreply(
     if is_spam:
         return None
 
-    # 2. Skip auto-generated messages (loop prevention)
-    if _is_auto_reply_message(parsed_email):
+    # 2. Skip auto-generated messages and bounces (loop prevention)
+    if _is_auto_reply_message(parsed_email, envelope):
         return None
 
     # 3. Self-reply prevention: skip if sender == mailbox email
@@ -175,6 +184,69 @@ def should_send_autoreply(
     return template
 
 
+def _create_reply_record_from_template(
+    template: models.MessageTemplate,
+    mailbox: models.Mailbox,
+    inbound_message: models.Message,
+    *,
+    is_draft: bool,
+    channel: Optional[models.Channel] = None,
+):
+    """Build the reply ``Message`` row + ``MessageRecipient`` and resolve
+    the validated signature.
+
+    Shared by the autoreply path (which then composes + DKIM-signs the
+    MIME via ``compose_and_sign_mime`` and triggers an async send) and
+    the webhook-driven ``reply_draft`` path (which stores the template's
+    editor-format raw body as ``draft_blob`` so the user can refine the
+    draft inline in the UI before sending).
+
+    Returns ``(message, validated_signature)``. The caller is
+    responsible for attaching the body blob (sent message → ``blob``,
+    draft → ``draft_blob``) inside the same transaction.
+    """
+    # 1. Get or create a Contact for the mailbox's own email
+    mailbox_email = str(mailbox)
+    mailbox_contact, _ = models.Contact.objects.get_or_create(
+        email=mailbox_email,
+        mailbox=mailbox,
+        defaults={"name": mailbox.contact.name if mailbox.contact else mailbox_email},
+    )
+
+    # 2. Build subject with Re: prefix
+    subject = reply_subject(inbound_message.subject or "")[:255]
+
+    # 3. Resolve signature: forced domain/mailbox signature takes priority
+    #    over the one attached to the template
+    validated_signature = mailbox.get_validated_signature(
+        template.signature.id if template.signature else None
+    )
+
+    # 4. Create Message record
+    message = models.Message.objects.create(
+        thread=inbound_message.thread,
+        sender=mailbox_contact,
+        subject=subject,
+        parent=inbound_message,
+        sent_at=None if is_draft else timezone.now(),
+        is_draft=is_draft,
+        is_sender=True,
+        is_trashed=False,
+        is_spam=False,
+        signature=validated_signature if is_draft else None,
+        channel=channel,
+    )
+
+    # 5. Create MessageRecipient (must exist before compose_and_sign_mime)
+    models.MessageRecipient.objects.create(
+        message=message,
+        contact=inbound_message.sender,
+        type=MessageRecipientTypeChoices.TO,
+    )
+
+    return message, validated_signature
+
+
 def send_autoreply_for_message(
     template: models.MessageTemplate,
     mailbox: models.Mailbox,
@@ -195,50 +267,17 @@ def send_autoreply_for_message(
         )
         return
 
-    thread = inbound_message.thread
-
-    # 1. Get or create a Contact for the mailbox's own email (the autoreply sender)
-    mailbox_email = str(mailbox)
-    mailbox_contact, _ = models.Contact.objects.get_or_create(
-        email=mailbox_email,
-        mailbox=mailbox,
-        defaults={"name": mailbox.contact.name if mailbox.contact else mailbox_email},
-    )
-
-    # 2. Build subject with Re: prefix
-    subject = reply_subject(inbound_message.subject or "")[:255]
-
-    # 3-7: Create records and compose MIME atomically so a failure in
-    #       compose_and_sign_mime does not leave orphan Message/Recipient rows.
+    # 1-5 + compose: atomic so a failure in compose_and_sign_mime
+    # cannot leave orphan Message / Recipient rows.
     with transaction.atomic():
-        # 3. Create Message record
-        message = models.Message.objects.create(
-            thread=thread,
-            sender=mailbox_contact,
-            subject=subject,
-            parent=inbound_message,
-            sent_at=timezone.now(),
+        message, validated_signature = _create_reply_record_from_template(
+            template,
+            mailbox,
+            inbound_message,
             is_draft=False,
-            is_sender=True,
-            is_trashed=False,
-            is_spam=False,
         )
 
-        # 4. Create MessageRecipient (must exist before compose_and_sign_mime)
-        models.MessageRecipient.objects.create(
-            message=message,
-            contact=inbound_message.sender,
-            type=MessageRecipientTypeChoices.TO,
-        )
-
-        # 5. Resolve signature: forced domain/mailbox signature takes priority
-        #    over the one attached to the autoreply template
-        validated_signature = mailbox.get_validated_signature(
-            template.signature.id if template.signature else None
-        )
-
-        # 6. Compose MIME, DKIM sign, and store as blob
-        #    (signature + reply quote embedding is handled by compose_and_sign_mime)
+        # Compose MIME, DKIM sign, and store as blob
         auto_reply_headers = [
             ("Auto-Submitted", "auto-replied"),
             ("X-Auto-Response-Suppress", "All"),
@@ -257,13 +296,13 @@ def send_autoreply_for_message(
         )
         message.save(update_fields=["mime_id", "blob", "has_attachments"])
 
-    # 7. Trigger async send (outside transaction to avoid sending before commit)
+    # Trigger async send (outside transaction to avoid sending before commit)
     send_message_task.delay(str(message.id))
 
-    # 8. Update thread stats — do NOT update read_at here: the autoreply
+    # Update thread stats — do NOT update read_at here: the autoreply
     # sender is away, so the thread must stay unread for them to notice
     # new messages when they return.
-    thread.update_stats()
+    inbound_message.thread.update_stats()
 
     logger.info(
         "Autoreply message %s created and queued for sending (mailbox=%s, to=%s)",
@@ -273,19 +312,78 @@ def send_autoreply_for_message(
     )
 
 
+def create_draft_reply_from_template(
+    template: models.MessageTemplate,
+    mailbox: models.Mailbox,
+    inbound_message: models.Message,
+    *,
+    channel: Optional[models.Channel] = None,
+) -> Optional[models.Message]:
+    """Materialise a draft reply from ``template`` against
+    ``inbound_message``. Returns the draft Message, or ``None`` if the
+    inbound has no sender (no one to reply to — same skip as the
+    autoreply path).
+
+    Stores the template's editor-format ``raw_body`` JSON as
+    ``draft_blob`` so the recipient mailbox can edit the draft inline
+    in the rich-text editor before sending — no MIME pre-composition,
+    no premature DKIM. The send-draft pipeline composes + signs at
+    send time exactly as it does for hand-composed drafts.
+    """
+    if not inbound_message.sender or not inbound_message.sender.email:
+        logger.warning(
+            "Cannot create reply_draft: inbound message %s has no sender email",
+            inbound_message.id,
+        )
+        return None
+
+    raw_body = template.raw_body or "{}"
+    raw_body_bytes = raw_body.encode("utf-8")
+
+    with transaction.atomic():
+        message, _ = _create_reply_record_from_template(
+            template,
+            mailbox,
+            inbound_message,
+            is_draft=True,
+            channel=channel,
+        )
+        message.draft_blob = models.Blob.objects.create_blob(
+            content=raw_body_bytes,
+            content_type="application/json",
+        )
+        message.save(update_fields=["draft_blob"])
+
+    inbound_message.thread.update_stats()
+
+    logger.info(
+        "Draft reply %s created from template %s (mailbox=%s, channel=%s)",
+        message.id,
+        template.id,
+        mailbox.id,
+        channel.id if channel else None,
+    )
+    return message
+
+
 def try_send_autoreply(
     mailbox: models.Mailbox,
     parsed_email: JmapEmail,
     message: models.Message,
     is_spam: bool = False,
+    envelope: Optional[dict] = None,
 ):
     """Evaluate autoreply conditions and send if appropriate.
 
     Safe to call from any delivery path (MTA inbound, internal delivery).
+    ``envelope`` carries the SMTP envelope (see ``InboundMessage.envelope``)
+    so the null-sender bounce check reads the authoritative MAIL FROM.
     Exceptions are logged but never propagated.
     """
     try:
-        template = should_send_autoreply(mailbox, parsed_email, is_spam=is_spam)
+        template = should_send_autoreply(
+            mailbox, parsed_email, is_spam=is_spam, envelope=envelope
+        )
         if template:
             send_autoreply_for_message(template, mailbox, message)
     except Exception:  # pylint: disable=broad-exception-caught

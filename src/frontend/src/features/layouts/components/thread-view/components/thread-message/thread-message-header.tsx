@@ -41,6 +41,18 @@ const ThreadMessageHeader = ({
     const isUnverifiedSender = senderAuth === 'none';
     const isForgedSender = senderAuth === 'fail';
 
+    // A processing step (a blocking integration/webhook, spam check, …)
+    // failed repeatedly, so the message was force-delivered without it once
+    // the inbound deferral window expired. Warn prominently.
+    const processingFailed = Boolean(message.stmsg_headers?.['processing-failed']);
+
+    // Spam scanning flagged the message as probable spam but below the Junk
+    // threshold, so it was delivered to the inbox with a graded marker
+    // ('possible' < 'likely'). Show an inline caution banner.
+    const suspectedSpam = message.stmsg_headers?.['spam'];
+    const isPossibleSpam = suspectedSpam === 'possible';
+    const isLikelySpam = suspectedSpam === 'likely';
+
     const isUserSender = useMemo(() => {
         if (!message.is_sender) return false;
         if (!message.sender_user) return true;
@@ -73,6 +85,10 @@ const ThreadMessageHeader = ({
                 return { status: 'delivering', timestamp: recipient.retry_at, message: recipient.delivery_message };
             case MessageDeliveryStatusChoices.cancelled:
                 return { status: 'cancelled', timestamp: recipient.retry_at, message: recipient.delivery_message };
+            // `sent` (external) and `internal` (same-instance) are both
+            // terminal "delivered" states — keep them together. Dropping the
+            // `internal` case would silently render internal mail as "no
+            // status". See MessageDeliveryStatusChoices on the backend.
             case MessageDeliveryStatusChoices.sent:
             case MessageDeliveryStatusChoices.internal:
                 return { status: 'delivered', timestamp: recipient.delivered_at, message: recipient.delivery_message };
@@ -159,6 +175,22 @@ const ThreadMessageHeader = ({
                         <Banner type="warning" compact fullWidth>
                             <div className="thread-message__header-banner__content">
                                 <p>{t("This contact's identity could not be verified. Proceed with caution.")}</p>
+                            </div>
+                        </Banner>
+                    )}
+                    {processingFailed && (
+                        <Banner type="error" compact fullWidth>
+                            <div className="thread-message__header-banner__content">
+                                <p>{t("This message was delivered without our usual safety checks. Please review it with caution.")}</p>
+                            </div>
+                        </Banner>
+                    )}
+                    {(isPossibleSpam || isLikelySpam) && (
+                        <Banner type="warning" compact fullWidth>
+                            <div className="thread-message__header-banner__content">
+                                <p>{isLikelySpam
+                                    ? t("This message is likely spam. Review it with caution.")
+                                    : t("This message may be spam. Review it with caution.")}</p>
                             </div>
                         </Banner>
                     )}

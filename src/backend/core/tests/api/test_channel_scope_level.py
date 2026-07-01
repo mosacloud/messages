@@ -1008,7 +1008,13 @@ class TestUserChannelViewSet:
         created = models.Channel.objects.get(pk=response.data["id"])
         assert created.user_id == alice.id
 
-    @override_settings(FEATURE_MAILBOX_ADMIN_CHANNELS=["api_key", "webhook"])
+    # DEBUG=True skips the create-time SSRF DNS lookup (Test runs DEBUG=False),
+    # so the placeholder ``hook.example.com`` host doesn't 400 on resolution —
+    # this test covers the scope/serializer path, not SSRF (see
+    # TestWebhookChannelCreateSSRF in test_channels.py for that).
+    @override_settings(
+        FEATURE_MAILBOX_ADMIN_CHANNELS=["api_key", "webhook"], DEBUG=True
+    )
     def test_personal_webhook_channel(self, api_client):
         """Webhooks ARE creatable as personal channels — once the type is
         enabled in FEATURE_MAILBOX_ADMIN_CHANNELS. The type is intentionally
@@ -1025,14 +1031,15 @@ class TestUserChannelViewSet:
                 "type": "webhook",
                 "settings": {
                     "url": "https://hook.example.com/me",
-                    "events": ["message.received"],
+                    "trigger": "message.delivered",
+                    "auth_method": "jwt",
                 },
             },
             format="json",
         )
         assert response.status_code == 201, response.content
-        # No HMAC secret generation yet — that scaffolding lands with the
-        # delivery pipeline. The response carries the row id only.
+        # The one-time signing secret is surfaced for jwt auth_method.
+        assert "secret" in response.data
         assert "hmac_secret" not in response.data
         created = models.Channel.objects.get(pk=response.data["id"])
         assert created.scope_level == ChannelScopeLevel.USER
@@ -1081,7 +1088,7 @@ class TestUserDeleteCascade:
 
 @pytest.mark.django_db
 class TestRegenerateApiKey:
-    """The regenerate-api-key action: single-active replace, never append.
+    """The regenerate-secret action: single-active replace, never append.
 
     DRF's only rotation flow. Smooth (dual-active) rotation would happen
     in the Django admin or a future CLI command.
@@ -1099,7 +1106,7 @@ class TestRegenerateApiKey:
 
     def _mailbox_url(self, mailbox, channel):
         return reverse(
-            "mailbox-channels-regenerate-api-key",
+            "mailbox-channels-regenerate-secret",
             kwargs={"mailbox_id": mailbox.id, "pk": channel.id},
         )
 
@@ -1263,7 +1270,7 @@ class TestRegenerateApiKey:
     # ---- /users/me/channels/ -------------------------------------------- #
 
     def _user_url(self, channel):
-        return reverse("user-channels-regenerate-api-key", kwargs={"pk": channel.id})
+        return reverse("user-channels-regenerate-secret", kwargs={"pk": channel.id})
 
     def test_regenerate_personal_api_key(self, api_client):
         user = UserFactory()

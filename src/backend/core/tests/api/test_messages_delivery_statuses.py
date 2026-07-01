@@ -1,5 +1,7 @@
 """Test messages delivery statuses endpoint."""
 
+# pylint: disable=too-many-lines
+
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -574,7 +576,7 @@ class TestMessagesDeliveryStatuses:
         assert "not allowed" in str(response.json().get("error", "")).lower()
 
     def test_api_messages_delivery_statuses_invalid_transition_sent_to_cancelled(self):
-        """Test SENT -> CANCELLED transition is not allowed."""
+        """Test SENT_EXTERNAL -> CANCELLED transition is not allowed."""
         authenticated_user = factories.UserFactory()
         mailbox = factories.MailboxFactory()
         factories.MailboxAccessFactory(
@@ -596,7 +598,52 @@ class TestMessagesDeliveryStatuses:
         )
         recipient = factories.MessageRecipientFactory(
             message=message,
-            delivery_status=enums.MessageDeliveryStatusChoices.SENT,
+            delivery_status=enums.MessageDeliveryStatusChoices.SENT_EXTERNAL,
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=authenticated_user)
+        response = client.patch(
+            reverse("messages-delivery-statuses", kwargs={"id": message.id}),
+            data={str(recipient.id): "cancelled"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "cannot update" in str(response.json().get("error", "")).lower()
+
+    def test_api_messages_delivery_statuses_invalid_transition_sent_internal_to_cancelled(
+        self,
+    ):
+        """Test SENT_INTERNAL -> CANCELLED transition is not allowed.
+
+        SENT_INTERNAL is the other terminal "delivered"-class status (see
+        the footgun note on ``MessageDeliveryStatusChoices``). Both must
+        reject the same invalid transitions so internal mail isn't
+        silently mishandled.
+        """
+        authenticated_user = factories.UserFactory()
+        mailbox = factories.MailboxFactory()
+        factories.MailboxAccessFactory(
+            mailbox=mailbox,
+            user=authenticated_user,
+            role=enums.MailboxRoleChoices.EDITOR,
+        )
+        thread = factories.ThreadFactory()
+        factories.ThreadAccessFactory(
+            mailbox=mailbox,
+            thread=thread,
+            role=enums.ThreadAccessRoleChoices.EDITOR,
+        )
+        message = factories.MessageFactory(
+            subject="Test message",
+            thread=thread,
+            is_sender=True,
+            is_draft=False,
+        )
+        recipient = factories.MessageRecipientFactory(
+            message=message,
+            delivery_status=enums.MessageDeliveryStatusChoices.SENT_INTERNAL,
         )
 
         client = APIClient()
@@ -646,7 +693,7 @@ class TestMessagesDeliveryStatuses:
         )
         recipient_sent = factories.MessageRecipientFactory(
             message=message,
-            delivery_status=enums.MessageDeliveryStatusChoices.SENT,
+            delivery_status=enums.MessageDeliveryStatusChoices.SENT_EXTERNAL,
         )
 
         thread.update_stats()
@@ -686,7 +733,10 @@ class TestMessagesDeliveryStatuses:
             recipient_retry.delivery_status
             == enums.MessageDeliveryStatusChoices.CANCELLED
         )
-        assert recipient_sent.delivery_status == enums.MessageDeliveryStatusChoices.SENT
+        assert (
+            recipient_sent.delivery_status
+            == enums.MessageDeliveryStatusChoices.SENT_EXTERNAL
+        )
 
         thread.refresh_from_db()
         assert thread.has_delivery_failed is False
@@ -720,7 +770,7 @@ class TestMessagesDeliveryStatuses:
         )
         recipient_sent = factories.MessageRecipientFactory(
             message=message,
-            delivery_status=enums.MessageDeliveryStatusChoices.SENT,
+            delivery_status=enums.MessageDeliveryStatusChoices.SENT_EXTERNAL,
         )
 
         client = APIClient()
@@ -743,7 +793,10 @@ class TestMessagesDeliveryStatuses:
             recipient_failed.delivery_status
             == enums.MessageDeliveryStatusChoices.FAILED
         )
-        assert recipient_sent.delivery_status == enums.MessageDeliveryStatusChoices.SENT
+        assert (
+            recipient_sent.delivery_status
+            == enums.MessageDeliveryStatusChoices.SENT_EXTERNAL
+        )
 
     def test_api_messages_delivery_statuses_retry_multiple_failed_recipients(self):
         """Test retry of multiple failed recipients at once."""
@@ -783,7 +836,7 @@ class TestMessagesDeliveryStatuses:
         )
         recipient_sent = factories.MessageRecipientFactory(
             message=message,
-            delivery_status=enums.MessageDeliveryStatusChoices.SENT,
+            delivery_status=enums.MessageDeliveryStatusChoices.SENT_EXTERNAL,
         )
 
         thread.update_stats()
@@ -824,7 +877,10 @@ class TestMessagesDeliveryStatuses:
         assert recipient_failed_2.retry_at is None
         assert recipient_failed_2.delivery_message is None
 
-        assert recipient_sent.delivery_status == enums.MessageDeliveryStatusChoices.SENT
+        assert (
+            recipient_sent.delivery_status
+            == enums.MessageDeliveryStatusChoices.SENT_EXTERNAL
+        )
 
         thread.refresh_from_db()
         assert thread.has_delivery_failed is False

@@ -39,7 +39,6 @@ AWS_S3_ACCESS_KEY_ID=messages
 AWS_S3_SECRET_ACCESS_KEY=password
 AWS_S3_SIGNATURE_VERSION=s3v4
 AWS_S3_DOMAIN_REPLACE=http://localhost:8906
-MEDIA_BASE_URL=http://localhost:8902
 
 # Message imports storage
 STORAGE_MESSAGE_IMPORTS_ENDPOINT_URL=http://objectstorage:9000
@@ -94,8 +93,12 @@ MTA_OUT_RELAY_HOST=mailcatcher:1025
 MDA_API_SECRET=my-shared-secret-mda
 SALT_KEY=ThisIsAnExampleSaltForDevPurposeOnly
 
-# Rspamd
-SPAM_CONFIG={"rspamd_url": "http://mpa:8010/_api", "rspamd_auth": ""}
+# Rspamd spam-check — disabled by default. The `mpa` service is not started by
+# `make start`, and a configured-but-unreachable rspamd holds inbound mail for
+# retry (fail-closed), which would stall the local pipeline. To enable spam
+# checks locally, start `mpa` and uncomment the line below.
+SPAM_CONFIG={}
+# SPAM_CONFIG={"rspamd_url": "http://mpa:8010/_api", "rspamd_auth": ""}
 
 # AI
 AI_BASE_URL=
@@ -105,6 +108,9 @@ AI_MODEL=
 # AI features
 FEATURE_AI_SUMMARY=False
 FEATURE_AI_AUTOLABELS=False
+
+# Integrations enabled in the integrations modal (mailbox admins)
+FEATURE_MAILBOX_ADMIN_CHANNELS=api_key,widget,webhook
 
 # Third-party services
 # Drive - https://github.com/suitenumerique/drive

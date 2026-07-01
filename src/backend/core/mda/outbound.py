@@ -19,7 +19,7 @@ from jmap_email import (
 )
 
 from core import models
-from core.enums import MessageDeliveryStatusChoices
+from core.enums import InboundOrigin, MessageDeliveryStatusChoices
 from core.mda.inbound import check_local_recipient, deliver_inbound_message
 from core.mda.inline_images import (
     extract_inline_images_html,
@@ -597,10 +597,22 @@ def send_message(message: models.Message, force_mta_out: bool = False):
                     # TODO also update message.updated_at?
                     envelope_to[recipient_email].delivered_at = timezone.now()
                     envelope_to[recipient_email].delivery_message = None
+                    # Same-instance delivery gets its own SENT_INTERNAL
+                    # status, distinct from external SENT_EXTERNAL, so the
+                    # internal/external split stays visible in the data and
+                    # metrics. Both render as "delivered" to the user.
+                    #
+                    # FOOTGUN: SENT_INTERNAL is a second "delivered"-class
+                    # status alongside SENT_EXTERNAL. Any "did it send?" check
+                    # written as ``== SENT_EXTERNAL`` / ``!= SENT_EXTERNAL``
+                    # must also accept SENT_INTERNAL or it silently mishandles
+                    # internal mail (see the note on
+                    # ``MessageDeliveryStatusChoices`` and the
+                    # ``force_mta_out`` guard in ``mda/selfcheck.py``).
                     envelope_to[recipient_email].delivery_status = (
-                        MessageDeliveryStatusChoices.INTERNAL
+                        MessageDeliveryStatusChoices.SENT_INTERNAL
                         if internal
-                        else MessageDeliveryStatusChoices.SENT
+                        else MessageDeliveryStatusChoices.SENT_EXTERNAL
                     )
                     envelope_to[recipient_email].save(
                         update_fields=[
@@ -640,16 +652,55 @@ def send_message(message: models.Message, force_mta_out: bool = False):
 
             external_recipients = set()
             for recipient_email in envelope_to:
+                # ``MESSAGES_ALLOW_INTERNAL_DELIVERY=False`` forces local
+                # recipients out through the MTA instead of the internal fast
+                # path. ``check_local_recipient`` stays first so its
+                # create-if-missing side effect is unchanged either way (the
+                # mailbox still needs to exist to receive the MTA round-trip).
                 if (
                     check_local_recipient(recipient_email, create_if_missing=True)
                     and not force_mta_out
+                    and settings.MESSAGES_ALLOW_INTERNAL_DELIVERY
                 ):
                     try:
+                        # Reference the sender's already-committed blob so
+                        # the queue row carries the encrypted bytes, not a
+                        # second plaintext copy. ``delivered`` here means
+                        # "handed off to the recipient's inbound queue" —
+                        # the recipient's webhook outcome plays out on their
+                        # side and never feeds back into the sender's status.
+                        #
+                        # DESIGN TRADEOFF (intentional): the sender's recipient
+                        # is marked SENT_INTERNAL on handoff, before the
+                        # recipient pipeline actually creates (or DROPs) the
+                        # Message. So "delivered" is really "accepted for
+                        # delivery" — it can be a white lie if a recipient-side
+                        # blocking webhook DROPs the message or creation fails.
+                        # We deliberately do NOT add a QUEUED status that later
+                        # resolves to SENT_INTERNAL / FAILED, because doing it
+                        # honestly needs a cross-mailbox callback we don't have:
+                        # the recipient's inbound finalizer would have to reach
+                        # back and update THIS sender's MessageRecipient. That
+                        # means threading the sender's MessageRecipient id
+                        # through InboundMessage (a new nullable FK), new
+                        # QUEUED->SENT_INTERNAL/FAILED transitions in the
+                        # delivery-status state machine, a frontend "pending"
+                        # rendering, and a new metrics label. Same-instance
+                        # delivery lands in milliseconds, so the gain is a
+                        # sub-second "queued" flicker that only matters in the
+                        # rare recipient-DROP/failure case. If that accuracy is
+                        # ever needed, build it as a focused follow-up with the
+                        # callback above — not as a status flip here.
                         delivered = deliver_inbound_message(
                             recipient_email,
                             parsed_email,
                             blob_content,
-                            skip_inbound_queue=True,
+                            envelope={
+                                "origin": InboundOrigin.INTERNAL,
+                                "mail_from": message.sender.email,
+                                "rcpt_to": recipient_email,
+                            },
+                            blob=message.blob,
                         )
                         _mark_delivered(recipient_email, delivered, True)
                     except Exception as e:

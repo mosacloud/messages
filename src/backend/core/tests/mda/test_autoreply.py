@@ -1,5 +1,5 @@
 """Tests for autoreply MDA logic."""
-# pylint: disable=redefined-outer-name,unused-argument
+# pylint: disable=redefined-outer-name,unused-argument,too-many-lines
 
 import base64
 from datetime import datetime, timedelta
@@ -185,17 +185,32 @@ class TestIsAutoReplyMessage:
 
 
 class TestIsAutoReplyMessageExtended:
-    """Tests for _is_auto_reply_message: Return-Path, List-*, and loop headers."""
+    """Tests for _is_auto_reply_message: null envelope sender, List-*, loop
+    headers."""
 
-    def test_return_path_null(self):
-        """Return-Path: <> (null sender) is detected."""
+    def test_envelope_null_sender_is_bounce(self):
+        """Envelope MAIL FROM ``<>`` (null sender) is detected as a bounce."""
+        assert _is_auto_reply_message({}, {"mail_from": "<>"}) is True
+
+    def test_envelope_empty_sender_is_bounce(self):
+        """An explicitly empty envelope MAIL FROM is a bounce too."""
+        assert _is_auto_reply_message({}, {"mail_from": ""}) is True
+
+    def test_envelope_real_sender_is_not_bounce(self):
+        """A real envelope sender is not a bounce (authoritative, not a
+        forgeable Return-Path header)."""
+        # A forged Return-Path header must NOT flip the verdict — only the
+        # SMTP envelope is trusted.
         parsed_email = {"headers": [{"name": "Return-Path", "value": "<>"}]}
-        assert _is_auto_reply_message(parsed_email) is True
+        assert (
+            _is_auto_reply_message(parsed_email, {"mail_from": "user@example.com"})
+            is False
+        )
 
-    def test_return_path_empty(self):
-        """Return-Path with empty value is detected."""
-        parsed_email = {"headers": [{"name": "Return-Path", "value": ""}]}
-        assert _is_auto_reply_message(parsed_email) is True
+    def test_absent_envelope_mail_from_is_not_flagged(self):
+        """No envelope / no ``mail_from`` key → not treated as a bounce."""
+        assert _is_auto_reply_message({}, {}) is False
+        assert _is_auto_reply_message({}, None) is False
 
     def test_list_post_header(self):
         """List-Post header is detected."""
@@ -545,6 +560,18 @@ class TestShouldSendAutoreply:
         }
         assert should_send_autoreply(mailbox, parsed) is None
 
+    def test_skip_null_envelope_sender_bounce(self, mailbox, autoreply_template):
+        """A null envelope sender (MAIL FROM ``<>``) suppresses the autoreply,
+        even when the MIME From looks like a normal address (RFC 3834)."""
+        parsed = {
+            "from": [{"email": "real-looking@example.com"}],
+            "to": [{"email": str(mailbox)}],
+            "headers": [],
+        }
+        assert (
+            should_send_autoreply(mailbox, parsed, envelope={"mail_from": "<>"}) is None
+        )
+
     def test_skip_owner_prefix_sender(self, mailbox, autoreply_template):
         """owner-list@ sender does not trigger autoreply."""
         parsed = {
@@ -794,6 +821,67 @@ class TestSendAutoreplyForMessage:
         mime_str = mime_bytes.decode("utf-8", errors="replace")
         assert "Auto-Submitted: auto-replied" in mime_str
         assert "Precedence: bulk" in mime_str
+
+    @patch("core.mda.outbound_tasks.send_message_task", new_callable=MagicMock)
+    @patch("core.mda.outbound.sign_message_dkim", return_value=None)
+    def test_our_autoreply_does_not_trigger_another_autoreply(
+        self, mock_dkim, mock_send_task, mailbox, autoreply_template, inbound_message
+    ):
+        """Loop prevention, end to end: the MIME we compose for our own
+        autoreply must be classified as an automatic message when parsed
+        back, so feeding it through delivery never fires a second autoreply.
+
+        This closes the loop between the *compose* side (which stamps
+        ``Auto-Submitted`` / ``X-Auto-Response-Suppress`` / ``Precedence``)
+        and the *detect* side (``_is_auto_reply_message``): a regression in
+        either — a renamed header, a parser change — would reopen the loop,
+        and the isolated unit tests on each side wouldn't catch it.
+
+        The ``should_send_autoreply`` gate is checked against a *different*
+        mailbox (with its own template) so the self-reply guard (sender ==
+        mailbox) can't mask a detection failure — the only path to ``None``
+        is the auto-reply header detection.
+        """
+        # pylint: disable-next=import-outside-toplevel
+        from jmap_email import parse_email
+
+        send_autoreply_for_message(autoreply_template, mailbox, inbound_message)
+        autoreply_msg = models.Message.objects.filter(
+            parent=inbound_message, is_sender=True
+        ).last()
+
+        parsed = parse_email(autoreply_msg.blob.get_content())
+        assert parsed is not None
+
+        # The detector flags our own autoreply...
+        assert _is_auto_reply_message(parsed) is True
+        # ...and the full gate refuses to reply to it, so no loop can form
+        # even if this message were delivered back to an autoresponding box.
+        # Use a second mailbox (not the autoreply sender) with its own
+        # template so the self-reply skip can't mask a detection regression.
+        other_mailbox = factories.MailboxFactory()
+        if not other_mailbox.contact:
+            other_mailbox.contact = factories.ContactFactory(
+                email=str(other_mailbox), name="Other", mailbox=other_mailbox
+            )
+            other_mailbox.save()
+        factories.MessageTemplateFactory(
+            name="Other OOO",
+            type=MessageTemplateTypeChoices.AUTOREPLY,
+            mailbox=other_mailbox,
+            is_active=True,
+            metadata={"schedule_type": "always"},
+            html_body="<p>away</p>",
+            text_body="away",
+        )
+        # Address the composed reply to other_mailbox so the RFC 5230
+        # recipient-explicit check passes; this leaves the auto-reply header
+        # detection (step 2) as the only path to None, keeping the assertion a
+        # genuine loop-prevention check rather than a recipient-shape artifact.
+        parsed["to"] = (parsed.get("to") or []) + [
+            {"email": str(other_mailbox), "name": "Other"}
+        ]
+        assert should_send_autoreply(other_mailbox, parsed) is None
 
     @override_settings(MAX_OUTGOING_ATTACHMENT_SIZE=10)
     @patch("core.mda.outbound_tasks.send_message_task", new_callable=MagicMock)

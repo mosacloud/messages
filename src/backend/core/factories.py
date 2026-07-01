@@ -359,6 +359,13 @@ class ChannelFactory(factory.django.DjangoModelFactory):
     name = factory.Sequence(lambda n: f"Test Channel {n}")
     type = factory.fuzzy.FuzzyChoice(["widget", "mta"])
     settings = factory.Dict({"config": {"enabled": True}})
+    # Auto-mint a placeholder webhook signing secret for webhook channels
+    # so tests don't all have to do it themselves — the dispatcher
+    # fails-closed without one. Non-webhook channels keep an empty
+    # encrypted_settings (matching production behaviour).
+    encrypted_settings = factory.LazyAttribute(
+        lambda o: {"secret": "whsec_factory_test"} if o.type == "webhook" else {}
+    )
     mailbox = factory.SubFactory(MailboxFactory)
     maildomain = None
     user = None
@@ -388,7 +395,7 @@ def make_api_key_channel(
     """Create an api_key Channel and return ``(channel, plaintext)``.
 
     Single source of truth for tests that need a working api_key. Mints
-    the secret via ``Channel.rotate_api_key`` so the production helper is
+    the secret via ``Channel.rotate_secret`` so the production helper is
     exercised on the same code path the DRF/admin flows use, and so the
     plaintext prefix stays consistent across production and tests.
 
@@ -404,7 +411,7 @@ def make_api_key_channel(
         user=user,
         settings={"scopes": list(scopes), **(extra_settings or {})},
     )
-    plaintext = channel.rotate_api_key(save=False)
+    plaintext = channel.rotate_secret(save=False)
     channel.save()
     return channel, plaintext
 

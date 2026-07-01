@@ -10,7 +10,7 @@ from django.db.utils import Error as DjangoDbError
 
 from jmap_email import JmapEmail, first_msgid
 
-from core import models
+from core import enums, models
 from core.mda.inbound_tasks import process_inbound_message_task
 from core.services.importer.labels import (
     handle_duplicate_message,
@@ -139,15 +139,28 @@ def deliver_inbound_message(
     imap_labels: list[str] | None = None,
     imap_flags: list[str] | None = None,
     channel: models.Channel | None = None,
-    skip_inbound_queue: bool = False,
+    envelope: dict | None = None,
+    blob: "models.Blob | None" = None,
 ) -> bool:  # Return True on success, False on failure
     """Deliver a parsed inbound email message.
 
-    For imports (is_import=True) or when skip_inbound_queue=True, messages are created
-    directly without spam checking. For regular messages, they are queued for spam
-    processing via rspamd. Warning: messages imported here could be is_sender=True.
+    Imports (``is_import=True``) bypass the queue and create the message
+    directly — historical bulk data, no spam check, no user webhooks.
+    Warning: messages imported here could be is_sender=True.
 
-    raw_data is not parsed again, just stored as is.
+    Everything else is queued for the inbound pipeline via
+    ``process_inbound_message_task`` (spam steps + user webhooks). The bytes
+    are committed to an encrypted, content-addressed ``Blob`` at ingest: the
+    caller may pass an already-committed ``blob`` (internal mail reuses the
+    sender's ``Message.blob``), otherwise one is created from ``raw_data``
+    (external MTA / widget). Because ``create_blob`` dedups by content hash,
+    a message delivered to N recipients shares ONE blob and nothing sits in
+    plaintext.
+
+    ``envelope`` is the structured SMTP/provenance record for this delivery
+    (see ``InboundMessage.envelope``); its ``origin`` key is the explicit
+    trust discriminator that drives ``is_internal`` — internal mail skips the
+    spam steps while still firing user webhooks.
     """
     # --- 1. Find or Create Mailbox --- #
     try:
@@ -181,9 +194,10 @@ def deliver_inbound_message(
             )
             return True  # Return success since we handled the duplicate gracefully
 
-    # --- 3. Handle imports and internal messages directly, queue others for spam processing --- #
-    if is_import or skip_inbound_queue:
-        # Imports and internal messages bypass spam checking and create messages directly
+    # --- 3. Imports bypass the queue; everything else runs the pipeline --- #
+    if is_import:
+        # Historical bulk import: create the message directly, no spam
+        # check and no user webhooks (autoreply is suppressed too).
         result = _create_message_from_inbound(
             recipient_email=recipient_email,
             parsed_email=parsed_email,
@@ -196,28 +210,39 @@ def deliver_inbound_message(
             channel=channel,
             is_spam=False,  # Bypassed messages are never marked as spam
         )
-
-        # Send autoreply for internal messages (not imports, which are historical)
-        if not is_import and isinstance(result, models.Message):
-            from core.mda.autoreply import (  # pylint: disable=import-outside-toplevel
-                try_send_autoreply,
-            )
-
-            try_send_autoreply(mailbox, parsed_email, result)
-
         return bool(result)
 
-    # Regular messages: queue for spam processing
+    envelope = envelope or {}
+    is_internal = envelope.get("origin") == enums.InboundOrigin.INTERNAL
+
+    # Internal mail is expected to reference the sender's already-committed
+    # blob — that's the whole point (no second plaintext copy). Enforce the
+    # contract so a future caller can't silently fall back to re-ingesting.
+    if is_internal and blob is None:
+        raise ValueError("internal delivery requires a blob")
+
+    # External and internal messages: queue for the inbound pipeline. Commit
+    # the bytes to an encrypted, content-addressed blob at ingest — internal
+    # mail already carries the sender's committed blob; external/widget mail
+    # is ingested here. create_blob dedups by SHA-256, so N recipients of the
+    # same message end up sharing one blob.
     try:
+        if blob is None:
+            blob = models.Blob.objects.create_blob(
+                content=raw_data,
+                content_type="message/rfc822",
+            )
         inbound_message = models.InboundMessage.objects.create(
             mailbox=mailbox,
-            raw_data=raw_data,
+            blob=blob,
+            envelope=envelope,
             channel=channel,
         )
         logger.info(
-            "Queued inbound message %s (recipient: %s)",
+            "Queued inbound message %s (mailbox: %s, origin: %s)",
             inbound_message.id,
-            recipient_email,
+            mailbox.id,
+            envelope.get("origin"),
         )
         # Queue the task immediately for processing (no lag)
         process_inbound_message_task.delay(str(inbound_message.id))
