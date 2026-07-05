@@ -1,4 +1,4 @@
-import { DropdownMenu, HeaderProps, Icon, IconType, useResponsive, UserMenu, VerticalSeparator } from "@gouvfr-lasuite/ui-kit";
+import { DropdownMenu, HeaderProps, Icon, IconType, useResponsive, UserMenu } from "@gouvfr-lasuite/ui-kit";
 import { Controls, GearRounded, Upload } from "@gouvfr-lasuite/ui-kit/icons";
 import { Button, Tooltip, useCunningham } from "@gouvfr-lasuite/cunningham-react";
 import { useMemo, useState } from "react";
@@ -107,7 +107,6 @@ const AutoreplyIndicator = () => {
 
 export const HeaderRight = () => {
   const { user } = useAuth();
-  const { isDesktop } = useResponsive();
   const { themeConfig } = useTheme();
 
   return (
