@@ -330,6 +330,14 @@
                                             "type": "boolean",
                                             "description": "Whether silent OIDC login is enabled",
                                             "readOnly": true
+                                        },
+                                        "APP_URLS": {
+                                            "type": "object",
+                                            "description": "Root URLs of enabled Mosa apps for the app switcher. Keys: epicentre, docs, drive, meet, calendar, chat, commander.",
+                                            "additionalProperties": {
+                                                "type": "string"
+                                            },
+                                            "readOnly": true
                                         }
                                     },
                                     "required": [
