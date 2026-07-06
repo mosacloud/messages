@@ -41,4 +41,6 @@ export type ConfigRetrieve200 = {
   readonly MESSAGES_MANUAL_RETRY_MAX_AGE: number;
   /** Whether silent OIDC login is enabled */
   readonly FRONTEND_SILENT_LOGIN_ENABLED: boolean;
+  /** Root URLs of enabled Mosa apps for the app switcher. Keys: docs, meet, calendar, chat. */
+  readonly APP_URLS: Record<string, string>;
 };

@@ -71,6 +71,7 @@ def test_api_config(is_authenticated):
         "IMAGE_PROXY_ENABLED": False,
         "MESSAGES_MANUAL_RETRY_MAX_AGE": 86400,
         "FRONTEND_SILENT_LOGIN_ENABLED": True,
+        "APP_URLS": {},
     }
 
 
