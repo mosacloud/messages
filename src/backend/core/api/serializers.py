@@ -1155,7 +1155,7 @@ class MessageSerializer(serializers.ModelSerializer):
                 stripped_attachments.append(
                     {
                         "blobId": f"msg_{instance.id}_{index}",
-                        "name": attachment["name"],
+                        "name": attachment["name"] or "unnamed",
                         "size": attachment["size"],
                         "type": attachment["type"],
                         "cid": attachment.get("cid"),
