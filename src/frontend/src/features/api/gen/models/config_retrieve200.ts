@@ -8,6 +8,7 @@
 import type { ConfigRetrieve200DRIVE } from "./config_retrieve200_driv_e";
 import type { ConfigRetrieve200SCHEMACUSTOMATTRIBUTESUSER } from "./config_retrieve200_schemacustomattributesuse_r";
 import type { ConfigRetrieve200SCHEMACUSTOMATTRIBUTESMAILDOMAIN } from "./config_retrieve200_schemacustomattributesmaildomai_n";
+import type { ConfigRetrieve200APPURLS } from "./config_retrieve200_appurl_s";
 
 export type ConfigRetrieve200 = {
   readonly ENVIRONMENT: string;
@@ -41,6 +42,6 @@ export type ConfigRetrieve200 = {
   readonly MESSAGES_MANUAL_RETRY_MAX_AGE: number;
   /** Whether silent OIDC login is enabled */
   readonly FRONTEND_SILENT_LOGIN_ENABLED: boolean;
-  /** Root URLs of enabled Mosa apps for the app switcher. Keys: docs, meet, calendar, chat. */
-  readonly APP_URLS: Record<string, string>;
+  /** Root URLs of enabled Mosa apps for the app switcher. Keys: epicentre, docs, drive, meet, calendar, chat, commander. */
+  readonly APP_URLS?: ConfigRetrieve200APPURLS;
 };

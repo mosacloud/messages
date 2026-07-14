@@ -220,6 +220,23 @@ class IntegerChoicesField(serializers.ChoiceField):
         super().fail(key, **kwargs)
 
 
+def nullable_choices_schema(choices_class):
+    """Nullable enum schema for a ``SerializerMethodField`` that may return
+    ``None``.
+
+    Reuse the shared ``{choices_class.__name__}`` component (registered by the
+    non-null :class:`IntegerChoicesField` usages) and apply the nullability
+    locally via the ``allOf`` wrapper. Baking ``nullable`` into the component
+    itself would collide with those non-null usages; an inline enum dict would
+    instead make drf-spectacular extract a redundant ``…Enum`` component. This
+    mirrors the shape drf-spectacular emits natively for a nullable ``$ref``.
+    """
+    return {
+        "allOf": [{"$ref": f"#/components/schemas/{choices_class.__name__}"}],
+        "nullable": True,
+    }
+
+
 class AbilitiesModelSerializer(serializers.ModelSerializer):
     """
     A ModelSerializer that takes an additional `exclude` argument that
@@ -380,7 +397,7 @@ class MailboxSerializer(AbilitiesModelSerializer):
             return instance.contact.name
         return None
 
-    @extend_schema_field(IntegerChoicesField(choices_class=models.MailboxRoleChoices))
+    @extend_schema_field(nullable_choices_schema(models.MailboxRoleChoices))
     def get_role(self, instance):
         """Return the allowed actions of the logged-in user on the instance."""
         # Use the annotated user_role field
@@ -890,9 +907,7 @@ class ThreadSerializer(serializers.ModelSerializer):
             cached = instance.messages.order_by("created_at")
         return [str(message.id) for message in cached]
 
-    @extend_schema_field(
-        IntegerChoicesField(choices_class=models.ThreadAccessRoleChoices)
-    )
+    @extend_schema_field(nullable_choices_schema(models.ThreadAccessRoleChoices))
     def get_user_role(self, instance):
         """Get current user's role for this thread, scoped to the context mailbox.
 
@@ -1155,7 +1170,7 @@ class MessageSerializer(serializers.ModelSerializer):
                 stripped_attachments.append(
                     {
                         "blobId": f"msg_{instance.id}_{index}",
-                        "name": attachment["name"],
+                        "name": attachment.get("name") or "unnamed",
                         "size": attachment["size"],
                         "type": attachment["type"],
                         "cid": attachment.get("cid"),
@@ -1444,6 +1459,21 @@ class MailDomainAdminSerializer(AbilitiesModelSerializer):
         """Return the abilities for the mail domain."""
         return super().get_abilities(instance)
 
+    @extend_schema_field(
+        {
+            "type": "array",
+            "nullable": True,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string"},
+                    "type": {"type": "string"},
+                    "value": {"type": "string"},
+                },
+                "required": ["target", "type", "value"],
+            },
+        }
+    )
     def get_expected_dns_records(self, instance):
         """Return the expected DNS records for the mail domain, only in detail views."""
 
@@ -1552,7 +1582,9 @@ class MailboxAdminSerializer(serializers.ModelSerializer):
         many=True, read_only=True
     )  # accesses is the related_name
     can_reset_password = serializers.BooleanField(read_only=True)
-    contact = ContactSerializer(read_only=True)
+    # ``Mailbox.contact`` is ``SET_NULL, null=True`` — an alias mailbox (or one
+    # whose contact was deleted) has none, so the nested field must be nullable.
+    contact = ContactSerializer(read_only=True, allow_null=True)
     alias_of = serializers.PrimaryKeyRelatedField(
         required=False, allow_null=True, queryset=models.Mailbox.objects.none()
     )
