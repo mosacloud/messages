@@ -4,6 +4,7 @@ name: Build and publish OCI images
   push:
     branches:
       - main
+      - feat/itip-reply-v0.8.0-dev
     tags:
       - 'v*'
 
