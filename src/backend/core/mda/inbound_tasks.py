@@ -19,6 +19,7 @@ from jmap_email import (
 )
 
 from core import models
+from core.mda import itip
 from core.mda.inbound_auth import (
     check_inbound_authentication,
     get_inbound_auth_mode,
@@ -210,6 +211,51 @@ def _check_spam_with_rspamd(
         return False, str(e), None
 
 
+def _enqueue_itip_reply(mailbox: models.Mailbox, ics_data: str) -> None:
+    """Fan an authorized inbound iTIP REPLY out to CalDAV apply tasks.
+
+    Prefers a per-mailbox CalDAV channel; otherwise enqueues one apply task per
+    human with access to the mailbox (``apply_reply`` no-ops on principals whose
+    calendars don't hold the event's UID). Lazy imports avoid a task-module
+    import cycle.
+    """
+    from core.enums import (  # pylint: disable=import-outside-toplevel
+        ChannelTypes,
+    )
+    from core.services.calendar.tasks import (  # pylint: disable=import-outside-toplevel
+        calendar_apply_reply_task,
+    )
+
+    channel = models.Channel.objects.filter(
+        mailbox=mailbox, type=ChannelTypes.CALDAV
+    ).first()
+    if channel:
+        calendar_apply_reply_task.delay(
+            channel_id=str(channel.id),
+            user_email=str(mailbox),
+            ics_data=ics_data,
+        )
+        return
+
+    emails = list(
+        mailbox.accesses.exclude(user__email="")
+        .values_list("user__email", flat=True)
+        .distinct()
+    )
+    if not emails:
+        logger.info(
+            "iTIP REPLY for %s: no CalDAV channel and no user identity; skipping",
+            mailbox,
+        )
+        return
+    for email in emails:
+        calendar_apply_reply_task.delay(
+            channel_id=None,
+            user_email=email,
+            ics_data=ics_data,
+        )
+
+
 @celery_app.task(bind=True)
 def process_inbound_message_task(self, inbound_message_id: str):
     """Process an inbound message from the queue: check spam and create message.
@@ -308,6 +354,21 @@ def process_inbound_message_task(self, inbound_message_id: str):
                     "dropping the prepend"
                 )
 
+        itip_reply_ics = None
+        if settings.CALENDAR_ITIP_REPLY_ENABLED and not is_spam:
+            itip_reply_ics, itip_flag = itip.evaluate_inbound_reply(
+                parsed_email, auth_verdict
+            )
+            if itip_flag:
+                prepended = (
+                    f"X-StMsg-Itip-Reply: {itip_flag}\r\n".encode("ascii")
+                    + raw_data_bytes
+                )
+                reparsed = parse_email(prepended)
+                if reparsed is not None:
+                    parsed_email = reparsed
+                    raw_data_bytes = prepended
+
         # Create the message using the extracted function
         inbound_msg = _create_message_from_inbound(
             recipient_email=recipient_email,
@@ -329,6 +390,15 @@ def process_inbound_message_task(self, inbound_message_id: str):
                 )
 
                 try_send_autoreply(mailbox, parsed_email, inbound_msg, is_spam=is_spam)
+
+                if itip_reply_ics:
+                    try:
+                        _enqueue_itip_reply(mailbox, itip_reply_ics)
+                    except Exception:  # pylint: disable=broad-exception-caught
+                        logger.exception(
+                            "Failed to enqueue iTIP reply for inbound message %s",
+                            inbound_message_id,
+                        )
 
             logger.info(
                 "Successfully processed inbound message %s (is_spam=%s)",

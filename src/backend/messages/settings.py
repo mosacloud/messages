@@ -410,6 +410,9 @@ class Base(Configuration):
     CALDAV_DEFAULT_WEB_URL = values.Value(
         None, environ_name="CALDAV_DEFAULT_WEB_URL", environ_prefix=None
     )
+    CALENDAR_ITIP_REPLY_ENABLED = values.BooleanValue(
+        False, environ_name="CALENDAR_ITIP_REPLY_ENABLED", environ_prefix=None
+    )
 
     # Spam filtering settings
 

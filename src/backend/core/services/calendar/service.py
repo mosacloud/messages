@@ -9,7 +9,7 @@ library's dependency surface.
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, unquote, urljoin, urlparse
 
 from django.conf import settings as django_settings
@@ -622,6 +622,189 @@ class CalDAVService:  # pylint: disable=too-many-instance-attributes
             cal.to_ical().decode("utf-8"),
         )
         return True
+
+    _REPLY_DTSTAMP_PARAM = "X-STMSG-REPLY-DTSTAMP"
+
+    @staticmethod
+    def _parse_reply(ics_data):
+        """Extract ``{uid, attendee, partstat, start, end, sequence, dtstamp}``
+        from an iTIP ``METHOD:REPLY``, or None if not a usable REPLY."""
+        try:
+            cal = ICalendar.from_ical(ics_data)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.warning("Could not parse inbound iTIP REPLY", exc_info=True)
+            return None
+        for comp in cal.walk("VEVENT"):
+            uid = comp.get("UID")
+            if not uid:
+                continue
+            attendees = comp.get("ATTENDEE")
+            if attendees is None:
+                continue
+            if not isinstance(attendees, list):
+                attendees = [attendees]
+            for att in attendees:
+                partstat = att.params.get("PARTSTAT")
+                if not partstat:
+                    continue
+                addr = str(att).strip()
+                if addr.lower().startswith("mailto:"):
+                    addr = addr[len("mailto:") :]
+                dtstart = comp.get("DTSTART")
+                dtend = comp.get("DTEND")
+                seq = comp.get("SEQUENCE")
+                dtstamp = comp.get("DTSTAMP")
+                return {
+                    "uid": str(uid),
+                    "attendee": addr.strip().lower(),
+                    "partstat": str(partstat),
+                    "start": dtstart.dt if dtstart is not None else None,
+                    "end": dtend.dt if dtend is not None else None,
+                    "sequence": int(seq) if seq is not None else 0,
+                    "dtstamp": dtstamp.dt if dtstamp is not None else None,
+                }
+        return None
+
+    def apply_reply(self, ics_data, channel_id=None):
+        """Apply an inbound iTIP ``METHOD:REPLY`` to the organizer's stored event.
+
+        Mirror of the attendee-side ``respond_to_event``. Stamps
+        ``SCHEDULE-AGENT=CLIENT`` on the PUT so the server doesn't re-dispatch
+        iTIP REQUESTs to every attendee. Returns ``{"applied": bool, "reason":
+        str}``; never raises for expected no-ops (attendee not on the event, no
+        matching UID, stale reply). Trust gating is the caller's responsibility.
+        """
+        reply = self._parse_reply(ics_data)
+        if reply is None:
+            return {"applied": False, "reason": "unparseable-reply"}
+
+        start, end = self._reply_query_window(reply)
+
+        for calendar in self.list_calendars(writable_only=True):
+            for stored_ics in self._calendar_query(calendar["id"], start, end):
+                try:
+                    stored = ICalendar.from_ical(stored_ics)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    logger.debug("Skipping unparseable stored event", exc_info=True)
+                    continue
+                if not self._event_has_uid(stored, reply["uid"]):
+                    continue
+
+                stale = self._reply_is_stale(stored, reply)
+                if stale:
+                    logger.info(
+                        "Ignoring stale iTIP REPLY for %s (%s)", reply["uid"], stale
+                    )
+                    return {"applied": False, "reason": stale}
+
+                if not self._update_partstat(
+                    stored, reply["attendee"], reply["partstat"]
+                ):
+                    logger.info(
+                        "iTIP REPLY attendee %s not on event %s; no-op",
+                        reply["attendee"],
+                        reply["uid"],
+                    )
+                    return {"applied": False, "reason": "attendee-not-on-event"}
+
+                self._record_reply_dtstamp(stored, reply)
+                self._set_schedule_agent_client(stored)
+                stored = rebuild_for_storage(stored)
+                self._put_event(calendar["id"], stored.to_ical().decode("utf-8"))
+                return {"applied": True, "reason": "applied"}
+
+        logger.info("No stored event matches iTIP REPLY UID %s", reply["uid"])
+        return {"applied": False, "reason": "no-matching-event"}
+
+    @staticmethod
+    def _event_has_uid(cal, uid):
+        for comp in cal.walk("VEVENT"):
+            if str(comp.get("UID") or "") == uid:
+                return True
+        return False
+
+    def _reply_query_window(self, reply):
+        """(start, end) TZ-aware UTC window to search for the stored event."""
+        start = reply.get("start")
+        end = reply.get("end") or start
+        if isinstance(start, datetime) and isinstance(end, datetime):
+            start = self._as_utc(start) - timedelta(days=1)
+            end = self._as_utc(end) + timedelta(days=1)
+            return start, end
+        now = datetime.now(timezone.utc)
+        return now - timedelta(days=400), now + timedelta(days=400)
+
+    @staticmethod
+    def _as_utc(dt):
+        if not isinstance(dt, datetime):
+            dt = datetime(dt.year, dt.month, dt.day, tzinfo=timezone.utc)
+        elif dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
+    def _reply_is_stale(self, stored, reply):
+        """Stale-reason string if the REPLY is older (SEQUENCE, then per-attendee
+        DTSTAMP) than what's stored, else None."""
+        reply_seq = reply["sequence"]
+        reply_stamp = reply["dtstamp"]
+        for comp in stored.walk("VEVENT"):
+            stored_seq = comp.get("SEQUENCE")
+            stored_seq = int(stored_seq) if stored_seq is not None else 0
+            if reply_seq < stored_seq:
+                return "stale-sequence"
+            if reply_seq > stored_seq:
+                return None
+            last = self._stored_reply_dtstamp(comp, reply["attendee"])
+            if last is not None and reply_stamp is not None:
+                if self._as_utc(reply_stamp) < self._as_utc(last):
+                    return "stale-dtstamp"
+        return None
+
+    @classmethod
+    def _stored_reply_dtstamp(cls, comp, attendee_email):
+        """Last-applied REPLY DTSTAMP for ``attendee_email`` on this VEVENT."""
+        attendees = comp.get("ATTENDEE")
+        if attendees is None:
+            return None
+        if not isinstance(attendees, list):
+            attendees = [attendees]
+        email_lower = attendee_email.lower()
+        for att in attendees:
+            addr = str(att).strip().lower()
+            if addr.startswith("mailto:"):
+                addr = addr[len("mailto:") :]
+            if addr != email_lower:
+                continue
+            raw = att.params.get(cls._REPLY_DTSTAMP_PARAM)
+            if not raw:
+                return None
+            try:
+                return datetime.strptime(str(raw), "%Y%m%dT%H%M%SZ").replace(
+                    tzinfo=timezone.utc
+                )
+            except ValueError:
+                return None
+        return None
+
+    @classmethod
+    def _record_reply_dtstamp(cls, stored, reply):
+        """Stamp the REPLY's DTSTAMP onto the attendee for future staleness checks."""
+        if reply["dtstamp"] is None:
+            return
+        stamp = cls._as_utc(reply["dtstamp"]).strftime("%Y%m%dT%H%M%SZ")
+        email_lower = reply["attendee"].lower()
+        for comp in stored.walk("VEVENT"):
+            attendees = comp.get("ATTENDEE")
+            if attendees is None:
+                continue
+            if not isinstance(attendees, list):
+                attendees = [attendees]
+            for att in attendees:
+                addr = str(att).strip().lower()
+                if addr.startswith("mailto:"):
+                    addr = addr[len("mailto:") :]
+                if addr == email_lower:
+                    att.params[cls._REPLY_DTSTAMP_PARAM] = stamp
 
     @staticmethod
     def _set_schedule_agent_client(cal):
